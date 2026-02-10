@@ -47,6 +47,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - Token flip functionality and automatic ATA handling
   - Support for `LEGACY` transactions via Raydium Trade API
   - Compact UI matching design system (removed inline selectors, matched TransferForm styling)
+- **Transaction parser package (`packages/tx-parser`)**
+  - Standalone TypeScript package with strict typing, build/test scripts, and root env usage
+  - RPC fetch layer for wallet history and single-signature transaction retrieval
+  - Parsing core split into classification, detail resolution, and protocol-specific modules
+  - Protocol coverage for verified IDs: Jupiter V6, Meteora DLMM, SPL Token, Associated Token
+  - Jupiter swap detail extraction from token balance deltas
+  - Orchestration APIs for parsing wallet history and single signatures
+  - Integration-style test suite using real RPC calls/signatures and shared fixtures
 
 ### Changed
 
@@ -57,6 +65,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `WalletButton` now shows text "Connect Wallet" instead of icon when disconnected
 - Added muted hint text below connected wallet button
 - `PasskeySection` now shows three icons (Face, Fingerprint, Phone) to represent passkey methods
+- Parser architecture refactored toward decoupled fetch/parse/orchestration boundaries for reuse across web and agents
 
 ### Planned
 

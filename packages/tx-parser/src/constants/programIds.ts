@@ -1,0 +1,9 @@
+export const VERIFIED_PROGRAM_IDS = {
+  JUPITER_V6: 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
+  METEORA_DLMM: 'LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo',
+  TOKEN_PROGRAM: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+  ASSOCIATED_TOKEN_PROGRAM: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
+} as const;
+
+export type VerifiedProgramId =
+  (typeof VERIFIED_PROGRAM_IDS)[keyof typeof VERIFIED_PROGRAM_IDS];
