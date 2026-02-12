@@ -38,6 +38,28 @@ This is the central nervous system of pnl.fun — everything flows through here.
 
 ---
 
+## Downstream Integration
+
+**How data flows to Brain (#016):**
+
+```
+Stream Pipeline (#013)
+    ↓ onBatch(summaries: string[])
+Transaction Orchestrator (#016)
+    ↓ classifier.classify(summaries)
+Classifier Brain (#016)
+```
+
+**Key points:**
+- Stream emits via callback: `onBatch: (summaries: string[]) => void`
+- **No intermediate storage** — direct in-memory pass to orchestrator
+- Orchestrator (in #016) receives string array, passes to classifier
+- Optional audit logging to disk for debugging/replay
+
+**Data format:** Array of human-readable transaction summaries (see formatter section below).
+
+---
+
 ## Architecture
 
 ```
@@ -143,13 +165,17 @@ Create `packages/tx-parser/src/stream/formatter.ts`:
 
 **Purpose:** Convert a `ParsedTransaction` into a human-readable one-liner that an LLM can reason about.
 
+**Important:** Include **full mint addresses** so Classifier Brain (#016) can extract them for research.
+
 **Format examples:**
 
 ```
-[2026-02-12 16:25 IST] Wallet:7iNJ...Vo9C bought 50,000 XYZ_MINT(needsResearch) for 2.5 SOL via Jupiter | sig:4zmtr...
-[2026-02-12 16:26 IST] Wallet:8kLP...3def sold 10,000 ABC_MINT for 1.2 SOL via Jupiter | sig:9PhxC...
-[2026-02-12 16:28 IST] Wallet:7iNJ...Vo9C lp on Meteora DLMM | sig:2x9G9...
+[2026-02-12T11:25:00.000Z] Wallet:7iNJ...Vo9C bought 50000 of ABC...xyz(mint:ABCxyz123...full_address)(needsResearch) for 2.5 SOL via Jupiter | sig:4zmtr...
+[2026-02-12T11:26:00.000Z] Wallet:8kLP...3def sold 10000 of XYZ...def(mint:XYZdef456...full_address) for 1.2 SOL via Jupiter | sig:9PhxC...
+[2026-02-12T11:28:00.000Z] Wallet:7iNJ...Vo9C lp on Meteora DLMM | sig:2x9G9...
 ```
+
+**Format pattern:** `token_short(mint:FULL_BASE58_ADDRESS)(needsResearch)` when token needs research.
 
 **Implementation:**
 
@@ -182,16 +208,23 @@ export function formatTransactionForLLM(
 // Build buy/sell summary using BuySellDetails
 function formatBuySell(timestamp, walletShort, transaction, sigShort) {
   const details = transaction.details;
-  const action = details.direction; // 'buy' or 'sell'
-  const targetMint = details.targetToken.mint.slice(0, 8);
+  const action = details.direction === 'buy' ? 'bought' : 'sold'; // Natural language
+  
+  // Format target token with full mint for classifier extraction
+  const targetMint = details.targetToken.mint;
+  const targetShort = `${targetMint.slice(0, 3)}...${targetMint.slice(-3)}`;
+  const targetFormatted = `${targetShort}(mint:${targetMint})`;
   const researchFlag = details.targetToken.needsResearch ? '(needsResearch)' : '';
-  const fundingAmount = details.fundingAmount;
+  
   const targetAmount = details.targetAmount;
-  const fundingMint = details.fundingToken.isKnown 
+  
+  // Format funding token
+  const fundingSymbol = details.fundingToken.isKnown 
     ? getFundingSymbol(details.fundingToken.mint)
-    : details.fundingToken.mint.slice(0, 8);
+    : `${details.fundingToken.mint.slice(0, 3)}...${details.fundingToken.mint.slice(-3)}`;
+  const fundingAmount = details.fundingAmount;
 
-  return `[${timestamp}] Wallet:${walletShort} ${action} ${targetAmount} ${targetMint}${researchFlag} for ${fundingAmount} ${fundingSymbol} via Jupiter | sig:${sigShort}`;
+  return `[${timestamp}] Wallet:${walletShort} ${action} ${targetAmount} of ${targetFormatted}${researchFlag} for ${fundingAmount} ${fundingSymbol} via Jupiter | sig:${sigShort}`;
 }
 ```
 
