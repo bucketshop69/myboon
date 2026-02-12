@@ -1,4 +1,5 @@
 export * from './types/index.js';
+export * from './constants/knownTokens.js';
 export * from './constants/programIds.js';
 export * from './config.js';
 export * from './rpc.js';

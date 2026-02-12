@@ -1,7 +1,14 @@
+import { PublicKey, type ParsedTransactionWithMeta, type TokenBalance } from '@solana/web3.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { KNOWN_FUNDING_TOKENS } from '../constants/knownTokens.js';
+import { VERIFIED_PROGRAM_IDS } from '../constants/programIds.js';
 import { fetchTransactionBySignature } from '../rpc.js';
-import { identifyTransactionType, parseSingleTransaction } from '../parsers/index.js';
+import {
+  identifyTransactionType,
+  parseJupiterTransaction,
+  parseSingleTransaction
+} from '../parsers/index.js';
 import { ensureTestEnv, TEST_SIGNATURES } from './fixtures.js';
 
 describe('identifyTransactionType (integration)', () => {
@@ -55,5 +62,147 @@ describe('parseSingleTransaction (integration)', () => {
     expect(result.type).toBe('transfer');
     expect(result.protocol).toBe('spl-token');
     expect(result.details.kind).toBe('generic');
+  });
+});
+
+function buildTokenBalance(
+  accountIndex: number,
+  mint: string,
+  owner: string,
+  amount: string,
+  decimals: number
+): TokenBalance {
+  return {
+    accountIndex,
+    mint,
+    owner,
+    uiTokenAmount: {
+      amount,
+      decimals,
+      uiAmount: Number(amount) / 10 ** decimals,
+      uiAmountString: (Number(amount) / 10 ** decimals).toString()
+    }
+  };
+}
+
+function buildMockJupiterTransaction(args: {
+  inputMint: string;
+  inputPreAmount: string;
+  inputPostAmount: string;
+  inputDecimals: number;
+  outputMint: string;
+  outputPreAmount: string;
+  outputPostAmount: string;
+  outputDecimals: number;
+}): ParsedTransactionWithMeta {
+  const wallet = new PublicKey('7iNJ7CLNT8UBPANxkkrsURjzaktbomCVa93N1sKcVo9C');
+  const pool = new PublicKey('B5oc2fW6rXfQx5FzxBBsjjCgJvEihQ6UkNzxaz2QmiF4');
+
+  return {
+    slot: 1,
+    blockTime: 1_700_000_000,
+    transaction: {
+      signatures: ['mock-signature'],
+      message: {
+        accountKeys: [
+          { pubkey: wallet, signer: true, writable: true },
+          { pubkey: pool, signer: false, writable: true }
+        ],
+        instructions: [
+          {
+            programId: new PublicKey(VERIFIED_PROGRAM_IDS.JUPITER_V6),
+            accounts: [],
+            data: ''
+          }
+        ],
+        recentBlockhash: 'mock-blockhash'
+      }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      innerInstructions: [],
+      preBalances: [1_000_000_000, 1_000_000_000],
+      postBalances: [999_995_000, 1_000_005_000],
+      preTokenBalances: [
+        buildTokenBalance(0, args.inputMint, wallet.toBase58(), args.inputPreAmount, args.inputDecimals),
+        buildTokenBalance(1, args.outputMint, wallet.toBase58(), args.outputPreAmount, args.outputDecimals),
+        buildTokenBalance(2, args.outputMint, pool.toBase58(), '1000000000', args.outputDecimals)
+      ],
+      postTokenBalances: [
+        buildTokenBalance(0, args.inputMint, wallet.toBase58(), args.inputPostAmount, args.inputDecimals),
+        buildTokenBalance(1, args.outputMint, wallet.toBase58(), args.outputPostAmount, args.outputDecimals),
+        buildTokenBalance(2, args.outputMint, pool.toBase58(), '9000000000', args.outputDecimals)
+      ]
+    }
+  };
+}
+
+describe('parseJupiterTransaction (unit)', () => {
+  it('classifies known-to-unknown wallet swap as buy', () => {
+    const tx = buildMockJupiterTransaction({
+      inputMint: KNOWN_FUNDING_TOKENS.SOL,
+      inputPreAmount: '5000000000',
+      inputPostAmount: '3000000000',
+      inputDecimals: 9,
+      outputMint: '4B12s53Y5efq2uZsxNTo8A4f8i8W8wmQXk5P3Ng8fN6A',
+      outputPreAmount: '0',
+      outputPostAmount: '1000000000',
+      outputDecimals: 6
+    });
+
+    const details = parseJupiterTransaction(tx);
+    expect(details).not.toBeNull();
+    expect(details?.kind).toBe('buy');
+
+    if (!details || details.kind !== 'buy') {
+      return;
+    }
+
+    expect(details.fundingToken.mint).toBe(KNOWN_FUNDING_TOKENS.SOL);
+    expect(details.fundingToken.isKnown).toBe(true);
+    expect(details.targetToken.isKnown).toBe(false);
+    expect(details.targetToken.needsResearch).toBe(true);
+    expect(details.fundingAmount).toBe('2');
+    expect(details.targetAmount).toBe('1000');
+
+    const parsed = parseSingleTransaction(tx, 'mock-buy-signature');
+    expect(parsed.type).toBe('buy');
+    expect(parsed.protocol).toBe('jupiter');
+    expect(parsed.details.kind).toBe('buy');
+  });
+
+  it('classifies unknown-to-known wallet swap as sell', () => {
+    const tx = buildMockJupiterTransaction({
+      inputMint: '4B12s53Y5efq2uZsxNTo8A4f8i8W8wmQXk5P3Ng8fN6A',
+      inputPreAmount: '2500000000',
+      inputPostAmount: '500000000',
+      inputDecimals: 6,
+      outputMint: KNOWN_FUNDING_TOKENS.USDC,
+      outputPreAmount: '1000000',
+      outputPostAmount: '3500000',
+      outputDecimals: 6
+    });
+
+    const details = parseJupiterTransaction(tx);
+    expect(details).not.toBeNull();
+    expect(details?.kind).toBe('sell');
+
+    if (!details || details.kind !== 'sell') {
+      return;
+    }
+
+    expect(details.fundingToken.mint).toBe(KNOWN_FUNDING_TOKENS.USDC);
+    expect(details.fundingToken.isKnown).toBe(true);
+    expect(details.targetToken.isKnown).toBe(false);
+    expect(details.targetToken.needsResearch).toBe(true);
+    expect(details.direction).toBe('sell');
+    expect(details.fundingAmount).toBe('2.5');
+    expect(details.targetAmount).toBe('2000');
+
+    const parsed = parseSingleTransaction(tx, 'mock-sell-signature');
+    expect(parsed.type).toBe('sell');
+    expect(parsed.protocol).toBe('jupiter');
+    expect(parsed.details.kind).toBe('sell');
   });
 });

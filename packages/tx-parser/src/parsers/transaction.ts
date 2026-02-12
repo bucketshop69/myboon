@@ -1,7 +1,9 @@
 import type { ParsedTransactionWithMeta } from '@solana/web3.js';
 
 import type {
+  ParsedBuyTransaction,
   ParsedLpTransaction,
+  ParsedSellTransaction,
   ParsedSwapTransaction,
   ParsedTransaction,
   ParsedTransferTransaction,
@@ -21,11 +23,31 @@ export function parseSingleTransaction(
   };
 
   if (classification.type === 'swap' && classification.protocol === 'jupiter') {
+    const details = resolveTransactionDetails(transaction, classification);
+
+    if (details.kind === 'buy') {
+      return {
+        ...common,
+        type: 'buy',
+        protocol: 'jupiter',
+        details
+      } as ParsedBuyTransaction;
+    }
+
+    if (details.kind === 'sell') {
+      return {
+        ...common,
+        type: 'sell',
+        protocol: 'jupiter',
+        details
+      } as ParsedSellTransaction;
+    }
+
     return {
       ...common,
       type: 'swap',
       protocol: 'jupiter',
-      details: resolveTransactionDetails(transaction, classification)
+      details
     } as ParsedSwapTransaction;
   }
 

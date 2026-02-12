@@ -2,8 +2,6 @@
 
 All notable changes to PNLdotfun will be documented in this file.
 
-Format based on [Keep a Changelog](https://keepachangelog.com/).
-
 <!-- markdownlint-disable MD024 -->
 
 ---
@@ -66,8 +64,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Added muted hint text below connected wallet button
 - `PasskeySection` now shows three icons (Face, Fingerprint, Phone) to represent passkey methods
 - Parser architecture refactored toward decoupled fetch/parse/orchestration boundaries for reuse across web and agents
-- `packages/tx-parser` foundation refactored for Issue #011 with indexer-style utilities: `accountKeys`, `programCheck`, `tokenTransfers`, `innerInstructions`, and shared utility `types`
-- `identifyTransactionType` program detection now routes through shared `programCheck` utilities, and legacy swap balance-delta logic is marked deprecated for upcoming parser migration
+- `[#011]` `packages/tx-parser` foundation refactored with indexer-style utilities: `accountKeys`, `programCheck`, `tokenTransfers`, `innerInstructions`, and shared utility `types`
+- `[#011]` `identifyTransactionType` program detection now routes through shared `programCheck` utilities, and legacy swap balance-delta logic is marked deprecated for upcoming parser migration
+- `[#012]` Jupiter parsing now routes through dedicated `parsers/jupiter.ts`, classifying wallet-side swaps as `buy`/`sell` when flow is known-funding-token to unknown-token (or reverse)
+- `[#012]` `ParsedTransaction` and swap detail types now support buy/sell semantics (`TokenInfo`, `BuySellDetails`, `LegacySwapDetails`) while keeping legacy swap parsing compatible
 
 ### Planned
 

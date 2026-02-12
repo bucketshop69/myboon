@@ -3,13 +3,13 @@ import type { ParsedTransactionWithMeta } from '@solana/web3.js';
 import type { ParsedDetails } from '../types/index.js';
 import type { TransactionClassification } from './base.js';
 import { buildGenericDetails } from './details.js';
-import { parseSwapTransaction } from './swap.js';
+import { parseJupiterTransaction } from './jupiter.js';
 import { parseTransferTransaction } from './transfer.js';
 
 type DetailsParser = (transaction: ParsedTransactionWithMeta) => ParsedDetails | null;
 
 const detailsParserRegistry: Record<string, DetailsParser> = {
-  'swap:jupiter': (transaction) => parseSwapTransaction(transaction, 'jupiter'),
+  'swap:jupiter': (transaction) => parseJupiterTransaction(transaction),
   'transfer:spl-token': (transaction) => parseTransferTransaction(transaction, 'spl-token'),
   'transfer:associated-token': (transaction) => parseTransferTransaction(transaction, 'associated-token'),
   'transfer:system': (transaction) => parseTransferTransaction(transaction, 'system')
