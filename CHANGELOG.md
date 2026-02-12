@@ -68,6 +68,8 @@ All notable changes to PNLdotfun will be documented in this file.
 - `[#011]` `identifyTransactionType` program detection now routes through shared `programCheck` utilities, and legacy swap balance-delta logic is marked deprecated for upcoming parser migration
 - `[#012]` Jupiter parsing now routes through dedicated `parsers/jupiter.ts`, classifying wallet-side swaps as `buy`/`sell` when flow is known-funding-token to unknown-token (or reverse)
 - `[#012]` `ParsedTransaction` and swap detail types now support buy/sell semantics (`TokenInfo`, `BuySellDetails`, `LegacySwapDetails`) while keeping legacy swap parsing compatible
+- `[#013]` added stream pipeline foundation (`stream/pipeline.ts`, `filter.ts`, `formatter.ts`, `batcher.ts`) with WebSocket log subscriptions, global signature dedupe, idempotent start/stop lifecycle, and batched callback emission
+- `[#013]` config now supports `WATCHED_WALLETS` category/CSV parsing via wallet registry, known-token helpers now include `getFundingSymbol()`, and wallet registry exports were finalized with invalid address cleanup
 
 ### Planned
 

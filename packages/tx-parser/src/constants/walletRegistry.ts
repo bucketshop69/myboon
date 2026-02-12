@@ -1,11 +1,11 @@
-type WalletCategory = 'kol' | 'whale' | 'dlmm' | 'trader' | 'other' | 'meme';
+export type WalletCategory = 'kol' | 'whale' | 'dlmm' | 'trader' | 'other' | 'meme';
 
-interface WalletInfo {
-    label: string;
-    category: WalletCategory;
+export interface WalletInfo {
+  label: string;
+  category: WalletCategory;
 }
 
-const WALLET_REGISTRY: Record<string, WalletInfo> = {
+export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     // ========== KOLs ==========
     'AVAZvHLR2PcWpDf8BXY4rVxNHYRBytycHkcB5z5QNXYm': { label: 'Ansem', category: 'kol' },
     '2DUVNBj1nsuCjmBquMoomXoTZJU4qZ8BR87J8ekuZZgd': { label: 'met', category: 'kol' },
@@ -103,7 +103,6 @@ const WALLET_REGISTRY: Record<string, WalletInfo> = {
     '86ssNTYmFVux4NABe22hjjicVsgLzaNfgQzLa1ScicPg': { label: 'Wallet-76', category: 'other' },
     '3h65MmPZksoKKyEpEjnWU2Yk2iYT5oZDNitGy5cTaxoE': { label: 'Wallet-77', category: 'other' },
     'DUMP3pM27QXLgHQSNYmPwiwkSrMMXwWiR1ETNpd4uALc': { label: 'DUMP', category: 'other' },
-    'FRbUNvGxynPWkqm5VsdCvyS2QmNht2UFrKJHga54o': { label: 'Wallet-79', category: 'other' },
     'DQu6RDQpMCBn4ZZLL5Wdmn2FqjTu7d2yBTaA22K3xLdv': { label: 'Wallet-80', category: 'other' },
 };
 
@@ -117,17 +116,17 @@ const CATEGORY_EMOJI: Record<WalletCategory, string> = {
 };
 
 
-function getWalletInfo(address: string): WalletInfo {
+export function getWalletInfo(address: string): WalletInfo {
     return WALLET_REGISTRY[address] || { label: address.slice(0, 8) + '...', category: 'other' };
 }
 
-function getWalletLabel(address: string): string {
+export function getWalletLabel(address: string): string {
     const info = getWalletInfo(address);
     const emoji = CATEGORY_EMOJI[info.category];
     return `${emoji} ${info.label}`;
 }
 
-function getWalletsByCategory(category: WalletCategory | 'all'): string[] {
+export function getWalletsByCategory(category: WalletCategory | 'all'): string[] {
     if (category === 'all') {
         return Object.keys(WALLET_REGISTRY);
     }

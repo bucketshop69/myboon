@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "stream:start": "pnpm run build && node dist/stream/run.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",

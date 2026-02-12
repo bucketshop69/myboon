@@ -31,13 +31,13 @@ async function analyzeWallet(wallet: string, limit = 50) {
   
   for (const tx of transactions) {
     const result = parseSingleTransaction(tx);
-    if (result && result.kind !== 'unknown') {
+    if (result.type !== 'unknown') {
       parsed++;
-      const kind = result.kind;
-      types[kind] = (types[kind] || 0) + 1;
+      const txType = result.type;
+      types[txType] = (types[txType] || 0) + 1;
     } else {
       unparsed++;
-      unknownSignatures.push(tx.signature);
+      unknownSignatures.push(result.signature);
     }
   }
   

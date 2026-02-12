@@ -8,7 +8,8 @@
     "dev:web": "pnpm --filter web dev",
     "dev:mcp": "pnpm --filter mcp dev",
     "build": "pnpm -r build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "stream:start": "pnpm --filter @pnldotfun/tx-parser stream:start"
   },
   "keywords": [],
   "author": "",
