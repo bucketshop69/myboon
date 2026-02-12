@@ -13,6 +13,7 @@ export type SupportedProtocol =
   | 'meteora-dlmm'
   | 'spl-token'
   | 'associated-token'
+  | 'system'
   | 'unknown';
 
 export interface GenericDetails {
@@ -56,7 +57,7 @@ export interface ParsedLpTransaction extends ParsedTransactionBase {
 
 export interface ParsedTransferTransaction extends ParsedTransactionBase {
   type: 'transfer';
-  protocol: 'spl-token' | 'associated-token';
+  protocol: 'spl-token' | 'associated-token' | 'system';
   details: GenericDetails;
 }
 

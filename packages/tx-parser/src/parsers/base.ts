@@ -39,6 +39,10 @@ export function identifyTransactionType(
     return { type: 'transfer', protocol: 'associated-token' };
   }
 
+  if (programIds.has(VERIFIED_PROGRAM_IDS.SYSTEM_PROGRAM)) {
+    return { type: 'transfer', protocol: 'system' };
+  }
+
   return { type: 'unknown', protocol: 'unknown' };
 }
 
