@@ -1,21 +1,12 @@
-import type {
-  ParsedInstruction,
-  ParsedTransactionWithMeta,
-  PartiallyDecodedInstruction
-} from '@solana/web3.js';
+import type { ParsedTransactionWithMeta } from '@solana/web3.js';
 
 import { VERIFIED_PROGRAM_IDS } from '../constants/programIds.js';
 import type { SupportedProtocol, TransactionType } from '../types/index.js';
+import { getCalledPrograms } from '../utils/programCheck.js';
 
 export interface TransactionClassification {
   type: TransactionType;
   protocol: SupportedProtocol;
-}
-
-type InstructionLike = ParsedInstruction | PartiallyDecodedInstruction;
-
-export function getProgramIdFromInstruction(instruction: InstructionLike): string {
-  return instruction.programId.toString();
 }
 
 export function identifyTransactionType(
@@ -49,9 +40,5 @@ export function identifyTransactionType(
 export function getTransactionProgramIds(
   transaction: ParsedTransactionWithMeta
 ): Set<string> {
-  return new Set<string>(
-    transaction.transaction.message.instructions.map((instruction) =>
-      getProgramIdFromInstruction(instruction)
-    )
-  );
+  return new Set(getCalledPrograms(transaction));
 }

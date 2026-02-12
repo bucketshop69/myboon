@@ -52,6 +52,7 @@ export function parseSwapTransaction(
   };
 }
 
+// DEPRECATED: Use getTokenTransfers() from utils/tokenTransfers.ts in new parser implementations.
 function computeBalanceDeltas(meta: ParsedTransactionMeta): BalanceDelta[] {
   const preMap = buildBalanceMap(meta.preTokenBalances ?? []);
   const postMap = buildBalanceMap(meta.postTokenBalances ?? []);
