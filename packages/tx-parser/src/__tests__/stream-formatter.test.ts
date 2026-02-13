@@ -4,6 +4,7 @@ import { formatTransactionForLLM } from '../stream/formatter.js';
 import type { ParsedBuyTransaction, ParsedLpTransaction, ParsedSellTransaction } from '../types/index.js';
 
 const wallet = '7iNJ7CLNT8UBPANxkkrsURjzaktbomCVa93N1sKcVo9C';
+const targetMint = '9xQeWvG816bUx9EPjHmaT23yvVMd1b8Yw8D5x8M31s95';
 
 describe('formatTransactionForLLM', () => {
   it('formats buy transaction with natural-language verb and research flag', () => {
@@ -16,7 +17,7 @@ describe('formatTransactionForLLM', () => {
         kind: 'buy',
         dex: 'jupiter',
         fundingToken: { mint: 'So11111111111111111111111111111111111111112', isKnown: true },
-        targetToken: { mint: 'XYZabc1234567890', isKnown: false, needsResearch: true },
+        targetToken: { mint: targetMint, isKnown: false, needsResearch: true },
         fundingAmount: '2.5',
         targetAmount: '50000',
         direction: 'buy',
@@ -29,6 +30,9 @@ describe('formatTransactionForLLM', () => {
     expect(summary).toContain('(needsResearch)');
     expect(summary).toContain('2.5 SOL');
     expect(summary).toContain('via Jupiter');
+    expect(summary).toContain('Wallet:📈 jan_sol');
+    expect(summary).toContain(wallet);
+    expect(summary).toContain(`(mint:${targetMint})`);
   });
 
   it('formats sell transaction with natural-language verb', () => {
@@ -41,7 +45,7 @@ describe('formatTransactionForLLM', () => {
         kind: 'sell',
         dex: 'jupiter',
         fundingToken: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', isKnown: true },
-        targetToken: { mint: 'XYZabc1234567890', isKnown: false, needsResearch: true },
+        targetToken: { mint: targetMint, isKnown: false, needsResearch: true },
         fundingAmount: '120',
         targetAmount: '1000',
         direction: 'sell',
@@ -53,6 +57,9 @@ describe('formatTransactionForLLM', () => {
     expect(summary).toContain('sold');
     expect(summary).toContain('120 USDC');
     expect(summary).toContain('via Jupiter');
+    expect(summary).toContain('Wallet:📈 jan_sol');
+    expect(summary).toContain(wallet);
+    expect(summary).toContain(`(mint:${targetMint})`);
   });
 
   it('formats lp transaction in fallback lp format', () => {
@@ -73,5 +80,7 @@ describe('formatTransactionForLLM', () => {
 
     const summary = formatTransactionForLLM(transaction, wallet);
     expect(summary).toContain('lp on meteora-dlmm');
+    expect(summary).toContain('Wallet:📈 jan_sol');
+    expect(summary).toContain(wallet);
   });
 });

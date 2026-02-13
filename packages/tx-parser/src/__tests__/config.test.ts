@@ -16,7 +16,7 @@ describe('loadAppConfig', () => {
     expect(config.defaultTxCount).toBe(50);
     expect(config.defaultCommitment).toBe('confirmed');
     expect(config.watchedWallets.length).toBeGreaterThan(0);
-    expect(config.streamSummaryBatchSize).toBe(10);
+    expect(config.streamSummaryBatchSize).toBe(2);
   });
 
   it('throws when HELIUS_RPC_URL is missing', () => {

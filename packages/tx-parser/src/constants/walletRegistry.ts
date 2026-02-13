@@ -1,8 +1,8 @@
 export type WalletCategory = 'kol' | 'whale' | 'dlmm' | 'trader' | 'other' | 'meme';
 
 export interface WalletInfo {
-  label: string;
-  category: WalletCategory;
+    label: string;
+    category: WalletCategory;
 }
 
 export const WALLET_REGISTRY: Record<string, WalletInfo> = {
@@ -12,7 +12,6 @@ export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     '9yYya3F5EJoLnBNKW6z4bZvyQytMXzDcpU5D6yYr4jqL': { label: 'KOL-3', category: 'kol' },
     'GAH2TKPtu7HSpbCkBMANPCDBSSaRFeSwoScfFRVF7oHa': { label: 'KOL-4', category: 'kol' },
     '3kebnKw7cPdSkLRfiMEALyZJGZ4wdiSRvmoN4rD1yPzV': { label: 'KOL-5', category: 'kol' },
-    'BtMBMPkoNbnLF9Xn552guQq528KKXcsNBNNBre3oaQtr': { label: 'KOL-6', category: 'kol' },
     'mW4PZB45isHmnjGkLpJvjKBzVS5NXzTJ8UDyug4gTsM': { label: 'igndex', category: 'kol' },
     'DzeSE8ZBNk36qqswcDxd8919evdH5upwyZ4u1yieQSkp': { label: 'KOL-8', category: 'kol' },
 
@@ -46,10 +45,6 @@ export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     'ETgoSUwLhvRxmQzQg8PYMfnNiiHpXh5qojnAGms1kXu1': { label: 'Meme-5', category: 'meme' },
     '946Rx9X6et5DNZy5t6ncsmDodXLaU2s3vp8UfZHXHx2R': { label: 'Meme-6', category: 'meme' },
 
-
-    // ========== DLMM LPs ==========
-    '65tPpgEhTNMDe6xwqbWqxxHx7zHRQnTTHTyTbWpQKJFD': { label: 'DLMM-1', category: 'dlmm' },
-    '5ZPczDuywV5GFwG6KnHjbj2eap9BBQZeyUUDwaFhRRmn': { label: 'DLMM-2', category: 'dlmm' },
     // Add more DLMM wallets here...
 
     // ========== TRADERS ==========
@@ -117,7 +112,7 @@ const CATEGORY_EMOJI: Record<WalletCategory, string> = {
 
 
 export function getWalletInfo(address: string): WalletInfo {
-    return WALLET_REGISTRY[address] || { label: address.slice(0, 8) + '...', category: 'other' };
+    return WALLET_REGISTRY[address] || { label: address, category: 'other' };
 }
 
 export function getWalletLabel(address: string): string {

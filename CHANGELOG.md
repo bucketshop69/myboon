@@ -70,6 +70,8 @@ All notable changes to PNLdotfun will be documented in this file.
 - `[#012]` `ParsedTransaction` and swap detail types now support buy/sell semantics (`TokenInfo`, `BuySellDetails`, `LegacySwapDetails`) while keeping legacy swap parsing compatible
 - `[#013]` added stream pipeline foundation (`stream/pipeline.ts`, `filter.ts`, `formatter.ts`, `batcher.ts`) with WebSocket log subscriptions, global signature dedupe, idempotent start/stop lifecycle, and batched callback emission
 - `[#013]` config now supports `WATCHED_WALLETS` category/CSV parsing via wallet registry, known-token helpers now include `getFundingSymbol()`, and wallet registry exports were finalized with invalid address cleanup
+- `[#013]` stream summaries now use wallet registry labels and include parseable full mint markers for unknown tokens in buy/sell flows (`mint:<full-address>`)
+- `[#016]` added new `@pnldotfun/brain` package with `ClassifierBrain` (LLM JSON classification + pass-through fallback) and `TransactionOrchestrator` (sequential batch queue, idempotent lifecycle, optional JSONL audit logging)
 
 ### Planned
 

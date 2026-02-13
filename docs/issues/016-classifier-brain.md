@@ -20,6 +20,7 @@ We need an intelligent **first-stage filter** that:
 4. Passes filtered results to downstream agents (Research → Decision)
 
 This is **Brain 1** in a three-stage architecture:
+
 - **Brain 1 (Classifier)** ← We are here
 - **Brain 2 (Research Agent)** — #015 (future)
 - **Brain 3 (Decision Engine)** — Future
@@ -533,12 +534,14 @@ await orchestrator.start();
 ### Why In-Memory Data Flow?
 
 **Pros:**
+
 - ✅ Simple (no queue infrastructure)
 - ✅ Fast (no serialization overhead)
 - ✅ Easy to debug (single process)
 - ✅ Good for MVP/demo
 
 **When to add queues:**
+
 - Brain processing time > 10s per batch
 - Need independent scaling of components
 - Production deployment with high availability
@@ -550,6 +553,7 @@ For hackathon demo, in-memory is perfect.
 Transaction summaries from #013 currently show shortened mints (e.g., `XYZ_MINT`). We need full base58 addresses for research.
 
 **Two options:**
+
 1. **Update #013 formatter** to include full mint in summary (e.g., `XYZ_MINT(full:AbC...123)`)
 2. **Classifier extracts from original transaction** — but this requires passing more data
 
@@ -558,6 +562,7 @@ Transaction summaries from #013 currently show shortened mints (e.g., `XYZ_MINT`
 ### Error Handling Philosophy
 
 **Pipeline must not crash on brain errors.** If classifier fails:
+
 - Log error
 - Optionally: default all transactions to "interesting" (pass-through)
 - Continue processing next batch
@@ -585,11 +590,13 @@ This ensures data flow robustness.
 ## Cost Estimates
 
 **Assumptions:**
+
 - 10 tx/batch, 10 batches/hour = 100 tx/hour
 - Classifier model: GPT-4o-mini ($0.15/1M input tokens)
 - ~500 tokens per batch (10 summaries + system prompt)
 
 **Monthly cost:**
+
 - 100 tx/hour × 24 hours × 30 days = 72k tx/month
 - 7,200 batches/month × 500 tokens = 3.6M tokens/month
 - 3.6M × $0.15/1M = **~$0.54/month** for classifier
