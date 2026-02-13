@@ -1,123 +1,98 @@
-# PNL.fun
+# pnldotfun
 
-**Paste a Solana transaction. See your P&L. Share it.**
+pnldotfun is a Solana wallet-intelligence pipeline.
 
-PNL.fun is a trading terminal style visualizer that takes any Solana transaction signature and generates a beautiful, shareable Image card showing your Profit/Loss.
+It ingests wallet activity, classifies high-signal transactions with LLMs, runs targeted research on unknown tokens, and stores memory for downstream decisioning.
 
-It is built to demonstrate the future of Solana UX — **Seedless Onboarding** and **Gasless Transactions** — powered by [Lazorkit](https://lazorkit.com).
+## Current Architecture
 
----
+- `packages/tx-parser`: transaction fetch/parse/stream pipeline
+- `packages/brain`: classifier + research orchestrator (MiniMax)
+- `packages/entity-memory`: entity/research memory layer (MVP in-memory + SQL migrations)
+- `apps/web`: frontend app
 
-## 📖 Documentation & Implementation
+Reference docs:
+- `docs/VISION.md`
+- `docs/issues/013-transaction-streaming.md`
+- `docs/issues/014-token-memory-schema.md`
+- `docs/issues/015-research-agent.md`
+- `docs/issues/016-classifier-brain.md`
+- `docs/issues/018-wire-classifier-to-minimax.md`
 
-We have written detailed tutorials explaining exactly how the Lazorkit integration works specifically for this project:
+## Prerequisites
 
-### 1. [Passkey Authentication Implementation](./docs/tutorials/01-passkey-wallet-setup.md)
+- Node.js 20+
+- pnpm 10+
 
-How we implemented the "Connect with FaceID" flow using `useLazorkitWallet` to replace traditional wallet adapters.
-
-### 2. [Gasless Transactions Guide](./docs/tutorials/02-gasless-transactions.md)
-
-How we set up the Paymaster to sponsor USDC transfers and how to handle SPL tokens with Smart Wallet PDAs.
-
-### 🧠 Implementation Specs (PRD)
-
-Follow our thought process and design decisions through these implementation specifications:
-
-- **[Custom Wallet Modal Design](./docs/issues/002_custom_wallet_modal.md)**: Designing a premium, unified modal that supports both traditional wallets and Passkeys.
-- **[Gasless Transfer Logic](./docs/issues/003_wallet_details_gasless_transfer.md)**: Technical breakdown of the gasless transfer implementation and state management.
-- **[Zero-Cost Swaps](./docs/issues/004_gasless_raydium_swap.md)**: Exploration of implementing gasless Raydium swaps using the Lazorkit Paymaster.
-
----
-
-## ⚡ Features
-
-- **Instant Onboarding**: Users create a wallet in 2 seconds using FaceID/TouchID (Lazorkit).
-- **Shareable Cards**: Auto-generated gradient cards for your best (or worst) trades.
-- **Gasless Transfers**: Users can move funds without holding SOL.
-
-
----
-
-## 🚀 Quick Start Guide
-
-### 1. Prerequisites
-
-- Node.js 18+
-- `pnpm` (recommended) or `npm`
-
-### 2. Installation
+## Setup
 
 ```bash
-# Clone the repo
-git clone https://github.com/bucketshop69/pnldotfun.git
-
-# Install dependencies
-cd pnldotfun
 pnpm install
+cp .env.example .env
 ```
 
-### 3. Environment Setup
+Recommended `.env` values:
 
-The project comes pre-configured for **Solana Devnet**.
-Configuration is located in `apps/web/src/lib/config.ts`.
+```bash
+# Required for tx fetch/stream
+HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_HELIUS_API_KEY
 
-> **Note**: No `.env` file is required to get started! We use public Devnet endpoints for this demo to ensure it works out-of-the-box.
+# Demo wallet
+EXAMPLE_WALLET=7iNJ7CLNT8UBPANxkkrsURjzaktbomCVa93N1sKcVo9C
 
-### 4. Run the Dev Server
+# Brain models
+CLASSIFIER_MODEL=MiniMax-M2.5-lightning
+RESEARCHER_MODEL=MiniMax-M2.5
+
+# Required for classifier/research LLM calls
+MINIMAX_API_KEY=your_minimax_key
+
+# Optional, if your Jupiter tier requires it
+JUPITER_API_KEY=your_jupiter_key
+```
+
+## Run
+
+### 1) Transaction stream only
+
+```bash
+pnpm stream:start
+# or
+pnpm --filter @pnldotfun/tx-parser stream:start
+```
+
+### 2) Full brain pipeline (stream -> classifier -> research)
+
+```bash
+pnpm --filter @pnldotfun/brain brain:start
+```
+
+### 3) Terminal showcase replay (best for demos)
+
+```bash
+pnpm --filter @pnldotfun/brain demo:replay -- --wallet 7iNJ7CLNT8UBPANxkkrsURjzaktbomCVa93N1sKcVo9C --count 4 --batchSize 2 --delayMs 1000
+```
+
+### 4) Research smoke test
+
+```bash
+pnpm --filter @pnldotfun/brain research:smoke -- So11111111111111111111111111111111111111112
+```
+
+### 5) Frontend dev app
 
 ```bash
 pnpm dev:web
 ```
-Open [http://localhost:3000](http://localhost:3000) to see the app.
 
----
+## Tests
 
-## 🛠 SDK Integration Details
-
-### Provider Setup
-
-We wrap our application in `LazorkitProvider` alongside the standard Solana Wallet Adapter. This allows us to support **BOTH** traditional wallets (Phantom, Solflare) and biometric wallets simultaneously.
-
-See: `apps/web/src/providers/WalletProvider.tsx`
-
-```typescript
-<LazorkitProvider 
-    config={{
-        rpcUrl: "https://api.devnet.solana.com",
-        paymaster: { url: "..." }
-    }}
->
-    <WalletProvider>
-        {children}
-    </WalletProvider>
-</LazorkitProvider>
+```bash
+pnpm --filter @pnldotfun/tx-parser test
 ```
 
-### Key Components
+## Notes
 
-- **`PasskeySection.tsx`**: Handles the biometric login UI.
-- **`TransferForm.tsx`**: Demonstrates the logic for switching between gasless (Lazorkit) and paid (Standard) transactions.
-
----
-
-## 📝 Project Structure
-
-```
-apps/web/
-├── src/
-│   ├── components/wallet/
-│   │   ├── PasskeySection.tsx   # <-- LOGIN LOGIC
-│   │   ├── TransferForm.tsx     # <-- TRANSACTION LOGIC
-│   │   └── ...
-│   ├── providers/
-│   │   └── WalletProvider.tsx   # <-- SDK CONFIG
-│   └── lib/
-│       └── config.ts            # <-- ENDPOINTS
-docs/
-└── tutorials/                   # <-- GUIDES
-```
-
----
-
-*Verified working on Solana Devnet - Jan 2026*
+- `entity-memory` is MVP mode right now (in-memory repositories with SQL migration scaffolding).
+- Research data-source coverage in alpha is intentionally narrow (`get_token_metadata` via Jupiter Tokens V2).
+- Never commit real API keys or private endpoints.
