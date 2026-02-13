@@ -3,7 +3,22 @@ import type { Classification, ClassifierConfig } from './types/index.js';
 
 const MINT_PATTERN = /\(mint:([1-9A-HJ-NP-Za-km-z]{32,44})\)/;
 const BASE58_MINT_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
+const MINIMAX_MESSAGES_URL = 'https://api.minimax.io/anthropic/v1/messages';
+
+interface AnthropicTextBlock {
+  type: 'text';
+  text: string;
+}
+
+interface AnthropicUnknownBlock {
+  type: string;
+}
+
+type AnthropicContentBlock = AnthropicTextBlock | AnthropicUnknownBlock;
+
+interface AnthropicMessageResponse {
+  content?: AnthropicContentBlock[];
+}
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -26,38 +41,37 @@ export class ClassifierBrain {
     }
 
     try {
-      const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+      const response = await fetch(MINIMAX_MESSAGES_URL, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${this.apiKey}`
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
           model: this.config.model,
-          messages: [
-            { role: 'system', content: this.systemPrompt },
-            { role: 'user', content: this.buildUserPrompt(summaries) }
-          ],
-          response_format: { type: 'json_object' },
+          max_tokens: 2000,
+          system: this.systemPrompt,
+          messages: [{ role: 'user', content: this.buildUserPrompt(summaries) }],
           temperature: this.config.temperature ?? 0.1
         })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`OpenAI API ${response.status}: ${errorText}`);
+        throw new Error(`MiniMax API ${response.status}: ${errorText}`);
       }
 
-      const json = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string | null } }>;
-      };
-
-      const content = json.choices?.[0]?.message?.content;
-      if (!content) {
+      const json = (await response.json()) as AnthropicMessageResponse;
+      const textBlock = json.content?.find(
+        (block): block is AnthropicTextBlock => block.type === 'text'
+      );
+      const contentText = textBlock?.text ?? '';
+      if (!contentText) {
         throw new Error('Empty response from classifier LLM');
       }
 
-      return this.parseClassification(content, summaries);
+      return this.parseClassification(contentText, summaries);
     } catch (error) {
       console.error(`[Classifier] classify failed, defaulting to pass-through: ${toErrorMessage(error)}`);
       return this.buildFallbackClassification(summaries, 'LLM failure - defaulted to all interesting');
@@ -69,12 +83,16 @@ export class ClassifierBrain {
       return config.apiKey;
     }
 
-    const envApiKey = process.env.OPENAI_API_KEY ?? process.env.CLASSIFIER_API_KEY;
+    const envApiKey =
+      process.env.MINIMAX_API_KEY ??
+      process.env.ANTHROPIC_API_KEY ??
+      process.env.OPENAI_API_KEY ??
+      process.env.CLASSIFIER_API_KEY;
     if (envApiKey && envApiKey.trim().length > 0) {
       return envApiKey;
     }
 
-    throw new Error('Missing OPENAI_API_KEY or CLASSIFIER_API_KEY');
+    throw new Error('Missing MINIMAX_API_KEY or ANTHROPIC_API_KEY');
   }
 
   private buildUserPrompt(summaries: string[]): string {

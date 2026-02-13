@@ -75,6 +75,7 @@ const response = await fetch(`${apiUrl}/v1/messages`, {
 ```
 
 **Why MiniMax:**
+
 - Anthropic-compatible API (drop-in replacement)
 - Cost efficient for 24/7 operation (~30-40% cheaper than GPT-4o)
 - M2.5-lightning: Fast filtering for Brain 1 (classifier)
@@ -190,9 +191,11 @@ main().catch((error) => {
 ```
 
 **Note:** If `tsx` is not available, use:
+
 ```json
 "brain:start": "node --experimental-specifier-resolution=node dist/run.js"
 ```
+
 And require `pnpm build` before running.
 
 ---
@@ -214,9 +217,11 @@ WATCHED_WALLETS=all
 ```
 
 **Fallback logic in code:**
+
 ```typescript
 const apiKey = process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_API_KEY;
 ```
+
 This allows using either env var name.
 
 ---
@@ -226,17 +231,20 @@ This allows using either env var name.
 ### Manual Test (End-to-End)
 
 1. **Build brain package:**
+
    ```bash
    cd /home/main-user/.openclaw/workspace/pnldotfun
    pnpm --filter @pnldotfun/brain build
    ```
 
 2. **Start runner:**
+
    ```bash
    pnpm --filter @pnldotfun/brain brain:start
    ```
 
 3. **Verify startup logs:**
+
    ```
    [Brain] Starting pnl.fun classifier brain...
    [Orchestrator] Starting transaction stream...
@@ -252,6 +260,7 @@ This allows using either env var name.
    - Results logged to console
 
 5. **Expected classification output:**
+
    ```
    === CLASSIFICATION RESULT ===
    Batch processed at: 2026-02-13T10:45:00.000Z
@@ -272,6 +281,7 @@ This allows using either env var name.
    ```
 
 6. **Check audit logs:**
+
    ```bash
    cat data/audit/batch.jsonl | tail -5
    cat data/audit/classification.jsonl | tail -5
@@ -280,6 +290,7 @@ This allows using either env var name.
 7. **Test shutdown:**
    - Press Ctrl+C
    - Verify graceful shutdown:
+
      ```
      [Brain] Received SIGINT, shutting down gracefully...
      [Orchestrator] Stopping transaction stream...
@@ -329,17 +340,20 @@ This allows using either env var name.
 ### Error Handling
 
 **If MiniMax API fails:**
+
 - Classifier catches error
 - Logs error message
 - Returns fallback: `{ interesting: all summaries, needsResearch: [] }`
 - Pipeline continues (doesn't crash)
 
 **If no transactions detected:**
+
 - Stream waits for activity
 - Batch timeout (60s) triggers empty batch
 - Classifier skips processing (no work to do)
 
 **If invalid wallet in config:**
+
 - Pipeline logs warning
 - Skips invalid wallet
 - Continues with valid wallets
@@ -389,6 +403,7 @@ This allows using either env var name.
 ## Performance Expectations
 
 **Transaction volume:**
+
 - 90 wallets monitored
 - ~1-2 transactions per wallet per hour
 - ~100-180 transactions/hour total
@@ -396,6 +411,7 @@ This allows using either env var name.
 - ~1-3 batches/hour to classifier
 
 **Latency:**
+
 - WebSocket detection: <1s
 - Transaction fetch: ~500ms
 - Batch wait: max 60s (or 10 transactions)
@@ -403,6 +419,7 @@ This allows using either env var name.
 - Total: ~2-3s from detection → classification
 
 **Cost:**
+
 - ~500 tokens per batch (10 summaries + system prompt)
 - ~3 batches/hour × 24 hours = 72 batches/day
 - 72 × 500 = 36k tokens/day
@@ -434,11 +451,13 @@ This allows using either env var name.
 **Endpoint:** `https://api.minimax.io/anthropic`  
 **Path:** `/v1/messages`  
 **Headers:**
+
 - `Content-Type: application/json`
 - `x-api-key: {your_key}`
 - `anthropic-version: 2023-06-01`
 
 **Request format:** (Anthropic-compatible)
+
 ```json
 {
   "model": "MiniMax-M2.5-lightning",
@@ -452,6 +471,7 @@ This allows using either env var name.
 ```
 
 **Response format:** (Anthropic-compatible)
+
 ```json
 {
   "id": "msg_...",
@@ -474,6 +494,7 @@ This allows using either env var name.
 ### Classifier Already Has This Logic
 
 The current `classifier.ts` uses fetch() directly. Just update:
+
 1. API URL to `https://api.minimax.io/anthropic`
 2. Headers (use `x-api-key` instead of `Authorization`)
 3. Model name to `MiniMax-M2.5-lightning`
@@ -485,16 +506,19 @@ Everything else stays the same.
 ## Risk Assessment
 
 **Low risk:**
+
 - Simple endpoint change (Anthropic-compatible)
 - Runner script follows existing patterns
 - All components already tested individually
 
 **Potential issues:**
+
 - MiniMax rate limits (unlikely at ~3 calls/hour)
 - WebSocket disconnections (existing pipeline handles this)
 - Invalid API key (caught at startup)
 
 **Mitigation:**
+
 - Clear error logging
 - Graceful fallback on classifier failure
 - Audit logs preserve data if needed for replay
