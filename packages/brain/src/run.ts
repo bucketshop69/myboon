@@ -22,6 +22,14 @@ async function main(): Promise<void> {
       model: process.env.CLASSIFIER_MODEL ?? 'MiniMax-M2.5-lightning',
       apiKey
     },
+    research: {
+      model: process.env.RESEARCHER_MODEL ?? 'MiniMax-M2.5',
+      apiKey,
+      jupiterApiKey: process.env.JUPITER_API_KEY,
+      maxIterations: 8,
+      concurrency: 3,
+      freshnessWindowMs: 10 * 60 * 1000
+    },
     auditLog: true,
     auditPath: './data/audit',
     onClassification: async (classification) => {
@@ -49,6 +57,28 @@ async function main(): Promise<void> {
         console.log(`\nReasoning: ${classification.reasoning}`);
       }
       console.log('============================\n');
+    },
+    onResearch: async ({ results, audit }) => {
+      console.log('\n=== RESEARCH RESULT ===');
+      console.log(`Research completed at: ${new Date().toISOString()}`);
+      console.log(`Entities enriched: ${results.length}`);
+
+      for (const result of results) {
+        console.log(
+          `  - ${result.slug} (${result.entityId}) | sentiment=${result.sentiment} confidence=${result.confidence} risk=${result.riskScore}`
+        );
+      }
+
+      if (audit.length > 0) {
+        console.log('Audit summary:');
+        for (const entry of audit) {
+          console.log(
+            `  - ${entry.identifier} tools=${entry.toolsSucceeded.length}/${entry.toolsUsed.length} completeness=${entry.dataCompleteness}%`
+          );
+        }
+      }
+
+      console.log('=======================\n');
     }
   });
 

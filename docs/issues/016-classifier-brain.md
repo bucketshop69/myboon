@@ -155,7 +155,7 @@ Create `packages/brain/src/classifier.ts`:
 import OpenAI from 'openai';
 
 export interface ClassifierConfig {
-  model: string;                    // e.g., "gpt-4o-mini"
+  model: string;                    // e.g., "MiniMax-M2.5-lightning"
   apiKey: string;
   systemPrompt?: string;            // Optional override
 }
@@ -397,8 +397,8 @@ Update root `.env`:
 
 ```bash
 # Brain config
-CLASSIFIER_MODEL=gpt-4o-mini
-CLASSIFIER_API_KEY=sk-...
+CLASSIFIER_MODEL=MiniMax-M2.5-lightning
+MINIMAX_API_KEY=...
 AUDIT_LOG_ENABLED=true
 AUDIT_LOG_PATH=./data/audit
 ```
@@ -502,8 +502,8 @@ const orchestrator = new TransactionOrchestrator({
     batchSize: 10
   },
   classifier: {
-    model: 'gpt-4o-mini',
-    apiKey: process.env.OPENAI_API_KEY
+    model: process.env.CLASSIFIER_MODEL ?? 'MiniMax-M2.5-lightning',
+    apiKey: process.env.MINIMAX_API_KEY
   },
   auditLog: true,
   auditPath: './data/audit'
@@ -574,7 +574,7 @@ This ensures data flow robustness.
 ## Dependencies
 
 - #013 (Transaction Stream Pipeline) — MUST be complete
-- OpenAI SDK (or Anthropic SDK depending on model choice)
+- MiniMax Anthropic-compatible API endpoint (`https://api.minimax.io/anthropic/v1/messages`)
 
 ---
 
@@ -592,14 +592,14 @@ This ensures data flow robustness.
 **Assumptions:**
 
 - 10 tx/batch, 10 batches/hour = 100 tx/hour
-- Classifier model: GPT-4o-mini ($0.15/1M input tokens)
+- Classifier model: MiniMax-M2.5-lightning
 - ~500 tokens per batch (10 summaries + system prompt)
 
 **Monthly cost:**
 
 - 100 tx/hour × 24 hours × 30 days = 72k tx/month
 - 7,200 batches/month × 500 tokens = 3.6M tokens/month
-- 3.6M × $0.15/1M = **~$0.54/month** for classifier
+- Cost depends on active MiniMax pricing tier (estimate at runtime from provider billing)
 
 Very cheap. Can afford to run 24/7.
 

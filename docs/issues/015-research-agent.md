@@ -6,7 +6,7 @@
 **Assignee:** Codex  
 **Estimated Effort:** 8-10 hours  
 **Depends On:** #014 (Entity Memory Schema), #016 (Classifier Brain)  
-**Status:** 🔴 Not Started
+**Status:** 🟡 In Progress (core delivered; extended tools deferred)
 
 ---
 
@@ -36,10 +36,11 @@ Classifier Brain (#016)
     ↓ Classification { interesting, needsResearch }
 Research Agent (#015) ← WE ARE HERE
     ├─ resolve_entity(identifier)
+    ├─ create_entity(input)
+    ├─ add_representation(input)
     ├─ check_research_freshness(entityId)
+    ├─ get_cached_research(entityId)
     ├─ get_token_metadata(mint)
-    ├─ get_price_history(mint)
-    ├─ analyze_sentiment(mint)
     └─ store_research_results(entityId, findings)
     ↓ Enriched EntityResearch records
 Decision Engine (future)
@@ -59,11 +60,40 @@ if (classification.needsResearch.length > 0) {
 
 ---
 
+## Implementation Snapshot (2026-02-13)
+
+### Implemented in code
+
+1. `ResearchAgent` implemented with MiniMax Anthropic-compatible tool-calling loop.
+2. `enrich(identifiers)` implemented with batched concurrency.
+3. Max-iteration guard + graceful fallback behavior implemented.
+4. MCP tool registry implemented with:
+   - Entity tools: `resolve_entity`, `create_entity`, `add_representation`
+   - Memory tools: `check_research_freshness`, `get_cached_research`, `store_research_results`
+   - Data source tool (alpha): `get_token_metadata` via Jupiter Tokens API V2
+5. Research integrated into orchestrator:
+   - runs after classification
+   - dedupe/freshness gating
+   - audit logging (`research.jsonl`)
+6. Runner wiring completed in `packages/brain/src/run.ts`.
+7. Smoke/demo scripts added:
+   - `research:smoke`
+   - `demo:replay`
+
+### Deferred in current alpha scope
+
+1. Extra data-source tools (`get_price_history`, `check_rugcheck`, `analyze_sentiment`, `get_holder_distribution`).
+2. Entity query tools (`get_entity_representations`, `query_entity_timeline`).
+3. Formal unit/integration/e2e test suite.
+
+---
+
 ## MCP-Based Design
 
 ### Why MCP for Research Agent?
 
 **Traditional approach (rigid):**
+
 ```typescript
 // Hardcoded workflow ❌
 const metadata = await helius.getTokenMetadata(mint);
@@ -74,6 +104,7 @@ await db.save(research);
 ```
 
 **MCP approach (adaptive):**
+
 ```typescript
 // Model decides workflow ✅
 const task = `Research token ${mint}. Determine:
@@ -90,6 +121,7 @@ const result = await mcpAgent.run(task, { tools: researchTools });
 ```
 
 **Benefits:**
+
 - Model adapts to available data (if rugcheck fails, still proceeds)
 - Can prioritize (check cache first, skip expensive calls if fresh)
 - Handles edge cases (unknown token → more thorough research)
@@ -105,6 +137,8 @@ const result = await mcpAgent.run(task, { tools: researchTools });
 2. **Memory Management** — Check/store cached research
 3. **Data Sources** — External APIs for token data
 4. **Analysis** — Synthesize and score findings
+
+**Alpha scope note:** Implemented set is Entity Resolution + Memory Management + `get_token_metadata`. Remaining tools are backlog.
 
 ---
 
@@ -373,559 +407,67 @@ const result = await mcpAgent.run(task, { tools: researchTools });
 ```typescript
 {
   name: "get_token_metadata",
-  description: "Fetch token metadata from Helius (name, symbol, supply, decimals).",
+  description: "Fetch token metadata from Jupiter Tokens API V2 (alpha source of truth).",
   parameters: {
     mint: { type: "string", description: "Token mint address" }
   },
   handler: async ({ mint }) => {
-    try {
-      const response = await helius.getTokenMetadata(mint);
-      
-      return {
-        success: true,
-        data: {
-          name: response.name,
-          symbol: response.symbol,
-          decimals: response.decimals,
-          supply: response.supply,
-          logoUri: response.logoURI,
-          description: response.description
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    const response = await fetch(
+      `https://api.jup.ag/tokens/v2/search?query=${mint}`,
+      { headers: { "x-api-key": process.env.JUPITER_API_KEY ?? "" } }
+    );
+    const rows = await response.json();
+    const token = rows.find((row: any) => row.id === mint);
+    return token
+      ? { found: true, mint, token }
+      : { found: false, mint };
   }
 }
 ```
 
-**`get_price_history`**
-
-```typescript
-{
-  name: "get_price_history",
-  description: "Get price history and current price from Birdeye.",
-  parameters: {
-    mint: { type: "string", description: "Token mint address" },
-    timeframe: {
-      type: "string",
-      enum: ["24h", "7d", "30d"],
-      description: "Timeframe for price history",
-      default: "7d"
-    }
-  },
-  handler: async ({ mint, timeframe = "7d" }) => {
-    try {
-      const [price, history] = await Promise.all([
-        birdeye.getPrice(mint),
-        birdeye.getPriceHistory(mint, timeframe)
-      ]);
-      
-      const change = ((price.value - history.items[0].value) / history.items[0].value) * 100;
-      
-      return {
-        success: true,
-        data: {
-          currentPrice: price.value,
-          priceChange: change.toFixed(2),
-          priceChange24h: price.priceChange24h,
-          volume24h: price.volume24h,
-          liquidity: price.liquidity,
-          marketCap: price.mc,
-          history: history.items
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-}
-```
-
-**`check_rugcheck`**
-
-```typescript
-{
-  name: "check_rugcheck",
-  description: "Check token safety score from Rugcheck.xyz.",
-  parameters: {
-    mint: { type: "string", description: "Token mint address" }
-  },
-  handler: async ({ mint }) => {
-    try {
-      const response = await rugcheck.check(mint);
-      
-      return {
-        success: true,
-        data: {
-          score: response.score,
-          risks: response.risks,
-          topHolders: response.topHolders,
-          freezeAuthority: response.freezeAuthority,
-          mintAuthority: response.mintAuthority,
-          lpBurned: response.lpBurned
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-}
-```
-
-**`analyze_sentiment`**
-
-```typescript
-{
-  name: "analyze_sentiment",
-  description: "Analyze social sentiment from Twitter mentions (past 24h).",
-  parameters: {
-    symbol: { type: "string", description: "Token symbol or cashtag" },
-    entityName: { type: "string", description: "Entity name for search", required: false }
-  },
-  handler: async ({ symbol, entityName }) => {
-    try {
-      // Search Twitter API for mentions
-      const searchQuery = entityName ? `${symbol} OR ${entityName}` : symbol;
-      const tweets = await twitter.search(searchQuery, { timeframe: '24h' });
-      
-      // Simple sentiment analysis (can be enhanced with AI)
-      const bullishKeywords = ['moon', 'bullish', 'buy', 'pump', 'gem'];
-      const bearishKeywords = ['dump', 'bearish', 'sell', 'scam', 'rug'];
-      
-      let bullishCount = 0;
-      let bearishCount = 0;
-      
-      tweets.forEach(tweet => {
-        const text = tweet.text.toLowerCase();
-        if (bullishKeywords.some(kw => text.includes(kw))) bullishCount++;
-        if (bearishKeywords.some(kw => text.includes(kw))) bearishCount++;
-      });
-      
-      const sentiment = bullishCount > bearishCount ? 'bullish' 
-                      : bearishCount > bullishCount ? 'bearish' 
-                      : 'neutral';
-      
-      return {
-        success: true,
-        data: {
-          sentiment,
-          mentionCount: tweets.length,
-          bullishCount,
-          bearishCount,
-          topTweets: tweets.slice(0, 3).map(t => ({
-            author: t.author,
-            text: t.text,
-            engagement: t.likes + t.retweets
-          }))
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-}
-```
-
-**`get_holder_distribution`**
-
-```typescript
-{
-  name: "get_holder_distribution",
-  description: "Get token holder count and distribution from Helius.",
-  parameters: {
-    mint: { type: "string", description: "Token mint address" }
-  },
-  handler: async ({ mint }) => {
-    try {
-      const holders = await helius.getHolders(mint);
-      
-      // Calculate concentration
-      const top10Percentage = holders.slice(0, 10)
-        .reduce((sum, h) => sum + h.percentage, 0);
-      
-      return {
-        success: true,
-        data: {
-          totalHolders: holders.length,
-          top10Concentration: top10Percentage.toFixed(2),
-          topHolders: holders.slice(0, 5).map(h => ({
-            address: h.address,
-            percentage: h.percentage,
-            amount: h.amount
-          }))
-        }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-}
-```
-
----
+**Deferred in alpha:** `get_price_history`, `check_rugcheck`, `analyze_sentiment`, `get_holder_distribution`.
 
 ### 4. Entity Query Tools
 
-**`get_entity_representations`**
+**Status:** Deferred in alpha (not implemented yet).
 
-```typescript
-{
-  name: "get_entity_representations",
-  description: "Get all representations (spot, perp, LP) for an entity.",
-  parameters: {
-    entityId: { type: "string", description: "Entity slug" },
-    type: {
-      type: "string",
-      enum: ["spot-token", "perp-contract", "lp-pair", "all"],
-      description: "Filter by representation type",
-      default: "all"
-    },
-    activeOnly: {
-      type: "boolean",
-      description: "Only return active representations",
-      default: true
-    }
-  },
-  handler: async ({ entityId, type = "all", activeOnly = true }) => {
-    const filters: any = { entityId };
-    if (type !== "all") filters.type = type;
-    if (activeOnly) filters.active = true;
-    
-    const representations = await db.representations.findMany(filters);
-    
-    return {
-      success: true,
-      count: representations.length,
-      representations: representations.map(r => ({
-        id: r.id,
-        type: r.type,
-        protocol: r.protocol,
-        chain: r.chain,
-        context: r.context,
-        active: r.active,
-        lastSeenAt: r.lastSeenAt
-      }))
-    };
-  }
-}
-```
+Planned tools:
 
-**`query_entity_timeline`**
-
-```typescript
-{
-  name: "query_entity_timeline",
-  description: "Get recent events for an entity.",
-  parameters: {
-    entityId: { type: "string", description: "Entity slug" },
-    limit: { type: "number", description: "Max events to return", default: 20 },
-    types: {
-      type: "array",
-      items: { type: "string" },
-      description: "Filter by event types",
-      required: false
-    },
-    minImportance: {
-      type: "number",
-      description: "Minimum importance score (0-10)",
-      required: false
-    }
-  },
-  handler: async ({ entityId, limit = 20, types, minImportance }) => {
-    const filters: any = { entityId };
-    if (types) filters.type = { in: types };
-    if (minImportance !== undefined) filters.importance = { gte: minImportance };
-    
-    const events = await db.events.findMany({
-      where: filters,
-      orderBy: { timestamp: 'desc' },
-      limit
-    });
-    
-    return {
-      success: true,
-      count: events.length,
-      events: events.map(e => ({
-        id: e.id,
-        timestamp: e.timestamp,
-        type: e.type,
-        summary: e.summary,
-        importance: e.importance,
-        source: e.source
-      }))
-    };
-  }
-}
-```
+1. `get_entity_representations`
+2. `query_entity_timeline`
 
 ---
 
 ## Research Agent Implementation
 
-### Core Class
+Current implementation (source of truth):
 
-```typescript
-import OpenAI from 'openai';
+1. `packages/brain/src/research/agent.ts`
+2. `packages/brain/src/research/llm/minimax.ts`
+3. `packages/brain/src/research/tools/*.ts`
+4. `packages/brain/src/research/data-sources/jupiter-tokens.client.ts`
 
-export interface ResearchAgentConfig {
-  model: string;              // e.g., "gpt-4o" (needs tool calling)
-  apiKey: string;
-  tools: MCPTool[];           // MCP tool definitions
-  maxIterations?: number;     // Max tool call rounds (default: 10)
-}
+Runtime flow:
 
-export class ResearchAgent {
-  private client: OpenAI;
-  private config: ResearchAgentConfig;
-  private tools: Map<string, MCPTool>;
-
-  constructor(config: ResearchAgentConfig) {
-    this.config = config;
-    this.client = new OpenAI({ apiKey: config.apiKey });
-    this.tools = new Map(config.tools.map(t => [t.name, t]));
-  }
-
-  async enrich(identifiers: string[]): Promise<void> {
-    console.log(`[ResearchAgent] Enriching ${identifiers.length} entities...`);
-    
-    // Process in parallel (but limit concurrency to avoid rate limits)
-    const batches = chunk(identifiers, 3); // 3 concurrent
-    
-    for (const batch of batches) {
-      await Promise.all(batch.map(id => this.researchEntity(id)));
-    }
-  }
-
-  private async researchEntity(identifier: string): Promise<void> {
-    const systemPrompt = this.buildSystemPrompt();
-    const userPrompt = this.buildUserPrompt(identifier);
-    
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ];
-    
-    let iterations = 0;
-    const maxIterations = this.config.maxIterations ?? 10;
-    
-    while (iterations < maxIterations) {
-      iterations++;
-      
-      const response = await this.client.chat.completions.create({
-        model: this.config.model,
-        messages,
-        tools: this.getOpenAIToolDefs(),
-        tool_choice: 'auto',
-        temperature: 0.2
-      });
-      
-      const message = response.choices[0].message;
-      messages.push(message);
-      
-      // If no tool calls, we're done
-      if (!message.tool_calls || message.tool_calls.length === 0) {
-        console.log(`[ResearchAgent] ${identifier} research complete (${iterations} iterations)`);
-        break;
-      }
-      
-      // Execute tool calls
-      const toolResults = await Promise.all(
-        message.tool_calls.map(tc => this.executeTool(tc))
-      );
-      
-      // Add results to conversation
-      toolResults.forEach(result => {
-        messages.push({
-          role: 'tool',
-          tool_call_id: result.toolCallId,
-          content: JSON.stringify(result.output)
-        });
-      });
-    }
-    
-    if (iterations >= maxIterations) {
-      console.warn(`[ResearchAgent] ${identifier} hit max iterations`);
-    }
-  }
-
-  private async executeTool(toolCall: OpenAI.Chat.ChatCompletionMessageToolCall) {
-    const tool = this.tools.get(toolCall.function.name);
-    
-    if (!tool) {
-      return {
-        toolCallId: toolCall.id,
-        output: { error: `Unknown tool: ${toolCall.function.name}` }
-      };
-    }
-    
-    try {
-      const args = JSON.parse(toolCall.function.arguments);
-      const output = await tool.handler(args);
-      
-      return {
-        toolCallId: toolCall.id,
-        output
-      };
-    } catch (error) {
-      return {
-        toolCallId: toolCall.id,
-        output: { error: error.message }
-      };
-    }
-  }
-
-  private buildSystemPrompt(): string {
-    return `You are a crypto research analyst. Your job is to research entities (tokens, assets, protocols) and store structured findings.
-
-**Research workflow:**
-1. Resolve identifier to entity (use resolve_entity)
-2. Check if we have fresh research (use check_research_freshness)
-3. If fresh, retrieve and return (use get_cached_research)
-4. If stale/missing:
-   a. Fetch token metadata (get_token_metadata)
-   b. Get price data (get_price_history)
-   c. Check safety (check_rugcheck)
-   d. Analyze sentiment (analyze_sentiment)
-   e. Get holder data (get_holder_distribution)
-   f. Get representations (get_entity_representations)
-5. Synthesize findings (summary, sentiment, risks, opportunities)
-6. Store results (use store_research_results)
-
-**If entity doesn't exist:**
-- Create it (use create_entity)
-- Add representation if mint address provided (use add_representation)
-
-**Handle failures gracefully:**
-- If a tool fails, continue with available data
-- Adjust confidence score based on data completeness
-
-**Output format:**
-When research is complete, respond with a brief summary. All structured data should be stored via tools.`;
-  }
-
-  private buildUserPrompt(identifier: string): string {
-    return `Research this entity: ${identifier}
-
-Determine:
-- Is it safe to trade? (rugcheck score, holder distribution)
-- What's the price trend? (7-day movement)
-- Any social buzz? (Twitter sentiment)
-- Where can it be traded? (representations across protocols)
-
-Synthesize findings and store them with appropriate cache TTL.`;
-  }
-
-  private getOpenAIToolDefs(): OpenAI.Chat.ChatCompletionTool[] {
-    return Array.from(this.tools.values()).map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: 'object',
-          properties: tool.parameters,
-          required: Object.entries(tool.parameters)
-            .filter(([_, def]: any) => def.required !== false)
-            .map(([name]) => name)
-        }
-      }
-    }));
-  }
-}
-
-// Helper
-function chunk<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}
-```
+1. Resolve identifier with `resolve_entity`.
+2. Create unverified entity + representation when missing.
+3. Check freshness with `check_research_freshness`.
+4. If fresh, return via `get_cached_research`.
+5. If stale/missing, run MiniMax tool-calling loop with bounded iterations.
+6. Persist findings via `store_research_results`.
+7. Return normalized `ResearchResult` plus per-identifier audit summary.
 
 ---
 
 ## Integration with Orchestrator
 
-Update `packages/brain/src/orchestrator.ts`:
+Current integration is in `packages/brain/src/orchestrator.ts`:
 
-```typescript
-import { ResearchAgent, type ResearchAgentConfig } from './research.js';
-
-export interface OrchestratorConfig {
-  stream: StreamPipelineConfig;
-  classifier: ClassifierConfig;
-  research: ResearchAgentConfig;    // NEW
-  auditLog?: boolean;
-  auditPath?: string;
-}
-
-export class TransactionOrchestrator {
-  private pipeline: StreamPipeline;
-  private classifier: ClassifierBrain;
-  private research: ResearchAgent;  // NEW
-  private config: OrchestratorConfig;
-  private isRunning = false;
-
-  constructor(config: OrchestratorConfig) {
-    this.config = config;
-    this.classifier = new ClassifierBrain(config.classifier);
-    this.research = new ResearchAgent(config.research);  // NEW
-    
-    this.pipeline = new StreamPipeline({
-      ...config.stream,
-      onBatch: async (summaries) => this.handleBatch(summaries)
-    });
-  }
-
-  private async handleBatch(summaries: string[]): Promise<void> {
-    const batchId = Date.now();
-    
-    try {
-      // Stage 1: Classify
-      const classification = await this.classifier.classify(summaries);
-      
-      console.log(`[Orchestrator] Batch ${batchId}: ${classification.interesting.length} interesting, ${classification.needsResearch.length} need research`);
-      
-      // Stage 2: Research (NEW)
-      if (classification.needsResearch.length > 0) {
-        await this.research.enrich(classification.needsResearch);
-      }
-
-      // Optional: Log results
-      if (this.config.auditLog) {
-        await this.logAudit('research-batch', { 
-          batchId, 
-          researched: classification.needsResearch 
-        });
-      }
-
-      // TODO: Stage 3 - Decision engine (future)
-
-    } catch (error) {
-      console.error(`[Orchestrator] Batch ${batchId} failed:`, error);
-    }
-  }
-
-  // ... rest of orchestrator
-}
-```
+1. Classifier runs first per batch.
+2. Research runs only when `needsResearch` has targets.
+3. Targets are deduped and freshness-filtered before `enrich()`.
+4. Audit output is appended to `research.jsonl` when audit logging is enabled.
+5. `onResearch` callback receives `{ results, audit }`.
 
 ---
 
@@ -934,46 +476,78 @@ export class TransactionOrchestrator {
 ```
 packages/brain/
   ├── src/
-  │   ├── classifier.ts         (Brain 1 - existing)
-  │   ├── research.ts           (Brain 2 - NEW)
-  │   ├── orchestrator.ts       (Updated with research)
-  │   ├── tools/                (NEW)
-  │   │   ├── index.ts          (Tool registry)
-  │   │   ├── entity.tools.ts   (Entity resolution tools)
-  │   │   ├── memory.tools.ts   (Cache management tools)
-  │   │   ├── sources.tools.ts  (External API tools)
-  │   │   └── query.tools.ts    (Entity query tools)
-  │   └── types/
-  │       └── mcp.ts            (MCP tool type definitions)
+  │   ├── classifier.ts
+  │   ├── orchestrator.ts
+  │   ├── run.ts
+  │   ├── research-smoke.ts
+  │   ├── demo-replay.ts
+  │   └── research/
+  │       ├── agent.ts
+  │       ├── index.ts
+  │       ├── llm/
+  │       │   └── minimax.ts
+  │       ├── prompts/
+  │       │   └── research.ts
+  │       ├── data-sources/
+  │       │   └── jupiter-tokens.client.ts
+  │       ├── tools/
+  │       │   ├── index.ts
+  │       │   ├── registry.ts
+  │       │   ├── entity.tools.ts
+  │       │   ├── memory.tools.ts
+  │       │   └── data-source.tools.ts
+  │       └── types/
+  │           └── mcp.ts
+```
+
+---
+
+## Config & Environment
+
+Update root `.env`:
+
+```bash
+# Brain 1 (Classifier)
+CLASSIFIER_MODEL=MiniMax-M2.5-lightning
+
+# Brain 2 (Research Agent)
+RESEARCHER_MODEL=MiniMax-M2.5
+JUPITER_API_KEY=...   # optional if endpoint/rate tier requires it
+MINIMAX_API_KEY=...
 ```
 
 ---
 
 ## Acceptance Criteria
 
-### Research Agent Core ⬜
-1. ⬜ `ResearchAgent` class with MCP tool support
-2. ⬜ `enrich()` method accepts array of identifiers
-3. ⬜ Orchestrates tool calls via OpenAI function calling
-4. ⬜ Handles tool execution (async handlers)
-5. ⬜ Max iteration limit (prevents infinite loops)
-6. ⬜ Graceful error handling (tool failures don't crash agent)
+### Research Agent Core ✅
 
-### MCP Tools ⬜
-7. ⬜ Entity resolution tools (`resolve_entity`, `create_entity`, `add_representation`)
-8. ⬜ Memory tools (`check_research_freshness`, `get_cached_research`, `store_research_results`)
-9. ⬜ Data source tools (`get_token_metadata`, `get_price_history`, `check_rugcheck`, `analyze_sentiment`, `get_holder_distribution`)
-10. ⬜ Query tools (`get_entity_representations`, `query_entity_timeline`)
+1. ✅ `ResearchAgent` class with MCP tool support
+2. ✅ `enrich()` method accepts array of identifiers
+3. ✅ Orchestrates tool calls via LLM tool-calling loop (MiniMax-compatible)
+4. ✅ Handles tool execution (async handlers)
+5. ✅ Max iteration limit (prevents infinite loops)
+6. ✅ Graceful error handling (tool failures don't crash agent)
 
-### Integration ⬜
-11. ⬜ Orchestrator (#016) calls research agent after classification
-12. ⬜ Research agent stores results in entity memory (#014)
-13. ⬜ Audit logging for research batches
+### MCP Tools 🟡
 
-### Testing ⬜
-14. ⬜ Unit tests for tool handlers
-15. ⬜ Integration test: mock OpenAI tool calling
-16. ⬜ End-to-end test: unknown mint → research → stored entity
+1. ✅ Entity resolution tools (`resolve_entity`, `create_entity`, `add_representation`)
+2. ✅ Memory tools (`check_research_freshness`, `get_cached_research`, `store_research_results`)
+3. 🟡 Data source tools: `get_token_metadata` implemented; remaining sources deferred
+4. ⬜ Query tools (`get_entity_representations`, `query_entity_timeline`) deferred
+
+### Integration ✅
+
+1. ✅ Orchestrator (#016) calls research agent after classification
+2. ✅ Research agent stores results in entity memory (#014)
+3. ✅ Audit logging for research batches
+
+### Testing 🟡
+
+1. ⬜ Unit tests for tool handlers (deferred)
+2. ⬜ Integration test: mock LLM tool calling (deferred)
+3. ⬜ End-to-end automated test (deferred)
+4. ✅ Manual smoke/demo scripts available (`research:smoke`, `demo:replay`)
 
 ---
 
@@ -1010,7 +584,7 @@ it('check_research_freshness returns fresh status', async () => {
 
 ```typescript
 it('research agent enriches new entity', async () => {
-  const mockOpenAI = {
+  const mockLLM = {
     chat: {
       completions: {
         create: jest.fn()
@@ -1054,10 +628,10 @@ it('research agent enriches new entity', async () => {
   };
 
   const agent = new ResearchAgent({
-    model: 'gpt-4o',
+    model: 'MiniMax-M2.5',
     apiKey: 'test',
     tools: researchTools,
-    client: mockOpenAI as any
+    client: mockLLM as any
   });
 
   await agent.enrich(['ABC...xyz']);
@@ -1077,8 +651,8 @@ it('research agent enriches new entity', async () => {
 
 ```typescript
 const agent = new ResearchAgent({
-  model: 'gpt-4o',
-  apiKey: process.env.OPENAI_API_KEY,
+  model: process.env.RESEARCHER_MODEL ?? 'MiniMax-M2.5',
+  apiKey: process.env.MINIMAX_API_KEY,
   tools: buildResearchTools(db, apis)
 });
 
@@ -1098,19 +672,20 @@ console.log(research.findings);
 ## Cost Estimates
 
 **Assumptions:**
+
 - Classifier identifies ~5-10 tokens needing research per batch
 - Research agent processes ~50-100 tokens/day
 - Average 5-8 tool calls per token
-- Model: GPT-4o ($5/1M input, $15/1M output)
+- Model: MiniMax-M2.5
 - ~1000 tokens per research (including tool results)
 
 **Daily cost:**
-- 100 tokens × 1000 tokens × $5/1M = **$0.50/day input**
-- 100 tokens × 300 tokens output × $15/1M = **$0.45/day output**
-- **Total: ~$0.95/day** or **~$28.50/month**
+
+- Cost depends on active MiniMax pricing tier (estimate from provider billing)
 
 **Optimization:**
-- Use GPT-4o-mini for simple lookups (cheaper)
+
+- Keep strict cache TTLs to reduce repeated research calls
 - Cache aggressively (most tokens don't change hourly)
 - Batch tool calls where possible
 
@@ -1118,7 +693,7 @@ console.log(research.findings);
 
 ## Out of Scope (Post-MVP)
 
-- ❌ Multi-model fallback (if GPT-4o unavailable)
+- ❌ Multi-model fallback (if MiniMax unavailable)
 - ❌ Advanced sentiment analysis (dedicated AI model)
 - ❌ Real-time news monitoring (RSS/API integration)
 - ❌ Cross-chain entity tracking (Sol + ETH + Base)
@@ -1132,7 +707,7 @@ console.log(research.findings);
 
 - #014 (Entity Memory Schema) — database layer
 - #016 (Classifier Brain) — upstream classification
-- OpenAI SDK (or Anthropic for Claude)
+- MiniMax Anthropic-compatible API endpoint (`https://api.minimax.io/anthropic/v1/messages`)
 - External APIs: Helius, Birdeye, Rugcheck, Twitter
 
 ---

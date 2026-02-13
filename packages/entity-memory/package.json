@@ -1,5 +1,5 @@
 {
-  "name": "@pnldotfun/brain",
+  "name": "@pnldotfun/entity-memory",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,14 +13,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "brain:start": "pnpm run build && node dist/run.js",
-    "demo:replay": "pnpm run build && node dist/demo-replay.js",
-    "research:smoke": "pnpm run build && node dist/research-smoke.js",
     "test": "echo \"No tests configured\""
   },
   "dependencies": {
-    "@pnldotfun/entity-memory": "workspace:*",
-    "@pnldotfun/tx-parser": "workspace:*"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

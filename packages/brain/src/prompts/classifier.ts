@@ -12,7 +12,6 @@ NOISE (filter out):
 - Small transfers (<$100)
 - Routine LP activity (unless very large)
 - Transfers between known wallets
-- Tiny buys/sells (<$50)
 
 Token research needed when:
 - Token is flagged (needsResearch)

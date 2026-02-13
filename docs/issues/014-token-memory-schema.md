@@ -6,7 +6,7 @@
 **Assignee:** PM + EM (schema design) → Codex (implementation)  
 **Estimated Effort:** 6-8 hours  
 **Depends On:** None  
-**Status:** 🟡 In Progress (schema design phase)
+**Status:** 🟡 In Progress (MVP package implemented; DB adapter pending)
 
 ---
 
@@ -15,6 +15,7 @@
 We need a **knowledge graph schema** that tracks entities (tokens, assets, protocols) across multiple protocols and contexts.
 
 **Key insight:** Our brain doesn't think "this mint address" — it thinks **"Seeker"** as a concept that exists as:
+
 - A spot token on Jupiter/Raydium
 - A perp contract on Drift
 - A perp contract on Hyperliquid
@@ -22,6 +23,34 @@ We need a **knowledge graph schema** that tracks entities (tokens, assets, proto
 - An LP pair (SKR-SOL) on Raydium
 
 All these are **representations of the same entity**. Our memory system must capture this.
+
+---
+
+## Implementation Snapshot (2026-02-13)
+
+### Implemented in code
+
+1. `packages/entity-memory/` package created and exported.
+2. Core types implemented (`Entity`, `Representation`, `EntityEvent`, `EntityResearch`, `ResearchResult`).
+3. Repository layer implemented for entities/representations/events/research (in-memory `Map` mode for alpha).
+4. Service layer implemented:
+   - `EntityService` (identifier resolution, entity creation, representation management)
+   - `ResearchService` (freshness checks, TTL handling, completion flow, research-to-result projection)
+   - `CacheService` helper
+5. SQL migration files added:
+   - `migrations/001_create_entities.sql`
+   - `migrations/002_create_representations.sql`
+   - `migrations/003_create_events.sql`
+   - `migrations/004_create_research.sql`
+6. Seed scaffold added: `seeds/initial-entities.ts`
+7. `drizzle.config.ts` scaffold added for migration alignment.
+
+### Deferred from this issue scope (next phase)
+
+1. Real PostgreSQL client wiring in `src/db/client.ts`.
+2. Drizzle/Kysely-backed repositories (replace in-memory stores).
+3. Atomic DB transaction support across multi-table operations.
+4. Automated unit/integration tests and seed validation tests.
 
 ---
 
@@ -71,6 +100,7 @@ Entity: "Seeker"
 ```
 
 **Critical difference from flat "token DB":**
+
 - One entity (Seeker) → many representations (Drift perp, Meteora LP, etc.)
 - One entity (Gold) → zero blockchain representations (macro asset)
 - One entity (Penguin) → multiple FAKE tokens we need to filter
@@ -628,6 +658,7 @@ interface ResearchSource {
 **Recommended: PostgreSQL with JSONB**
 
 **Pros:**
+
 - ✅ Flexible schema (JSONB for metadata/context/data)
 - ✅ Strong indexing (B-tree, GiST for JSONB)
 - ✅ ACID transactions
@@ -636,6 +667,7 @@ interface ResearchSource {
 - ✅ Easy deployment (familiar, stable)
 
 **Alternative: Neo4j (Graph DB)**
+
 - Better for complex relationship queries
 - Overkill for MVP
 - Use later if entity relationships become critical
@@ -832,25 +864,29 @@ deactivate_representation(representationId: string): void
 ## Acceptance Criteria
 
 ### Schema Design ✅
+
 1. ✅ Entity, Representation, EntityEvent, EntityResearch types defined
 2. ✅ PostgreSQL schema with proper indexes
 3. ✅ Examples for common use cases (crypto token, macro asset, meme with fakes)
 
 ### Database Implementation ⬜
-4. ⬜ PostgreSQL database setup (Docker or local)
-5. ⬜ Migration scripts to create tables + indexes
-6. ⬜ Seed script with example entities (Seeker, Penguin, Gold, BTC, SOL)
+
+1. ⬜ PostgreSQL database setup (Docker or local)
+2. ✅ Migration scripts to create tables + indexes
+3. ✅ Seed script scaffold with example entities
 
 ### Data Access Layer ⬜
-7. ⬜ Create `packages/entity-memory/` package
-8. ⬜ Implement ORM/query builder (Drizzle or Kysely recommended)
-9. ⬜ Repository pattern for each table (EntityRepository, RepresentationRepository, etc.)
-10. ⬜ Transaction support for atomic multi-table operations
+
+1. ✅ Create `packages/entity-memory/` package
+2. ⬜ Implement ORM/query builder (Drizzle or Kysely recommended)
+3. ✅ Repository pattern for each table (in-memory MVP implementation)
+4. ⬜ Transaction support for atomic multi-table operations
 
 ### Testing ⬜
-11. ⬜ Unit tests for repository methods
-12. ⬜ Integration tests with test database
-13. ⬜ Seed data validation
+
+1. ⬜ Unit tests for repository methods
+2. ⬜ Integration tests with test database
+3. ⬜ Seed data validation
 
 ---
 
@@ -861,10 +897,12 @@ deactivate_representation(representationId: string): void
 **Scenario:** Seeker exists on 5 protocols (Jupiter spot, Drift perp, Hyperliquid perp, Meteora LP, Raydium LP).
 
 **Design:**
+
 - 1 Entity record (id: "seeker")
 - 5 Representation records (one per protocol)
 
 **Benefits:**
+
 - Query "Show all ways to trade Seeker" → fetch representations by entityId
 - Event on Meteora LP → link to specific representation → link to entity
 - Easy to add/remove protocols (just insert/delete representation)
@@ -872,25 +910,28 @@ deactivate_representation(representationId: string): void
 
 ### Entity ID Generation
 
-**Recommendation:** Use slugs for predictable IDs
-- `"seeker"` → easier to reference, human-readable
-- `"btc"`, `"eth"`, `"sol"` → well-known
-- `"penguin-2024-official"` → handle duplicates with year/qualifier
+**Current implementation:** UUID primary key + unique slug index.
 
-**For programmatic:**
-- Use `symbol.toLowerCase().replace(/[^a-z0-9]/g, '-')`
-- Manual override for well-known entities
+- `id` is generated UUID for collision-safe canonical identity.
+- `slug` remains human-readable and unique for lookup/routing.
+- This matches PM/EM direction: UUID primary, slug indexed.
+
+**Slug generation rule (current):**
+
+- Programmatic slugify from name/symbol, with numeric suffix if needed.
 
 ### Handling Fake Tokens
 
 **Problem:** 100 fake "Penguin" tokens exist.
 
 **Solution:**
+
 1. One verified entity: `{ id: "penguin", verified: true }`
 2. Multiple representations, but only ONE linked to verified entity
 3. Fake tokens → either not tracked OR tracked as separate unverified entities
 
 **Research agent logic:**
+
 ```typescript
 // When encountering mint ABC...xyz claiming to be "Penguin"
 const entity = await resolveEntity("ABC...xyz");
@@ -917,6 +958,7 @@ if (!entity) {
 ### TTL Strategy
 
 **Research cache lifetimes:**
+
 - High-volatility tokens (memes): 10-30 minutes
 - Mid-cap DeFi tokens: 1-2 hours
 - Blue chips (BTC, ETH): 4-6 hours
@@ -924,6 +966,7 @@ if (!entity) {
 - Protocols/concepts: 24 hours
 
 **Adaptive TTL:**
+
 ```typescript
 function calculateTTL(entity: Entity): number {
   if (entity.type === 'meme') return 10 * 60; // 10 min
@@ -957,17 +1000,19 @@ packages/entity-memory/
   ├── drizzle.config.ts           (ORM config)
   ├── src/
   │   ├── index.ts                (exports)
+  │   ├── entity-memory.ts        (composition root)
   │   ├── db/
-  │   │   ├── client.ts           (Postgres connection)
-  │   │   └── schema.ts           (Drizzle schema)
+  │   │   ├── client.ts           (DB client placeholder for next phase)
+  │   │   └── schema.ts           (schema placeholder + SQL is source of truth)
   │   ├── repositories/
   │   │   ├── entity.repo.ts
   │   │   ├── representation.repo.ts
   │   │   ├── event.repo.ts
   │   │   └── research.repo.ts
   │   ├── services/
-  │   │   ├── resolver.service.ts (entity resolution logic)
-  │   │   └── cache.service.ts    (TTL management)
+  │   │   ├── entity.service.ts   (entity resolution + entity ops)
+  │   │   ├── research.service.ts (freshness + research completion)
+  │   │   └── cache.service.ts    (TTL helper)
   │   └── types/
   │       └── index.ts            (TypeScript interfaces from this doc)
   ├── migrations/
@@ -987,6 +1032,13 @@ packages/entity-memory/
 - Drizzle ORM (or Kysely)
 - `pg` driver
 - Zod (for validation)
+
+## Related Runtime Env
+
+```bash
+CLASSIFIER_MODEL=MiniMax-M2.5-lightning
+RESEARCHER_MODEL=MiniMax-M2.5
+```
 
 ---
 

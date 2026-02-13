@@ -24,6 +24,26 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function normalizeJsonPayload(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
+
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return trimmed;
+}
+
 export class ClassifierBrain {
   private readonly apiKey: string;
   private readonly config: ClassifierConfig;
@@ -71,7 +91,14 @@ export class ClassifierBrain {
         throw new Error('Empty response from classifier LLM');
       }
 
-      return this.parseClassification(contentText, summaries);
+      const normalizedText = normalizeJsonPayload(contentText);
+      this.config.onLlmResponse?.({
+        rawText: contentText,
+        normalizedText,
+        summariesCount: summaries.length
+      });
+
+      return this.parseClassification(normalizedText, summaries);
     } catch (error) {
       console.error(`[Classifier] classify failed, defaulting to pass-through: ${toErrorMessage(error)}`);
       return this.buildFallbackClassification(summaries, 'LLM failure - defaulted to all interesting');
@@ -102,7 +129,7 @@ export class ClassifierBrain {
 
   private parseClassification(content: string, summaries: string[]): Classification {
     try {
-      const parsed = JSON.parse(content) as Partial<Classification>;
+      const parsed = JSON.parse(normalizeJsonPayload(content)) as Partial<Classification>;
       if (!Array.isArray(parsed.interesting) || !Array.isArray(parsed.needsResearch)) {
         throw new Error('Invalid classification structure');
       }

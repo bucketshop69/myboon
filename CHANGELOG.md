@@ -73,6 +73,12 @@ All notable changes to PNLdotfun will be documented in this file.
 - `[#013]` stream summaries now use wallet registry labels and include parseable full mint markers for unknown tokens in buy/sell flows (`mint:<full-address>`)
 - `[#016]` added new `@pnldotfun/brain` package with `ClassifierBrain` (LLM JSON classification + pass-through fallback) and `TransactionOrchestrator` (sequential batch queue, idempotent lifecycle, optional JSONL audit logging)
 - `[#018]` wired classifier to MiniMax Anthropic-compatible API (`/v1/messages`) and added `packages/brain/src/run.ts` runner plus `brain:start` command for end-to-end stream → orchestrator → classifier execution
+- `[#014]` added new `@pnldotfun/entity-memory` package (types, repositories, services, migrations, seed scaffold) with in-memory MVP mode and repository/service boundaries for future Postgres/Supabase wiring
+- `[#015]` implemented Research Agent (Brain 2) with MiniMax tool-calling loop, entity+memory MCP tools, Jupiter Tokens V2 metadata tool, orchestrator integration, and research audit logging
+- added demo/smoke runners for Brain 2: `research:smoke` and `demo:replay` to showcase end-to-end stream → classify → research → memory flow in terminal
+- classifier parsing now tolerates fenced JSON responses from LLM output and captures normalized/raw response payloads for demo logging
+- classifier prompt noise rules updated to remove strict tiny-trade `<$50` filter
+- issue docs updated for #014/#015/#016 to reflect implemented scope, MiniMax env/model usage, and deferred items
 
 ### Planned
 
