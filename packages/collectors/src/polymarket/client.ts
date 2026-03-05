@@ -26,7 +26,7 @@ export function parseTokenIds(raw: unknown): string[] {
 
 export async function fetchTopMarkets(): Promise<Market[]> {
   const url =
-    'https://gamma-api.polymarket.com/events?active=true&closed=false&limit=20&order=volume&ascending=false'
+    'https://gamma-api.polymarket.com/events?active=true&closed=false&limit=50&order=volume&ascending=false'
 
   const res = await fetch(url)
   if (!res.ok) {
@@ -35,6 +35,7 @@ export async function fetchTopMarkets(): Promise<Market[]> {
 
   const events: GammaEvent[] = await res.json()
   const markets: Market[] = []
+  const now = new Date()
 
   for (const event of events) {
     const firstMarket: GammaMarket | undefined = event.markets?.[0]
@@ -42,6 +43,10 @@ export async function fetchTopMarkets(): Promise<Market[]> {
 
     const tokenIds = parseTokenIds(firstMarket.clobTokenIds)
     if (tokenIds.length < 2) continue
+
+    // Skip markets that have already ended
+    const endDate = firstMarket.endDateIso ?? event.endDate
+    if (endDate && new Date(endDate) < now) continue
 
     let outcomePrices: [string, string] | undefined
     if (firstMarket.outcomePrices) {
@@ -60,10 +65,12 @@ export async function fetchTopMarkets(): Promise<Market[]> {
       id: firstMarket.id,
       slug: firstMarket.slug ?? event.slug,
       tokenIds: [tokenIds[0], tokenIds[1]],
-      endDate: firstMarket.endDateIso ?? event.endDate,
+      endDate,
       volume: firstMarket.volumeNum ?? event.volumeNum ?? event.volume,
       outcomePrices,
     })
+
+    if (markets.length === 20) break
   }
 
   return markets
