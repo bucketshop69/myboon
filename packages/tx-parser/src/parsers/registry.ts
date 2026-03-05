@@ -4,12 +4,14 @@ import type { ParsedDetails } from '../types/index.js';
 import type { TransactionClassification } from './base.js';
 import { buildGenericDetails } from './details.js';
 import { parseJupiterTransaction } from './jupiter.js';
+import { parseMeteoraDlmmTransaction } from './meteora-dlmm.js';
 import { parseTransferTransaction } from './transfer.js';
 
 type DetailsParser = (transaction: ParsedTransactionWithMeta) => ParsedDetails | null;
 
 const detailsParserRegistry: Record<string, DetailsParser> = {
   'swap:jupiter': (transaction) => parseJupiterTransaction(transaction),
+  'lp:meteora-dlmm': (transaction) => parseMeteoraDlmmTransaction(transaction),
   'transfer:spl-token': (transaction) => parseTransferTransaction(transaction, 'spl-token'),
   'transfer:associated-token': (transaction) => parseTransferTransaction(transaction, 'associated-token'),
   'transfer:system': (transaction) => parseTransferTransaction(transaction, 'system')

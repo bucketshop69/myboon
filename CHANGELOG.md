@@ -10,6 +10,30 @@ All notable changes to PNLdotfun will be documented in this file.
 
 ### Added
 
+- `packages/collectors` — new package for Polymarket signal ingestion
+  - REST discovery: fetches top 20 Polymarket markets every 2h, writes `MARKET_DISCOVERED` signals to Supabase
+  - WebSocket stream: subscribes to tracked markets, emits `ODDS_SHIFT` signal on >5% price movement
+  - Shared `signals` table schema (source, type, topic, weight, metadata)
+  - `polymarket_tracked` table for managing active market subscriptions
+- `docs/issues/020-polymarket-collector.md` — PRD for Polymarket collector
+- `docs/issues/019-meteora-dlmm-parser-poc.md` — PRD for Meteora DLMM parser (blocked on tx signatures)
+- `docs/milestones/` — milestone retrospectives
+
+### Changed
+
+- `docs/VISION.md` — updated to reflect narrative intelligence direction
+- `packages/tx-parser` — Meteora DLMM detection, wallet registry and program ID updates
+
+### Removed
+
+- `docs/issues/018-wire-classifier-to-minimax.md` — completed, archived
+
+---
+
+## [0.2.0] — 2026-02-13 (Colosseum Hackathon)
+
+### Added
+
 - Project scaffolding (Next.js + Tailwind + Framer Motion)
 - README with project overview
 - Issue tracking system (`docs/issues/`)

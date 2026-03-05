@@ -225,10 +225,6 @@ The voice interface is the **interaction model**, not the product. The product i
 
 - **Repo:** <https://github.com/bucketshop69/pnldotfun>
 - **Colosseum Agent:** pnldotfunagent (ID: 1065)
-- **Related Projects:**
-  - AgentPay (agent-to-agent payments)
-  - Oracle Sentinel (prediction markets)
-  - SIDEX (perp futures trading)
 
 ---
 

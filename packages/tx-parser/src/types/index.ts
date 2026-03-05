@@ -1,25 +1,25 @@
-import type { ParsedTransactionWithMeta } from '@solana/web3.js';
+import type { ParsedTransactionWithMeta } from "@solana/web3.js";
 
 export type TransactionType =
-  | 'buy'
-  | 'sell'
-  | 'swap'
-  | 'perp'
-  | 'lp'
-  | 'nft'
-  | 'transfer'
-  | 'unknown';
+  | "buy"
+  | "sell"
+  | "swap"
+  | "perp"
+  | "lp"
+  | "nft"
+  | "transfer"
+  | "unknown";
 
 export type SupportedProtocol =
-  | 'jupiter'
-  | 'meteora-dlmm'
-  | 'spl-token'
-  | 'associated-token'
-  | 'system'
-  | 'unknown';
+  | "jupiter"
+  | "meteora-dlmm"
+  | "spl-token"
+  | "associated-token"
+  | "system"
+  | "unknown";
 
 export interface GenericDetails {
-  kind: 'generic';
+  kind: "generic";
   instructionCount: number;
   fee: number;
   hasError: boolean;
@@ -34,19 +34,19 @@ export interface TokenInfo {
 }
 
 export interface BuySellDetails {
-  kind: 'buy' | 'sell';
-  dex: 'jupiter';
+  kind: "buy" | "sell";
+  dex: "jupiter";
   fundingToken: TokenInfo;
   targetToken: TokenInfo;
   fundingAmount: string;
   targetAmount: string;
-  direction: 'buy' | 'sell';
+  direction: "buy" | "sell";
   feeAmount: string;
 }
 
 export interface LegacySwapDetails {
-  kind: 'swap';
-  dex: 'jupiter';
+  kind: "swap";
+  dex: "jupiter";
   inputMint: string;
   outputMint: string;
   inputAmount: string;
@@ -57,7 +57,33 @@ export interface LegacySwapDetails {
 
 export type SwapDetails = BuySellDetails | LegacySwapDetails;
 
-export type ParsedDetails = GenericDetails | SwapDetails;
+export type DlmmAction =
+  | "add-liquidity"
+  | "remove-liquidity"
+  | "swap"
+  | "claim-fee"
+  | "open-position"
+  | "close-position"
+  | "unknown";
+
+export interface DlmmTokenAmount {
+  mint: string;
+  amount: string;
+  decimals: number;
+}
+
+export interface DlmmDetails {
+  kind: "dlmm";
+  action: DlmmAction;
+  poolAddress: string;
+  positionAddress: string | null;
+  tokenX: DlmmTokenAmount | null;
+  tokenY: DlmmTokenAmount | null;
+  activeBin: number | null;
+  feesEarned: { tokenX: string; tokenY: string } | null;
+}
+
+export type ParsedDetails = GenericDetails | SwapDetails | DlmmDetails;
 
 interface ParsedTransactionBase {
   timestamp: number | null;
@@ -65,38 +91,38 @@ interface ParsedTransactionBase {
 }
 
 export interface ParsedSwapTransaction extends ParsedTransactionBase {
-  type: 'swap';
-  protocol: 'jupiter';
+  type: "swap";
+  protocol: "jupiter";
   details: LegacySwapDetails;
 }
 
 export interface ParsedBuyTransaction extends ParsedTransactionBase {
-  type: 'buy';
-  protocol: 'jupiter';
+  type: "buy";
+  protocol: "jupiter";
   details: BuySellDetails;
 }
 
 export interface ParsedSellTransaction extends ParsedTransactionBase {
-  type: 'sell';
-  protocol: 'jupiter';
+  type: "sell";
+  protocol: "jupiter";
   details: BuySellDetails;
 }
 
 export interface ParsedLpTransaction extends ParsedTransactionBase {
-  type: 'lp';
-  protocol: 'meteora-dlmm';
-  details: GenericDetails;
+  type: "lp";
+  protocol: "meteora-dlmm";
+  details: DlmmDetails | GenericDetails;
 }
 
 export interface ParsedTransferTransaction extends ParsedTransactionBase {
-  type: 'transfer';
-  protocol: 'spl-token' | 'associated-token' | 'system';
+  type: "transfer";
+  protocol: "spl-token" | "associated-token" | "system";
   details: GenericDetails;
 }
 
 export interface ParsedUnknownTransaction extends ParsedTransactionBase {
-  type: 'unknown';
-  protocol: 'unknown';
+  type: "unknown";
+  protocol: "unknown";
   details: GenericDetails;
 }
 

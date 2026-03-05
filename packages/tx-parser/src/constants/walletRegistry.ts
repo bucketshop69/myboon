@@ -16,16 +16,11 @@ export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     'DzeSE8ZBNk36qqswcDxd8919evdH5upwyZ4u1yieQSkp': { label: 'KOL-8', category: 'kol' },
 
     // ========== WHALES ==========
-    'D6kLPZVdqqBw3np76Fg2xjA9JUwbsf6wPso1XkMV2mjy': { label: 'Whale-1', category: 'whale' },
-    '9XxSUjAdCNy4Nbkm1BoWWEQk7A25YhC2CyGgYyp8HLsN': { label: 'Whale-2', category: 'whale' },
-    'EnQLCLB7NWojruXXNopgH7jhkwoHihTpuzsrtsM2UCSe': { label: 'Whale-3', category: 'whale' },
-    'EMSA63313xrhW3y1pooBDe51a1Vw5N2PpNw3hEmvG3Xg': { label: 'EMSA', category: 'whale' },
     '7nJSDa8nnBk6UXxJhRwSo7kFo3LnNMdbvVjPTmjTQkJG': { label: 'Whale-4', category: 'whale' },
     '68huFCtdyRKvZWrxLn2vohVrCha26S3UWUH8jaKG4YZ3': { label: 'Whale-5', category: 'whale' },
     'CcvvkyXwt8Vdr8C1dxRNTHTPzziuGcnf7i8AyAabpwrK': { label: 'Whale-6', category: 'whale' },
     'Fs7zZP3SnTfRTJxwbGCGuHWBQTKTRoJg8TpZTcALV7Q6': { label: 'Whale-7', category: 'whale' },
     'DBzjnFwh9AtxE7xXbA2PRoQzas37tPbcwQ3pchW1igNq': { label: 'Whale-8', category: 'whale' },
-    'H3iAMzJQnstJaWD7XALtbJ6EHdZhFd4bwv9TJySmdkFs': { label: 'Whale-9', category: 'whale' },
     'H3b4acRdAGaspYs12sXHcnDmoUX9sb2ruEtc1PMksoLo': { label: 'Whale-10', category: 'whale' },
     'ARSdp5MFL1bjgWddK8dkF3QdttHvy5ZdVjJ6T8BHJimo': { label: 'Whale-11', category: 'whale' },
     '4HjGze3GXy8aWzWeuR5hFZP6ezqRb3yhLbQULhefzQdN': { label: 'Whale-12', category: 'whale' },
@@ -52,7 +47,6 @@ export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     '8zFZHuSRuDpuAR7J6FzwyF3vKNx4CVW3DFHJerQhc7Zd': { label: 'traderpow', category: 'trader' },
     'As7HjL7dzzvbRbaD3WCun47robib2kmAKRXMvjHkSMB5': { label: 'otta.sol', category: 'trader' },
     'sAdNbe1cKNMDqDsa4npB3TfL62T14uAo2MsUQfLvzLT': { label: 'pr6spr.sol', category: 'trader' },
-    'DdvhMhDJsobQdCWuWunG2QNos2S3XrYGosRkkVWhjLeW': { label: '放手一搏.sol', category: 'trader' },
     'ApRnQN2HkbCn7W2WWiT2FEKvuKJp9LugRyAE1a9Hdz1': { label: 'solkcrow.sol', category: 'meme' },
     '215nhcAHjQQGgwpQSJQ7zR26etbjjtVdW74NLzwEgQjP': { label: 'binladen.sol', category: 'trader' },
     '86AEJExyjeNNgcp7GrAvCXTDicf5aGWgoERbXFiG1EdD': { label: 'bundled.sol', category: 'trader' },
@@ -60,7 +54,6 @@ export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     '8rvAsDKeAcEjEkiZMug9k8v1y8mW6gQQiMobd89Uy7qR': { label: 'communitymember🚀.sol', category: 'trader' },
     'DNfuF1L62WWyW3pNakVkyGGFzVVhj4Yr52jSmdTyeBHm': { label: 'gake', category: 'trader' },
     'CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o': { label: 'Cented7', category: 'trader' },
-    'CBaM2xaPdDdhaopd8dD93LJAvextJoPngdKFz8QFP7JD': { label: 'poo.sol', category: 'trader' },
     'G5nxEXuFMfV74DSnsrSatqCW32F34XUnBeq3PfDS7w5E': { label: 'LeBron', category: 'trader' },
     'BDTscoqjWkgnySaJqukeSBLtKzcU5a9nTxi396zoBW9x': { label: 'abglover.sol', category: 'trader' },
     'DpNVrtA3ERfKzX4F8Pi2CVykdJJjoNxyY5QgoytAwD26': { label: 'Gorilla Capital', category: 'trader' },
@@ -99,6 +92,22 @@ export const WALLET_REGISTRY: Record<string, WalletInfo> = {
     '3h65MmPZksoKKyEpEjnWU2Yk2iYT5oZDNitGy5cTaxoE': { label: 'Wallet-77', category: 'other' },
     'DUMP3pM27QXLgHQSNYmPwiwkSrMMXwWiR1ETNpd4uALc': { label: 'DUMP', category: 'other' },
     'DQu6RDQpMCBn4ZZLL5Wdmn2FqjTu7d2yBTaA22K3xLdv': { label: 'Wallet-80', category: 'other' },
+
+
+    "BYm6cwe5W1kCTNxV9y2bjZGRud9uooZzdAecNSFAwu7L": { label: "Wallet-88", category: "meme" },
+    "598ogrvaTTJKgBy1otC2T49ECykPHyEtU8DoLQSMPa7W": { label: "Wallet-89", category: "meme" },
+    "8mZhEk5wyTEprSQT5NJxnay1udjcrXNiKDMx8WfaiWvA": { label: "Wallet-90", category: "meme" },
+    "CJas1sYJTPLuzNMo6dUs1gULVaoXsJ3CjywWQqAoH38f": { label: "Wallet-91", category: "meme" },
+    "8Nv1TAxjfPtRDCntXamxno4aGDPczDfE1wJZZS79DRMW": { label: "Wallet-92", category: "meme" },
+    "FQHcrTMbxGhK39z9w5iM6UJPNER4BcShdxYiWCDBvzLx": { label: "Wallet-93", category: "meme" },
+    "FYQU4Q4BEgNwNATMEphBtZtfkR3RamXXy6JvHnVHhjuo": { label: "Wallet-94", category: "meme" },
+    "AcWAURKHUXHF3zEqR6fje5bGJHdsfd1SyLQmbXqEtf8Y": { label: "Wallet-95", category: "meme" },
+    "CewP4fVKgpzTk86q4wNkqeft7cbkZN4NkUnZWWiWbEef": { label: "Wallet-96", category: "meme" },
+    "B75WY75aagvqvJwx4E6CXjJvWx8kM8oqES6HgRgP7fa7": { label: "Wallet-97", category: "meme" },
+    "69aiAKU3uJMxMLRkUEGFNt6nQ43PiVimE4ZbErJ7VSM1": { label: "Wallet-98", category: "meme" },
+    "516N13KBuDcF6J9JmVoDMu7KFtgQLYC471NPuKQrtRW3": { label: "Wallet-99", category: "meme" },
+    "G5nqeJihGwgNzHt9cmiDmWdmHYcStJdH7Z9whwWyAfSd": { label: "Wallet-100", category: "meme" },
+    "GkRZz7NASCsiMbmzwq4BsHZwsMw9Bz2xhgvndR1kybzz": { label: "Wallet-101", category: "meme" },
 };
 
 const CATEGORY_EMOJI: Record<WalletCategory, string> = {

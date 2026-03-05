@@ -63,6 +63,26 @@ describe('parseSingleTransaction (integration)', () => {
     expect(result.protocol).toBe('spl-token');
     expect(result.details.kind).toBe('generic');
   });
+
+  it('returns parsed meteora lp with dlmm details', async () => {
+    const tx = await fetchTransactionBySignature(TEST_SIGNATURES.LP_METEORA);
+    expect(tx).not.toBeNull();
+
+    const result = parseSingleTransaction(tx!, TEST_SIGNATURES.LP_METEORA);
+
+    expect(result.signature).toBe(TEST_SIGNATURES.LP_METEORA);
+    expect(result.type).toBe('lp');
+    expect(result.protocol).toBe('meteora-dlmm');
+    expect(result.details.kind).toBe('dlmm');
+
+    if (result.details.kind !== 'dlmm') {
+      return;
+    }
+
+    expect(result.details.action).toBe('remove-liquidity');
+    expect(result.details.poolAddress).toBeTypeOf('string');
+    expect(result.details.poolAddress.length).toBeGreaterThan(20);
+  });
 });
 
 function buildTokenBalance(
