@@ -76,6 +76,25 @@ export async function fetchTopMarkets(): Promise<Market[]> {
   return markets
 }
 
+export async function fetchMarketBySlug(slug: string): Promise<Market | null> {
+  const url = `https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const markets: GammaMarket[] = await res.json()
+  if (!markets || markets.length === 0) return null
+  const market = markets[0]
+  const tokenIds = parseTokenIds(market.clobTokenIds)
+  if (tokenIds.length < 2) return null
+  return {
+    title: market.question ?? slug,
+    id: market.id,
+    slug: market.slug ?? slug,
+    tokenIds: [tokenIds[0], tokenIds[1]],
+    endDate: market.endDateIso,
+    volume: market.volumeNum,
+  }
+}
+
 export async function fetchOrderBook(
   tokenId: string
 ): Promise<{ bestBid: number; bestAsk: number } | null> {

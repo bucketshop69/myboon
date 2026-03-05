@@ -1,19 +1,41 @@
 import cron from 'node-cron'
-import { supabase, fetchTopMarkets, fetchOrderBook } from './client'
-import type { Signal } from './types'
+import { supabase, fetchTopMarkets, fetchOrderBook, fetchMarketBySlug } from './client'
+import type { Market, Signal } from './types'
+import pinnedSlugs from './pinned.json'
 
 export async function runDiscovery(): Promise<void> {
   console.log('[discovery] Running market discovery...')
 
-  let markets
+  let topMarkets: Market[]
   try {
-    markets = await fetchTopMarkets()
+    topMarkets = await fetchTopMarkets()
   } catch (err) {
     console.error('[discovery] Failed to fetch top markets:', err)
     return
   }
 
-  console.log(`[discovery] Found ${markets.length} markets`)
+  // Fetch pinned markets and merge, skipping expired ones
+  const now = new Date()
+  const pinnedMarkets: Market[] = []
+  for (const slug of pinnedSlugs) {
+    try {
+      const market = await fetchMarketBySlug(slug)
+      if (!market) continue
+      if (market.endDate && new Date(market.endDate) < now) continue
+      pinnedMarkets.push(market)
+    } catch (err) {
+      console.error(`[discovery] Failed to fetch pinned market ${slug}:`, err)
+    }
+  }
+
+  // Merge: top markets first, then pinned markets not already present
+  const seenIds = new Set(topMarkets.map((m) => m.id))
+  const uniquePinned = pinnedMarkets.filter((m) => !seenIds.has(m.id))
+  const markets = [...topMarkets, ...uniquePinned]
+
+  console.log(
+    `[discovery] Found ${topMarkets.length} top markets + ${uniquePinned.length} pinned = ${markets.length} total`
+  )
 
   let discoveredCount = 0
 
