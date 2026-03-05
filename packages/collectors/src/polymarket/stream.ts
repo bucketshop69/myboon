@@ -2,17 +2,18 @@ import WebSocket from 'ws'
 import { supabase } from './client'
 import type { Signal } from './types'
 
-const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/'
+const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market'
 const SHIFT_THRESHOLD = parseFloat(process.env.ODDS_SHIFT_THRESHOLD || '0.05')
 const RECONNECT_DELAY_MS = 5000
 
 // In-memory price cache: tokenId -> last known yes_price
 const priceCache = new Map<string, number>()
 
-interface PriceChangeMessage {
+interface BestBidAskMessage {
+  event_type: string
   asset_id: string
-  price: string
-  side: string
+  best_bid: string
+  best_ask: string
 }
 
 interface TrackedMarket {
@@ -87,12 +88,12 @@ function openWebSocket(tokenIds: string[], markets: Map<string, TrackedMarket>):
   const ws = new WebSocket(WS_URL)
 
   ws.on('open', () => {
-    console.log('[stream] WebSocket connected, subscribing to price_change channel')
+    console.log('[stream] WebSocket connected, subscribing to market channel')
     ws.send(
       JSON.stringify({
-        type: 'subscribe',
-        channel: 'price_change',
+        type: 'market',
         assets_ids: tokenIds,
+        custom_feature_enabled: true,
       })
     )
   })
@@ -107,23 +108,21 @@ function openWebSocket(tokenIds: string[], markets: Map<string, TrackedMarket>):
       return
     }
 
-    let messages: PriceChangeMessage[]
+    let msg: BestBidAskMessage
     try {
-      messages = JSON.parse(raw)
-      if (!Array.isArray(messages)) return
+      msg = JSON.parse(raw)
+      if (msg.event_type !== 'best_bid_ask') return
     } catch {
       return
     }
 
-    for (const msg of messages) {
-      if (msg.side !== 'BUY') continue
-      const price = parseFloat(msg.price)
-      if (isNaN(price)) continue
+    // Use best_ask as the yes_price (cost to buy YES = implied probability)
+    const price = parseFloat(msg.best_ask)
+    if (isNaN(price) || !msg.asset_id) return
 
-      handlePriceUpdate(msg.asset_id, price, markets).catch((err) =>
-        console.error('[stream] Error handling price update:', err)
-      )
-    }
+    handlePriceUpdate(msg.asset_id, price, markets).catch((err) =>
+      console.error('[stream] Error handling price update:', err)
+    )
   })
 
   ws.on('close', (code, reason) => {
