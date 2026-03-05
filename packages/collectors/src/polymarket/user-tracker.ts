@@ -11,12 +11,40 @@ interface PolyActivity {
   id: string
   type: string
   proxyWallet: string
+  size?: number
   amount?: number
   side?: string
   outcome?: string
+  title?: string
+  question?: string
   marketQuestion?: string
   conditionId?: string
+  asset?: string
   timestamp: string
+}
+
+interface GammaMarketLookup {
+  question?: string
+  title?: string
+}
+
+// Cache conditionId -> market title to avoid repeated lookups
+const marketTitleCache = new Map<string, string>()
+
+async function resolveMarketTitle(conditionId: string): Promise<string> {
+  if (!conditionId) return 'Unknown market'
+  if (marketTitleCache.has(conditionId)) return marketTitleCache.get(conditionId)!
+
+  try {
+    const res = await fetch(`https://gamma-api.polymarket.com/markets?condition_id=${conditionId}`)
+    if (!res.ok) return conditionId
+    const markets: GammaMarketLookup[] = await res.json()
+    const title = markets?.[0]?.question ?? markets?.[0]?.title ?? conditionId
+    marketTitleCache.set(conditionId, title)
+    return title
+  } catch {
+    return conditionId
+  }
 }
 
 async function pollUser(address: string): Promise<void> {
@@ -33,7 +61,6 @@ async function pollUser(address: string): Promise<void> {
 
   const previous = lastSeen.get(address)
 
-  // Filter to activities newer than the last seen timestamp
   const newActivities = previous
     ? activities.filter((a) => a.timestamp > previous)
     : activities
@@ -41,30 +68,35 @@ async function pollUser(address: string): Promise<void> {
   if (newActivities.length === 0) return
 
   for (const activity of newActivities) {
+    // Try all possible field names for market title
+    const topic =
+      activity.title ??
+      activity.question ??
+      activity.marketQuestion ??
+      (activity.conditionId ? await resolveMarketTitle(activity.conditionId) : 'Unknown market')
+
     const signal = {
       source: 'POLYMARKET',
       type: 'WHALE_BET',
-      topic: activity.marketQuestion ?? 'Unknown market',
+      topic,
       weight: 7,
       metadata: {
         user: address,
-        amount: activity.amount,
+        amount: activity.size ?? activity.amount,
         side: activity.side,
         outcome: activity.outcome,
-        marketId: activity.conditionId,
+        marketId: activity.conditionId ?? activity.asset,
       },
     }
 
     const { error } = await supabase.from('signals').insert(signal)
     if (error) {
-      console.error(`[user-tracker] Signal insert failed for ${address} activity ${activity.id}:`, error)
+      console.error(`[user-tracker] Signal insert failed for ${address}:`, error)
     }
   }
 
-  // Update lastSeen to the most recent activity timestamp
-  // Activities are sorted DESC so the first element is the most recent
   lastSeen.set(address, activities[0].timestamp)
-  console.log(`[user-tracker] ${address}: ${newActivities.length} new activities processed`)
+  console.log(`[user-tracker] ${address.slice(0, 10)}...: ${newActivities.length} new activities`)
 }
 
 export function startUserTracker(): void {

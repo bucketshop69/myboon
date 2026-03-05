@@ -16,6 +16,7 @@
     "brain:start": "pnpm run build && node dist/run.js",
     "demo:replay": "pnpm run build && node dist/demo-replay.js",
     "research:smoke": "pnpm run build && node dist/research-smoke.js",
+    "narrative:analyst": "tsx src/narrative-analyst.ts",
     "test": "echo \"No tests configured\""
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }
