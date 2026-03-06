@@ -104,11 +104,9 @@ function formatSignalLine(signal: Signal): string {
     }
     case 'WHALE_BET': {
       const user = metadata.user ?? 'unknown'
-      const shortened =
-        user.length > 10 ? `${user.slice(0, 6)}...${user.slice(-4)}` : user
       const amount = metadata.amount != null ? formatDollars(metadata.amount) : '?'
-      const side = metadata.side ?? metadata.outcome ?? '?'
-      return `[WHALE_BET] "${topic}" — ${shortened} bet ${amount} ${side} (weight: ${weight})`
+      const side = metadata.outcome ?? metadata.side ?? '?'
+      return `[WHALE_BET] "${topic}" — ${user} bet ${amount} ${side} (weight: ${weight})`
     }
     case 'MARKET_DISCOVERED': {
       const volume =

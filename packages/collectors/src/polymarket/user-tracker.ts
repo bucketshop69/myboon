@@ -28,6 +28,24 @@ interface GammaMarketLookup {
   title?: string
 }
 
+// Noise filter — skip short-term binary markets (updown slugs)
+const NOISE_SLUG_PATTERN = /updown/i
+
+function isNoisyMarket(topic: string, conditionId?: string): boolean {
+  if (NOISE_SLUG_PATTERN.test(topic)) return true
+  if (conditionId && NOISE_SLUG_PATTERN.test(conditionId)) return true
+  return false
+}
+
+// Weight based on bet size — returns 0 to skip
+function betWeight(amount?: number): number {
+  if (!amount || amount < 50) return 0
+  if (amount < 500) return 4
+  if (amount < 2000) return 6
+  if (amount < 10000) return 8
+  return 10
+}
+
 // Cache conditionId -> market title to avoid repeated lookups
 const marketTitleCache = new Map<string, string>()
 
@@ -68,6 +86,12 @@ async function pollUser(address: string): Promise<void> {
   if (newActivities.length === 0) return
 
   for (const activity of newActivities) {
+    const rawAmount = activity.size ?? activity.amount
+
+    // Skip tiny bets
+    const weight = betWeight(rawAmount)
+    if (weight === 0) continue
+
     // Try all possible field names for market title
     const topic =
       activity.title ??
@@ -75,14 +99,17 @@ async function pollUser(address: string): Promise<void> {
       activity.marketQuestion ??
       (activity.conditionId ? await resolveMarketTitle(activity.conditionId) : 'Unknown market')
 
+    // Skip noise markets
+    if (isNoisyMarket(topic, activity.conditionId)) continue
+
     const signal = {
       source: 'POLYMARKET',
       type: 'WHALE_BET',
       topic,
-      weight: 7,
+      weight,
       metadata: {
         user: address,
-        amount: activity.size ?? activity.amount,
+        amount: rawAmount,
         side: activity.side,
         outcome: activity.outcome,
         marketId: activity.conditionId ?? activity.asset,
