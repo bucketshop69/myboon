@@ -1,4 +1,4 @@
-import { supabase } from './client'
+import { supabase } from './supabase'
 import trackedUsers from './tracked-users.json'
 
 const DATA_API = 'https://data-api.polymarket.com'

@@ -21,7 +21,9 @@
   },
   "dependencies": {
     "@pnldotfun/entity-memory": "workspace:*",
-    "@pnldotfun/tx-parser": "workspace:*"
+    "@pnldotfun/shared": "workspace:*",
+    "@pnldotfun/tx-parser": "workspace:*",
+    "dotenv": "^17.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

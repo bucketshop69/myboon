@@ -45,3 +45,4 @@ coverage/
 
 # Misc
 *.local
+packages/brain/reports/narratives.csv

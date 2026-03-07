@@ -8,6 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@pnldotfun/shared": "workspace:*",
     "@supabase/supabase-js": "^2.39.0",
     "node-cron": "^3.0.3",
     "ws": "^8.16.0",

@@ -1,14 +1,18 @@
 import cron from 'node-cron'
-import { supabase, fetchTopMarkets, fetchOrderBook, fetchMarketBySlug } from './client'
-import type { Market, Signal } from './types'
+import { supabase } from './supabase'
+import { PolymarketClient } from '@pnldotfun/shared'
+import type { Market } from '@pnldotfun/shared'
+import type { Signal } from './signal-types'
 import pinnedSlugs from './pinned.json'
+
+const client = new PolymarketClient()
 
 export async function runDiscovery(): Promise<void> {
   console.log('[discovery] Running market discovery...')
 
   let topMarkets: Market[]
   try {
-    topMarkets = await fetchTopMarkets()
+    topMarkets = await client.getTopMarkets()
   } catch (err) {
     console.error('[discovery] Failed to fetch top markets:', err)
     return
@@ -19,7 +23,7 @@ export async function runDiscovery(): Promise<void> {
   const pinnedMarkets: Market[] = []
   for (const slug of pinnedSlugs) {
     try {
-      const market = await fetchMarketBySlug(slug)
+      const market = await client.getMarketBySlug(slug)
       if (!market) continue
       if (market.endDate && new Date(market.endDate) < now) continue
       pinnedMarkets.push(market)
@@ -46,7 +50,7 @@ export async function runDiscovery(): Promise<void> {
     let no_price: number | undefined
 
     try {
-      const book = await fetchOrderBook(yesTokenId)
+      const book = await client.getOrderBook(yesTokenId)
       if (book) {
         yes_price = book.bestAsk > 0 ? book.bestAsk : book.bestBid
         no_price = yes_price > 0 ? parseFloat((1 - yes_price).toFixed(4)) : undefined

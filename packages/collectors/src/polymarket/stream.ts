@@ -1,6 +1,6 @@
 import WebSocket from 'ws'
-import { supabase } from './client'
-import type { Signal } from './types'
+import { supabase } from './supabase'
+import type { Signal } from './signal-types'
 
 const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market'
 const SHIFT_THRESHOLD = parseFloat(process.env.ODDS_SHIFT_THRESHOLD || '0.05')
