@@ -145,18 +145,22 @@ function formatSignalLine(signal: Signal): string {
     case 'ODDS_SHIFT': {
       const from = metadata.shift_from ?? metadata.yes_price ?? '?'
       const to = metadata.shift_to ?? '?'
-      return `[ODDS_SHIFT] "${topic}" — yes_price ${from} → ${to} (weight: ${weight})`
+      const slug = metadata.slug ? ` [slug: ${metadata.slug}]` : ''
+      return `[ODDS_SHIFT] "${topic}"${slug} — yes_price ${from} → ${to} (weight: ${weight})`
     }
     case 'WHALE_BET': {
       const user = metadata.user ?? 'unknown'
       const amount = metadata.amount != null ? formatDollars(metadata.amount) : '?'
       const side = metadata.outcome ?? metadata.side ?? '?'
-      return `[WHALE_BET] "${topic}" — ${user} bet ${amount} ${side} (weight: ${weight})`
+      const price = metadata.yes_price != null ? ` at yes_price=${metadata.yes_price}` : ''
+      const slug = metadata.slug ? ` [slug: ${metadata.slug}]` : ''
+      return `[WHALE_BET] "${topic}"${slug} — ${user} bet ${amount} on ${side}${price} (weight: ${weight})`
     }
     case 'MARKET_DISCOVERED': {
-      const volume =
-        metadata.volume != null ? formatDollars(metadata.volume) : '?'
-      return `[MARKET_DISCOVERED] "${topic}" — volume ${volume} (weight: ${weight})`
+      const volume = metadata.volume != null ? formatDollars(metadata.volume) : '?'
+      const price = metadata.yes_price != null ? ` yes_price=${metadata.yes_price}` : ''
+      const slug = metadata.slug ? ` [slug: ${metadata.slug}]` : ''
+      return `[MARKET_DISCOVERED] "${topic}"${slug} — volume ${volume}${price} (weight: ${weight})`
     }
     default: {
       return `[${type}] "${topic}" (weight: ${weight})`
@@ -227,6 +231,9 @@ Return a JSON array only — no markdown, no explanation. Each element:
   const tools = toAnthropicDefinitions(analystTools)
   const messages: AnthropicMessage[] = [{ role: 'user', content: userPrompt }]
 
+  let consecutiveToolFailures = 0
+  const MAX_CONSECUTIVE_FAILURES = 3
+
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     const response = await callMinimax(messages, tools)
 
@@ -236,46 +243,47 @@ Return a JSON array only — no markdown, no explanation. Each element:
     }
 
     if (response.stop_reason === 'tool_use') {
-      // Extract tool_use blocks
       const toolUseBlocks = response.content.filter(
         (block): block is Extract<ContentBlock, { type: 'tool_use' }> =>
           block.type === 'tool_use'
       )
 
-      if (toolUseBlocks.length === 0) {
-        // Unexpected: stop_reason is tool_use but no tool blocks — treat as end_turn
-        break
-      }
+      if (toolUseBlocks.length === 0) break
 
-      // Execute each tool and collect results
-      const toolResults: {
-        type: 'tool_result'
-        tool_use_id: string
-        content: string
-      }[] = []
+      const toolResults: ContentBlock[] = []
+      let allFailed = true
 
       for (const block of toolUseBlocks) {
         console.log(`[narrative-analyst] Tool call: ${block.name}(${JSON.stringify(block.input)})`)
         const result = await executeTool(block.name, block.input)
-        console.log(`[narrative-analyst] Tool result: ${JSON.stringify(result)}`)
+        const resultStr = JSON.stringify(result)
+        console.log(`[narrative-analyst] Tool result: ${resultStr}`)
+        if (!(result as any)?.error) allFailed = false
         toolResults.push({
           type: 'tool_result',
           tool_use_id: block.id,
-          content: JSON.stringify(result),
+          content: resultStr,
         })
       }
 
-      // Feed tool results back as a user message
-      messages.push({
-        role: 'user',
-        content: toolResults,
-      } as AnthropicMessage)
+      if (allFailed) consecutiveToolFailures++
+      else consecutiveToolFailures = 0
 
-      // Continue loop for next LLM call
+      messages.push({ role: 'user', content: toolResults } as AnthropicMessage)
+
+      // If tools keep failing, tell LLM to stop and use signal data directly
+      if (consecutiveToolFailures >= MAX_CONSECUTIVE_FAILURES) {
+        console.log('[narrative-analyst] Tools unavailable — instructing LLM to proceed with signal data')
+        messages.push({
+          role: 'user',
+          content: 'Live market data tools are unavailable. Please proceed using only the signal data provided above and return your JSON analysis now.',
+        })
+        consecutiveToolFailures = 0
+      }
+
       continue
     }
 
-    // stop_reason === 'end_turn' (or anything else) — extract text and parse
     if (response.stop_reason === 'end_turn') {
       const textBlock = response.content.find((c) => c.type === 'text') as
         | Extract<ContentBlock, { type: 'text' }>
@@ -285,7 +293,6 @@ Return a JSON array only — no markdown, no explanation. Each element:
       return JSON.parse(clean) as NarrativeCluster[]
     }
 
-    // Unknown stop reason — break and try to parse whatever we have
     break
   }
 
