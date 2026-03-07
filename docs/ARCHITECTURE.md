@@ -92,7 +92,7 @@ Layer 3 — Influencers (runs every 2-4h)
   Human approves before posting (initially)
 ```
 
-**Current state:** Layer 1 (Analyst) working, writes to CSV. Next: write to Supabase narratives table.
+**Current state:** Layer 1 (Analyst) working — writes to Supabase `narratives` table (status=draft), uses tool calling to fetch live market odds mid-analysis. Next: Publisher brain reads drafts and marks published.
 
 **Multi-agent consensus plan (post-MVP):**
 
@@ -106,8 +106,9 @@ Layer 3 — Influencers (runs every 2-4h)
 
 ```
 packages/
+  shared/           Shared SDK — PolymarketClient, types (imported by brain, collectors, apps)
   tx-parser/        Solana tx parsing — Jupiter, Meteora, SOL transfers
-  brain/            All LLM agents — classifier, research, analyst, publisher (planned)
+  brain/            All LLM agents — classifier, research, analyst (live), publisher (planned)
   collectors/       Data ingestion scripts — Polymarket (live), X (planned), Kalshi (planned)
   entity-memory/    In-memory entity store (pre-persistence MVP)
 ```

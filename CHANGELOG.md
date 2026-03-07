@@ -10,6 +10,21 @@ All notable changes to PNLdotfun will be documented in this file.
 
 ### Added
 
+- `[#021]` `packages/shared` — new shared SDK package (`@pnldotfun/shared`)
+  - `PolymarketClient` class: `getTopMarkets`, `getMarketBySlug`, `getMarketByConditionId`, `getOrderBook`, `getMarketSnapshot`
+  - `MarketSnapshot` type: market + live yes/no prices + fetchedAt timestamp
+  - Config-injected (no env vars at module level) — usable from any package or app
+- `[#022]` Narrative analyst tool calling
+  - `packages/brain/src/analyst-tools/polymarket.tools.ts` — `get_market_snapshot` and `get_market_by_condition` tools
+  - Analyst upgraded with Anthropic tool-use loop (max 10 iterations) — fetches live odds mid-analysis before writing observations
+  - `get_market_by_condition` resolves conditionId then fetches full snapshot in one call
+  - System prompt updated: focus on interesting/unusual positions, no whale labels, flag contrarian bets (yes_price < 0.3)
+
+### Changed
+
+- `[#021]` `packages/collectors` refactored — Polymarket API logic moved to `@pnldotfun/shared`; Supabase singleton split into `supabase.ts`; signal types in `signal-types.ts`
+- `[#022]` Narrative analyst writes to Supabase `narratives` table (status=draft) instead of CSV
+
 - `packages/collectors` — new package for Polymarket signal ingestion
   - REST discovery: fetches top 20 Polymarket markets every 2h, writes `MARKET_DISCOVERED` signals to Supabase
   - WebSocket stream: subscribes to tracked markets, emits `ODDS_SHIFT` signal on >5% price movement
