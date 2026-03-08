@@ -1,5 +1,4 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { ProgressBar } from '@/features/feed/components/ProgressBar';
 import type { FeedItem } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
 
@@ -11,11 +10,6 @@ export function FeedCard({ item }: FeedCardProps) {
   return (
     <View style={[styles.card, item.isTop && styles.topCard]}>
       {item.isTop ? <View style={styles.topCardOverlay} /> : null}
-
-      <View style={styles.percentColumn}>
-        <Text style={styles.percentText}>{item.percent}%</Text>
-        <ProgressBar value={item.percent} />
-      </View>
 
       <View style={styles.body}>
         <View style={styles.metaRow}>
@@ -47,8 +41,6 @@ const styles = StyleSheet.create({
     borderColor: semantic.border.muted,
     backgroundColor: semantic.background.surface,
     padding: tokens.spacing.lg,
-    flexDirection: 'row',
-    gap: tokens.spacing.lg,
   },
   topCard: {
     ...tokens.shadow.card,
@@ -60,17 +52,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: semantic.background.topCardOverlay,
-  },
-  percentColumn: {
-    width: tokens.sizing.percentColumnWidth,
-    alignItems: 'center',
-    flexShrink: 0,
-  },
-  percentText: {
-    color: semantic.text.accent,
-    fontSize: tokens.fontSize.xl,
-    lineHeight: tokens.lineHeight.percent,
-    fontWeight: '700',
   },
   body: {
     flex: 1,
@@ -101,8 +82,8 @@ const styles = StyleSheet.create({
   },
   titleText: {
     color: semantic.text.primary,
-    fontSize: tokens.fontSize.lg,
-    lineHeight: tokens.lineHeight.title,
+    fontSize: tokens.fontSize.md,
+    lineHeight: tokens.lineHeight.body,
     fontWeight: '600',
     letterSpacing: tokens.letterSpacing.tighter,
   },

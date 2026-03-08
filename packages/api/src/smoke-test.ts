@@ -53,13 +53,19 @@ async function run() {
 
   // Predict — single curated market
   results.push(await check(
-    'GET /predict/markets/will-iran-change-its-regime-in-2025',
-    '/predict/markets/will-iran-change-its-regime-in-2025',
+    'GET /predict/markets/will-the-iranian-regime-fall-by-march-31',
+    '/predict/markets/will-the-iranian-regime-fall-by-march-31',
     (b) => {
       if (!b || typeof b !== 'object') return `expected market object, got ${typeof b}`
       return null
     }
   ))
+
+  // Predict — sports list
+  results.push(await check('GET /predict/sports/epl', '/predict/sports/epl', (b) => {
+    if (!Array.isArray(b)) return `expected array, got ${typeof b}`
+    return null
+  }))
 
   // Predict — non-curated slug should 404
   results.push(await check('GET /predict/markets/random-non-curated-slug (expect 404)', '/predict/markets/random-non-curated-slug', (b) => {

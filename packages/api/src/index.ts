@@ -3,7 +3,8 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
-import { ALL_SLUGS, CURATED_SLUGS } from './curated.js'
+import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
+import type { SupportedSport } from './curated.js'
 
 // --- env validation ---
 
@@ -45,6 +46,33 @@ async function gammaFetch(path: string): Promise<Response> {
 
 async function clobFetch(path: string, options?: RequestInit): Promise<Response> {
   return fetch(`${CLOB_BASE}/${path}`, options)
+}
+
+function parseStringArray(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input.filter((value): value is string => typeof value === 'string')
+  }
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed.filter((value): value is string => typeof value === 'string')
+      }
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+function parseNullableNumber(input: unknown): number | null {
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null
+  if (typeof input !== 'string') return null
+
+  const parsed = parseFloat(input)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 // --- app ---
@@ -114,12 +142,12 @@ app.get('/narratives/:id', async (c) => {
 
 // --- predict routes ---
 
+const CURATED_GEO_SET = new Set<string>(CURATED_GEOPOLITICS_SLUGS)
+
 // GET /predict/markets
 app.get('/predict/markets', async (c) => {
-  const geoSet = new Set(CURATED_SLUGS.geopolitics)
-
   const results = await Promise.allSettled(
-    ALL_SLUGS.map(async (slug) => {
+    CURATED_GEOPOLITICS_SLUGS.map(async (slug) => {
       const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
       if (!res.ok) throw new Error(`Gamma API ${res.status} for slug ${slug}`)
 
@@ -127,11 +155,7 @@ app.get('/predict/markets', async (c) => {
       if (!Array.isArray(data) || data.length === 0) throw new Error(`No market found for slug ${slug}`)
 
       const market = data[0] as Record<string, unknown>
-      const category = geoSet.has(slug) ? 'geopolitics' : 'sports'
-      const rawTokenIds = market.clobTokenIds ?? market.clob_token_ids ?? []
-      const clobTokenIds: string[] = typeof rawTokenIds === 'string'
-        ? JSON.parse(rawTokenIds)
-        : rawTokenIds as string[]
+      const clobTokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
 
       let yesPrice: number | null = null
       let noPrice: number | null = null
@@ -143,18 +167,18 @@ app.get('/predict/markets', async (c) => {
         ])
         if (yesPriceRes.status === 'fulfilled' && yesPriceRes.value.ok) {
           const body = await yesPriceRes.value.json() as Record<string, unknown>
-          yesPrice = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+          yesPrice = parseNullableNumber(body.price)
         }
         if (noPriceRes.status === 'fulfilled' && noPriceRes.value.ok) {
           const body = await noPriceRes.value.json() as Record<string, unknown>
-          noPrice = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+          noPrice = parseNullableNumber(body.price)
         }
       }
 
       return {
         slug,
         question: market.question ?? market.title ?? null,
-        category,
+        category: 'geopolitics',
         conditionId: market.conditionId ?? market.condition_id ?? null,
         clobTokenIds,
         yesPrice,
@@ -173,7 +197,7 @@ app.get('/predict/markets', async (c) => {
     if (result.status === 'fulfilled') {
       markets.push(result.value)
     } else {
-      console.error(`[api] GET /predict/markets — skipping ${ALL_SLUGS[i]}:`, result.reason)
+      console.error(`[api] GET /predict/markets — skipping ${CURATED_GEOPOLITICS_SLUGS[i]}:`, result.reason)
     }
   }
 
@@ -184,7 +208,7 @@ app.get('/predict/markets', async (c) => {
 app.get('/predict/markets/:slug', async (c) => {
   const slug = c.req.param('slug')
 
-  if (!ALL_SLUGS.includes(slug)) {
+  if (!CURATED_GEO_SET.has(slug)) {
     return c.json({ error: 'Not found' }, 404)
   }
 
@@ -284,7 +308,11 @@ app.get('/predict/history/:tokenId', async (c) => {
 
   const interval = c.req.query('interval') ?? '1h'
   const fidelityMap: Record<string, number> = { '1m': 1, '5m': 5, '1h': 60, '1d': 1440 }
-  const fidelity = fidelityMap[interval] ?? 60
+  const fidelity = fidelityMap[interval]
+
+  if (!fidelity) {
+    return c.json({ error: 'Bad request', detail: 'interval must be one of: 1m, 5m, 1h, 1d' }, 400)
+  }
 
   const endTs = Math.floor(Date.now() / 1000)
   const startTs = endTs - 7 * 24 * 60 * 60 // last 7 days
@@ -315,7 +343,7 @@ const SPORT_SERIES: Record<string, string> = {
 }
 
 app.get('/predict/sports/:sport', async (c) => {
-  const sport = c.req.param('sport').toLowerCase()
+  const sport = c.req.param('sport').toLowerCase() as SupportedSport
   const seriesId = SPORT_SERIES[sport]
 
   if (!seriesId) {
@@ -348,16 +376,12 @@ app.get('/predict/sports/:sport', async (c) => {
         // Each market = one outcome (home win / away win / draw)
         // groupItemTitle is the team name or "Draw"
         const outcomes = markets.map((m) => {
-          const outcomePrices = typeof m.outcomePrices === 'string'
-            ? JSON.parse(m.outcomePrices) as string[]
-            : (m.outcomePrices ?? []) as string[]
-          const clobTokenIds = typeof m.clobTokenIds === 'string'
-            ? JSON.parse(m.clobTokenIds) as string[]
-            : (m.clobTokenIds ?? []) as string[]
+          const outcomePrices = parseStringArray(m.outcomePrices)
+          const clobTokenIds = parseStringArray(m.clobTokenIds)
 
           return {
             label: m.groupItemTitle ?? m.question ?? null,  // "Burnley FC", "AFC Bournemouth", "Draw"
-            price: outcomePrices[0] ? parseFloat(outcomePrices[0]) : null, // Yes price = win probability
+            price: parseNullableNumber(outcomePrices[0]), // Yes price = win probability
             conditionId: m.conditionId ?? null,
             clobTokenIds,
           }
@@ -387,10 +411,11 @@ app.get('/predict/sports/:sport', async (c) => {
 
 // GET /predict/sports/:sport/:slug — full game detail with all outcomes
 app.get('/predict/sports/:sport/:slug', async (c) => {
-  const sport = c.req.param('sport').toLowerCase()
+  const sport = c.req.param('sport').toLowerCase() as SupportedSport
   const slug = c.req.param('slug')
+  const seriesId = SPORT_SERIES[sport]
 
-  if (!SPORT_SERIES[sport]) {
+  if (!seriesId) {
     return c.json({ error: `Unsupported sport. Supported: ${Object.keys(SPORT_SERIES).join(', ')}` }, 400)
   }
 
@@ -408,20 +433,28 @@ app.get('/predict/sports/:sport/:slug', async (c) => {
     }
 
     const e = events[0]
+    const eventSlug = String(e.slug ?? '')
+    const eventSeries = Array.isArray(e.series) ? e.series : []
+    const belongsToSeries = eventSeries.some((row) => {
+      if (!row || typeof row !== 'object') return false
+      const id = (row as Record<string, unknown>).id
+      return String(id) === seriesId
+    })
+
+    if (!eventSlug.startsWith(`${sport}-`) && !belongsToSeries) {
+      return c.json({ error: 'Not found' }, 404)
+    }
+
     const markets = (e.markets ?? []) as Record<string, unknown>[]
 
     const outcomes = markets.map((m) => {
-      const outcomePrices = typeof m.outcomePrices === 'string'
-        ? JSON.parse(m.outcomePrices) as string[]
-        : (m.outcomePrices ?? []) as string[]
-      const clobTokenIds = typeof m.clobTokenIds === 'string'
-        ? JSON.parse(m.clobTokenIds) as string[]
-        : (m.clobTokenIds ?? []) as string[]
+      const outcomePrices = parseStringArray(m.outcomePrices)
+      const clobTokenIds = parseStringArray(m.clobTokenIds)
 
       return {
         label: m.groupItemTitle ?? null,
         question: m.question ?? null,
-        price: outcomePrices[0] ? parseFloat(outcomePrices[0]) : null,
+        price: parseNullableNumber(outcomePrices[0]),
         conditionId: m.conditionId ?? null,
         clobTokenIds,
         liquidity: m.liquidityNum ?? null,
@@ -471,14 +504,14 @@ app.get('/predict/price/:tokenId', async (c) => {
 
     if (buyRes.status === 'fulfilled' && buyRes.value.ok) {
       const body = await buyRes.value.json() as Record<string, unknown>
-      buy = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+      buy = parseNullableNumber(body.price)
     } else {
       console.error(`[api] CLOB price buy failed for token ${tokenId}`)
     }
 
     if (sellRes.status === 'fulfilled' && sellRes.value.ok) {
       const body = await sellRes.value.json() as Record<string, unknown>
-      sell = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+      sell = parseNullableNumber(body.price)
     } else {
       console.error(`[api] CLOB price sell failed for token ${tokenId}`)
     }

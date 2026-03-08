@@ -8,6 +8,8 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="predict" options={{ headerShown: false }} />
+        <Stack.Screen name="predict-market/[slug]" options={{ headerShown: false }} />
+        <Stack.Screen name="predict-sport/[sport]/[slug]" options={{ headerShown: false }} />
         <Stack.Screen name="swap" options={{ headerShown: false }} />
         <Stack.Screen name="trade" options={{ headerShown: false }} />
       </Stack>

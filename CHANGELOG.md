@@ -25,6 +25,15 @@ All notable changes to PNLdotfun will be documented in this file.
   - Defines Feed tab UI states and client service contract for `GET /narratives`
 - `[#029]` Frontend PRD added: `docs/issues/029-swap-ui-service.md`
   - Defines Swap tab UI and GET-only Jupiter preview integration (token search, price, quote)
+- `[#026]` Predict backend expanded in `packages/api`
+  - Curated geopolitics market list/detail (`/predict/markets`, `/predict/markets/:slug`) now uses geopolitics-only slug set
+  - Dynamic sports endpoints added for EPL/UCL (`/predict/sports/:sport`, `/predict/sports/:sport/:slug`) with 3-outcome payloads
+  - Predict history endpoint available (`/predict/history/:tokenId`) with strict interval validation (`1m|5m|1h|1d`)
+  - API smoke test updated for new curated slug + sports coverage
+- `[#026]` Expo Predict UI implemented in `apps/hybrid-expo`
+  - New Predict tab feed with category filters and live cards for geopolitics + sports outcomes
+  - Detail routes/screens added: `/predict-market/[slug]` and `/predict-sport/[sport]/[slug]`
+  - New client service/types for predict list + detail API integration
 
 ### Changed
 
@@ -34,6 +43,7 @@ All notable changes to PNLdotfun will be documented in this file.
   - Near-term plan now documents Feed live + Swap GET-preview
   - Removed stale “Next: Feed API (#025)” note
   - Added current `apps/hybrid-expo` route/service snapshot
+- Feed card layout in Expo updated to remove the left percent/progress column and use a full-width card body
 
 - `packages/collectors` — new package for Polymarket signal ingestion
   - REST discovery: fetches top 20 Polymarket markets every 2h, writes `MARKET_DISCOVERED` signals to Supabase

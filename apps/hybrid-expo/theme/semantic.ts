@@ -28,6 +28,18 @@ export const semantic = {
     positive: tokens.colors.viridian,
     negative: tokens.colors.vermillion,
   },
+  predict: {
+    cardFeatured: 'rgba(200, 184, 112, 0.2)',
+    rowBorderSoft: 'rgba(48, 47, 32, 0.35)',
+    badgeGeoBg: 'rgba(200, 184, 112, 0.1)',
+    badgeSportBg: 'rgba(74, 140, 111, 0.1)',
+    outcomeYesBg: 'rgba(74, 140, 111, 0.12)',
+    outcomeYesBorder: 'rgba(74, 140, 111, 0.3)',
+    outcomeNoBg: 'rgba(217, 79, 61, 0.12)',
+    outcomeNoBorder: 'rgba(217, 79, 61, 0.3)',
+    outcomeDrawBg: 'rgba(90, 88, 64, 0.18)',
+    outcomeDrawBorder: 'rgba(90, 88, 64, 0.3)',
+  },
 } as const;
 
 export type SemanticTheme = typeof semantic;

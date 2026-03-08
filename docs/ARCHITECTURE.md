@@ -21,7 +21,7 @@ A mobile-first narrative intelligence app for on-chain traders and prediction ma
 
 ## Hackathon Plan (near-term)
 
-Mobile app with Feed live and Swap in GET-preview mode. Predict/Trade remain WIP placeholders. Clean demo story:
+Mobile app with Feed live, Predict live (list + detail), and Swap in GET-preview mode. Trade remains WIP. Clean demo story:
 > "This feed is powered by on-chain signals + prediction market intelligence + a multi-agent brain."
 
 ---
@@ -169,8 +169,11 @@ Hono server, runs on VPS alongside collectors and brain. All Polymarket calls pr
 
 **Predict endpoints (curated markets only — edit `src/curated.ts`):**
 
-- `GET /predict/markets` — all curated markets with live yes/no prices
-- `GET /predict/markets/:slug` — single market detail (404 if not curated)
+- `GET /predict/markets` — curated geopolitics markets with live yes/no prices
+- `GET /predict/markets/:slug` — single curated geopolitics market detail (404 if not curated)
+- `GET /predict/sports/:sport` — dynamic sports market list (`epl`, `ucl`) with 3-way outcomes
+- `GET /predict/sports/:sport/:slug` — full sports market detail with per-outcome best bid/ask
+- `GET /predict/history/:tokenId?interval=1m|5m|1h|1d` — 7-day price history (strict interval validation)
 - `POST /predict/order` — forward signed order to Polymarket CLOB
 - `GET /predict/orders/:address` — user open orders
 - `GET /predict/price/:tokenId` — best buy/sell price
@@ -183,16 +186,19 @@ x402 micropayments on Solana — post-MVP.
 
 ## Mobile App (`apps/hybrid-expo`) — CURRENT
 
-Expo Router stack with 4 routes:
+Expo Router stack with Predict detail routes:
 
 - `/` Feed (live data from API)
-- `/predict` placeholder screen
+- `/predict` live markets feed (geopolitics + sports)
+- `/predict-market/[slug]` geopolitics market detail
+- `/predict-sport/[sport]/[slug]` sports market detail
 - `/swap` interactive preview screen (no execution)
 - `/trade` placeholder screen
 
 Service layer split:
 
 - Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives`
+- Predict service (`features/predict/predict.api.ts`) consumes curated/sports list + detail endpoints
 - Swap service (`features/swap/swap.api.ts`) consumes Jupiter GET endpoints (`tokens`, `price`, `quote`)
 
 Execution policy:
