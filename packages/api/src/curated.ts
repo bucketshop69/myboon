@@ -14,8 +14,8 @@ export const CURATED_SLUGS = {
     'iran-leader-end-of-2026',
   ],
   sports: [
-    'champions-league-winner-2024-25',
-    'premier-league-winner-2024-25',
+    'ucl',
+    'epl',
   ],
 }
 
