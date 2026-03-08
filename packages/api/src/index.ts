@@ -306,6 +306,70 @@ app.get('/predict/history/:tokenId', async (c) => {
   }
 })
 
+// GET /predict/sports/:sport
+// Dynamically fetches live games for a sport — no hardcoded slugs needed.
+// Supported: epl, ucl
+const SPORT_SERIES: Record<string, string> = {
+  epl: '10188',
+  ucl: '10204',
+}
+
+app.get('/predict/sports/:sport', async (c) => {
+  const sport = c.req.param('sport').toLowerCase()
+  const seriesId = SPORT_SERIES[sport]
+
+  if (!seriesId) {
+    return c.json({ error: `Unsupported sport. Supported: ${Object.keys(SPORT_SERIES).join(', ')}` }, 400)
+  }
+
+  try {
+    const res = await gammaFetch(
+      `events?series_id=${seriesId}&active=true&closed=false&limit=20&order=start_date&ascending=true`
+    )
+
+    if (!res.ok) {
+      console.error(`[api] Gamma API error ${res.status} for sport ${sport}`)
+      return c.json({ error: 'Internal server error' }, 500)
+    }
+
+    const events = await res.json() as Record<string, unknown>[]
+
+    // Filter out -more-markets variants, keep primary game markets only
+    const games = events
+      .filter((e) => !String(e.slug ?? '').endsWith('-more-markets'))
+      .map((e) => {
+        const markets = (e.markets ?? []) as Record<string, unknown>[]
+        const primary = markets[0] ?? {}
+        const outcomePrices = typeof primary.outcomePrices === 'string'
+          ? JSON.parse(primary.outcomePrices) as string[]
+          : (primary.outcomePrices ?? []) as string[]
+
+        return {
+          slug: e.slug,
+          title: e.title,
+          sport,
+          startDate: e.startDate,
+          endDate: e.endDate,
+          image: e.image,
+          active: e.active,
+          volume24h: e.volume24hr,
+          liquidity: e.liquidity,
+          conditionId: primary.conditionId ?? null,
+          clobTokenIds: typeof primary.clobTokenIds === 'string'
+            ? JSON.parse(primary.clobTokenIds)
+            : (primary.clobTokenIds ?? []),
+          yesPrice: outcomePrices[0] ? parseFloat(outcomePrices[0]) : null,
+          noPrice: outcomePrices[1] ? parseFloat(outcomePrices[1]) : null,
+        }
+      })
+
+    return c.json(games)
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/sports/${sport}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 // GET /predict/price/:tokenId
 app.get('/predict/price/:tokenId', async (c) => {
   const tokenId = c.req.param('tokenId')
