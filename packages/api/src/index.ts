@@ -324,7 +324,7 @@ app.get('/predict/sports/:sport', async (c) => {
 
   try {
     const res = await gammaFetch(
-      `events?series_id=${seriesId}&active=true&closed=false&limit=20&order=start_date&ascending=true`
+      `events?series_id=${seriesId}&active=true&closed=false&limit=20`
     )
 
     if (!res.ok) {
@@ -332,7 +332,12 @@ app.get('/predict/sports/:sport', async (c) => {
       return c.json({ error: 'Internal server error' }, 500)
     }
 
-    const events = await res.json() as Record<string, unknown>[]
+    const raw = await res.json()
+    if (!Array.isArray(raw)) {
+      console.error(`[api] Gamma API unexpected response for sport ${sport}:`, raw)
+      return c.json({ error: 'Internal server error' }, 500)
+    }
+    const events = raw as Record<string, unknown>[]
 
     // Filter out -more-markets variants, keep primary game markets only
     const games = events
