@@ -7,11 +7,12 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "hono": "^4.6.0",
     "@hono/node-server": "^1.13.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "hono": "^4.6.0"
   },
   "devDependencies": {
+    "@types/node": "^25.3.5",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }
