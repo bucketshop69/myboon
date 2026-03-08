@@ -1,17 +1,21 @@
 {
   "expo": {
-    "name": "hybrid-expo",
-    "slug": "hybrid-expo",
+    "name": "myboon",
+    "slug": "myboon",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "hybridexpo",
+    "scheme": "myboon",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "xyz.myboon.app",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "xyz.myboon.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

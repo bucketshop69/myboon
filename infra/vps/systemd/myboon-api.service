@@ -1,0 +1,14 @@
+[Unit]
+Description=MYBOON API Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/myboon/packages/api
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

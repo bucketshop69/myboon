@@ -6,6 +6,11 @@
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
+    "android:local": "expo run:android",
+    "android:apk": "eas build --platform android --profile preview",
+    "android:dapp-store": "eas build --platform android --profile dapp-store",
+    "android:aab": "eas build --platform android --profile production",
+    "android:list-builds": "eas build:list --platform android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint"
@@ -49,6 +54,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eas-cli": "^16.18.2",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
