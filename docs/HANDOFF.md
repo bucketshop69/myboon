@@ -1,52 +1,43 @@
-# Handoff — 2026-03-06
+# Handoff — 2026-03-08
 
 ## What Was Done This Session
 
-### Polymarket Collector (packages/collectors) — LIVE on VPS
+### Publisher Brain (packages/brain) — DONE
 
-- Discovery: fetches top 20 markets by volume every 2h, merges with pinned.json, filters expired
-- Stream: WebSocket /ws/market, emits ODDS_SHIFT on >5% price move
-- User tracker: polls 18 whale addresses every 5min, emits WHALE_BET
-- Noise filter: skips `updown` slug markets (5-min binary crypto bets)
-- Whale threshold: skips bets under $50, weight scales by amount (4/6/8/10)
-- Supabase tables live: `signals`, `polymarket_tracked`
-- `processed` column added to signals — analyst marks true after reading
+- `src/publisher.ts` — reads `narratives` (status=draft, score >= 7), runs tool-use loop per narrative, writes to `published_narratives`, marks status published/rejected. Runs every 30min.
+- `src/publisher-tools/firecrawl.tools.ts` — `search_news` tool via Firecrawl `/v2/search`. Returns `data.web[]` results.
+- `src/publisher-tools/supabase.tools.ts` — `search_published` tool — checks own DB before external search.
+- Sports narrative detection via regex in code (`isSportsNarrative()`), passes empty `[]` tools to LLM so sports narratives skip search (still published, just no external research).
+- Publisher gives own `publisher_score` — only saves if >= 8, else marks rejected.
+- System prompt includes today's date dynamically (`buildSystemPrompt()`).
+- Consecutive tool failure fallback — after 3 failures, LLM told to proceed with signal data only.
+- `packages/brain/package.json` — added `publisher` script.
 
-### Narrative Analyst (packages/brain) — RUNNING LOCALLY
+### Supabase Tables Added
 
-- Fetches unprocessed signals from Supabase every 15min
-- Sends to MiniMax M2.5 for narrative clustering
-- Prints terminal report + appends to reports/narratives.csv
-- Marks signals processed=true after each run
-- Full wallet addresses passed to LLM (no truncation)
-- Output quality confirmed good from overnight CSV data
+- `narratives` — analyst output (done in previous session)
+- `published_narratives` — publisher output: `narrative_id`, `content_small`, `content_full`, `reasoning`, `tags`, `priority`, `publisher_score`
 
 ### Docs
 
-- ARCHITECTURE.md written — product vision, brain layers, data flow, decisions log
-- PROCESS.md rewritten — lean workflow, reviewer agent rule
-- MEMORY.md updated
+- `docs/issues/023-publisher-brain.md` — PRD written and implemented
+- `docs/ARCHITECTURE.md` — updated to reflect Layer 2 (Publisher) complete
 
 ---
 
 ## What's Next (in order)
 
-1. **Narratives → Supabase** — update narrative-analyst.ts to write to `narratives` table instead of CSV. Create the table first in Supabase SQL editor.
-2. **Publisher brain** — reads narratives (status=draft), picks best 3-5, marks published
-3. **Feed API endpoint** — serves published narratives (simple REST)
-4. **Mobile Feed tab** — Expo app, reads from Feed API
-5. **Influencer brain** — X post drafts, human approves manually to start
+1. **Feed API** (issue 025) — REST endpoint serving `published_narratives`. Simple GET /narratives list + GET /narratives/:id full. To be decided: Supabase Edge Function vs standalone Hono/Express server.
+2. **Mobile Feed tab** — Expo app reads from Feed API, renders `content_small` cards.
+3. **Influencer brain** (issue 024) — X post drafts from published narratives, human approves manually.
 
 ---
 
 ## Open Items
 
-- Supabase `narratives` table not created yet — needs to happen before #1 above
-- VPS collector stopped for now — restart when ready to collect fresh data
-- reports/narratives.csv has good sample data from 2026-03-05 session
-- Kalshi as signal source not started
-- On-chain signals not yet routed to Supabase signals table
-- X API collector not started
+- VPS: Polymarket collector should still be running. Brain (analyst + publisher) can be moved to VPS once Feed API is live.
+- Kalshi, X API, on-chain signals — not started
+- Feed API host TBD — could be a simple Hono server in `packages/api` or Supabase Edge Functions
 
 ---
 

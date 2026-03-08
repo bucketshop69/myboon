@@ -17,6 +17,7 @@
     "demo:replay": "pnpm run build && node dist/demo-replay.js",
     "research:smoke": "pnpm run build && node dist/research-smoke.js",
     "narrative:analyst": "tsx src/narrative-analyst.ts",
+    "publisher": "tsx src/publisher.ts",
     "test": "echo \"No tests configured\""
   },
   "dependencies": {
