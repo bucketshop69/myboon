@@ -339,10 +339,24 @@ app.get('/predict/sports/:sport', async (c) => {
       .filter((e) => !String(e.slug ?? '').endsWith('-more-markets'))
       .map((e) => {
         const markets = (e.markets ?? []) as Record<string, unknown>[]
-        const primary = markets[0] ?? {}
-        const outcomePrices = typeof primary.outcomePrices === 'string'
-          ? JSON.parse(primary.outcomePrices) as string[]
-          : (primary.outcomePrices ?? []) as string[]
+
+        // Each market = one outcome (home win / away win / draw)
+        // groupItemTitle is the team name or "Draw"
+        const outcomes = markets.map((m) => {
+          const outcomePrices = typeof m.outcomePrices === 'string'
+            ? JSON.parse(m.outcomePrices) as string[]
+            : (m.outcomePrices ?? []) as string[]
+          const clobTokenIds = typeof m.clobTokenIds === 'string'
+            ? JSON.parse(m.clobTokenIds) as string[]
+            : (m.clobTokenIds ?? []) as string[]
+
+          return {
+            label: m.groupItemTitle ?? m.question ?? null,  // "Burnley FC", "AFC Bournemouth", "Draw"
+            price: outcomePrices[0] ? parseFloat(outcomePrices[0]) : null, // Yes price = win probability
+            conditionId: m.conditionId ?? null,
+            clobTokenIds,
+          }
+        })
 
         return {
           slug: e.slug,
@@ -354,12 +368,8 @@ app.get('/predict/sports/:sport', async (c) => {
           active: e.active,
           volume24h: e.volume24hr,
           liquidity: e.liquidity,
-          conditionId: primary.conditionId ?? null,
-          clobTokenIds: typeof primary.clobTokenIds === 'string'
-            ? JSON.parse(primary.clobTokenIds)
-            : (primary.clobTokenIds ?? []),
-          yesPrice: outcomePrices[0] ? parseFloat(outcomePrices[0]) : null,
-          noPrice: outcomePrices[1] ? parseFloat(outcomePrices[1]) : null,
+          negRisk: e.negRisk ?? false,
+          outcomes, // [{label: "Burnley FC", price: 0.235}, {label: "AFC Bournemouth", price: 0.45}, {label: "Draw", price: 0.315}]
         }
       })
 
