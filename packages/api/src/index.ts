@@ -380,6 +380,73 @@ app.get('/predict/sports/:sport', async (c) => {
   }
 })
 
+// GET /predict/sports/:sport/:slug — full game detail with all outcomes
+app.get('/predict/sports/:sport/:slug', async (c) => {
+  const sport = c.req.param('sport').toLowerCase()
+  const slug = c.req.param('slug')
+
+  if (!SPORT_SERIES[sport]) {
+    return c.json({ error: `Unsupported sport. Supported: ${Object.keys(SPORT_SERIES).join(', ')}` }, 400)
+  }
+
+  try {
+    const res = await gammaFetch(`events?slug=${encodeURIComponent(slug)}`)
+
+    if (!res.ok) {
+      console.error(`[api] Gamma API error ${res.status} for slug ${slug}`)
+      return c.json({ error: 'Internal server error' }, 500)
+    }
+
+    const events = await res.json() as Record<string, unknown>[]
+    if (!Array.isArray(events) || events.length === 0) {
+      return c.json({ error: 'Not found' }, 404)
+    }
+
+    const e = events[0]
+    const markets = (e.markets ?? []) as Record<string, unknown>[]
+
+    const outcomes = markets.map((m) => {
+      const outcomePrices = typeof m.outcomePrices === 'string'
+        ? JSON.parse(m.outcomePrices) as string[]
+        : (m.outcomePrices ?? []) as string[]
+      const clobTokenIds = typeof m.clobTokenIds === 'string'
+        ? JSON.parse(m.clobTokenIds) as string[]
+        : (m.clobTokenIds ?? []) as string[]
+
+      return {
+        label: m.groupItemTitle ?? null,
+        question: m.question ?? null,
+        price: outcomePrices[0] ? parseFloat(outcomePrices[0]) : null,
+        conditionId: m.conditionId ?? null,
+        clobTokenIds,
+        liquidity: m.liquidityNum ?? null,
+        volume24h: m.volume24hr ?? null,
+        bestBid: m.bestBid ?? null,
+        bestAsk: m.bestAsk ?? null,
+        acceptingOrders: m.acceptingOrders ?? null,
+      }
+    })
+
+    return c.json({
+      slug: e.slug,
+      title: e.title,
+      description: e.description,
+      sport,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      image: e.image,
+      active: e.active,
+      negRisk: e.negRisk ?? false,
+      volume24h: e.volume24hr,
+      liquidity: e.liquidity,
+      outcomes,
+    })
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/sports/${sport}/${slug}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 // GET /predict/price/:tokenId
 app.get('/predict/price/:tokenId', async (c) => {
   const tokenId = c.req.param('tokenId')
