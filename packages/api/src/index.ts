@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
+import { ALL_SLUGS, CURATED_SLUGS } from './curated.js'
 
 // --- env validation ---
 
@@ -31,6 +32,19 @@ function supabaseHeaders(): Record<string, string> {
 
 async function supabaseFetch(path: string): Promise<Response> {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: supabaseHeaders() })
+}
+
+// --- polymarket helpers ---
+
+const GAMMA_BASE = 'https://gamma-api.polymarket.com'
+const CLOB_BASE = 'https://clob.polymarket.com'
+
+async function gammaFetch(path: string): Promise<Response> {
+  return fetch(`${GAMMA_BASE}/${path}`)
+}
+
+async function clobFetch(path: string, options?: RequestInit): Promise<Response> {
+  return fetch(`${CLOB_BASE}/${path}`, options)
 }
 
 // --- app ---
@@ -94,6 +108,201 @@ app.get('/narratives/:id', async (c) => {
     return c.json(data[0])
   } catch (err) {
     console.error(`[api] Unexpected error in GET /narratives/${id}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// --- predict routes ---
+
+// GET /predict/markets
+app.get('/predict/markets', async (c) => {
+  const geoSet = new Set(CURATED_SLUGS.geopolitics)
+
+  const results = await Promise.allSettled(
+    ALL_SLUGS.map(async (slug) => {
+      const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
+      if (!res.ok) throw new Error(`Gamma API ${res.status} for slug ${slug}`)
+
+      const data = await res.json() as unknown[]
+      if (!Array.isArray(data) || data.length === 0) throw new Error(`No market found for slug ${slug}`)
+
+      const market = data[0] as Record<string, unknown>
+      const category = geoSet.has(slug) ? 'geopolitics' : 'sports'
+      const clobTokenIds = (market.clobTokenIds ?? market.clob_token_ids ?? []) as string[]
+
+      let yesPrice: number | null = null
+      let noPrice: number | null = null
+
+      if (clobTokenIds.length >= 2) {
+        const [yesPriceRes, noPriceRes] = await Promise.allSettled([
+          clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[0])}&side=buy`),
+          clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[1])}&side=buy`),
+        ])
+        if (yesPriceRes.status === 'fulfilled' && yesPriceRes.value.ok) {
+          const body = await yesPriceRes.value.json() as Record<string, unknown>
+          yesPrice = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+        }
+        if (noPriceRes.status === 'fulfilled' && noPriceRes.value.ok) {
+          const body = await noPriceRes.value.json() as Record<string, unknown>
+          noPrice = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+        }
+      }
+
+      return {
+        slug,
+        question: market.question ?? market.title ?? null,
+        category,
+        conditionId: market.conditionId ?? market.condition_id ?? null,
+        clobTokenIds,
+        yesPrice,
+        noPrice,
+        volume24h: market.volume24hr ?? market.volume_24h ?? market.volume ?? null,
+        endDate: market.endDate ?? market.end_date ?? null,
+        active: market.active ?? null,
+        image: market.image ?? market.imageUrl ?? null,
+      }
+    })
+  )
+
+  const markets: unknown[] = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result.status === 'fulfilled') {
+      markets.push(result.value)
+    } else {
+      console.error(`[api] GET /predict/markets — skipping ${ALL_SLUGS[i]}:`, result.reason)
+    }
+  }
+
+  return c.json(markets)
+})
+
+// GET /predict/markets/:slug
+app.get('/predict/markets/:slug', async (c) => {
+  const slug = c.req.param('slug')
+
+  if (!ALL_SLUGS.includes(slug)) {
+    return c.json({ error: 'Not found' }, 404)
+  }
+
+  try {
+    const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
+    if (!res.ok) {
+      console.error(`[api] Gamma API error ${res.status} for slug ${slug}`)
+      return c.json({ error: 'Internal server error' }, 500)
+    }
+
+    const data = await res.json() as unknown[]
+    if (!Array.isArray(data) || data.length === 0) {
+      return c.json({ error: 'Not found' }, 404)
+    }
+
+    return c.json(data[0])
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/markets/${slug}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// POST /predict/order
+app.post('/predict/order', async (c) => {
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  try {
+    const res = await clobFetch('order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    const responseText = await res.text()
+
+    if (!res.ok) {
+      console.error(`[api] CLOB POST /order error ${res.status}: ${responseText}`)
+      let detail = 'Order rejected by exchange'
+      try {
+        const parsed = JSON.parse(responseText) as Record<string, unknown>
+        if (typeof parsed.error === 'string') detail = parsed.error
+        else if (typeof parsed.message === 'string') detail = parsed.message
+      } catch { /* keep generic detail */ }
+      return c.json({ error: 'Order rejected', detail }, 502)
+    }
+
+    let responseData: unknown
+    try {
+      responseData = JSON.parse(responseText)
+    } catch {
+      responseData = { raw: responseText }
+    }
+
+    return c.json(responseData)
+  } catch (err) {
+    console.error('[api] Unexpected error in POST /predict/order:', err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// GET /predict/orders/:address
+app.get('/predict/orders/:address', async (c) => {
+  const address = c.req.param('address')
+
+  if (!address || address.trim() === '') {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  try {
+    const res = await clobFetch(`orders?maker_address=${encodeURIComponent(address)}`)
+    if (!res.ok) {
+      console.error(`[api] CLOB GET /orders error ${res.status}`)
+      return c.json({ error: 'Internal server error' }, 500)
+    }
+
+    return c.json(await res.json())
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/orders/${address}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// GET /predict/price/:tokenId
+app.get('/predict/price/:tokenId', async (c) => {
+  const tokenId = c.req.param('tokenId')
+
+  if (!tokenId || tokenId.trim() === '') {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  try {
+    const [buyRes, sellRes] = await Promise.allSettled([
+      clobFetch(`price?token_id=${encodeURIComponent(tokenId)}&side=buy`),
+      clobFetch(`price?token_id=${encodeURIComponent(tokenId)}&side=sell`),
+    ])
+
+    let buy: number | null = null
+    let sell: number | null = null
+
+    if (buyRes.status === 'fulfilled' && buyRes.value.ok) {
+      const body = await buyRes.value.json() as Record<string, unknown>
+      buy = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+    } else {
+      console.error(`[api] CLOB price buy failed for token ${tokenId}`)
+    }
+
+    if (sellRes.status === 'fulfilled' && sellRes.value.ok) {
+      const body = await sellRes.value.json() as Record<string, unknown>
+      sell = typeof body.price === 'number' ? body.price : parseFloat(body.price as string) || null
+    } else {
+      console.error(`[api] CLOB price sell failed for token ${tokenId}`)
+    }
+
+    return c.json({ tokenId, buy, sell })
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/price/${tokenId}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
