@@ -151,11 +151,25 @@ packages/
 
 ---
 
-## API Layer (planned)
+## API Layer (`packages/api`) — LIVE
 
-- `GET /narratives` — top published narratives (free, limited)
-- `GET /narratives/:id` — full narrative deep-dive (x402 gated)
-- x402 micropayments on Solana
+Hono server, runs on VPS alongside collectors and brain. All Polymarket calls proxied through VPS to bypass geo-restriction.
+
+**Feed endpoints:**
+- `GET /health` — liveness
+- `GET /narratives` — published narratives list (limit 20, priority desc)
+- `GET /narratives/:id` — full narrative detail
+
+**Predict endpoints (curated markets only — edit `src/curated.ts`):**
+- `GET /predict/markets` — all curated markets with live yes/no prices
+- `GET /predict/markets/:slug` — single market detail (404 if not curated)
+- `POST /predict/order` — forward signed order to Polymarket CLOB
+- `GET /predict/orders/:address` — user open orders
+- `GET /predict/price/:tokenId` — best buy/sell price
+
+**Smoke test:** `API_BASE=http://localhost:3000 pnpm --filter @pnldotfun/api smoke`
+
+x402 micropayments on Solana — post-MVP.
 
 ---
 
