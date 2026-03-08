@@ -1,4 +1,4 @@
-# pnldotfun — Architecture & Product Vision
+# myboon — Architecture & Product Vision
 
 ## The Product
 
@@ -178,7 +178,7 @@ Hono server, runs on VPS alongside collectors and brain. All Polymarket calls pr
 - `GET /predict/orders/:address` — user open orders
 - `GET /predict/price/:tokenId` — best buy/sell price
 
-**Smoke test:** `API_BASE=http://localhost:3000 pnpm --filter @pnldotfun/api smoke`
+**Smoke test:** `API_BASE=http://localhost:3000 pnpm --filter @myboon/api smoke`
 
 x402 micropayments on Solana — post-MVP.
 

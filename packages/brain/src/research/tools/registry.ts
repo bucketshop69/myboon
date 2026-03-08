@@ -1,4 +1,4 @@
-import type { EntityMemory } from '@pnldotfun/entity-memory';
+import type { EntityMemory } from '@myboon/entity-memory';
 
 import { JupiterTokensClient } from '../data-sources/jupiter-tokens.client.js';
 import { createDataSourceTools } from './data-source.tools.js';

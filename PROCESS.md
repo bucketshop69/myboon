@@ -1,4 +1,4 @@
-# PROCESS.md — pnldotfun Development Process
+# PROCESS.md — myboon Development Process
 
 ## How We Work
 

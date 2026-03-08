@@ -1,8 +1,8 @@
 import { mkdir, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { StreamPipeline } from '@pnldotfun/tx-parser';
-import { createEntityMemory, type EntityMemory } from '@pnldotfun/entity-memory';
+import { StreamPipeline } from '@myboon/tx-parser';
+import { createEntityMemory, type EntityMemory } from '@myboon/entity-memory';
 
 import { ClassifierBrain } from './classifier.js';
 import { ResearchAgent } from './research/agent.js';

@@ -1,4 +1,4 @@
-# Contributing to pnldotfun
+# Contributing to myboon
 
 Thank you for your interest in contributing! This guide explains how to work with our codebase effectively.
 
@@ -20,7 +20,7 @@ Before submitting any code, ensure:
 ## Project Structure
 
 ```
-pnldotfun/
+myboon/
 ├── packages/
 │   └── tx-parser/          # Transaction parsing engine
 │       └── src/
@@ -58,8 +58,8 @@ pnldotfun/
 
 ```bash
 # Clone and install
-git clone https://github.com/bucketshop69/pnldotfun.git
-cd pnldotfun
+git clone https://github.com/bucketshop69/myboon.git
+cd myboon
 pnpm install
 
 # Configure environment

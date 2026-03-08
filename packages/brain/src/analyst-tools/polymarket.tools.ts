@@ -1,4 +1,4 @@
-import type { PolymarketClient } from '@pnldotfun/shared'
+import type { PolymarketClient } from '@myboon/shared'
 import type { ResearchTool } from '../research/types/mcp.js'
 
 export function createPolymarketTools(client: PolymarketClient): ResearchTool<any>[] {

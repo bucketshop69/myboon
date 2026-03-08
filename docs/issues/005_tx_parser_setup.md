@@ -2,7 +2,7 @@
 
 ## Goal
 
-Create `packages/tx-parser` as a standalone, strict TypeScript package in the pnldotfun monorepo.
+Create `packages/tx-parser` as a standalone, strict TypeScript package in the myboon monorepo.
 
 ## Why
 
@@ -93,8 +93,8 @@ EXAMPLE_WALLET=7iNJ7CLNT8UBPANxkkrsURjzaktbomCVa93N1sKcVo9C
 - [ ] `packages/tx-parser/` exists
 - [ ] root `.env` exists with Helius RPC + example wallet
 - [ ] TypeScript strict mode is enabled
-- [ ] `pnpm --filter @pnldotfun/tx-parser build` works
-- [ ] `pnpm --filter @pnldotfun/tx-parser test` works
+- [ ] `pnpm --filter @myboon/tx-parser build` works
+- [ ] `pnpm --filter @myboon/tx-parser test` works
 
 ---
 

@@ -1,14 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { createEntityMemory } from '@pnldotfun/entity-memory';
+import { createEntityMemory } from '@myboon/entity-memory';
 import {
   fetchWalletTransactions,
   formatTransactionForLLM,
   isRelevantTransaction,
   loadAppConfig,
   parseSingleTransaction
-} from '@pnldotfun/tx-parser';
+} from '@myboon/tx-parser';
 
 import { ClassifierBrain } from './classifier.js';
 import { ResearchAgent } from './research/agent.js';

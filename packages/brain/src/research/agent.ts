@@ -1,4 +1,4 @@
-import type { EntityMemory, ResearchResult } from '@pnldotfun/entity-memory';
+import type { EntityMemory, ResearchResult } from '@myboon/entity-memory';
 
 import { MiniMaxToolClient, toAnthropicToolResultMessage, type AnthropicMessage } from './llm/minimax.js';
 import { RESEARCH_SYSTEM_PROMPT } from './prompts/research.js';

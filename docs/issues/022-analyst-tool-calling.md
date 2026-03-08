@@ -50,7 +50,7 @@ Output: { slug, title, yesPrice, noPrice, volume } or null
 Use:    Resolve conditionId from WHALE_BET metadata to get market context
 ```
 
-Both use `PolymarketClient` from `@pnldotfun/shared` (depends on issue 021).
+Both use `PolymarketClient` from `@myboon/shared` (depends on issue 021).
 
 ---
 
@@ -114,7 +114,7 @@ Or — simpler for the analyst — create the tool list inline in the analyst wi
 
 ## Dependencies
 
-- **Issue 021 must be completed first** — analyst tools use `PolymarketClient` from `@pnldotfun/shared`
+- **Issue 021 must be completed first** — analyst tools use `PolymarketClient` from `@myboon/shared`
 
 ---
 

@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { PolymarketClient } from '@pnldotfun/shared'
+import { PolymarketClient } from '@myboon/shared'
 import { createPolymarketTools } from './analyst-tools/polymarket.tools.js'
 import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp.js'
 

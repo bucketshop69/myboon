@@ -1,4 +1,4 @@
-import type { ResearchResult } from '@pnldotfun/entity-memory';
+import type { ResearchResult } from '@myboon/entity-memory';
 
 export type JsonSchema = {
   type: 'object';

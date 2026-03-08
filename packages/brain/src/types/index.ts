@@ -1,5 +1,5 @@
-import type { StreamPipelineConfig } from '@pnldotfun/tx-parser';
-import type { ResearchResult } from '@pnldotfun/entity-memory';
+import type { StreamPipelineConfig } from '@myboon/tx-parser';
+import type { ResearchResult } from '@myboon/entity-memory';
 
 import type { ResearchAgentConfig, ResearchAuditSummary } from '../research/types/mcp.js';
 

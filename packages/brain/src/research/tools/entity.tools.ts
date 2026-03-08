@@ -1,4 +1,4 @@
-import type { EntityService } from '@pnldotfun/entity-memory';
+import type { EntityService } from '@myboon/entity-memory';
 import type { ResearchTool } from '../types/mcp.js';
 
 interface EntityToolDeps {

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to PNLdotfun will be documented in this file.
+All notable changes to MYBOON will be documented in this file.
 
 <!-- markdownlint-disable MD024 -->
 
@@ -10,7 +10,7 @@ All notable changes to PNLdotfun will be documented in this file.
 
 ### Added
 
-- `[#021]` `packages/shared` — new shared SDK package (`@pnldotfun/shared`)
+- `[#021]` `packages/shared` — new shared SDK package (`@myboon/shared`)
   - `PolymarketClient` class: `getTopMarkets`, `getMarketBySlug`, `getMarketByConditionId`, `getOrderBook`, `getMarketSnapshot`
   - `MarketSnapshot` type: market + live yes/no prices + fetchedAt timestamp
   - Config-injected (no env vars at module level) — usable from any package or app
@@ -37,7 +37,7 @@ All notable changes to PNLdotfun will be documented in this file.
 
 ### Changed
 
-- `[#021]` `packages/collectors` refactored — Polymarket API logic moved to `@pnldotfun/shared`; Supabase singleton split into `supabase.ts`; signal types in `signal-types.ts`
+- `[#021]` `packages/collectors` refactored — Polymarket API logic moved to `@myboon/shared`; Supabase singleton split into `supabase.ts`; signal types in `signal-types.ts`
 - `[#022]` Narrative analyst writes to Supabase `narratives` table (status=draft) instead of CSV
 - `docs/ARCHITECTURE.md` updated to match current frontend phase
   - Near-term plan now documents Feed live + Swap GET-preview
@@ -117,8 +117,8 @@ All notable changes to PNLdotfun will be documented in this file.
 
 - Replaced old `ConnectWallet` component with new wallet component system
 - `WalletButton` now opens details modal when connected
-- Updated `PNLDOTFUN` logo on home page to use `pnl-green` for 'P' and `pnl-red` for 'L'
-- Updated site title to `PNL.FUN`
+- Updated `MYBOON` logo on home page to use `pnl-green` for 'P' and `pnl-red` for 'L'
+- Updated site title to `MYBOON`
 - `WalletButton` now shows text "Connect Wallet" instead of icon when disconnected
 - Added muted hint text below connected wallet button
 - `PasskeySection` now shows three icons (Face, Fingerprint, Phone) to represent passkey methods
@@ -130,9 +130,9 @@ All notable changes to PNLdotfun will be documented in this file.
 - `[#013]` added stream pipeline foundation (`stream/pipeline.ts`, `filter.ts`, `formatter.ts`, `batcher.ts`) with WebSocket log subscriptions, global signature dedupe, idempotent start/stop lifecycle, and batched callback emission
 - `[#013]` config now supports `WATCHED_WALLETS` category/CSV parsing via wallet registry, known-token helpers now include `getFundingSymbol()`, and wallet registry exports were finalized with invalid address cleanup
 - `[#013]` stream summaries now use wallet registry labels and include parseable full mint markers for unknown tokens in buy/sell flows (`mint:<full-address>`)
-- `[#016]` added new `@pnldotfun/brain` package with `ClassifierBrain` (LLM JSON classification + pass-through fallback) and `TransactionOrchestrator` (sequential batch queue, idempotent lifecycle, optional JSONL audit logging)
+- `[#016]` added new `@myboon/brain` package with `ClassifierBrain` (LLM JSON classification + pass-through fallback) and `TransactionOrchestrator` (sequential batch queue, idempotent lifecycle, optional JSONL audit logging)
 - `[#018]` wired classifier to MiniMax Anthropic-compatible API (`/v1/messages`) and added `packages/brain/src/run.ts` runner plus `brain:start` command for end-to-end stream → orchestrator → classifier execution
-- `[#014]` added new `@pnldotfun/entity-memory` package (types, repositories, services, migrations, seed scaffold) with in-memory MVP mode and repository/service boundaries for future Postgres/Supabase wiring
+- `[#014]` added new `@myboon/entity-memory` package (types, repositories, services, migrations, seed scaffold) with in-memory MVP mode and repository/service boundaries for future Postgres/Supabase wiring
 - `[#015]` implemented Research Agent (Brain 2) with MiniMax tool-calling loop, entity+memory MCP tools, Jupiter Tokens V2 metadata tool, orchestrator integration, and research audit logging
 - added demo/smoke runners for Brain 2: `research:smoke` and `demo:replay` to showcase end-to-end stream → classify → research → memory flow in terminal
 - classifier parsing now tolerates fenced JSON responses from LLM output and captures normalized/raw response payloads for demo logging

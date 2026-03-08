@@ -90,7 +90,7 @@ const response = await fetch(`${apiUrl}/v1/messages`, {
 
 ```typescript
 import { TransactionOrchestrator } from './orchestrator.js';
-import { loadAppConfig } from '@pnldotfun/tx-parser';
+import { loadAppConfig } from '@myboon/tx-parser';
 
 async function main() {
   console.log('[Brain] Starting pnl.fun classifier brain...');
@@ -233,14 +233,14 @@ This allows using either env var name.
 1. **Build brain package:**
 
    ```bash
-   cd /home/main-user/.openclaw/workspace/pnldotfun
-   pnpm --filter @pnldotfun/brain build
+   cd /home/main-user/.openclaw/workspace/myboon
+   pnpm --filter @myboon/brain build
    ```
 
 2. **Start runner:**
 
    ```bash
-   pnpm --filter @pnldotfun/brain brain:start
+   pnpm --filter @myboon/brain brain:start
    ```
 
 3. **Verify startup logs:**

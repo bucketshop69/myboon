@@ -1,5 +1,5 @@
 {
-  "name": "pnldotfun",
+  "name": "myboon",
   "private": true,
   "version": "1.0.0",
   "description": "",
@@ -9,7 +9,7 @@
     "dev:mcp": "pnpm --filter mcp dev",
     "build": "pnpm -r build",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "stream:start": "pnpm --filter @pnldotfun/tx-parser stream:start"
+    "stream:start": "pnpm --filter @myboon/tx-parser stream:start"
   },
   "keywords": [],
   "author": "",

@@ -277,7 +277,7 @@ export class ClassifierBrain {
 Create `packages/brain/src/orchestrator.ts`:
 
 ```typescript
-import { StreamPipeline, type StreamPipelineConfig } from '@pnldotfun/tx-parser';
+import { StreamPipeline, type StreamPipelineConfig } from '@myboon/tx-parser';
 import { ClassifierBrain, type ClassifierConfig, type Classification } from './classifier.js';
 
 export interface OrchestratorConfig {

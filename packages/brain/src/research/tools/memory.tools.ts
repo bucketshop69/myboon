@@ -1,4 +1,4 @@
-import type { ResearchService } from '@pnldotfun/entity-memory';
+import type { ResearchService } from '@myboon/entity-memory';
 import type { ResearchTool } from '../types/mcp.js';
 
 interface MemoryToolDeps {

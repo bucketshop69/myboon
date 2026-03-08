@@ -1,6 +1,6 @@
 # Tutorial: implementing Passkey Authentication with Lazorkit
 
-This guide explains how we integrated **Lazorkit's Passkey Wallet** into the PNLdotfun app. This allows users to create a wallet using just their FaceID, TouchID, or device passkey—no seed phrases required.
+This guide explains how we integrated **Lazorkit's Passkey Wallet** into the MYBOON app. This allows users to create a wallet using just their FaceID, TouchID, or device passkey—no seed phrases required.
 
 ## Prerequisites
 

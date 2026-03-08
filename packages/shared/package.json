@@ -1,7 +1,7 @@
 {
-  "name": "@pnldotfun/shared",
+  "name": "@myboon/shared",
   "version": "1.0.0",
-  "description": "Shared SDK for pnldotfun packages",
+  "description": "Shared SDK for myboon packages",
   "type": "module",
   "main": "src/index.ts",
   "exports": {

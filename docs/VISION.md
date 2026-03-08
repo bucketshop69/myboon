@@ -1,8 +1,8 @@
-# VISION: pnldotfun
+# VISION: myboon
 
-## What Is pnldotfun?
+## What Is myboon?
 
-**pnldotfun** is an intelligent wallet layer for Solana. It learns who you are from your transaction history and acts on your behalf.
+**myboon** is an intelligent wallet layer for Solana. It learns who you are from your transaction history and acts on your behalf.
 
 Think of it as **"your wallet's second brain"** — it understands your trading patterns, anticipates your needs, and executes on your behalf.
 
@@ -28,7 +28,7 @@ When you use a dapp today:
 **Every wallet should have an agent that knows it.**
 
 ```
-Your Wallet ←→ pnldotfun Agent
+Your Wallet ←→ myboon Agent
                    │
                    ├── Learns your patterns
                    ├── Remembers your preferences
@@ -38,7 +38,7 @@ Your Wallet ←→ pnldotfun Agent
 
 ### What This Enables
 
-| Feature | Today (Static) | With pnldotfun (Intelligent) |
+| Feature | Today (Static) | With myboon (Intelligent) |
 |---------|----------------|------------------------------|
 | Portfolio check | You open 3 apps to see SPL + perps + LP | "Hey, your SOL is up 5%" |
 | Trading | You find the DEX, check prices, execute | "SOL is cheap. Buy 2?" |
@@ -73,7 +73,7 @@ The agent serves AI agents:
 
 ```
 Other agent asks:  "What is wallet X's trading profile?"
-pnldotfun checks:  x402 payment received
+myboon checks:  x402 payment received
 Response:          "Wallet X is a degen meme trader.
                    80% of volume on degen coins.
                    Average position: $50-$200.
@@ -110,7 +110,7 @@ Response:          "Wallet X is a degen meme trader.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      pnldotfun                              │
+│                      myboon                              │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────────┐    ┌──────────────────┐              │
@@ -178,7 +178,7 @@ Every crypto app has:
 - Portfolio display ✓
 - Charts and analytics ✓
 
-**pnldotfun adds:**
+**myboon adds:**
 
 - **Memory** — remembers who you are
 - **Intelligence** — learns from your behavior
@@ -223,8 +223,8 @@ The voice interface is the **interaction model**, not the product. The product i
 
 ## References
 
-- **Repo:** <https://github.com/bucketshop69/pnldotfun>
-- **Colosseum Agent:** pnldotfunagent (ID: 1065)
+- **Repo:** <https://github.com/bucketshop69/myboon>
+- **Colosseum Agent:** myboonagent (ID: 1065)
 
 ---
 

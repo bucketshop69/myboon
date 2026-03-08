@@ -27,7 +27,7 @@ packages/api/
 **`packages/api/package.json`:**
 ```json
 {
-  "name": "@pnldotfun/api",
+  "name": "@myboon/api",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -204,7 +204,7 @@ app.use('*', cors())
 - [ ] CORS headers present on all responses
 - [ ] Missing env vars → process exits with clear error message
 - [ ] No hardcoded secrets
-- [ ] `pnpm --filter @pnldotfun/api start` works from monorepo root
+- [ ] `pnpm --filter @myboon/api start` works from monorepo root
 - [ ] Package listed in `pnpm-workspace.yaml`
 - [ ] No supabase-js dependency — raw fetch only
 - [ ] Reviewer subagent passes before commit

@@ -1,7 +1,7 @@
 import cron from 'node-cron'
 import { supabase } from './supabase'
-import { PolymarketClient } from '@pnldotfun/shared'
-import type { Market } from '@pnldotfun/shared'
+import { PolymarketClient } from '@myboon/shared'
+import type { Market } from '@myboon/shared'
 import type { Signal } from './signal-types'
 import pinnedSlugs from './pinned.json'
 

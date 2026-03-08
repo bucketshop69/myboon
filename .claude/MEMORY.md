@@ -1,4 +1,4 @@
-# pnldotfun — Session Memory
+# myboon — Session Memory
 
 ## Session Start Checklist
 
@@ -8,7 +8,7 @@
 
 ## Project
 
-Narrative intelligence engine. Monorepo at `/home/main-user/.openclaw/workspace/pnldotfun`
+Narrative intelligence engine. Monorepo at `/home/main-user/.openclaw/workspace/myboon`
 
 ## Stack
 

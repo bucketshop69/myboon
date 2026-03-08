@@ -1,4 +1,4 @@
-import { loadAppConfig } from '@pnldotfun/tx-parser';
+import { loadAppConfig } from '@myboon/tx-parser';
 
 import { TransactionOrchestrator } from './orchestrator.js';
 

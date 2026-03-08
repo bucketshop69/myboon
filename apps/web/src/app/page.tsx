@@ -4,7 +4,7 @@ import { WalletButton } from "@/components/wallet/WalletButton";
 import { AnimatedInput } from "@/components/AnimatedInput";
 
 /**
- * Home page with PNLDOTFUN logo, animated input field, and wallet button.
+ * Home page with MYBOON logo, animated input field, and wallet button.
  * Wallet button opens custom modal for connection.
  */
 export default function Home() {

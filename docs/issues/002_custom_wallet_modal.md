@@ -71,7 +71,7 @@ Replace the default wallet adapter modal with a **custom split-view modal** that
 ┌─────────────────────────────────────────────────────────┐
 │                                             [👛]        │  ← wallet icon (click to open modal)
 │                                                         │
-│                      PNLDOTFUN                          │
+│                      MYBOON                          │
 │                                                         │
 │            [    What's your PnL?    ]                   │
 │                                                         │
@@ -159,7 +159,7 @@ Each wallet item shows:
 
 ### Step 1: Restore original page.tsx
 
-- Logo (PNLDOTFUN)
+- Logo (MYBOON)
 - Input field ("What's your PnL?")
 - Wallet button in corner (opens modal)
 

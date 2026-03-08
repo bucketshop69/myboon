@@ -1,11 +1,11 @@
-import { createEntityMemory } from '@pnldotfun/entity-memory';
+import { createEntityMemory } from '@myboon/entity-memory';
 
 import { ResearchAgent } from './research/agent.js';
 
 async function main(): Promise<void> {
   const identifiers = process.argv.slice(2).filter((arg) => arg !== '--');
   if (identifiers.length === 0) {
-    throw new Error('Usage: pnpm --filter @pnldotfun/brain research:smoke -- <identifier> [identifier...]');
+    throw new Error('Usage: pnpm --filter @myboon/brain research:smoke -- <identifier> [identifier...]');
   }
 
   const apiKey = process.env.MINIMAX_API_KEY ?? process.env.ANTHROPIC_API_KEY;

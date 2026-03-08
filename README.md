@@ -63,8 +63,8 @@ PNL.fun is a trading terminal-style visualizer that transforms any Solana transa
 
 ```bash
 # Clone the repository
-git clone https://github.com/bucketshop69/pnldotfun.git
-cd pnldotfun
+git clone https://github.com/bucketshop69/myboon.git
+cd myboon
 
 # Install dependencies
 pnpm install
@@ -90,7 +90,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 ## 📁 Project Structure
 
 ```
-pnldotfun/
+myboon/
 ├── apps/
 │   ├── web/                 # Next.js 16 web application
 │   │   └── src/

@@ -1,5 +1,5 @@
 {
-  "name": "@pnldotfun/brain",
+  "name": "@myboon/brain",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,9 +21,9 @@
     "test": "echo \"No tests configured\""
   },
   "dependencies": {
-    "@pnldotfun/entity-memory": "workspace:*",
-    "@pnldotfun/shared": "workspace:*",
-    "@pnldotfun/tx-parser": "workspace:*",
+    "@myboon/entity-memory": "workspace:*",
+    "@myboon/shared": "workspace:*",
+    "@myboon/tx-parser": "workspace:*",
     "dotenv": "^17.3.1"
   },
   "devDependencies": {

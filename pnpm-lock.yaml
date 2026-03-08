@@ -272,13 +272,13 @@ importers:
 
   packages/brain:
     dependencies:
-      '@pnldotfun/entity-memory':
+      '@myboon/entity-memory':
         specifier: workspace:*
         version: link:../entity-memory
-      '@pnldotfun/shared':
+      '@myboon/shared':
         specifier: workspace:*
         version: link:../shared
-      '@pnldotfun/tx-parser':
+      '@myboon/tx-parser':
         specifier: workspace:*
         version: link:../tx-parser
       dotenv:
@@ -297,7 +297,7 @@ importers:
 
   packages/collectors:
     dependencies:
-      '@pnldotfun/shared':
+      '@myboon/shared':
         specifier: workspace:*
         version: link:../shared
       '@supabase/supabase-js':

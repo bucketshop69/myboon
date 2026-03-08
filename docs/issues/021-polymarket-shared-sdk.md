@@ -64,7 +64,7 @@ export interface MarketSnapshot {
 ## Package Config Changes
 
 ### `packages/shared/package.json`
-- Rename `"name"` to `"@pnldotfun/shared"`
+- Rename `"name"` to `"@myboon/shared"`
 - Add `"type": "module"`
 - Add `"exports"` pointing to `dist/index.js`
 - Add build script: `"build": "tsc -p tsconfig.json"`
@@ -77,12 +77,12 @@ export interface MarketSnapshot {
 
 ## Collector Refactor
 
-Update `packages/collectors` to import from `@pnldotfun/shared`:
+Update `packages/collectors` to import from `@myboon/shared`:
 
 - Delete `packages/collectors/src/polymarket/client.ts`
 - Delete `packages/collectors/src/polymarket/types.ts`
-- Update `discovery.ts`, `stream.ts`, `user-tracker.ts` to import `PolymarketClient` and types from `@pnldotfun/shared`
-- Add `@pnldotfun/shared` as a workspace dependency in `packages/collectors/package.json`
+- Update `discovery.ts`, `stream.ts`, `user-tracker.ts` to import `PolymarketClient` and types from `@myboon/shared`
+- Add `@myboon/shared` as a workspace dependency in `packages/collectors/package.json`
 - The Supabase client stays in collectors — it's collector-specific
 
 ---

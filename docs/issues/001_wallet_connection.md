@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add wallet connection to PNLdotfun with both traditional wallets AND Lazorkit passkey auth.
+Add wallet connection to MYBOON with both traditional wallets AND Lazorkit passkey auth.
 
 ## Why
 
