@@ -272,35 +272,36 @@ app.get('/predict/orders/:address', async (c) => {
   }
 })
 
-// GET /predict/history/:conditionId
-app.get('/predict/history/:conditionId', async (c) => {
-  const conditionId = c.req.param('conditionId')
+// GET /predict/history/:tokenId
+// tokenId = Yes token ID from clobTokenIds[0] (pass the Yes token for Yes price history)
+// ?interval=1h (default) | 1d
+app.get('/predict/history/:tokenId', async (c) => {
+  const tokenId = c.req.param('tokenId')
 
-  if (!conditionId || conditionId.trim() === '') {
+  if (!tokenId || tokenId.trim() === '') {
     return c.json({ error: 'Bad request' }, 400)
   }
 
-  // interval query param: 1m, 5m, 1h, 1d — default 1h
   const interval = c.req.query('interval') ?? '1h'
   const fidelityMap: Record<string, number> = { '1m': 1, '5m': 5, '1h': 60, '1d': 1440 }
   const fidelity = fidelityMap[interval] ?? 60
 
   const endTs = Math.floor(Date.now() / 1000)
-  const startTs = endTs - 30 * 24 * 60 * 60 // last 30 days
+  const startTs = endTs - 7 * 24 * 60 * 60 // last 7 days
 
   try {
     const res = await clobFetch(
-      `prices-history?market=${encodeURIComponent(conditionId)}&startTs=${startTs}&endTs=${endTs}&fidelity=${fidelity}`
+      `prices-history?market=${encodeURIComponent(tokenId)}&startTs=${startTs}&endTs=${endTs}&fidelity=${fidelity}`
     )
 
     if (!res.ok) {
-      console.error(`[api] CLOB prices-history error ${res.status} for ${conditionId}`)
+      console.error(`[api] CLOB prices-history error ${res.status} for ${tokenId}`)
       return c.json({ error: 'Internal server error' }, 500)
     }
 
     return c.json(await res.json())
   } catch (err) {
-    console.error(`[api] Unexpected error in GET /predict/history/${conditionId}:`, err)
+    console.error(`[api] Unexpected error in GET /predict/history/${tokenId}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
