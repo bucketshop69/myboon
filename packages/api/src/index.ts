@@ -128,7 +128,10 @@ app.get('/predict/markets', async (c) => {
 
       const market = data[0] as Record<string, unknown>
       const category = geoSet.has(slug) ? 'geopolitics' : 'sports'
-      const clobTokenIds = (market.clobTokenIds ?? market.clob_token_ids ?? []) as string[]
+      const rawTokenIds = market.clobTokenIds ?? market.clob_token_ids ?? []
+      const clobTokenIds: string[] = typeof rawTokenIds === 'string'
+        ? JSON.parse(rawTokenIds)
+        : rawTokenIds as string[]
 
       let yesPrice: number | null = null
       let noPrice: number | null = null
