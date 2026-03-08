@@ -21,7 +21,7 @@ A mobile-first narrative intelligence app for on-chain traders and prediction ma
 
 ## Hackathon Plan (near-term)
 
-Mobile app with Feed tab only. Trade/Swap/Predict locked or WIP. Clean demo story:
+Mobile app with Feed live and Swap in GET-preview mode. Predict/Trade remain WIP placeholders. Clean demo story:
 > "This feed is powered by on-chain signals + prediction market intelligence + a multi-agent brain."
 
 ---
@@ -93,11 +93,17 @@ Layer 3 — Influencers (runs every 2-4h)
 ```
 
 **Current state:**
+
 - Layer 1 (Analyst) ✅ — writes to Supabase `narratives` table (status=draft), uses tool calling to fetch live market odds mid-analysis
 - Layer 2 (Publisher) ✅ — reads draft narratives (score >= 7), researches with Firecrawl + own DB check, scores each (>= 8 to publish), writes to `published_narratives`, marks narrative status, runs every 30min
 - Layer 3 (Influencer) — not started (issue 024)
 
-**Next:** Feed API (issue 025) — REST endpoint serving published narratives to mobile app.
+**Next (frontend track):**
+
+- Issue 027 — Hybrid Expo initialization foundation
+- Issue 028 — Feed UI + client service layer
+- Issue 029 — Swap UI + GET-only preview service
+- Predict/Trade UI integration follows after these foundations
 
 **Multi-agent consensus plan (post-MVP):**
 
@@ -156,11 +162,13 @@ packages/
 Hono server, runs on VPS alongside collectors and brain. All Polymarket calls proxied through VPS to bypass geo-restriction.
 
 **Feed endpoints:**
+
 - `GET /health` — liveness
 - `GET /narratives` — published narratives list (limit 20, priority desc)
 - `GET /narratives/:id` — full narrative detail
 
 **Predict endpoints (curated markets only — edit `src/curated.ts`):**
+
 - `GET /predict/markets` — all curated markets with live yes/no prices
 - `GET /predict/markets/:slug` — single market detail (404 if not curated)
 - `POST /predict/order` — forward signed order to Polymarket CLOB
@@ -170,6 +178,35 @@ Hono server, runs on VPS alongside collectors and brain. All Polymarket calls pr
 **Smoke test:** `API_BASE=http://localhost:3000 pnpm --filter @pnldotfun/api smoke`
 
 x402 micropayments on Solana — post-MVP.
+
+---
+
+## Mobile App (`apps/hybrid-expo`) — CURRENT
+
+Expo Router stack with 4 routes:
+
+- `/` Feed (live data from API)
+- `/predict` placeholder screen
+- `/swap` interactive preview screen (no execution)
+- `/trade` placeholder screen
+
+Service layer split:
+
+- Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives`
+- Swap service (`features/swap/swap.api.ts`) consumes Jupiter GET endpoints (`tokens`, `price`, `quote`)
+
+Execution policy:
+
+- Swap CTA remains non-transactional (`COMING SOON`)
+- No wallet signing or on-chain submit in current phase
+
+---
+
+## Deployment & APK Note
+
+- This architecture doc defines product/system design, not release operations.
+- Mobile deployment and APK build flow (EAS profiles, Android APK generation, release cadence) are tracked separately in implementation/runbook issues.
+- Current frontend milestone is local/dev validation first; production mobile release pipeline is next-phase work.
 
 ---
 
@@ -190,5 +227,5 @@ x402 micropayments on Solana — post-MVP.
 | MiniMax over OpenAI | Cost — ~$0.54/month vs much higher |
 | Collectors separate from brain | Different runtime concerns, brain is LLM-heavy, collectors are persistent network processes |
 | CSV → Supabase for narratives | CSV was for testing only, narratives need to be queryable by API |
-| Feed-only for hackathon | Differentiator is insights, not swap/trade which are commodities |
+| Feed-first for hackathon (with swap preview) | Differentiator is insights; swap preview is UX scaffolding without execution risk |
 | Publisher brain before influencer | Single pipeline must work before adding consensus/redundancy |

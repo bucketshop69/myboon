@@ -19,11 +19,21 @@ All notable changes to PNLdotfun will be documented in this file.
   - Analyst upgraded with Anthropic tool-use loop (max 10 iterations) — fetches live odds mid-analysis before writing observations
   - `get_market_by_condition` resolves conditionId then fetches full snapshot in one call
   - System prompt updated: focus on interesting/unusual positions, no whale labels, flag contrarian bets (yes_price < 0.3)
+- `[#027]` Frontend PRD added: `docs/issues/027-hybrid-expo-initialization.md`
+  - Defines Expo route shell, theming foundation, shared nav/header shell, branding assets, and env bootstrap
+- `[#028]` Frontend PRD added: `docs/issues/028-feed-ui-service.md`
+  - Defines Feed tab UI states and client service contract for `GET /narratives`
+- `[#029]` Frontend PRD added: `docs/issues/029-swap-ui-service.md`
+  - Defines Swap tab UI and GET-only Jupiter preview integration (token search, price, quote)
 
 ### Changed
 
 - `[#021]` `packages/collectors` refactored — Polymarket API logic moved to `@pnldotfun/shared`; Supabase singleton split into `supabase.ts`; signal types in `signal-types.ts`
 - `[#022]` Narrative analyst writes to Supabase `narratives` table (status=draft) instead of CSV
+- `docs/ARCHITECTURE.md` updated to match current frontend phase
+  - Near-term plan now documents Feed live + Swap GET-preview
+  - Removed stale “Next: Feed API (#025)” note
+  - Added current `apps/hybrid-expo` route/service snapshot
 
 - `packages/collectors` — new package for Polymarket signal ingestion
   - REST discovery: fetches top 20 Polymarket markets every 2h, writes `MARKET_DISCOVERED` signals to Supabase
