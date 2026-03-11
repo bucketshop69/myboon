@@ -301,6 +301,20 @@ Return a JSON array only — no markdown, no explanation. Each element:
   )
 }
 
+// --- slug extraction ---
+
+function extractSlugs(keySignals: string[]): string[] {
+  const pattern = /\[slug:\s*([^\]]+)\]/g
+  const slugs = new Set<string>()
+  for (const line of keySignals) {
+    let match
+    while ((match = pattern.exec(line)) !== null) {
+      slugs.add(match[1].trim())
+    }
+  }
+  return [...slugs]
+}
+
 // --- supabase narratives output ---
 
 async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): Promise<void> {
@@ -312,6 +326,7 @@ async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): 
       score: c.score,
       signal_count: c.signal_count,
       signals_snapshot: signals,
+      slugs: extractSlugs(c.key_signals ?? []),
       status: 'draft',
     }))
 

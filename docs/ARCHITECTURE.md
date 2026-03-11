@@ -94,8 +94,8 @@ Layer 3 — Influencers (runs every 2-4h)
 
 **Current state:**
 
-- Layer 1 (Analyst) ✅ — writes to Supabase `narratives` table (status=draft), uses tool calling to fetch live market odds mid-analysis, filters out clusters scoring < 7 before saving
-- Layer 2 (Publisher) ✅ — reads draft narratives (score >= 7), checks own `published_narratives` DB for duplicates/updates (returns `content_full` + `reasoning` for full context), scores each (>= 8 to publish), writes to `published_narratives`, marks narrative status, runs every 30min. `search_news` (Firecrawl) disabled pending replacement.
+- Layer 1 (Analyst) ✅ — clusters signals, filters < 7 score before saving. Extracts market slugs deterministically from `key_signals` (`[slug: xxx]` patterns) and saves to `narratives.slugs[]`. Uses tool calling to fetch live market odds mid-analysis.
+- Layer 2 (Publisher) ✅ — reads draft narratives (score >= 7), checks own `published_narratives` DB for duplicates/updates (`content_full` + `reasoning` returned for full context), scores each (>= 8 to publish). Builds `predict` actions from `narrative.slugs` in code (deterministic — no LLM guessing). LLM may add `perps` actions for crypto signals. Writes to `published_narratives` with `actions` array. `search_news` (Firecrawl) disabled pending replacement.
 - Layer 3 (Influencer) — not started (issue 024)
 
 **Next (frontend track):**

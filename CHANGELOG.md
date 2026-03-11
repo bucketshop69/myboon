@@ -17,7 +17,9 @@ All notable changes to MYBOON will be documented in this file.
 
 - `[collectors/user-tracker]` Minimum whale bet raised $50 → $500 — weight scale updated to 6/8/10 (removed $50-499 tier entirely)
 - `[collectors/user-tracker]` WHALE_BET signals now include `slug` in metadata — resolved from `polymarket_tracked` by conditionId, falls back to Gamma API (title only). All three signal types now carry `slug ✅`
-- `[publisher]` `actions` field added to `PublishedOutput` and `published_narratives` insert — `NarrativeAction` type supports `predict` (slug) and `perps` (asset symbol) for future routing from feed cards
+- `[analyst]` `extractSlugs()` parses `[slug: xxx]` patterns from LLM-generated `key_signals` per cluster — deterministic, per-cluster slug extraction saved to `narratives.slugs text[]`
+- `[publisher]` `actions` field added to `PublishedOutput` and `published_narratives` insert — `NarrativeAction` type supports `predict` (slug) and `perps` (asset symbol)
+- `[publisher]` predict actions built deterministically from `narrative.slugs` in code — no LLM slug guessing. LLM may only add `perps` actions for crypto signals. Requires DB migration: `ALTER TABLE narratives ADD COLUMN slugs text[] NOT NULL DEFAULT '{}'`
 - `[publisher]` Firecrawl `search_news` tool commented out (TODO: restore when replacement available) — publisher now runs leaner with only `search_published`
 - `[publisher]` `search_published` now returns `content_full` and `reasoning` — gives the LLM full context to distinguish duplicates from story updates (e.g. odds jumping 60% → 80%)
 - `[publisher]` System prompt updated: three explicit cases — duplicate (reject), material update (publish referencing prior piece), new story (judge on merit)

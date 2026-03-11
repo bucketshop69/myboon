@@ -63,6 +63,7 @@ interface Narrative {
   score: number
   signal_count: number
   key_signals: string[]
+  slugs: string[]
   status: string
   created_at: string
 }
@@ -188,10 +189,7 @@ function buildSystemPrompt(): string {
   'tags: 2-5 lowercase tags (e.g. "iran", "election", "crypto", "oil", "fed", "ai", "geopolitics", "sports").\n\n' +
   'priority: Integer 1-10. Higher = more urgent/time-sensitive.\n\n' +
   'publisher_score: Integer 1-10. Your honest assessment of this narrative\'s publish-worthiness. >= 8 gets published.\n\n' +
-  'actions: Array of action targets extracted from the key signals. Each action lets the user act directly on the narrative.\n' +
-  '  - For Polymarket signals: extract the slug from [slug: xxx] patterns in the key signals. Use { "type": "predict", "slug": "the-slug" }\n' +
-  '  - For perps/crypto price signals: use { "type": "perps", "asset": "BTC" } — asset is just the base symbol, no pair or suffix.\n' +
-  '  - Include up to 3 actions, most relevant first. Empty array if no clear action target.\n\n' +
+  'actions: Array of action targets. Predict actions are pre-populated from market slugs — do not add or change them. You may add perps actions only for crypto price signals: { "type": "perps", "asset": "BTC" } — asset is the base symbol only, no pair or suffix. Empty array if no perps action applies.\n\n' +
   'Important: For sports narratives (cricket, football, esports, tennis, etc.) skip the search tools entirely — write content_small and content_full from the signal data only.\n\n' +
   'Return a single JSON object. No markdown, no explanation.'
 }
@@ -235,11 +233,15 @@ const MAX_CONSECUTIVE_FAILURES = 3
 async function publishNarrative(narrative: Narrative): Promise<PublishedOutput> {
   const keySignals = (narrative.key_signals ?? []).join('\n')
   const isSports = isSportsNarrative(narrative.cluster)
+  const slugsLine = (narrative.slugs ?? []).length > 0
+    ? `Market slugs: ${narrative.slugs.join(', ')}\n`
+    : ''
   const userPrompt =
     `Narrative cluster: ${narrative.cluster}\n` +
     `Analyst observation: ${narrative.observation}\n` +
     `Score: ${narrative.score}/10\n` +
     `Signal count: ${narrative.signal_count}\n` +
+    slugsLine +
     `Key signals: ${keySignals}\n\n` +
     (isSports
       ? `This is a sports narrative. Do NOT use any search tools. Write content_small and content_full from the signal data only, then produce your JSON output.`
@@ -306,7 +308,18 @@ async function publishNarrative(narrative: Narrative): Promise<PublishedOutput> 
         | undefined
       const text = textBlock?.text ?? ''
       const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-      return JSON.parse(clean) as PublishedOutput
+      const output = JSON.parse(clean) as PublishedOutput
+
+      // Build predict actions deterministically from analyst-extracted slugs
+      // Keep any perps actions the LLM added, replace predict actions with ground truth
+      const llmPerpsActions = (output.actions ?? []).filter((a) => a.type === 'perps')
+      const predictActions: NarrativeAction[] = (narrative.slugs ?? []).map((slug) => ({
+        type: 'predict',
+        slug,
+      }))
+      output.actions = [...predictActions, ...llmPerpsActions]
+
+      return output
     }
 
     break
