@@ -39,29 +39,44 @@ function isNoisyMarket(topic: string, conditionId?: string): boolean {
 
 // Weight based on bet size — returns 0 to skip
 function betWeight(amount?: number): number {
-  if (!amount || amount < 50) return 0
-  if (amount < 500) return 4
+  if (!amount || amount < 500) return 0
   if (amount < 2000) return 6
   if (amount < 10000) return 8
   return 10
 }
 
-// Cache conditionId -> market title to avoid repeated lookups
-const marketTitleCache = new Map<string, string>()
+// Cache conditionId -> { title, slug } to avoid repeated lookups
+const marketCache = new Map<string, { title: string; slug: string | null }>()
 
-async function resolveMarketTitle(conditionId: string): Promise<string> {
-  if (!conditionId) return 'Unknown market'
-  if (marketTitleCache.has(conditionId)) return marketTitleCache.get(conditionId)!
+async function resolveMarket(conditionId: string): Promise<{ title: string; slug: string | null }> {
+  if (!conditionId) return { title: 'Unknown market', slug: null }
+  if (marketCache.has(conditionId)) return marketCache.get(conditionId)!
 
+  // Check polymarket_tracked first — has both title and slug
+  const { data } = await supabase
+    .from('polymarket_tracked')
+    .select('title, slug')
+    .eq('market_id', conditionId)
+    .limit(1)
+    .single()
+
+  if (data?.title) {
+    const result = { title: data.title, slug: data.slug ?? null }
+    marketCache.set(conditionId, result)
+    return result
+  }
+
+  // Fallback to Gamma API — title only, no slug
   try {
     const res = await fetch(`https://gamma-api.polymarket.com/markets?condition_id=${conditionId}`)
-    if (!res.ok) return conditionId
+    if (!res.ok) return { title: conditionId, slug: null }
     const markets: GammaMarketLookup[] = await res.json()
     const title = markets?.[0]?.question ?? markets?.[0]?.title ?? conditionId
-    marketTitleCache.set(conditionId, title)
-    return title
+    const result = { title, slug: null }
+    marketCache.set(conditionId, result)
+    return result
   } catch {
-    return conditionId
+    return { title: conditionId, slug: null }
   }
 }
 
@@ -92,15 +107,20 @@ async function pollUser(address: string): Promise<void> {
     const weight = betWeight(rawAmount)
     if (weight === 0) continue
 
-    // Try all possible field names for market title
+    // Resolve market title + slug (polymarket_tracked first, Gamma API fallback)
+    const conditionId = activity.conditionId ?? activity.asset
+    const { title: resolvedTitle, slug } = conditionId
+      ? await resolveMarket(conditionId)
+      : { title: 'Unknown market', slug: null }
+
     const topic =
       activity.title ??
       activity.question ??
       activity.marketQuestion ??
-      (activity.conditionId ? await resolveMarketTitle(activity.conditionId) : 'Unknown market')
+      resolvedTitle
 
     // Skip noise markets
-    if (isNoisyMarket(topic, activity.conditionId)) continue
+    if (isNoisyMarket(topic, conditionId)) continue
 
     const signal = {
       source: 'POLYMARKET',
@@ -112,7 +132,8 @@ async function pollUser(address: string): Promise<void> {
         amount: rawAmount,
         side: activity.side,
         outcome: activity.outcome,
-        marketId: activity.conditionId ?? activity.asset,
+        marketId: conditionId,
+        ...(slug ? { slug } : {}),
       },
     }
 

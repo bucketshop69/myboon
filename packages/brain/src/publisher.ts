@@ -67,6 +67,12 @@ interface Narrative {
   created_at: string
 }
 
+interface NarrativeAction {
+  type: 'predict' | 'perps'
+  slug?: string   // predict: polymarket slug
+  asset?: string  // perps: base asset e.g. "BTC"
+}
+
 interface PublishedOutput {
   content_small: string
   content_full: string
@@ -74,6 +80,7 @@ interface PublishedOutput {
   tags: string[]
   priority: number
   publisher_score: number
+  actions: NarrativeAction[]
 }
 
 // Anthropic message content block shapes
@@ -129,6 +136,7 @@ async function insertPublishedNarrative(
       reasoning: output.reasoning,
       tags: output.tags,
       priority: output.priority,
+      actions: output.actions ?? [],
     }),
   })
 
@@ -180,6 +188,10 @@ function buildSystemPrompt(): string {
   'tags: 2-5 lowercase tags (e.g. "iran", "election", "crypto", "oil", "fed", "ai", "geopolitics", "sports").\n\n' +
   'priority: Integer 1-10. Higher = more urgent/time-sensitive.\n\n' +
   'publisher_score: Integer 1-10. Your honest assessment of this narrative\'s publish-worthiness. >= 8 gets published.\n\n' +
+  'actions: Array of action targets extracted from the key signals. Each action lets the user act directly on the narrative.\n' +
+  '  - For Polymarket signals: extract the slug from [slug: xxx] patterns in the key signals. Use { "type": "predict", "slug": "the-slug" }\n' +
+  '  - For perps/crypto price signals: use { "type": "perps", "asset": "BTC" } — asset is just the base symbol, no pair or suffix.\n' +
+  '  - Include up to 3 actions, most relevant first. Empty array if no clear action target.\n\n' +
   'Important: For sports narratives (cricket, football, esports, tennis, etc.) skip the search tools entirely — write content_small and content_full from the signal data only.\n\n' +
   'Return a single JSON object. No markdown, no explanation.'
 }

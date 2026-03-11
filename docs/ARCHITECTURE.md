@@ -149,12 +149,42 @@ packages/
 - `pinned.json` — hand-picked market slugs (Iran conflict cluster, etc.)
 - `tracked-users.json` — 18 whale wallet addresses
 
+### How signals reach the `signals` table
+
+Three paths, all write the same shape:
+
+**Path 1 — `discovery.ts` (every 2h)**
+```
+pinned.json (curated slugs) + Polymarket top 20 by volume
+    → upsert into polymarket_tracked (slug, title, token_id, yes/no price)
+    → insert MARKET_DISCOVERED signal
+       metadata: { slug ✅, volume, yes_price, no_price }
+```
+
+**Path 2 — `stream.ts` (WebSocket, persistent)**
+```
+polymarket_tracked (populated by discovery — must run first)
+    → subscribe to all token_ids via WebSocket
+    → on price move > 5%: insert ODDS_SHIFT signal
+       metadata: { slug ✅, yes_price, shift_from, shift_to }
+```
+
+**Path 3 — `user-tracker.ts` (every 5min)**
+```
+tracked-users.json (18 whale wallets)
+    → poll data-api.polymarket.com/activity per wallet
+    → for each new bet:
+        resolve slug from polymarket_tracked by conditionId (Gamma API fallback)
+        insert WHALE_BET signal
+        metadata: { slug ✅, user, amount, side, outcome, marketId }
+```
+
 ### Filtering Rules
 
 - Markets with `endDate` in the past → skipped
 - `updown` slug pattern → noise, skipped
-- Bet amount < $50 → skipped
-- Bet weight: $50-499=4, $500-1999=6, $2000-9999=8, $10k+=10
+- Bet amount < $500 → skipped
+- Bet weight: $500-1999=6, $2000-9999=8, $10k+=10
 
 ---
 
