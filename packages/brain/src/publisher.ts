@@ -1,5 +1,6 @@
 import 'dotenv/config'
-import { createFirecrawlTools } from './publisher-tools/firecrawl.tools.js'
+// TODO: re-enable search_news when a Firecrawl replacement is available
+// import { createFirecrawlTools } from './publisher-tools/firecrawl.tools.js'
 import { createSupabaseTools } from './publisher-tools/supabase.tools.js'
 import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp.js'
 
@@ -8,13 +9,14 @@ import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY
-const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY
+// TODO: re-enable when search_news tool is restored
+// const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY
 
 const missing: string[] = []
 if (!SUPABASE_URL) missing.push('SUPABASE_URL')
 if (!SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY')
 if (!MINIMAX_API_KEY) missing.push('MINIMAX_API_KEY')
-if (!FIRECRAWL_API_KEY) missing.push('FIRECRAWL_API_KEY')
+// if (!FIRECRAWL_API_KEY) missing.push('FIRECRAWL_API_KEY')
 
 if (missing.length > 0) {
   console.error(`[publisher] Missing required env vars: ${missing.join(', ')}`)
@@ -25,7 +27,8 @@ if (missing.length > 0) {
 
 const publisherTools: ResearchTool<any>[] = [
   ...createSupabaseTools({ supabaseUrl: SUPABASE_URL!, supabaseKey: SUPABASE_SERVICE_ROLE_KEY! }),
-  ...createFirecrawlTools(FIRECRAWL_API_KEY!),
+  // TODO: re-enable search_news when a replacement for Firecrawl is in place
+  // ...createFirecrawlTools(FIRECRAWL_API_KEY!),
 ]
 
 function toAnthropicDefinitions(tools: ResearchTool<any>[]): AnthropicToolDefinition[] {
@@ -159,16 +162,20 @@ function buildSystemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10)
   return 'You are a market intelligence publisher with a co-researcher role. You receive a narrative cluster from prediction market signals and must decide whether it is worth publishing.\n\n' +
   `Today's date is ${today}. Use this to assess how fresh and time-sensitive the signals are.\n\n` +
-  'You have two research tools:\n' +
+  'You have one research tool:\n' +
   '- search_published: checks our own published database for related content. Always call this first.\n' +
-  '- search_news: searches recent news via Firecrawl. Call this only if you decide the narrative needs external context to be useful.\n\n' +
+  '  Returns: content_small, content_full, reasoning, tags, priority, created_at for each match.\n\n' +
+  // TODO: restore search_news tool description when a replacement for Firecrawl is available
   'Your job:\n\n' +
-  '1. Call search_published to check if we already covered this topic recently.\n' +
-  '2. Decide if external news context would improve the narrative. If yes, call search_news with 1-2 targeted queries.\n' +
-  '3. Give the narrative a publisher_score (1-10). Only narratives you score >= 8 will be saved. Be selective — not everything is worth publishing.\n' +
-  '4. Produce:\n\n' +
+  '1. Call search_published to check if we already covered this topic.\n' +
+  '   Read the full content_full and reasoning of any matches — then decide:\n' +
+  '   - Same story, nothing materially changed → reject as duplicate.\n' +
+  '   - Same story but odds/positioning shifted significantly → publish as an update. Reference the previous piece and lead with what moved (e.g. "Iran ceasefire odds jumped from 60% to 80% in under 2 hours").\n' +
+  '   - No match → evaluate on its own merits.\n' +
+  '2. Give the narrative a publisher_score (1-10). Only narratives you score >= 8 will be saved. Be selective — not everything is worth publishing.\n' +
+  '3. Produce:\n\n' +
   'content_small: 2-4 sentences, punchy, no fluff. Lookonchain style but smarter. State the position, what it signals, why it matters. Written for a trader who has 5 seconds. No markdown. Do not use the word "whale" or "whales" — describe the position and conviction instead (e.g. "smart money", "a $50K position", "concentrated bets").\n\n' +
-  'content_full: Deep analysis connecting prediction market signals to real-world context. If you found news, reference it. Link related themes (e.g. Iran bets + oil prices = same meta-narrative). Do not make up news.\n\n' +
+  'content_full: Deep analysis connecting prediction market signals to real-world context. Use your own knowledge to add context where relevant. Link related themes (e.g. Iran bets + oil prices = same meta-narrative). Do not make up news.\n\n' +
   'reasoning: Internal note — why you scored it the way you did, what research you found, how you connected the dots.\n\n' +
   'tags: 2-5 lowercase tags (e.g. "iran", "election", "crypto", "oil", "fed", "ai", "geopolitics", "sports").\n\n' +
   'priority: Integer 1-10. Higher = more urgent/time-sensitive.\n\n' +

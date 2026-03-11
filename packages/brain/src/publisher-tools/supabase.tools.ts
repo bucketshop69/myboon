@@ -29,7 +29,7 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
     async execute(args) {
       try {
         const encoded = encodeURIComponent(`%${args.query}%`)
-        const url = `${deps.supabaseUrl}/rest/v1/published_narratives?or=(content_small.ilike.${encoded},content_full.ilike.${encoded})&order=created_at.desc&limit=5`
+        const url = `${deps.supabaseUrl}/rest/v1/published_narratives?or=(content_small.ilike.${encoded},content_full.ilike.${encoded})&select=id,content_small,content_full,reasoning,tags,priority,created_at&order=created_at.desc&limit=5`
         const res = await fetch(url, { headers })
 
         if (!res.ok) {
@@ -39,6 +39,8 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
         const rows = await res.json() as Array<{
           id: string
           content_small: string
+          content_full: string
+          reasoning: string
           tags: string[]
           priority: number
           created_at: string
@@ -47,6 +49,8 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
         return rows.map((r) => ({
           id: r.id,
           content_small: r.content_small,
+          content_full: r.content_full,
+          reasoning: r.reasoning,
           tags: r.tags,
           priority: r.priority,
           created_at: r.created_at,

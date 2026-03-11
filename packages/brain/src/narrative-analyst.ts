@@ -304,14 +304,16 @@ Return a JSON array only — no markdown, no explanation. Each element:
 // --- supabase narratives output ---
 
 async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): Promise<void> {
-  const rows = clusters.map((c) => ({
-    cluster: c.cluster,
-    observation: c.observation,
-    score: c.score,
-    signal_count: c.signal_count,
-    signals_snapshot: signals,
-    status: 'draft',
-  }))
+  const rows = clusters
+    .filter((c) => c.score >= 7)
+    .map((c) => ({
+      cluster: c.cluster,
+      observation: c.observation,
+      score: c.score,
+      signal_count: c.signal_count,
+      signals_snapshot: signals,
+      status: 'draft',
+    }))
 
   const url = `${SUPABASE_URL}/rest/v1/narratives`
   const res = await fetch(url, {
@@ -374,7 +376,9 @@ async function run(): Promise<void> {
 
   printReport(clusters, timestamp)
   await saveNarratives(clusters, signals)
-  console.log(`[narrative-analyst] Saved ${clusters.length} narrative(s) to Supabase (status=draft)`)
+  const saved = clusters.filter((c) => c.score >= 7).length
+  const skipped = clusters.length - saved
+  console.log(`[narrative-analyst] Saved ${saved} narrative(s) to Supabase (status=draft) — skipped ${skipped} below score 7`)
 
   const ids = signals.map((s) => s.id)
   await markSignalsProcessed(ids)

@@ -94,8 +94,8 @@ Layer 3 — Influencers (runs every 2-4h)
 
 **Current state:**
 
-- Layer 1 (Analyst) ✅ — writes to Supabase `narratives` table (status=draft), uses tool calling to fetch live market odds mid-analysis
-- Layer 2 (Publisher) ✅ — reads draft narratives (score >= 7), researches with Firecrawl + own DB check, scores each (>= 8 to publish), writes to `published_narratives`, marks narrative status, runs every 30min
+- Layer 1 (Analyst) ✅ — writes to Supabase `narratives` table (status=draft), uses tool calling to fetch live market odds mid-analysis, filters out clusters scoring < 7 before saving
+- Layer 2 (Publisher) ✅ — reads draft narratives (score >= 7), checks own `published_narratives` DB for duplicates/updates (returns `content_full` + `reasoning` for full context), scores each (>= 8 to publish), writes to `published_narratives`, marks narrative status, runs every 30min. `search_news` (Firecrawl) disabled pending replacement.
 - Layer 3 (Influencer) — not started (issue 024)
 
 **Next (frontend track):**
@@ -135,6 +135,7 @@ packages/
 - **Brain agents run on:** Local (dev) → VPS (prod)
 - **Mobile:** Expo (React Native)
 - **Monorepo:** pnpm workspaces
+- **Process manager:** PM2 — `ecosystem.config.cjs` at monorepo root starts all 4 services in one command (`pm2 start ecosystem.config.cjs`); auto-restarts on crash; survives reboots via `pm2 startup`. See `docs/DEPLOY.md`.
 
 ---
 

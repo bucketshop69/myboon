@@ -10,6 +10,16 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- PM2 deployment config — `ecosystem.config.cjs` at monorepo root manages all 4 VPS processes (`myboon-api`, `myboon-collectors`, `myboon-analyst`, `myboon-publisher`) with auto-restart and crash recovery
+- `docs/DEPLOY.md` — first-time VPS setup guide, day-to-day PM2 operations, `.env` reference, smoke test instructions
+
+### Changed
+
+- `[publisher]` Firecrawl `search_news` tool commented out (TODO: restore when replacement available) — publisher now runs leaner with only `search_published`
+- `[publisher]` `search_published` now returns `content_full` and `reasoning` — gives the LLM full context to distinguish duplicates from story updates (e.g. odds jumping 60% → 80%)
+- `[publisher]` System prompt updated: three explicit cases — duplicate (reject), material update (publish referencing prior piece), new story (judge on merit)
+- `[analyst]` Clusters scoring < 7 filtered before Supabase insert — only quality narratives reach the publisher queue
+
 - `[#021]` `packages/shared` — new shared SDK package (`@myboon/shared`)
   - `PolymarketClient` class: `getTopMarkets`, `getMarketBySlug`, `getMarketByConditionId`, `getOrderBook`, `getMarketSnapshot`
   - `MarketSnapshot` type: market + live yes/no prices + fetchedAt timestamp
