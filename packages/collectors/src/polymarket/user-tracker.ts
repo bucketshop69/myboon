@@ -29,12 +29,18 @@ interface GammaMarketLookup {
   slug?: string
 }
 
-// Noise filter — skip short-term binary markets (updown slugs)
-const NOISE_SLUG_PATTERN = /updown/i
+// Noise filter — skip short-term binary markets
+const NOISE_PATTERNS = [
+  /updown/i,
+  /up or down/i,
+  /up\/down/i,
+]
 
 function isNoisyMarket(topic: string, conditionId?: string): boolean {
-  if (NOISE_SLUG_PATTERN.test(topic)) return true
-  if (conditionId && NOISE_SLUG_PATTERN.test(conditionId)) return true
+  for (const pattern of NOISE_PATTERNS) {
+    if (pattern.test(topic)) return true
+    if (conditionId && pattern.test(conditionId)) return true
+  }
   return false
 }
 
@@ -54,15 +60,15 @@ async function resolveMarket(conditionId: string): Promise<{ title: string; slug
   if (marketCache.has(conditionId)) return marketCache.get(conditionId)!
 
   // Check polymarket_tracked first — has both title and slug
-  const { data } = await supabase
+  const { data: rows } = await supabase
     .from('polymarket_tracked')
     .select('title, slug')
     .eq('market_id', conditionId)
     .limit(1)
-    .single()
 
-  if (data?.title) {
-    const result = { title: data.title, slug: data.slug ?? null }
+  const tracked = rows?.[0]
+  if (tracked?.title) {
+    const result = { title: tracked.title, slug: tracked.slug ?? null }
     marketCache.set(conditionId, result)
     return result
   }
