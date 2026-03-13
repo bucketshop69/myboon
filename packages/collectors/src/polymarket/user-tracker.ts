@@ -26,6 +26,7 @@ interface PolyActivity {
 interface GammaMarketLookup {
   question?: string
   title?: string
+  slug?: string
 }
 
 // Noise filter — skip short-term binary markets (updown slugs)
@@ -72,7 +73,8 @@ async function resolveMarket(conditionId: string): Promise<{ title: string; slug
     if (!res.ok) return { title: conditionId, slug: null }
     const markets: GammaMarketLookup[] = await res.json()
     const title = markets?.[0]?.question ?? markets?.[0]?.title ?? conditionId
-    const result = { title, slug: null }
+    const slug = markets?.[0]?.slug ?? null
+    const result = { title, slug }
     marketCache.set(conditionId, result)
     return result
   } catch {

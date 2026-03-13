@@ -94,7 +94,7 @@ app.get('/narratives', async (c) => {
 
   try {
     const res = await supabaseFetch(
-      `published_narratives?select=id,narrative_id,content_small,tags,priority,created_at&order=priority.desc,created_at.desc&limit=${limit}`
+      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,created_at&order=created_at.desc,priority.desc&limit=${limit}`
     )
 
     if (!res.ok) {
