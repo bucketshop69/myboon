@@ -13,6 +13,13 @@ All notable changes to MYBOON will be documented in this file.
 - PM2 deployment config — `ecosystem.config.cjs` at monorepo root manages all 4 VPS processes (`myboon-api`, `myboon-collectors`, `myboon-analyst`, `myboon-publisher`) with auto-restart and crash recovery
 - `docs/DEPLOY.md` — first-time VPS setup guide, day-to-day PM2 operations, `.env` reference, smoke test instructions
 
+### Fixed
+
+- `[collectors/user-tracker]` Replaced `.single()` with array query in `resolveMarket` — `.single()` was returning the first row in `polymarket_tracked` when no rows matched, causing all WHALE_BET signals to receive the same wrong slug
+- `[collectors/user-tracker]` Noise filter expanded to catch "Up or Down" and "Up/Down" topic patterns — BTC/Solana short-window binary signals were slipping through the previous `updown` slug-only filter
+- `[collectors/user-tracker]` Gamma API fallback now correctly extracts `slug` from response — `GammaMarketLookup` was missing the `slug` field, hardcoding `null` even when Gamma returned a valid slug
+- `[api]` `GET /narratives` now includes `actions` field and orders by `created_at.desc` first (previously `priority.desc` first)
+
 ### Changed
 
 - `[collectors/user-tracker]` Minimum whale bet raised $50 → $500 — weight scale updated to 6/8/10 (removed $50-499 tier entirely)
