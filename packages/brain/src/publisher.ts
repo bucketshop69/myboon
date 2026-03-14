@@ -119,9 +119,42 @@ async function fetchDraftNarratives(): Promise<Narrative[]> {
   return res.json() as Promise<Narrative[]>
 }
 
+async function isTopicCapped(clusterTitle: string): Promise<boolean> {
+  const keyword = clusterTitle.split(/\s+/)[0].toLowerCase()
+  const encoded = encodeURIComponent(`%${keyword}%`)
+  const since = new Date(Date.now() - 86400000).toISOString()
+  const url = `${SUPABASE_URL}/rest/v1/published_narratives?content_small=ilike.${encoded}&created_at=gte.${encodeURIComponent(since)}&select=id`
+  const res = await fetch(url, { headers: supabaseHeaders() })
+  if (!res.ok) return false
+  const rows = await res.json() as unknown[]
+  return Array.isArray(rows) && rows.length >= 7
+}
+
+async function findExistingThread(slugs: string[]): Promise<string | null> {
+  if (!slugs.length) return null
+  const since = new Date(Date.now() - 86400000).toISOString()
+  const url = `${SUPABASE_URL}/rest/v1/published_narratives?created_at=gte.${encodeURIComponent(since)}&select=id,thread_id,actions&limit=20`
+  const res = await fetch(url, { headers: supabaseHeaders() })
+  if (!res.ok) return null
+  const rows = await res.json() as Array<{ id: string; thread_id: string | null; actions: Array<{ type: string; slug?: string }> }>
+  if (!Array.isArray(rows)) return null
+
+  for (const row of rows) {
+    const rowSlugs = (row.actions ?? [])
+      .filter((a) => a.type === 'predict')
+      .map((a) => a.slug)
+    const overlap = slugs.some((s) => rowSlugs.includes(s))
+    if (overlap) {
+      return row.thread_id ?? row.id
+    }
+  }
+  return null
+}
+
 async function insertPublishedNarrative(
   narrativeId: string,
-  output: PublishedOutput
+  output: PublishedOutput,
+  threadId: string | null
 ): Promise<void> {
   const url = `${SUPABASE_URL}/rest/v1/published_narratives`
   const res = await fetch(url, {
@@ -138,6 +171,7 @@ async function insertPublishedNarrative(
       tags: output.tags,
       priority: output.priority,
       actions: output.actions ?? [],
+      thread_id: threadId,
     }),
   })
 
@@ -371,9 +405,14 @@ async function run(): Promise<void> {
   for (const narrative of narratives) {
     console.log(`[publisher] Processing: "${narrative.cluster}"`)
     try {
+      if (await isTopicCapped(narrative.cluster)) {
+        console.log(`[publisher] Topic capped for "${narrative.cluster}" — skipping`)
+        continue
+      }
       const output = await publishNarrative(narrative)
       if (output.publisher_score >= 8) {
-        await insertPublishedNarrative(narrative.id, output)
+        const threadId = await findExistingThread(narrative.slugs ?? [])
+        await insertPublishedNarrative(narrative.id, output, threadId)
         await markNarrativeStatus(narrative.id, 'published')
         published.push({ narrative, output })
         console.log(`[publisher] Published: "${narrative.cluster}" (publisher_score ${output.publisher_score}, priority ${output.priority})`)

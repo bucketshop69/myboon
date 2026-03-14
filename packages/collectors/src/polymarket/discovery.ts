@@ -7,6 +7,10 @@ import pinnedSlugs from './pinned.json'
 
 const client = new PolymarketClient()
 
+const VOLUME_SURGE_THRESHOLD = 0.20
+const CLOSING_WINDOW_MS = 48 * 60 * 60 * 1000 // 48 hours
+const CLOSING_SIGNAL_COOLDOWN_MS = 6 * 60 * 60 * 1000 // 6 hours
+
 export async function runDiscovery(): Promise<void> {
   console.log('[discovery] Running market discovery...')
 
@@ -41,7 +45,7 @@ export async function runDiscovery(): Promise<void> {
     `[discovery] Found ${topMarkets.length} top markets + ${uniquePinned.length} pinned = ${markets.length} total`
   )
 
-  let discoveredCount = 0
+  let signalCount = 0
 
   for (const market of markets) {
     const [yesTokenId, noTokenId] = market.tokenIds
@@ -59,7 +63,41 @@ export async function runDiscovery(): Promise<void> {
       console.error(`[discovery] Order book fetch failed for ${yesTokenId}:`, err)
     }
 
-    // Upsert into polymarket_tracked
+    // Read existing row before upsert to compute deltas
+    const { data: existingRows } = await supabase
+      .from('polymarket_tracked')
+      .select('volume, last_signalled_at, volume_previous')
+      .eq('token_id', yesTokenId)
+      .limit(1)
+    const existing = existingRows?.[0] as
+      | { volume: number | null; last_signalled_at: string | null; volume_previous: number | null }
+      | undefined
+
+    const is_new = !existing
+
+    // Compute volume delta relative to volume_previous (last signalled baseline)
+    const volumePrevious = existing?.volume_previous ?? existing?.volume ?? 0
+    const volumeCurrent = market.volume ?? 0
+    const volume_delta =
+      volumePrevious > 0 ? (volumeCurrent - volumePrevious) / volumePrevious : 0
+    const volume_surged = volume_delta > VOLUME_SURGE_THRESHOLD
+
+    // Approaching resolution: endDate within 48h AND (no prior signal OR last was >6h ago)
+    let approaching = false
+    if (market.endDate) {
+      const endMs = new Date(market.endDate).getTime()
+      const msUntilEnd = endMs - now.getTime()
+      if (msUntilEnd > 0 && msUntilEnd <= CLOSING_WINDOW_MS) {
+        const lastSignalled = existing?.last_signalled_at
+          ? new Date(existing.last_signalled_at).getTime()
+          : null
+        const cooldownExpired =
+          lastSignalled === null || now.getTime() - lastSignalled > CLOSING_SIGNAL_COOLDOWN_MS
+        approaching = cooldownExpired
+      }
+    }
+
+    // Upsert into polymarket_tracked — always runs to keep prices fresh
     const { error: upsertError } = await supabase
       .from('polymarket_tracked')
       .upsert(
@@ -83,32 +121,178 @@ export async function runDiscovery(): Promise<void> {
       continue
     }
 
-    // Insert MARKET_DISCOVERED signal
-    const signal: Signal = {
-      source: 'POLYMARKET',
-      type: 'MARKET_DISCOVERED',
-      topic: market.title,
-      weight: 1,
-      metadata: {
-        marketId: market.id,
+    // Gate signal inserts on delta conditions
+    let anySignalFired = false
+
+    if (is_new) {
+      const signal: Signal = {
+        source: 'POLYMARKET',
+        type: 'MARKET_DISCOVERED',
+        topic: market.title,
         slug: market.slug,
-        volume: market.volume,
-        endDate: market.endDate,
-        yes_price,
-        no_price,
-      },
+        weight: 1,
+        metadata: {
+          marketId: market.id,
+          slug: market.slug,
+          volume: market.volume,
+          endDate: market.endDate,
+          yes_price,
+          no_price,
+        },
+      }
+      const { error } = await supabase.from('signals').insert(signal)
+      if (error) {
+        console.error(`[discovery] MARKET_DISCOVERED signal failed for ${market.id}:`, error)
+      } else {
+        anySignalFired = true
+        signalCount++
+        console.log(`[discovery] MARKET_DISCOVERED: ${market.slug}`)
+      }
     }
 
-    const { error: signalError } = await supabase.from('signals').insert(signal)
+    if (volume_surged) {
+      const signal: Signal = {
+        source: 'POLYMARKET',
+        type: 'VOLUME_SURGE',
+        topic: market.title,
+        slug: market.slug,
+        weight: 2,
+        metadata: {
+          marketId: market.id,
+          slug: market.slug,
+          volume: market.volume,
+          endDate: market.endDate,
+          yes_price,
+          no_price,
+          volume_delta: parseFloat(volume_delta.toFixed(4)),
+        },
+      }
+      const { error } = await supabase.from('signals').insert(signal)
+      if (error) {
+        console.error(`[discovery] VOLUME_SURGE signal failed for ${market.id}:`, error)
+      } else {
+        anySignalFired = true
+        signalCount++
+        console.log(
+          `[discovery] VOLUME_SURGE: ${market.slug} (+${(volume_delta * 100).toFixed(1)}%)`
+        )
+      }
+    }
 
-    if (signalError) {
-      console.error(`[discovery] Signal insert failed for market ${market.id}:`, signalError)
-    } else {
-      discoveredCount++
+    if (approaching) {
+      const signal: Signal = {
+        source: 'POLYMARKET',
+        type: 'MARKET_CLOSING',
+        topic: market.title,
+        slug: market.slug,
+        weight: 2,
+        metadata: {
+          marketId: market.id,
+          slug: market.slug,
+          endDate: market.endDate,
+          yes_price,
+          no_price,
+        },
+      }
+      const { error } = await supabase.from('signals').insert(signal)
+      if (error) {
+        console.error(`[discovery] MARKET_CLOSING signal failed for ${market.id}:`, error)
+      } else {
+        anySignalFired = true
+        signalCount++
+        console.log(`[discovery] MARKET_CLOSING: ${market.slug} (ends ${market.endDate})`)
+      }
+    }
+
+    // Update signalling metadata if any signal fired
+    if (anySignalFired) {
+      await supabase
+        .from('polymarket_tracked')
+        .update({
+          last_signalled_at: new Date().toISOString(),
+          volume_previous: market.volume,
+        })
+        .eq('token_id', yesTokenId)
     }
   }
 
-  console.log(`[discovery] Done — ${discoveredCount} markets discovered and signalled`)
+  await checkResolutions(markets).catch((err) =>
+    console.error('[discovery] Resolution check failed:', err)
+  )
+
+  console.log(`[discovery] Done — ${signalCount} signals emitted across ${markets.length} markets`)
+}
+
+async function checkResolutions(markets: Market[]): Promise<void> {
+  for (const market of markets) {
+    // Skip markets with endDate still in the future
+    if (market.endDate && new Date(market.endDate) > new Date()) continue
+
+    // Check resolution status via Gamma API
+    let resolvedOutcome: string | null = null
+    try {
+      const res = await fetch(`https://gamma-api.polymarket.com/markets?condition_id=${market.id}`)
+      if (!res.ok) continue
+      const data = await res.json()
+      if (!Array.isArray(data) || data.length === 0) continue
+      const m = data[0] as { resolved_outcome?: string; resolution?: string }
+      if (m.resolved_outcome) {
+        resolvedOutcome = m.resolved_outcome
+      } else if (m.resolution && m.resolution !== 'unresolved') {
+        resolvedOutcome = m.resolution === 'yes' ? 'YES' : m.resolution === 'no' ? 'NO' : null
+      }
+    } catch {
+      continue
+    }
+
+    if (!resolvedOutcome) continue
+
+    // Find all WHALE_BET signals for this market
+    const { data: bets } = await supabase
+      .from('signals')
+      .select('metadata')
+      .eq('type', 'WHALE_BET')
+      .eq('metadata->>marketId', market.id)
+
+    if (!bets || bets.length === 0) continue
+
+    for (const bet of bets) {
+      const meta = bet.metadata as { user?: string; outcome?: string }
+      if (!meta.user || !meta.outcome) continue
+
+      const correct = meta.outcome.toUpperCase() === resolvedOutcome.toUpperCase()
+
+      const { data: walletRows } = await supabase
+        .from('polymarket_wallets')
+        .select('resolved_bets, correct_bets')
+        .eq('address', meta.user)
+        .limit(1)
+
+      const wallet = walletRows?.[0] as
+        | { resolved_bets: number; correct_bets: number }
+        | undefined
+      if (!wallet) continue
+
+      const newResolvedBets = wallet.resolved_bets + 1
+      const newCorrectBets = wallet.correct_bets + (correct ? 1 : 0)
+      const newWinRate =
+        newResolvedBets >= 5
+          ? parseFloat((newCorrectBets / newResolvedBets).toFixed(2))
+          : null
+
+      await supabase
+        .from('polymarket_wallets')
+        .update({
+          resolved_bets: newResolvedBets,
+          correct_bets: newCorrectBets,
+          win_rate: newWinRate,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('address', meta.user)
+    }
+
+    console.log(`[discovery] Processed resolution for ${market.slug}: ${resolvedOutcome}`)
+  }
 }
 
 export function startDiscoveryCron(): void {

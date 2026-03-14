@@ -1,6 +1,7 @@
 import WebSocket from 'ws'
 import { supabase } from './supabase'
 import type { Signal } from './signal-types'
+import { validateSignal } from './validate-signal'
 
 const WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market'
 const SHIFT_THRESHOLD = parseFloat(process.env.ODDS_SHIFT_THRESHOLD || '0.05')
@@ -61,6 +62,7 @@ async function handlePriceUpdate(
     source: 'POLYMARKET',
     type: 'ODDS_SHIFT',
     topic: market.title,
+    slug: market.slug,
     weight: Math.min(shift / SHIFT_THRESHOLD, 5),
     metadata: {
       marketId: market.market_id,
@@ -70,6 +72,13 @@ async function handlePriceUpdate(
       shift_from: prevPrice,
       shift_to: newPrice,
     },
+  }
+
+  try {
+    validateSignal(signal)
+  } catch (err) {
+    console.error((err as Error).message)
+    return
   }
 
   const { error } = await supabase.from('signals').insert(signal)

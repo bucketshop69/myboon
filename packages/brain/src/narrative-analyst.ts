@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { PolymarketClient } from '@myboon/shared'
 import { createPolymarketTools } from './analyst-tools/polymarket.tools.js'
 import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp.js'
+import { buildMarketContexts } from './context-builder.js'
+import type { MarketContext } from './context-builder.js'
 
 // --- env validation ---
 
@@ -67,6 +69,7 @@ interface Signal {
   source: string
   type: string
   topic: string
+  slug?: string        // top-level slug (added by #031)
   weight: number
   metadata: SignalMetadata
   created_at: string
@@ -79,6 +82,7 @@ interface NarrativeCluster {
   score: number
   signal_count: number
   key_signals: string[]
+  slugs?: string[]
 }
 
 // Anthropic message content block shapes
@@ -105,6 +109,10 @@ function supabaseHeaders(): Record<string, string> {
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     'Content-Type': 'application/json',
   }
+}
+
+async function supabaseFetch(path: string): Promise<Response> {
+  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: supabaseHeaders() })
 }
 
 async function fetchUnprocessedSignals(): Promise<Signal[]> {
@@ -212,12 +220,12 @@ const SYSTEM_PROMPT =
   'If a signal contains a conditionId, use get_market_by_condition to resolve the market and get live odds in one call.'
 
 async function clusterNarratives(
-  signalLines: string[]
+  contexts: MarketContext[]
 ): Promise<NarrativeCluster[]> {
-  const userPrompt = `Below are recent signals from Polymarket. Cluster them into emerging narratives.
+  const userPrompt = `Below are active prediction markets with recent signal activity. Cluster them into emerging narratives.
 
-Signals:
-${signalLines.join('\n')}
+Markets:
+${JSON.stringify(contexts, null, 2)}
 
 Return a JSON array only — no markdown, no explanation. Each element:
 {
@@ -225,7 +233,8 @@ Return a JSON array only — no markdown, no explanation. Each element:
   "observation": "factual 2-3 sentence analyst note",
   "score": <integer 1-10 urgency/importance>,
   "signal_count": <number of signals in this cluster>,
-  "key_signals": ["brief signal 1", "brief signal 2"]
+  "key_signals": ["brief signal 1", "brief signal 2"],
+  "slugs": ["slug-one", "slug-two"]
 }`
 
   const tools = toAnthropicDefinitions(analystTools)
@@ -326,7 +335,7 @@ async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): 
       score: c.score,
       signal_count: c.signal_count,
       signals_snapshot: signals,
-      slugs: extractSlugs(c.key_signals ?? []),
+      slugs: c.slugs ?? [],
       status: 'draft',
     }))
 
@@ -386,8 +395,13 @@ async function run(): Promise<void> {
 
   console.log(`[narrative-analyst] Found ${signals.length} unprocessed signal(s).`)
 
-  const signalLines = signals.map(formatSignalLine)
-  const clusters = await clusterNarratives(signalLines)
+  const contexts = await buildMarketContexts(signals, supabaseFetch)
+  if (contexts.length === 0) {
+    console.log('[narrative-analyst] No market contexts built from signals. Skipping LLM call.')
+    return
+  }
+  console.log(`[narrative-analyst] Built ${contexts.length} market context(s) from ${signals.length} signal(s).`)
+  const clusters = await clusterNarratives(contexts)
 
   printReport(clusters, timestamp)
   await saveNarratives(clusters, signals)

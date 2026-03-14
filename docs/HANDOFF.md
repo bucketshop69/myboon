@@ -1,43 +1,34 @@
-# Handoff — 2026-03-08
+# Handoff — 2026-03-09
 
-## What Was Done This Session
+## Hackathon Sprint — COMPLETE
 
-### Publisher Brain (packages/brain) — DONE
+The hackathon build is done. All core layers are live and the submission is ready.
 
-- `src/publisher.ts` — reads `narratives` (status=draft, score >= 7), runs tool-use loop per narrative, writes to `published_narratives`, marks status published/rejected. Runs every 30min.
-- `src/publisher-tools/firecrawl.tools.ts` — `search_news` tool via Firecrawl `/v2/search`. Returns `data.web[]` results.
-- `src/publisher-tools/supabase.tools.ts` — `search_published` tool — checks own DB before external search.
-- Sports narrative detection via regex in code (`isSportsNarrative()`), passes empty `[]` tools to LLM so sports narratives skip search (still published, just no external research).
-- Publisher gives own `publisher_score` — only saves if >= 8, else marks rejected.
-- System prompt includes today's date dynamically (`buildSystemPrompt()`).
-- Consecutive tool failure fallback — after 3 failures, LLM told to proceed with signal data only.
-- `packages/brain/package.json` — added `publisher` script.
+### What's Live
 
-### Supabase Tables Added
+| Layer | Component | Status |
+|-------|-----------|--------|
+| Layer 0 | Polymarket Collector — discovery, stream, whale tracker | Live on VPS |
+| Layer 1 | Analyst — clusters signals → narratives (every 15min) | Live on VPS |
+| Layer 2 | Publisher — stress-tests → publishes to feed (every 30min) | Live on VPS |
+| API | Hono server — /narratives, /predict/*, /predict/sports/* | Live on VPS :3000 |
+| Mobile | Expo app — Feed, Predict, Swap, Trade tabs | Built (hybrid-expo) |
 
-- `narratives` — analyst output (done in previous session)
-- `published_narratives` — publisher output: `narrative_id`, `content_small`, `content_full`, `reasoning`, `tags`, `priority`, `publisher_score`
-
-### Docs
-
-- `docs/issues/023-publisher-brain.md` — PRD written and implemented
-- `docs/ARCHITECTURE.md` — updated to reflect Layer 2 (Publisher) complete
+### Submission Assets
+- `docs/ARCHITECTURE-DIAGRAM.md` — Mermaid system diagram for video
+- `docs/demo-script.md` — 7-frame pitch script with voiceover
+- `apps/hybrid-expo/eas.json` — dapp-store APK build profile ready
+- App rebranded: **myboon** (`xyz.myboon.app`)
 
 ---
 
-## What's Next (in order)
+## What's Next (post-hackathon)
 
-1. **Feed API** (issue 025) — REST endpoint serving `published_narratives`. Simple GET /narratives list + GET /narratives/:id full. To be decided: Supabase Edge Function vs standalone Hono/Express server.
-2. **Mobile Feed tab** — Expo app reads from Feed API, renders `content_small` cards.
-3. **Influencer brain** (issue 024) — X post drafts from published narratives, human approves manually.
-
----
-
-## Open Items
-
-- VPS: Polymarket collector should still be running. Brain (analyst + publisher) can be moved to VPS once Feed API is live.
-- Kalshi, X API, on-chain signals — not started
-- Feed API host TBD — could be a simple Hono server in `packages/api` or Supabase Edge Functions
+1. **APK build** — `eas build --profile dapp-store --platform android`, back up keystore immediately
+2. **Influencer brain** (Layer 3) — X post drafts from published narratives, human approves
+3. **On-chain signals** — Jupiter swap stream, whale wallet tracker feeding into signals table
+4. **x402 monetisation** — Feed API pay-per-call on Solana
+5. **Predict/Trade UI polish** — wire up live data, order flow
 
 ---
 
@@ -47,5 +38,6 @@ All credentials live in:
 
 - `packages/collectors/.env`
 - `packages/brain/.env`
+- `packages/api/.env`
 
-Both gitignored. See MEMORY.md for values if needed.
+All gitignored. See MEMORY.md for values if needed.

@@ -29,7 +29,7 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
     async execute(args) {
       try {
         const encoded = encodeURIComponent(`%${args.query}%`)
-        const url = `${deps.supabaseUrl}/rest/v1/published_narratives?or=(content_small.ilike.${encoded},content_full.ilike.${encoded})&select=id,content_small,content_full,reasoning,tags,priority,created_at&order=created_at.desc&limit=5`
+        const url = `${deps.supabaseUrl}/rest/v1/published_narratives?or=(content_small.ilike.${encoded},content_full.ilike.${encoded})&select=id,content_small,content_full,reasoning,tags,priority,thread_id,created_at&order=created_at.desc&limit=5`
         const res = await fetch(url, { headers })
 
         if (!res.ok) {

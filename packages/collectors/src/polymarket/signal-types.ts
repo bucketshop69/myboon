@@ -1,7 +1,8 @@
 export interface Signal {
   source: 'POLYMARKET'
-  type: 'MARKET_DISCOVERED' | 'ODDS_SHIFT' | 'WHALE_BET'
+  type: 'MARKET_DISCOVERED' | 'ODDS_SHIFT' | 'WHALE_BET' | 'VOLUME_SURGE' | 'MARKET_CLOSING'
   topic: string
+  slug?: string
   weight: number
   metadata: {
     marketId?: string
@@ -16,5 +17,9 @@ export interface Signal {
     amount?: number
     side?: string
     outcome?: string
+    volume_delta?: number
+    walletTotalBets?: number
+    walletWinRate?: number | null
+    walletLabel?: string
   }
 }
