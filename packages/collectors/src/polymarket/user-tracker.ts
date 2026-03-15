@@ -77,6 +77,14 @@ async function resolveMarket(conditionId: string): Promise<{ title: string; slug
       return { title: conditionId, slug: null }
     }
     const m = markets[0]
+    // Verify Gamma returned the market we actually asked for.
+    // If condition_id filter is unsupported or misses, Gamma returns a default
+    // sorted list (Biden's old market ends up first) — we must reject those.
+    const returnedId: string | undefined = m.conditionId ?? m.condition_id
+    if (returnedId && returnedId.toLowerCase() !== conditionId.toLowerCase()) {
+      console.warn(`[user-tracker] Gamma returned wrong market for ${conditionId} (got ${returnedId}), skipping`)
+      return { title: conditionId, slug: null }
+    }
     const title: string = typeof m.question === 'string' ? m.question
       : typeof m.title === 'string' ? m.title
       : conditionId
