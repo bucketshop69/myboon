@@ -68,27 +68,18 @@ async function resolveMarket(conditionId: string): Promise<{ title: string; slug
     return result
   }
 
-  // Fallback to Gamma API
+  // Fallback to CLOB API — direct conditionId lookup, no filter issues
   try {
-    const res = await fetch(`https://gamma-api.polymarket.com/markets?condition_id=${conditionId}`)
+    const res = await fetch(`https://clob.polymarket.com/markets/${conditionId}`)
     if (!res.ok) return { title: conditionId, slug: null }
-    const markets = await res.json()
-    if (!Array.isArray(markets) || markets.length === 0) {
+    const m = await res.json()
+    const returnedId: string | undefined = m.condition_id
+    if (!returnedId || returnedId.toLowerCase() !== conditionId.toLowerCase()) {
+      console.warn(`[user-tracker] CLOB returned wrong market for ${conditionId} (got ${returnedId}), skipping`)
       return { title: conditionId, slug: null }
     }
-    const m = markets[0]
-    // Verify Gamma returned the market we actually asked for.
-    // If condition_id filter is unsupported or misses, Gamma returns a default
-    // sorted list (Biden's old market ends up first) — we must reject those.
-    const returnedId: string | undefined = m.conditionId ?? m.condition_id
-    if (returnedId && returnedId.toLowerCase() !== conditionId.toLowerCase()) {
-      console.warn(`[user-tracker] Gamma returned wrong market for ${conditionId} (got ${returnedId}), skipping`)
-      return { title: conditionId, slug: null }
-    }
-    const title: string = typeof m.question === 'string' ? m.question
-      : typeof m.title === 'string' ? m.title
-      : conditionId
-    const slug: string | null = typeof m.slug === 'string' ? m.slug : null
+    const title: string = typeof m.question === 'string' ? m.question : conditionId
+    const slug: string | null = typeof m.market_slug === 'string' ? m.market_slug : null
     const result = { title, slug }
     marketCache.set(conditionId, result)
     return result
