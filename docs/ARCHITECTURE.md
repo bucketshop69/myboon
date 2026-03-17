@@ -174,7 +174,7 @@ polymarket_tracked (populated by discovery — must run first)
 tracked-users.json (18 whale wallets)
     → poll data-api.polymarket.com/activity per wallet
     → for each new bet:
-        resolve slug from polymarket_tracked by conditionId (Gamma API fallback)
+        resolve slug via CLOB API (/markets/{conditionId}) — exact match, no fallback
         insert WHALE_BET signal
         metadata: { slug ✅, user, amount, side, outcome, marketId }
 ```
