@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import type { FeedCategory, FeedItem, FeedSentiment } from '@/features/feed/feed.types';
+import type { FeedItem, NarrativeAction } from '@/features/feed/feed.types';
 
 interface PublishedNarrativeListItem {
   id: string;
@@ -7,6 +7,7 @@ interface PublishedNarrativeListItem {
   content_small: string;
   tags: string[];
   priority: number;
+  actions: unknown;
   created_at: string;
 }
 
@@ -24,28 +25,14 @@ function resolveApiBaseUrl(): string {
   return 'http://localhost:3000';
 }
 
+export function getApiBaseUrl(): string {
+  return resolveApiBaseUrl();
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function deriveCategory(tags: string[]): FeedCategory {
-  const normalized = tags.map((tag) => tag.toLowerCase());
-
-  if (normalized.some((tag) => ['geopolitics', 'war', 'election', 'policy', 'iran', 'us', 'china'].includes(tag))) {
-    return 'Geopolitics';
-  }
-  if (normalized.some((tag) => ['tech', 'ai', 'gpu', 'compute', 'semiconductor'].includes(tag))) {
-    return 'Tech';
-  }
-  if (normalized.some((tag) => ['market', 'markets', 'equity', 'stocks', 'crypto', 'trading'].includes(tag))) {
-    return 'Markets';
-  }
-  return 'Macro';
-}
-
-function deriveSentiment(priority: number): FeedSentiment {
-  return priority >= 6 ? 'up' : 'down';
-}
 
 function toRelativeTime(iso: string): string {
   const createdAt = new Date(iso).getTime();
@@ -61,37 +48,33 @@ function toRelativeTime(iso: string): string {
   return `${Math.floor(diffMs / day)}d ago`;
 }
 
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 3).trimEnd()}...`;
-}
-
-function extractCopy(contentSmall: string): { title: string; description: string } {
-  const text = contentSmall.trim();
-  const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-
-  const primary = parts[0] ?? text;
-  const secondary = parts.slice(1).join(' ').trim();
-
-  return {
-    title: truncate(primary, 94),
-    description: truncate(secondary || text, 220),
-  };
+function parseActions(raw: unknown): NarrativeAction[] {
+  if (!Array.isArray(raw)) return [];
+  const result: NarrativeAction[] = [];
+  for (const item of raw) {
+    if (item && typeof item === 'object' && 'type' in item) {
+      const action = item as Record<string, unknown>;
+      const type = action.type;
+      if (type === 'predict' || type === 'perps') {
+        result.push({
+          type,
+          asset: typeof action.asset === 'string' ? action.asset : undefined,
+          slug: typeof action.slug === 'string' ? action.slug : undefined,
+        });
+      }
+    }
+  }
+  return result;
 }
 
 function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number): FeedItem {
-  const priority = clamp(item.priority ?? 1, 1, 10);
-  const { title, description } = extractCopy(item.content_small ?? '');
-
   return {
     id: item.id,
-    percent: priority * 10,
-    category: deriveCategory(item.tags ?? []),
+    category: item.tags?.[0] ?? 'macro',
     timeAgo: toRelativeTime(item.created_at),
-    title,
-    description,
-    sentiment: deriveSentiment(priority),
+    description: item.content_small?.trim() ?? '',
     isTop: index === 0,
+    actions: parseActions(item.actions),
   };
 }
 
@@ -112,4 +95,90 @@ export async function fetchFeedItems(limit = 20): Promise<FeedItem[]> {
   return payload
     .filter((row): row is PublishedNarrativeListItem => typeof row === 'object' && row !== null && 'id' in row)
     .map(mapNarrativeToFeedItem);
+}
+
+export interface NarrativeDetail {
+  id: string;
+  content_full: string;
+  content_small: string;
+  tags: string[];
+  priority: number;
+  actions: unknown;
+  created_at: string;
+}
+
+export async function fetchNarrativeDetail(id: string): Promise<NarrativeDetail> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/narratives/${encodeURIComponent(id)}`);
+
+  if (!response.ok) {
+    throw new Error(`Narrative detail request failed (${response.status})`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Invalid narrative detail response');
+  }
+
+  return payload as NarrativeDetail;
+}
+
+export interface PredictMarketData {
+  slug: string;
+  question: string | null;
+  yesPrice: number | null;
+  noPrice: number | null;
+  volume24h: number | null;
+}
+
+export async function fetchPredictMarket(slug: string): Promise<PredictMarketData> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/predict/markets/${encodeURIComponent(slug)}`);
+
+  if (!response.ok) {
+    throw new Error(`Predict market request failed (${response.status})`);
+  }
+
+  const raw = (await response.json()) as Record<string, unknown>;
+
+  function parseNullableNumber(v: unknown): number | null {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
+  // The /predict/markets/:slug endpoint returns the raw Gamma market object.
+  // We need to derive yesPrice/noPrice from outcomePrices or bestBid/bestAsk if available,
+  // or fall back to the prices already embedded in the response from the all-markets endpoint
+  // which fetches them via CLOB. For the single-slug route the API returns raw Gamma data,
+  // so we parse outcomePrices[0] (Yes) and outcomePrices[1] (No) from the first market
+  // in the markets array if present, otherwise from top-level outcomePrices.
+  let yesPrice: number | null = null;
+  let noPrice: number | null = null;
+
+  // Try top-level outcomePrices array (binary market)
+  const topOutcomePrices = Array.isArray(raw.outcomePrices) ? raw.outcomePrices : null;
+  if (topOutcomePrices && topOutcomePrices.length >= 2) {
+    yesPrice = parseNullableNumber(topOutcomePrices[0]);
+    noPrice = parseNullableNumber(topOutcomePrices[1]);
+  }
+
+  // If already computed by the all-markets route (it enriches yesPrice/noPrice), use those
+  if (typeof raw.yesPrice === 'number' || typeof raw.yesPrice === 'string') {
+    yesPrice = parseNullableNumber(raw.yesPrice);
+  }
+  if (typeof raw.noPrice === 'number' || typeof raw.noPrice === 'string') {
+    noPrice = parseNullableNumber(raw.noPrice);
+  }
+
+  return {
+    slug: typeof raw.slug === 'string' ? raw.slug : slug,
+    question: typeof raw.question === 'string' ? raw.question : (typeof raw.title === 'string' ? raw.title : null),
+    yesPrice,
+    noPrice,
+    volume24h: parseNullableNumber(raw.volume24hr ?? raw.volume_24h ?? raw.volume ?? null),
+  };
 }

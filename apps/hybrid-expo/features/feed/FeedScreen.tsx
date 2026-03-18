@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { FeedList } from '@/features/feed/components/FeedList';
-import { FilterChips } from '@/features/feed/components/FilterChips';
+import { NarrativeSheet } from '@/features/feed/components/NarrativeSheet';
+import type { NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
-import { BOTTOM_NAV_ITEMS, FILTERS } from '@/features/feed/feed.mock';
+import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import type { FeedItem } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
 
@@ -13,6 +14,7 @@ export default function FeedScreen() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sheetItem, setSheetItem] = useState<NarrativeSheetItem | null>(null);
 
   async function loadFeed(): Promise<void> {
     setIsLoading(true);
@@ -34,16 +36,30 @@ export default function FeedScreen() {
     void loadFeed();
   }, []);
 
+  const handleCardPress = useCallback((item: FeedItem) => {
+    setSheetItem({
+      id: item.id,
+      category: item.category,
+      timeAgo: item.timeAgo,
+      actions: item.actions,
+    });
+  }, []);
+
+  const handleSheetClose = useCallback(() => {
+    setSheetItem(null);
+  }, []);
+
   return (
     <SafeAreaView style={styles.screen}>
       <FeedHeader />
-      <FilterChips filters={FILTERS} />
+
       {isLoading ? (
         <View style={styles.stateWrap}>
           <ActivityIndicator size="small" color={semantic.text.accent} />
           <Text style={styles.stateText}>Loading feed...</Text>
         </View>
       ) : null}
+
       {!isLoading && errorMessage ? (
         <View style={styles.stateWrap}>
           <Text style={styles.stateTitle}>Feed unavailable</Text>
@@ -53,14 +69,21 @@ export default function FeedScreen() {
           </Pressable>
         </View>
       ) : null}
+
       {!isLoading && !errorMessage && items.length === 0 ? (
         <View style={styles.stateWrap}>
           <Text style={styles.stateTitle}>No narratives yet</Text>
           <Text style={styles.stateText}>Publisher has not emitted new feed items.</Text>
         </View>
       ) : null}
-      {!isLoading && !errorMessage && items.length > 0 ? <FeedList items={items} /> : null}
+
+      {!isLoading && !errorMessage && items.length > 0 ? (
+        <FeedList items={items} onCardPress={handleCardPress} />
+      ) : null}
+
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
+
+      <NarrativeSheet item={sheetItem} onClose={handleSheetClose} />
     </SafeAreaView>
   );
 }

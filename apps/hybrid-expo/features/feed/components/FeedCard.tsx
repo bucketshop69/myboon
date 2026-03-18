@@ -1,103 +1,104 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { FeedItem } from '@/features/feed/feed.types';
-import { semantic, tokens } from '@/theme';
+import { tokens } from '@/theme';
+
+// Category pill colors — spec-matched, not derived from theme tokens
+// (these are intentionally narrow, not in semantic.ts)
+const CATEGORY_STYLES: Record<
+  string,
+  { backgroundColor: string; color: string }
+> = {
+  Geopolitics: { backgroundColor: 'rgba(199,183,112,0.12)', color: '#c7b770' },
+  Macro:       { backgroundColor: 'rgba(90,88,64,0.30)',    color: '#8A7A50' },
+  Markets:     { backgroundColor: 'rgba(74,140,111,0.12)',  color: '#4A8C6F' },
+  Tech:        { backgroundColor: 'rgba(100,120,200,0.12)', color: '#7A9AC8' },
+};
 
 interface FeedCardProps {
   item: FeedItem;
+  onPress: (item: FeedItem) => void;
 }
 
-export function FeedCard({ item }: FeedCardProps) {
-  return (
-    <View style={[styles.card, item.isTop && styles.topCard]}>
-      {item.isTop ? <View style={styles.topCardOverlay} /> : null}
+export function FeedCard({ item, onPress }: FeedCardProps) {
+  const catStyle = CATEGORY_STYLES[item.category] ?? CATEGORY_STYLES.Macro;
 
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        item.isTop && styles.cardTop,
+        pressed && styles.cardPressed,
+      ]}
+      onPress={() => onPress(item)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.category} narrative from ${item.timeAgo}`}
+    >
       <View style={styles.body}>
+        {/* Meta row: category pill + time */}
         <View style={styles.metaRow}>
-          <View
-            style={[
-              styles.metaDot,
-              { backgroundColor: item.sentiment === 'up' ? semantic.sentiment.positive : semantic.sentiment.negative },
-            ]}
-          />
-          <Text style={styles.categoryText}>{item.category}</Text>
+          <View style={[styles.catPill, { backgroundColor: catStyle.backgroundColor }]}>
+            <Text style={[styles.catPillText, { color: catStyle.color }]}>
+              {item.category.toUpperCase()}
+            </Text>
+          </View>
           <Text style={styles.timeText}>{item.timeAgo}</Text>
         </View>
 
-        <Text style={styles.titleText}>{item.title}</Text>
-        <Text style={styles.descriptionText}>{item.description}</Text>
-
-        {item.image ? <Image source={{ uri: item.image }} style={styles.heroImage} /> : null}
+        {/* Body text */}
+        <Text style={styles.bodyText}>{item.description}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: tokens.radius.md,
+    backgroundColor: '#222318',
     borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surface,
-    padding: tokens.spacing.lg,
+    borderColor: '#302F20',
+    borderRadius: tokens.radius.md,
+    overflow: 'hidden',
   },
-  topCard: {
-    ...tokens.shadow.card,
+  cardTop: {
+    borderColor: 'rgba(199,183,112,0.14)',
+    backgroundColor: 'rgba(199,183,112,0.025)',
   },
-  topCardOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: semantic.background.topCardOverlay,
+  cardPressed: {
+    backgroundColor: '#2C2D1F',
   },
   body: {
-    flex: 1,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 13,
+    gap: 8,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
+    gap: 8,
   },
-  metaDot: {
-    width: 5,
-    height: 5,
-    borderRadius: tokens.radius.full,
+  catPill: {
+    height: 18,
+    paddingHorizontal: 7,
+    borderRadius: tokens.radius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  categoryText: {
-    color: semantic.text.categoryMeta,
-    fontSize: tokens.fontSize.xs,
-    textTransform: 'uppercase',
-    letterSpacing: tokens.letterSpacing.mono,
+  catPillText: {
+    fontSize: tokens.fontSize.xxs,   // 9
     fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   timeText: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.xs,
-    textTransform: 'uppercase',
+    fontSize: tokens.fontSize.xs,    // 10
     fontFamily: 'monospace',
+    color: '#5A5840',
   },
-  titleText: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.md,
-    lineHeight: tokens.lineHeight.body,
-    fontWeight: '600',
-    letterSpacing: tokens.letterSpacing.tighter,
-  },
-  descriptionText: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.md,
-    lineHeight: tokens.lineHeight.body,
-  },
-  heroImage: {
-    marginTop: tokens.spacing.sm,
-    width: '100%',
-    aspectRatio: 16 / 9,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    borderColor: semantic.border.imageSoft,
+  bodyText: {
+    fontSize: tokens.fontSize.md,    // 14
+    color: 'rgba(208,202,168,0.88)',
+    lineHeight: 21,
+    letterSpacing: -0.2,
   },
 });

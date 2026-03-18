@@ -228,13 +228,22 @@ Expo Router stack with Predict detail routes:
 
 Service layer split:
 
-- Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives`
+- Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives` + `GET /narratives/:id` + `GET /predict/markets/:slug`
 - Predict service (`features/predict/predict.api.ts`) consumes curated/sports list + detail endpoints
 - Swap service (`features/swap/swap.api.ts`) consumes Jupiter GET endpoints (`tokens`, `price`, `quote`)
+
+Feed card design:
+
+- No title — `content_small` is the only card text
+- Category pill derived from `tags[0]` (raw tag from API, e.g. `ucl`, `iran`, `macro`)
+- Tap opens `NarrativeSheet` — bottom sheet with `content_full` + prediction market odds block (if `actions` contains `type: 'predict'`)
+- Prediction block fetches live yes/no from `GET /predict/markets/:slug`, shows odds bars + Bet YES/NO CTAs → navigates to `/predict-market/[slug]`
+- Filter chips removed — no category filtering in current phase
 
 Execution policy:
 
 - Swap CTA remains non-transactional (`COMING SOON`)
+- Bet YES/NO navigates to Predict tab detail — no order execution from Feed
 - No wallet signing or on-chain submit in current phase
 
 ---

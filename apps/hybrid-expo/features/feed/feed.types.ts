@@ -1,19 +1,21 @@
 import type { ComponentProps } from 'react';
 import type MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
-export type FeedCategory = 'Macro' | 'Geopolitics' | 'Tech' | 'Markets';
-export type FeedSentiment = 'up' | 'down';
+export type FeedCategory = string;
+
+export interface NarrativeAction {
+  type: 'predict' | 'perps';
+  asset?: string; // perps: 'BTC', 'ETH'
+  slug?: string;  // predict: polymarket slug
+}
 
 export interface FeedItem {
   id: string;
-  percent: number;
   category: FeedCategory;
   timeAgo: string;
-  title: string;
   description: string;
-  sentiment: FeedSentiment;
-  image?: string;
   isTop?: boolean;
+  actions: NarrativeAction[];
 }
 
 export interface BottomNavItem {

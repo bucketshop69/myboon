@@ -10,6 +10,15 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#030]` Feed card redesign + narrative detail sheet
+  - `NarrativeSheet` — bottom sheet (Modal + animated `translateY`, drag-to-dismiss) opens on card tap. Fetches `content_full` from `GET /narratives/:id`. Renders prediction market block (yes/no odds bars, volume, Bet YES/Bet NO CTAs → `/predict-market/[slug]`) when `actions` contains `type: 'predict'`
+  - `FeedCard` rebuilt — category pill + time + body text only. No title, no stripe, no score, no action chips
+  - `FeedList` swapped `ScrollView` → `FlatList` with `onCardPress` handler
+  - `NarrativeAction` type added (`type: 'predict' | 'perps'`, `slug?`, `asset?`)
+  - `feed.api.ts` — `fetchNarrativeDetail`, `fetchPredictMarket` added; `actions` mapped from API response; `deriveCategory` removed
+  - `FeedCategory` type widened to `string` — category pill now uses `tags[0]` directly (raw API tag, e.g. `ucl`, `iran`, `macro`) instead of keyword-mapped fixed enum
+  - `FilterChips` component deleted — filter row removed from Feed entirely
+
 - PM2 deployment config — `ecosystem.config.cjs` at monorepo root manages all 4 VPS processes (`myboon-api`, `myboon-collectors`, `myboon-analyst`, `myboon-publisher`) with auto-restart and crash recovery
 - `docs/DEPLOY.md` — first-time VPS setup guide, day-to-day PM2 operations, `.env` reference, smoke test instructions
 
