@@ -205,12 +205,10 @@ app.get('/predict/markets', async (c) => {
 })
 
 // GET /predict/markets/:slug
+// No curated gate — feed predict blocks need any valid Polymarket slug, not just curated ones.
+// The curated list applies only to GET /predict/markets (list endpoint).
 app.get('/predict/markets/:slug', async (c) => {
   const slug = c.req.param('slug')
-
-  if (!CURATED_GEO_SET.has(slug)) {
-    return c.json({ error: 'Not found' }, 404)
-  }
 
   try {
     const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
