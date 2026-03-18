@@ -93,7 +93,7 @@ import { TransactionOrchestrator } from './orchestrator.js';
 import { loadAppConfig } from '@myboon/tx-parser';
 
 async function main() {
-  console.log('[Brain] Starting pnl.fun classifier brain...');
+  console.log('[Brain] Starting myboon classifier brain...');
   
   // Load tx-parser config (RPC, wallets)
   const txConfig = loadAppConfig();
@@ -246,7 +246,7 @@ This allows using either env var name.
 3. **Verify startup logs:**
 
    ```
-   [Brain] Starting pnl.fun classifier brain...
+   [Brain] Starting myboon classifier brain...
    [Orchestrator] Starting transaction stream...
    [StreamPipeline] Subscribed to 90 wallets
    [Brain] Classifier brain running. Press Ctrl+C to stop.

@@ -3,6 +3,11 @@ import type MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 export type FeedCategory = string;
 
+export interface PredictOutcome {
+  label: string;
+  price: number; // 0.0–1.0
+}
+
 export interface NarrativeAction {
   type: 'predict' | 'perps';
   asset?: string; // perps: 'BTC', 'ETH'

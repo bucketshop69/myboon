@@ -237,13 +237,18 @@ Feed card design:
 - No title — `content_small` is the only card text
 - Category pill derived from `tags[0]` (raw tag from API, e.g. `ucl`, `iran`, `macro`)
 - Tap opens `NarrativeSheet` — bottom sheet with `content_full` + prediction market odds block (if `actions` contains `type: 'predict'`)
-- Prediction block fetches live yes/no from `GET /predict/markets/:slug`, shows odds bars + Bet YES/NO CTAs → navigates to `/predict-market/[slug]`
+- Prediction block renders up to 3 predict actions per narrative (first 3 slugs)
+- Slug routing: `ucl-*`, `epl-*` etc. → `GET /predict/sports/:sport/:slug` (multi-outcome); all others → `GET /predict/markets/:slug` (binary)
+- Binary block: YES/NO odds bars + price change pills (today, 1w) + resolves date + YES/NO CTAs → navigates to `/predict-market/[slug]`
+- Sports block: team outcome bars (gold) + volume + View Market CTA → navigates to `/predict-sport/[sport]/[slug]`
+- `GET /predict/markets/:slug` no longer gated to curated list — serves any valid Polymarket slug
+- Resolved/inactive markets: predict block hidden silently (null fetch = no render)
 - Filter chips removed — no category filtering in current phase
 
 Execution policy:
 
 - Swap CTA remains non-transactional (`COMING SOON`)
-- Bet YES/NO navigates to Predict tab detail — no order execution from Feed
+- YES/NO/View Market navigates to Predict tab detail — no order execution from Feed
 - No wallet signing or on-chain submit in current phase
 
 ---

@@ -8,10 +8,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { fetchNarrativeDetail, fetchPredictMarket } from '@/features/feed/feed.api';
+import { fetchNarrativeDetail, fetchPredictMarket, extractSport } from '@/features/feed/feed.api';
 import type { NarrativeAction } from '@/features/feed/feed.types';
 import type { PredictMarketData } from '@/features/feed/feed.api';
 import type { FeedCategory } from '@/features/feed/feed.types';
@@ -29,15 +30,29 @@ const CATEGORY_STYLES: Record<string, { backgroundColor: string; color: string }
 };
 
 function formatVolume(v: number | null): string {
-  if (v === null || !Number.isFinite(v)) return '';
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M volume`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K volume`;
-  return `$${Math.round(v)} volume`;
+  if (!v || !Number.isFinite(v)) return '—';
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${Math.round(v / 1_000)}K`;
+  return `$${Math.round(v)}`;
 }
 
 function formatPct(price: number | null): string {
   if (price === null) return '—';
-  return `${(price * 100).toFixed(1)}%`;
+  return `${Math.round(price * 100)}%`;
+}
+
+function formatResolves(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `Resolves ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+function formatChange(val: number | null): { label: string; color: string; bg: string } | null {
+  if (val === null) return null;
+  const pct = Math.round(val * 100);
+  if (pct > 0) return { label: `↑ ${pct}%`, color: tokens.colors.viridian, bg: 'rgba(74,140,111,0.12)' };
+  if (pct < 0) return { label: `↓ ${Math.abs(pct)}%`, color: tokens.colors.vermillion, bg: 'rgba(217,83,79,0.10)' };
+  return { label: '→ 0%', color: tokens.colors.textDim, bg: 'rgba(90,88,64,0.15)' };
 }
 
 interface PredictBlockProps {
@@ -89,59 +104,150 @@ function PredictBlock({ slug }: PredictBlockProps) {
     return null;
   }
 
-  const yesWidth = market.yesPrice !== null ? `${(market.yesPrice * 100).toFixed(1)}%` : '0%';
-  const noWidth  = market.noPrice  !== null ? `${(market.noPrice  * 100).toFixed(1)}%` : '0%';
+  // ── Multi-outcome (sports) ────────────────────────────────────────────────
+  if (market.marketType === 'multi') {
+    return (
+      <View style={predictStyles.container}>
+        <Text style={predictStyles.sectionLabel}>PREDICTION MARKET</Text>
+        <View style={predictStyles.block}>
+          {/* Header */}
+          {market.question ? (
+            <Text style={predictStyles.question}>{market.question}</Text>
+          ) : null}
+
+          {/* Outcomes list */}
+          <View style={predictStyles.outcomesContainer}>
+            {market.outcomes.map((outcome) => (
+              <TouchableOpacity
+                key={outcome.label}
+                style={predictStyles.outcomeRow}
+                onPress={() => router.push(`/predict-sport/${extractSport(slug)}/${slug}`)}
+                activeOpacity={0.7}
+              >
+                <Text style={predictStyles.outcomeLabel}>{outcome.label}</Text>
+                <View style={predictStyles.outcomeBarContainer}>
+                  <View
+                    style={[
+                      predictStyles.outcomeBar,
+                      { width: `${Math.round(outcome.price * 100)}%` as `${number}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={predictStyles.outcomePrice}>{Math.round(outcome.price * 100)}%</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Meta row */}
+          <View style={predictStyles.metaRow}>
+            <View style={predictStyles.metaItem}>
+              <Text style={predictStyles.metaLabel}>Vol 24h</Text>
+              <Text style={predictStyles.metaValue}>{formatVolume(market.volume24h)}</Text>
+            </View>
+          </View>
+
+          {/* View Market button */}
+          <View style={predictStyles.btnsRow}>
+            <Pressable
+              style={({ pressed }) => [predictStyles.btn, predictStyles.btnViewMarket, pressed && predictStyles.btnPressed]}
+              onPress={() => router.push(`/predict-sport/${extractSport(slug)}/${slug}`)}
+              accessibilityRole="button"
+              accessibilityLabel="View Market"
+            >
+              <Text style={[predictStyles.btnText, predictStyles.btnTextViewMarket]}>VIEW MARKET</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Binary market ─────────────────────────────────────────────────────────
+  const yesWidth = market.yesPrice !== null ? `${Math.round(market.yesPrice * 100)}%` : '0%';
+  const noWidth  = market.noPrice  !== null ? `${Math.round(market.noPrice  * 100)}%` : '0%';
+  const resolvesLabel = formatResolves(market.endDateIso);
+  const todayChange = formatChange(market.oneDayPriceChange);
+  const weekChange  = formatChange(market.oneWeekPriceChange);
 
   return (
     <View style={predictStyles.container}>
       <Text style={predictStyles.sectionLabel}>PREDICTION MARKET</Text>
       <View style={predictStyles.block}>
-        {market.question ? (
-          <Text style={predictStyles.question}>{market.question}</Text>
-        ) : null}
+        {/* Header */}
+        <View style={predictStyles.headerSection}>
+          {market.question ? (
+            <Text style={predictStyles.question}>{market.question}</Text>
+          ) : null}
+          {resolvesLabel ? (
+            <Text style={predictStyles.resolvesText}>{resolvesLabel}</Text>
+          ) : null}
+        </View>
 
-        {/* Odds bars */}
+        {/* Odds bars — side by side */}
         <View style={predictStyles.oddsRow}>
           {/* YES */}
           <View style={predictStyles.oddsItem}>
-            <Text style={[predictStyles.oddsLabel, predictStyles.oddsLabelYes]}>YES</Text>
+            <View style={predictStyles.oddsLabelRow}>
+              <Text style={[predictStyles.oddsLabel, predictStyles.oddsLabelYes]}>YES</Text>
+              <Text style={[predictStyles.oddsPct, predictStyles.oddsPctYes]}>{formatPct(market.yesPrice)}</Text>
+            </View>
             <View style={predictStyles.barTrack}>
               <View style={[predictStyles.barFill, predictStyles.barFillYes, { width: yesWidth as `${number}%` }]} />
             </View>
-            <Text style={[predictStyles.oddsPct, predictStyles.oddsPctYes]}>{formatPct(market.yesPrice)}</Text>
           </View>
           {/* NO */}
           <View style={predictStyles.oddsItem}>
-            <Text style={[predictStyles.oddsLabel, predictStyles.oddsLabelNo]}>NO</Text>
+            <View style={predictStyles.oddsLabelRow}>
+              <Text style={[predictStyles.oddsLabel, predictStyles.oddsLabelNo]}>NO</Text>
+              <Text style={[predictStyles.oddsPct, predictStyles.oddsPctNo]}>{formatPct(market.noPrice)}</Text>
+            </View>
             <View style={predictStyles.barTrack}>
               <View style={[predictStyles.barFill, predictStyles.barFillNo, { width: noWidth as `${number}%` }]} />
             </View>
-            <Text style={[predictStyles.oddsPct, predictStyles.oddsPctNo]}>{formatPct(market.noPrice)}</Text>
           </View>
         </View>
 
-        {/* Volume */}
-        {market.volume24h !== null ? (
-          <Text style={predictStyles.volume}>{formatVolume(market.volume24h)}</Text>
-        ) : null}
+        {/* Meta row: volume + price change pills */}
+        <View style={predictStyles.metaRow}>
+          <View style={predictStyles.metaItem}>
+            <Text style={predictStyles.metaLabel}>Vol 24h</Text>
+            <Text style={predictStyles.metaValue}>{formatVolume(market.volume24h)}</Text>
+          </View>
+          {todayChange ? (
+            <View style={predictStyles.metaItem}>
+              <Text style={predictStyles.metaLabel}>Today</Text>
+              <View style={[predictStyles.changePill, { backgroundColor: todayChange.bg }]}>
+                <Text style={[predictStyles.changePillText, { color: todayChange.color }]}>{todayChange.label}</Text>
+              </View>
+            </View>
+          ) : null}
+          {weekChange ? (
+            <View style={predictStyles.metaItem}>
+              <Text style={predictStyles.metaLabel}>1w</Text>
+              <View style={[predictStyles.changePill, { backgroundColor: weekChange.bg }]}>
+                <Text style={[predictStyles.changePillText, { color: weekChange.color }]}>{weekChange.label}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
 
-        {/* Bet buttons */}
+        {/* YES / NO buttons */}
         <View style={predictStyles.btnsRow}>
           <Pressable
             style={({ pressed }) => [predictStyles.btn, predictStyles.btnYes, pressed && predictStyles.btnPressed]}
             onPress={() => router.push(`/predict-market/${slug}`)}
             accessibilityRole="button"
-            accessibilityLabel="Bet YES"
+            accessibilityLabel="YES"
           >
-            <Text style={[predictStyles.btnText, predictStyles.btnTextYes]}>BET YES</Text>
+            <Text style={[predictStyles.btnText, predictStyles.btnTextYes]}>YES</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [predictStyles.btn, predictStyles.btnNo, pressed && predictStyles.btnPressed]}
             onPress={() => router.push(`/predict-market/${slug}`)}
             accessibilityRole="button"
-            accessibilityLabel="Bet NO"
+            accessibilityLabel="NO"
           >
-            <Text style={[predictStyles.btnText, predictStyles.btnTextNo]}>BET NO</Text>
+            <Text style={[predictStyles.btnText, predictStyles.btnTextNo]}>NO</Text>
           </Pressable>
         </View>
       </View>
@@ -154,87 +260,130 @@ const predictStyles = StyleSheet.create({
     gap: 0,
   },
   sectionLabel: {
-    fontSize: tokens.fontSize.xxs,  // 9
+    fontSize: tokens.fontSize.xxs,
     fontFamily: 'monospace',
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    color: '#5A5840',
-    marginBottom: 12,
+    letterSpacing: tokens.letterSpacing.monoWide,
+    color: tokens.colors.textDim,
+    marginBottom: tokens.spacing.md,
   },
   block: {
+    backgroundColor: tokens.colors.surface,
     borderWidth: 1,
-    borderColor: '#302F20',
+    borderColor: tokens.colors.lift,
     borderRadius: tokens.radius.md,
     padding: 14,
-    gap: 12,
+    gap: tokens.spacing.md,
+  },
+  headerSection: {
+    gap: tokens.spacing.xxs,
   },
   question: {
-    fontSize: 13,
-    color: '#D0CAA8',
+    fontSize: tokens.fontSize.sm,
+    color: tokens.colors.bone,
     lineHeight: 18,
-    letterSpacing: -0.1,
+    letterSpacing: tokens.letterSpacing.nav,
+    fontWeight: '500',
   },
+  resolvesText: {
+    fontSize: tokens.fontSize.xs,
+    color: tokens.colors.textDim,
+    fontFamily: 'monospace',
+  },
+  // Binary odds — side-by-side columns
   oddsRow: {
-    gap: 7,
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
   },
   oddsItem: {
+    flex: 1,
+    gap: tokens.spacing.xs,
+  },
+  oddsLabelRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
   },
   oddsLabel: {
-    fontSize: tokens.fontSize.xs,   // 10
+    fontSize: tokens.fontSize.xs,
     fontFamily: 'monospace',
     fontWeight: '700',
-    letterSpacing: 0.5,
-    width: 28,
+    letterSpacing: tokens.letterSpacing.mono,
+    textTransform: 'uppercase',
+    color: tokens.colors.textDim,
   },
   oddsLabelYes: {
-    color: '#4A8C6F',
+    color: tokens.colors.textDim,
   },
   oddsLabelNo: {
-    color: '#D9534F',
+    color: tokens.colors.textDim,
   },
   barTrack: {
-    flex: 1,
-    height: 6,
-    backgroundColor: '#302F20',
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: tokens.colors.borderMuted,
+    borderRadius: tokens.radius.xs,
     overflow: 'hidden',
   },
   barFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: tokens.radius.xs,
   },
   barFillYes: {
-    backgroundColor: '#4A8C6F',
+    backgroundColor: tokens.colors.viridian,
   },
   barFillNo: {
-    backgroundColor: '#D9534F',
+    backgroundColor: tokens.colors.vermillion,
   },
   oddsPct: {
-    fontSize: 13,
+    fontSize: tokens.fontSize.md,
     fontFamily: 'monospace',
-    fontWeight: '700',
-    width: 38,
-    textAlign: 'right',
+    fontWeight: '600',
   },
   oddsPctYes: {
-    color: '#4A8C6F',
+    color: tokens.colors.viridian,
   },
   oddsPctNo: {
-    color: '#D9534F',
+    color: tokens.colors.vermillion,
   },
-  volume: {
-    fontSize: tokens.fontSize.xs,   // 10
+  // Meta row
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+    flexWrap: 'wrap',
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  metaLabel: {
+    fontSize: tokens.fontSize.xs,
     fontFamily: 'monospace',
-    color: '#5A5840',
-    letterSpacing: 0.3,
+    color: tokens.colors.textDim,
+    textTransform: 'uppercase',
+    letterSpacing: tokens.letterSpacing.nav,
   },
+  metaValue: {
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    color: tokens.colors.primaryDim,
+  },
+  changePill: {
+    paddingHorizontal: tokens.spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: tokens.radius.sm,
+  },
+  changePillText: {
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  // Buttons
   btnsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: tokens.spacing.sm,
   },
   btn: {
     flex: 1,
@@ -244,35 +393,79 @@ const predictStyles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   btnYes: {
-    backgroundColor: 'rgba(74,140,111,0.15)',
+    backgroundColor: 'rgba(74,140,111,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.35)',
+    borderColor: 'rgba(74,140,111,0.25)',
   },
   btnNo: {
-    backgroundColor: 'rgba(217,79,61,0.12)',
+    backgroundColor: 'rgba(217,83,79,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(217,79,61,0.3)',
+    borderColor: 'rgba(217,83,79,0.20)',
+  },
+  btnViewMarket: {
+    backgroundColor: 'rgba(199,183,112,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(199,183,112,0.25)',
   },
   btnPressed: {
     opacity: 0.75,
   },
   btnText: {
-    fontSize: 11,
+    fontSize: tokens.fontSize.xs,
     fontFamily: 'monospace',
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: tokens.letterSpacing.mono,
     textTransform: 'uppercase',
   },
   btnTextYes: {
-    color: '#4A8C6F',
+    color: tokens.colors.viridian,
   },
   btnTextNo: {
-    color: '#D9534F',
+    color: tokens.colors.vermillion,
+  },
+  btnTextViewMarket: {
+    color: tokens.colors.primary,
   },
   loadingText: {
     fontSize: tokens.fontSize.sm,
-    color: '#5A5840',
+    color: tokens.colors.textDim,
     fontFamily: 'monospace',
+  },
+  // Multi-outcome (sports)
+  outcomesContainer: {
+    gap: tokens.spacing.sm,
+  },
+  outcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  outcomeLabel: {
+    fontSize: tokens.fontSize.sm,
+    color: tokens.colors.bone,
+    fontFamily: 'monospace',
+    width: 100,
+    flexShrink: 0,
+  },
+  outcomeBarContainer: {
+    flex: 1,
+    height: 4,
+    backgroundColor: tokens.colors.borderMuted,
+    borderRadius: tokens.radius.xs,
+    overflow: 'hidden',
+  },
+  outcomeBar: {
+    height: '100%',
+    backgroundColor: tokens.colors.primary,
+    borderRadius: tokens.radius.xs,
+  },
+  outcomePrice: {
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+    color: tokens.colors.primary,
+    width: 34,
+    textAlign: 'right',
   },
 });
 
@@ -362,9 +555,10 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
     ? (CATEGORY_STYLES[item.category] ?? CATEGORY_STYLES.Macro)
     : CATEGORY_STYLES.Macro;
 
-  // Find first predict action with a slug
-  const predictAction = item?.actions.find((a) => a.type === 'predict' && a.slug);
-  const hasPrediction = Boolean(predictAction?.slug);
+  // Collect up to 3 predict actions with slugs
+  const predictActions = (item?.actions ?? [])
+    .filter((a) => a.type === 'predict' && a.slug)
+    .slice(0, 3);
 
   return (
     <Modal
@@ -410,13 +604,13 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
             <Text style={styles.fullText}>{contentFull ?? ''}</Text>
           )}
 
-          {/* Prediction block — only if predict action present */}
-          {hasPrediction && predictAction?.slug ? (
-            <>
+          {/* Prediction blocks — up to 3 predict actions */}
+          {predictActions.map((action) => (
+            <View key={action.slug}>
               <View style={styles.divider} />
-              <PredictBlock slug={predictAction.slug} />
-            </>
-          ) : null}
+              <PredictBlock slug={action.slug!} />
+            </View>
+          ))}
         </ScrollView>
       </Animated.View>
     </Modal>

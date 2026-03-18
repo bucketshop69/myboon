@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import type { FeedItem, NarrativeAction } from '@/features/feed/feed.types';
+import type { FeedItem, NarrativeAction, PredictOutcome } from '@/features/feed/feed.types';
 
 interface PublishedNarrativeListItem {
   id: string;
@@ -126,29 +126,57 @@ export async function fetchNarrativeDetail(id: string): Promise<NarrativeDetail>
 export interface PredictMarketData {
   slug: string;
   question: string | null;
+  marketType: 'binary' | 'multi';
+  // binary fields
   yesPrice: number | null;
   noPrice: number | null;
+  // multi fields
+  outcomes: PredictOutcome[];
   volume24h: number | null;
+  // price change / resolve metadata
+  endDateIso: string | null;
+  oneDayPriceChange: number | null;
+  oneWeekPriceChange: number | null;
 }
 
-export async function fetchPredictMarket(slug: string): Promise<PredictMarketData> {
+const SPORT_PREFIXES = ['ucl', 'epl', 'lol', 'nba', 'nfl', 'ncaa'];
+
+export function detectSlugType(slug: string): 'sports' | 'geo' {
+  const prefix = slug.split('-')[0].toLowerCase();
+  return SPORT_PREFIXES.includes(prefix) ? 'sports' : 'geo';
+}
+
+export function extractSport(slug: string): string {
+  return slug.split('-')[0].toLowerCase();
+}
+
+function parseNullableNumber(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+export async function fetchPredictMarket(slug: string): Promise<PredictMarketData | null> {
+  const type = detectSlugType(slug);
+
+  if (type === 'sports') {
+    return fetchSportsMarket(slug);
+  }
+  return fetchGeoMarket(slug);
+}
+
+async function fetchGeoMarket(slug: string): Promise<PredictMarketData | null> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetch(`${baseUrl}/predict/markets/${encodeURIComponent(slug)}`);
 
   if (!response.ok) {
-    throw new Error(`Predict market request failed (${response.status})`);
+    return null;
   }
 
   const raw = (await response.json()) as Record<string, unknown>;
-
-  function parseNullableNumber(v: unknown): number | null {
-    if (typeof v === 'number' && Number.isFinite(v)) return v;
-    if (typeof v === 'string') {
-      const n = parseFloat(v);
-      return Number.isFinite(n) ? n : null;
-    }
-    return null;
-  }
 
   // The /predict/markets/:slug endpoint returns the raw Gamma market object.
   // We need to derive yesPrice/noPrice from outcomePrices or bestBid/bestAsk if available,
@@ -159,11 +187,16 @@ export async function fetchPredictMarket(slug: string): Promise<PredictMarketDat
   let yesPrice: number | null = null;
   let noPrice: number | null = null;
 
-  // Try top-level outcomePrices array (binary market)
-  const topOutcomePrices = Array.isArray(raw.outcomePrices) ? raw.outcomePrices : null;
-  if (topOutcomePrices && topOutcomePrices.length >= 2) {
-    yesPrice = parseNullableNumber(topOutcomePrices[0]);
-    noPrice = parseNullableNumber(topOutcomePrices[1]);
+  // outcomePrices from Gamma is a JSON string e.g. "[\"0.295\", \"0.705\"]" — parse it
+  let rawOutcomePrices: unknown[] = [];
+  if (Array.isArray(raw.outcomePrices)) {
+    rawOutcomePrices = raw.outcomePrices;
+  } else if (typeof raw.outcomePrices === 'string') {
+    try { rawOutcomePrices = JSON.parse(raw.outcomePrices); } catch { /* ignore */ }
+  }
+  if (rawOutcomePrices.length >= 2) {
+    yesPrice = parseNullableNumber(rawOutcomePrices[0]);
+    noPrice = parseNullableNumber(rawOutcomePrices[1]);
   }
 
   // If already computed by the all-markets route (it enriches yesPrice/noPrice), use those
@@ -177,8 +210,37 @@ export async function fetchPredictMarket(slug: string): Promise<PredictMarketDat
   return {
     slug: typeof raw.slug === 'string' ? raw.slug : slug,
     question: typeof raw.question === 'string' ? raw.question : (typeof raw.title === 'string' ? raw.title : null),
+    marketType: 'binary',
     yesPrice,
     noPrice,
+    outcomes: [],
     volume24h: parseNullableNumber(raw.volume24hr ?? raw.volume_24h ?? raw.volume ?? null),
+    endDateIso: typeof raw.endDateIso === 'string' ? raw.endDateIso : null,
+    oneDayPriceChange: parseNullableNumber(raw.oneDayPriceChange),
+    oneWeekPriceChange: parseNullableNumber(raw.oneWeekPriceChange),
+  };
+}
+
+async function fetchSportsMarket(slug: string): Promise<PredictMarketData | null> {
+  const sport = extractSport(slug);
+  const baseUrl = resolveApiBaseUrl();
+  const res = await fetch(`${baseUrl}/predict/sports/${sport}/${encodeURIComponent(slug)}`);
+  if (!res.ok) return null;
+  const data = (await res.json()) as Record<string, unknown>;
+
+  return {
+    slug,
+    question: typeof data.title === 'string' ? data.title : null,
+    marketType: 'multi',
+    yesPrice: null,
+    noPrice: null,
+    outcomes: (Array.isArray(data.outcomes) ? data.outcomes : []).map((o: Record<string, unknown>) => ({
+      label: typeof o.label === 'string' ? o.label : String(o.label ?? ''),
+      price: typeof o.price === 'number' ? o.price : parseFloat(String(o.price ?? '0')) || 0,
+    })),
+    volume24h: parseNullableNumber(data.volume24h ?? null),
+    endDateIso: null,
+    oneDayPriceChange: null,
+    oneWeekPriceChange: null,
   };
 }

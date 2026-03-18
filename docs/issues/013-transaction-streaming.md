@@ -34,7 +34,7 @@ We need a 24/7 transaction stream pipeline that:
 4. Converts to LLM-friendly human-readable summaries
 5. Batches and emits for downstream consumption (LLM Brain in #016)
 
-This is the central nervous system of pnl.fun — everything flows through here.
+This is the central nervous system of myboon — everything flows through here.
 
 ---
 

@@ -10,6 +10,23 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#040]` Feed predict block — sports support + multiple actions + redesign
+  - Slug routing: `ucl-*`/`epl-*` prefixes route to `GET /predict/sports/:sport/:slug`; all others to `GET /predict/markets/:slug`
+  - Up to 3 predict blocks rendered per narrative (first 3 `predict` actions)
+  - Binary block redesigned: YES/NO bars, price change pills (today ↑↓, 1w ↑↓), resolves date, YES/NO CTAs
+  - Sports block: multi-outcome bars (gold, one per team), volume, View Market CTA
+  - All colors use design tokens exclusively — no hardcoded hex values
+  - `PredictMarketData` extended with `endDateIso`, `oneDayPriceChange`, `oneWeekPriceChange`
+  - `outcomePrices` parsed correctly from Gamma's stringified JSON array format
+  - `GET /predict/markets/:slug` curated gate removed — now serves any valid Polymarket slug
+
+### Fixed
+
+- `[#040]` `outcomePrices` from Gamma was a JSON string `"[\"0.295\", \"0.705\"]"` — parsed correctly now so YES/NO bars render
+- `[api]` `GET /predict/markets/:slug` returned 404 for any slug not in `CURATED_GEOPOLITICS_SLUGS` — removed gate so feed predict blocks work for all publisher-emitted slugs
+
+### Added
+
 - `[#030]` Feed card redesign + narrative detail sheet
   - `NarrativeSheet` — bottom sheet (Modal + animated `translateY`, drag-to-dismiss) opens on card tap. Fetches `content_full` from `GET /narratives/:id`. Renders prediction market block (yes/no odds bars, volume, Bet YES/Bet NO CTAs → `/predict-market/[slug]`) when `actions` contains `type: 'predict'`
   - `FeedCard` rebuilt — category pill + time + body text only. No title, no stripe, no score, no action chips
