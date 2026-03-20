@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS wallets (
 ## How Win Rate Is Computed
 
 Polymarket markets resolve with an outcome (YES or NO). When a market resolves:
+
 1. Query `signals` for all WHALE_BETs on that `marketId`
 2. For each wallet that bet, check if their `outcome` matches the resolved outcome
 3. Increment `correct_bets` or just `resolved_bets` accordingly
@@ -58,6 +59,7 @@ Keep this as a lightweight addition to `discovery.ts` — not a new process.
 ### 2. `user-tracker.ts` — upsert wallet on each bet
 
 When a WHALE_BET signal is created, upsert the wallet into `wallets`:
+
 - Increment `total_bets` and `total_volume`
 - Set `last_active = now()`
 - Set `label = 'tracked-whale'` if in `tracked-users.json`

@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import type { ResearchTool } from '../research/types/mcp.js'
 
 interface SupabaseToolsDeps {
@@ -29,7 +30,7 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
     async execute(args) {
       try {
         const encoded = encodeURIComponent(`%${args.query}%`)
-        const url = `${deps.supabaseUrl}/rest/v1/published_narratives?or=(content_small.ilike.${encoded},content_full.ilike.${encoded})&select=id,content_small,content_full,reasoning,tags,priority,thread_id,created_at&order=created_at.desc&limit=5`
+        const url = `${deps.supabaseUrl}/rest/v1/published_narratives?or=(content_small.ilike.${encoded},content_full.ilike.${encoded})&select=id,content_small,content_full,reasoning,tags,priority,thread_id,created_at&order=created_at.desc&limit=15`
         const res = await fetch(url, { headers })
 
         if (!res.ok) {
@@ -49,8 +50,8 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
         return rows.map((r) => ({
           id: r.id,
           content_small: r.content_small,
-          content_full: r.content_full,
-          reasoning: r.reasoning,
+          content_full: r.content_full?.slice(0, 600),
+          reasoning: r.reasoning?.slice(0, 300),
           tags: r.tags,
           priority: r.priority,
           created_at: r.created_at,
@@ -62,4 +63,45 @@ export function createSupabaseTools(deps: SupabaseToolsDeps): ResearchTool<any>[
   }
 
   return [searchPublished]
+}
+
+export function createPublisherSupabaseTools(supabaseUrl: string, supabaseKey: string): ResearchTool<any>[] {
+  const supabase = createClient(supabaseUrl, supabaseKey)
+
+  return [
+    {
+      name: 'get_tag_history',
+      description:
+        'Fetch recent published narratives matching any of the given topic tags. Call this before writing when you identify a topic tag from the narrative signals. Use the results to understand what angle has already been covered — do not repeat the same framing. If this is the 4th UCL card today, find a fresh angle or recommend rejection.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Topic tags to search (e.g. ["iran", "geopolitics"])',
+          },
+          limit: {
+            type: 'number',
+            description: 'Max results (default 5, max 10)',
+          },
+        },
+        required: ['tags'],
+        additionalProperties: false,
+      },
+      async execute(args: { tags: string[]; limit?: number }) {
+        const cap = Math.min(args.limit ?? 15, 15)
+        const { data } = await supabase
+          .from('published_narratives')
+          .select('id, content_small, reasoning, tags, content_type, created_at')
+          .overlaps('tags', args.tags)
+          .order('created_at', { ascending: false })
+          .limit(cap)
+        return (data ?? []).map((r) => ({
+          ...r,
+          reasoning: r.reasoning?.slice(0, 300),
+        }))
+      },
+    },
+  ]
 }
