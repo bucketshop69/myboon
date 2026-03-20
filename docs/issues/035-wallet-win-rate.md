@@ -1,5 +1,7 @@
 # #035 — Wallet Win Rate Tracking
 
+> **BACKLOG** — Superseded by #042 (Nansen Intelligence Layer), which provides wallet PnL via the Nansen CLI. This issue remains for reference if a manual tracking fallback is needed.
+
 ## Problem
 
 Currently all whale wallets are treated equally. A wallet that has been right 70% of the time is weighted the same as a wallet that got lucky once. The analyst has no way to know which bets are from credible predictors vs noise.

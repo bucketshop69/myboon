@@ -1,5 +1,7 @@
 # #039 — Web Search Tool (DuckDuckGo)
 
+> **BACKLOG** — Publisher currently runs without web search. Sports and news narratives rely on signal data only. Revisit when content quality demands external context.
+
 ## Problem
 
 The publisher's `search_news` tool (Firecrawl) was disabled when API credits ran out. Without web search, the publisher cannot pull real-world context into narratives — match results, political events, breaking news. This blocks the `news` content type introduced in #037, since news-flavor narratives require external context beyond prediction market signals.
