@@ -95,15 +95,14 @@ Layer 3 — Influencers (runs every 2-4h)
 **Current state:**
 
 - Layer 1 (Analyst) ✅ — clusters signals, filters < 7 score before saving. Extracts market slugs deterministically from `key_signals` (`[slug: xxx]` patterns) and saves to `narratives.slugs[]`. Uses tool calling to fetch live market odds mid-analysis.
-- Layer 2 (Publisher) ✅ — reads draft narratives (score >= 7), checks own `published_narratives` DB for duplicates/updates (`content_full` + `reasoning` returned for full context), scores each (>= 8 to publish). Builds `predict` actions from `narrative.slugs` in code (deterministic — no LLM guessing). LLM may add `perps` actions for crypto signals. Writes to `published_narratives` with `actions` array. `search_news` (Firecrawl) disabled pending replacement.
-- Layer 3 (Influencer) — not started (issue 024)
+- Layer 2 (Publisher) ✅ — LangGraph `publisher-graph`: publisher node → critic/editor reflection loop (up to 2 revision attempts). Publisher = Editor-in-Chief (research + editorial judgment). Critic = Senior Editor (clarity, angle freshness, lead quality, classification, tone). Sports narratives skip search tools, write from signal data only. Builds `predict` actions from `narrative.slugs` deterministically; LLM may add `perps` actions for crypto signals. MiniMax M2.7 with 8192 max_tokens. `search_news` (Firecrawl) disabled; replaced by `search_published` + `get_tag_history` Supabase tools.
+- Layer 3 (Influencer) ✅ — reads `published_narratives` from last 4h that have no `x_post` yet. LangGraph `influencer-graph` generates X post drafts. Writes to `x_posts` table (`status='draft'`). Human reviews manually before any post goes live. PostgREST two-step query (no raw SQL subqueries).
 
-**Next (frontend track):**
+**Next (pipeline track):**
 
-- Issue 027 — Hybrid Expo initialization foundation
-- Issue 028 — Feed UI + client service layer
-- Issue 029 — Swap UI + GET-only preview service
-- Predict/Trade UI integration follows after these foundations
+- Issue #042 — Nansen intelligence layer: wallet PnL via Nansen CLI enriches analyst signal weights
+- Issue #044 — Nansen slug gap fix: PM_EVENT_TRENDING and PM_BETTOR_ACTIVITY dedup + slug enrichment
+- Issue #041 (influencer graph) + #043 (critic/influencer quality) — content pipeline improvements
 
 **Multi-agent consensus plan (post-MVP):**
 
@@ -130,7 +129,7 @@ packages/
 
 - **Runtime:** Node.js / TypeScript (ESM)
 - **Database:** Supabase (Postgres) — shared between VPS collectors and local brain
-- **LLM:** MiniMax M2.5 via Anthropic-compatible API
+- **LLM:** MiniMax M2.7 via Anthropic-compatible API (`api.minimax.io/anthropic`)
 - **Collectors run on:** US VPS (Polymarket geo-restricted)
 - **Brain agents run on:** Local (dev) → VPS (prod)
 - **Mobile:** Expo (React Native)
