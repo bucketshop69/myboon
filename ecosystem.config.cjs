@@ -82,7 +82,12 @@ module.exports = {
       cron_restart: '0 */2 * * *',
       autorestart: false,
       watch: false,
-      env: { NODE_ENV: 'production' },
+      env: {
+        NODE_ENV: 'production',
+        SUPABASE_URL: 'https://rrdvpdgebygfdstwknqc.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'REDACTED_SUPABASE_SERVICE_ROLE_KEY',
+        NANSEN_API_KEY: 'REDACTED_NANSEN_API_KEY',
+      },
     },
   ],
 }
