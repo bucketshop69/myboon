@@ -79,7 +79,8 @@ export class NansenClient {
     const cached = await this.fromCache(key)
     if (cached) return cached
 
-    const data = this.exec(`research prediction-market market-screener --query "${query}"`)
+    const queryArg = query ? ` --query "${query}"` : ''
+    const data = this.exec(`research prediction-market market-screener${queryArg}`)
     await this.toCache(key, data, 0.5) // 30min TTL
     return data
   }
@@ -89,7 +90,8 @@ export class NansenClient {
     const cached = await this.fromCache(key)
     if (cached) return cached
 
-    const data = this.exec(`research prediction-market event-screener --query "${query}"`)
+    const queryArg = query ? ` --query "${query}"` : ''
+    const data = this.exec(`research prediction-market event-screener${queryArg}`)
     await this.toCache(key, data, 1) // 1h TTL
     return data
   }
