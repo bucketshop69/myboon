@@ -24,11 +24,23 @@ const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
 export async function runInfluencer(): Promise<void> {
   console.log(`[influencer] Running at ${new Date().toISOString()}`)
 
-  const { data: narratives, error } = await supabase
+  const { data: posted } = await supabase
+    .from('x_posts')
+    .select('narrative_id')
+    .not('narrative_id', 'is', null)
+
+  const postedIds = (posted ?? []).map((r) => r.narrative_id as string)
+
+  let query = supabase
     .from('published_narratives')
     .select('id, content_small, content_full, tags, content_type, actions')
     .gte('created_at', new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString())
-    .not('id', 'in', `(select narrative_id from x_posts where narrative_id is not null)`)
+
+  if (postedIds.length > 0) {
+    query = query.not('id', 'in', `(${postedIds.map((id) => `"${id}"`).join(',')})`)
+  }
+
+  const { data: narratives, error } = await query
 
   if (error) {
     console.error('[influencer] Failed to fetch narratives:', error)

@@ -28,7 +28,8 @@ describe.skipIf(SKIP)('publisherGraph (e2e)', () => {
     const result = await publisherGraph.invoke({ narrative: mockNarrative })
 
     expect(result).toHaveProperty('draft')
-    const draft = result.draft
+    const draft = result.draft!
+
 
     expect(typeof draft.content_small).toBe('string')
     expect(draft.content_small.length).toBeGreaterThan(0)
@@ -50,7 +51,7 @@ describe.skipIf(SKIP)('publisherGraph (e2e)', () => {
 
   it('predict actions use slugs from the narrative', async () => {
     const result = await publisherGraph.invoke({ narrative: mockNarrative })
-    const draft = result.draft
+    const draft = result.draft!
 
     const predictActions = draft.actions.filter((a: { type: string }) => a.type === 'predict')
     for (const action of predictActions) {
