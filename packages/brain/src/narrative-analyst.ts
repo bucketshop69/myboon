@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { PolymarketClient } from '@myboon/shared'
 import { createPolymarketTools } from './analyst-tools/polymarket.tools.js'
+import { nansenTools } from './analyst-tools/nansen.tools.js'
 import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp.js'
 import { buildMarketContexts } from './context-builder.js'
 import type { MarketContext } from './context-builder.js'
@@ -24,7 +25,10 @@ if (missing.length > 0) {
 // --- tool registry setup ---
 
 const polymarketClient = new PolymarketClient()
-const analystTools: ResearchTool<any>[] = createPolymarketTools(polymarketClient)
+const analystTools: ResearchTool<any>[] = [
+  ...createPolymarketTools(polymarketClient),
+  ...nansenTools,
+]
 
 function toAnthropicDefinitions(tools: ResearchTool<any>[]): AnthropicToolDefinition[] {
   return tools.map((t) => ({
@@ -192,7 +196,7 @@ async function callMinimax(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'MiniMax-M2.5',
+      model: 'MiniMax-M2.7',
       temperature: 0.3,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,

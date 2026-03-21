@@ -18,17 +18,22 @@
     "research:smoke": "pnpm run build && node dist/research-smoke.js",
     "narrative:analyst": "tsx src/narrative-analyst.ts",
     "publisher": "tsx src/publisher.ts",
-    "test": "echo \"No tests configured\""
+    "influencer:start": "tsx src/run-influencer.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.2.3",
     "@myboon/entity-memory": "workspace:*",
     "@myboon/shared": "workspace:*",
     "@myboon/tx-parser": "workspace:*",
+    "@supabase/supabase-js": "^2.46.2",
     "dotenv": "^17.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.0.0"
   }
 }
