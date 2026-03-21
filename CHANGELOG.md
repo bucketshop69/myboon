@@ -18,7 +18,21 @@ All notable changes to MYBOON will be documented in this file.
   - "Coming soon" tooltip on Get Early Access + Download click
   - Design tokens match mobile app theme (colors, fonts, spacing)
   - `docs/hero.html` — approved designer HTML prototype (reference only, not served)
-  - `docs/news_room.html` — pixel art newsroom canvas prototype for `/world` route (in progress)
+  - `docs/news_room.html` — pixel art newsroom canvas prototype for `/world` route (approved)
+
+- `[#046]` `/world` route — interactive pixel art 2D newsroom at `apps/web/src/app/world/`
+  - Canvas 2D `requestAnimationFrame` loop, fixed 1280×720 logical space, CSS letterboxed 16:9
+  - 6 rooms: Wire Room, Research Desk, Editorial Room, Archive Room, Broadcast Desk, Server Room
+  - 7 agent characters with independent walk state machines (idle → walking → visiting → returning)
+  - Analyst walks to Archive on timer, shows "DB WRITE" label while visiting
+  - Publisher walks to Editor's desk to model critic/review loop
+  - Data flow particles along all 5 inter-room paths (geometry-derived, not hardcoded)
+  - Pulsing dashed LLM cables from every agent room down to Server Room
+  - Scroll-to-zoom (0.4×–4.0×, centered on cursor), drag-to-pan, default view centered at 1.2×
+  - Hover: dims all other elements, shows tooltip with agent/room description
+  - Click: opens slide-in side panel with overview + live stats + how-it-works detail
+  - HUD, live feed widget, side panel rendered as React JSX over canvas
+  - `Press Start 2P` pixel font loaded via `next/font/google`
 
 ---
 

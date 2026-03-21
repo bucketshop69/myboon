@@ -138,6 +138,8 @@ packages/
 - **Brain agents run on:** Local (dev) → VPS (prod)
 - **Mobile:** Expo (React Native) — `apps/hybrid-expo`
 - **Landing page:** Next.js 15 App Router — `apps/web` (`pnpm --filter @myboon/web dev`, port 3001)
+  - `/` — Hero section (phone mockup + floating tab cards)
+  - `/world` — Interactive pixel art newsroom (Canvas 2D, scroll-to-zoom, drag-to-pan)
 - **Monorepo:** pnpm workspaces
 - **Process manager:** PM2 — `ecosystem.config.cjs` at monorepo root starts all 4 services in one command (`pm2 start ecosystem.config.cjs`); auto-restarts on crash; survives reboots via `pm2 startup`. See `docs/DEPLOY.md`.
 
