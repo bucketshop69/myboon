@@ -8,6 +8,18 @@ All notable changes to MYBOON will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `[#045]` Landing page — `apps/web` (Next.js 15, `@myboon/web`, port 3001)
+  - Hero section: centered phone mockup with 4 floating tab cards (Feed, Predict, Trade, Swap)
+  - Independent CSS float animations per element — phone and each card drift on different cycles
+  - Hover-to-preview: hovering a card transitions the phone screen to that tab's content + syncs bottom nav active icon
+  - Icon row below CTA: Newsroom (`/world`), GitHub, X, Download
+  - "Coming soon" tooltip on Get Early Access + Download click
+  - Design tokens match mobile app theme (colors, fonts, spacing)
+  - `docs/hero.html` — approved designer HTML prototype (reference only, not served)
+  - `docs/news_room.html` — pixel art newsroom canvas prototype for `/world` route (in progress)
+
 ---
 
 ## 2026-03-17
