@@ -1,5 +1,7 @@
 # #046 — The Newsroom World (2D Pixel Art Office)
 
+> **COMPLETED** — `/world` route live at `apps/web/src/app/world/`. Canvas 2D newsroom with 6 rooms, 7 agent characters, walk state machines, particle data flow, scroll-to-zoom, drag-to-pan, hover tooltips, and click side panel.
+
 ## What This Is
 
 A standalone interactive page at `/world` (its own route, completely separate from the landing page). When you open it, you are looking at a 2D top-down pixel art office building — the entire myboon operation, rendered as a real workplace. Not a diagram. Not an infographic. An actual office that looks alive, with characters walking around, lights on in the rooms, and data visibly flowing between desks.

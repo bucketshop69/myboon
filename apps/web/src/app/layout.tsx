@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Space_Grotesk, Inter } from 'next/font/google'
+import { Space_Grotesk, Inter, Press_Start_2P } from 'next/font/google'
 import './globals.css'
 
 const spaceGrotesk = Space_Grotesk({
@@ -12,6 +12,13 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-body',
   weight: ['400', '500', '600'],
+})
+
+const pressStart2P = Press_Start_2P({
+  subsets: ['latin'],
+  weight: ['400'],
+  variable: '--font-pixel',
+  display: 'swap',
 })
 
 export const metadata: Metadata = {
@@ -27,7 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${spaceGrotesk.variable} ${inter.variable} bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary-container`}
+        className={`${spaceGrotesk.variable} ${inter.variable} ${pressStart2P.variable} bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary-container`}
       >
         {children}
       </body>
