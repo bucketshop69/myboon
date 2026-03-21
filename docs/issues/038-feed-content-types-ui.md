@@ -1,5 +1,7 @@
 # #038 — Feed Content Types UI
 
+> **COMPLETED** — Shipped in #040. Feed card redesign + sports predict block + binary predict block with content_type-aware rendering.
+
 ## Problem
 
 Every feed card looks and feels identical. Whether the card is about a whale bet, a multi-day trend, or a real-world event — the UI renders the same card shape with the same neutral styling. This makes the feed feel like a signal log rather than narrative intelligence.

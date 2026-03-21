@@ -10,6 +10,70 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#045]` Landing page — `apps/web` (Next.js 15, `@myboon/web`, port 3001)
+  - Hero section: centered phone mockup with 4 floating tab cards (Feed, Predict, Trade, Swap)
+  - Independent CSS float animations per element — phone and each card drift on different cycles
+  - Hover-to-preview: hovering a card transitions the phone screen to that tab's content + syncs bottom nav active icon
+  - Icon row below CTA: Newsroom (`/world`), GitHub, X, Download
+  - "Coming soon" tooltip on Get Early Access + Download click
+  - Design tokens match mobile app theme (colors, fonts, spacing)
+  - `docs/hero.html` — approved designer HTML prototype (reference only, not served)
+  - `docs/news_room.html` — pixel art newsroom canvas prototype for `/world` route (approved)
+
+- `[#046]` `/world` route — interactive pixel art 2D newsroom at `apps/web/src/app/world/`
+  - Canvas 2D `requestAnimationFrame` loop, fixed 1280×720 logical space, CSS letterboxed 16:9
+  - 6 rooms: Wire Room, Research Desk, Editorial Room, Archive Room, Broadcast Desk, Server Room
+  - 7 agent characters with independent walk state machines (idle → walking → visiting → returning)
+  - Analyst walks to Archive on timer, shows "DB WRITE" label while visiting
+  - Publisher walks to Editor's desk to model critic/review loop
+  - Data flow particles along all 5 inter-room paths (geometry-derived, not hardcoded)
+  - Pulsing dashed LLM cables from every agent room down to Server Room
+  - Scroll-to-zoom (0.4×–4.0×, centered on cursor), drag-to-pan, default view centered at 1.2×
+  - Hover: dims all other elements, shows tooltip with agent/room description
+  - Click: opens slide-in side panel with overview + live stats + how-it-works detail
+  - HUD, live feed widget, side panel rendered as React JSX over canvas
+  - `Press Start 2P` pixel font loaded via `next/font/google`
+
+---
+
+## 2026-03-17
+
+### Collector fixes
+
+- **CLOB API for slug resolution** — replaced Gamma API with `clob.polymarket.com/markets/{conditionId}` in `user-tracker.ts`. Gamma's `condition_id` filter was silently returning a default sorted list instead of the requested market, causing every whale bet to resolve to the same wrong slug (Biden COVID market). CLOB returns the exact market by conditionId with `market_slug` field.
+- **conditionId mismatch guard** — added validation in `user-tracker.ts` that rejects any Gamma response where the returned `conditionId` doesn't match the requested one. Guard now redundant with CLOB switch but retained as a safety net.
+- **Flushed 1,526 bad signals** — all signals with `slug = 'will-joe-biden-get-coronavirus-before-the-election'` marked `processed = true` in Supabase to prevent analyst from re-processing stale bad data.
+
+### Signal pipeline improvements (#031–#035)
+
+- **Slug as write-time invariant** — slug resolved at signal insertion, fail loud if unresolvable (`validate-signal.ts` guard)
+- **Delta-based discovery** — `MARKET_DISCOVERED` only fires on new markets; added `VOLUME_SURGE` (>20% delta) and `MARKET_CLOSING` (48h deadline) signal types
+- **Market context builder** — `context-builder.ts` pre-aggregates per-market state (price, volume, whale bets) before analyst LLM call
+- **Publisher topic cap** — max 7 published narratives per topic tag per 24h; `thread_id` UUID FK links related narratives
+- **Wallet win rate tracking** — `polymarket_wallets` table tracks bet count, win rate (computed at ≥5 resolved bets), total volume per wallet
+
+### DB migrations (run in Supabase SQL editor)
+
+- `031-slug-column.sql` — adds `slug TEXT` column + index to `signals`
+- `032-delta-discovery.sql` — adds `volume_previous` and `last_signalled_at` to `polymarket_tracked`
+- `034-thread-id.sql` — adds `tags TEXT[]` and `thread_id UUID` FK to `published_narratives`
+- `035-wallets.sql` — creates `polymarket_wallets` table
+
+---
+
+## 2026-03-09
+
+### Hackathon submission complete
+
+- All three brain layers live on VPS (Analyst, Publisher, Collector)
+- API live at VPS:3000 — `/narratives`, `/predict/*`, `/predict/sports/*`
+- Expo mobile app built — Feed, Predict, Swap, Trade tabs
+- App rebranded to **myboon** (`xyz.myboon.app`)
+
+---
+
+### Added
+
 - `[#040]` Feed predict block — sports support + multiple actions + redesign
   - Slug routing: `ucl-*`/`epl-*` prefixes route to `GET /predict/sports/:sport/:slug`; all others to `GET /predict/markets/:slug`
   - Up to 3 predict blocks rendered per narrative (first 3 `predict` actions)
