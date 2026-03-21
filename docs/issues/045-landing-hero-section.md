@@ -1,5 +1,7 @@
 # #045 — Landing Page: Hero Section
 
+> **COMPLETED** — `apps/web` created (Next.js 15, `@myboon/web`). Hero section implemented with centered phone mockup, 4 floating tab cards, independent float animations, hover-to-preview interactions, icon row (Newsroom, GitHub, X, Download), and "coming soon" tooltips on CTA + Download.
+
 ## Problem
 
 myboon has no web presence. The product exists as a mobile app and a VPS API, but there is no page a user can land on that communicates what the product is, what makes it compelling, and what they would experience if they opened the app. The feed is the differentiator — it tells traders something they can't get anywhere else — but there is no surface to demonstrate that before someone downloads the app.

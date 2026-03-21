@@ -115,6 +115,10 @@ Layer 3 — Influencers (runs every 2-4h)
 ## Packages
 
 ```
+apps/
+  hybrid-expo/      Mobile app — Expo Router, Feed/Predict/Swap/Trade tabs (live)
+  web/              Landing page — Next.js 15 App Router (@myboon/web, port 3001)
+
 packages/
   shared/           Shared SDK — PolymarketClient, types (imported by brain, collectors, apps)
   tx-parser/        Solana tx parsing — Jupiter, Meteora, SOL transfers
@@ -132,7 +136,8 @@ packages/
 - **LLM:** MiniMax M2.7 via Anthropic-compatible API (`api.minimax.io/anthropic`)
 - **Collectors run on:** US VPS (Polymarket geo-restricted)
 - **Brain agents run on:** Local (dev) → VPS (prod)
-- **Mobile:** Expo (React Native)
+- **Mobile:** Expo (React Native) — `apps/hybrid-expo`
+- **Landing page:** Next.js 15 App Router — `apps/web` (`pnpm --filter @myboon/web dev`, port 3001)
 - **Monorepo:** pnpm workspaces
 - **Process manager:** PM2 — `ecosystem.config.cjs` at monorepo root starts all 4 services in one command (`pm2 start ecosystem.config.cjs`); auto-restarts on crash; survives reboots via `pm2 startup`. See `docs/DEPLOY.md`.
 
