@@ -82,7 +82,13 @@ module.exports = {
       cron_restart: '0 */1 * * *',
       autorestart: false,
       watch: false,
-      env: { NODE_ENV: 'production' },
+      env: {
+        NODE_ENV: 'production',
+        SUPABASE_URL: 'https://rrdvpdgebygfdstwknqc.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyZHZwZGdlYnlnZmRzdHdrbnFjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjcwNzg4NSwiZXhwIjoyMDg4MjgzODg1fQ.14ABVjoMy_oaUE4aQF7AGxi3UQRGrS9ZcmQ6Vi2TawE',
+        NANSEN_API_KEY: 'uiUAAaUZ9VR7sLbV4ZWByz5TkAhAGS1p',
+        MINIMAX_API_KEY: 'sk-api-KE-3X4qnssnf1MHS0CyYJqhpjtEHPS151G_ZjjI30mbMthz_N2qiprG-i3XHHdDTZzwSCt6iWLNRKzx2E8x4h9mDCtUHxJ_Rgt4EgwZOAfjBkrnOhy_Aqro',
+      },
     },
     {
       name: 'myboon-influencer',
