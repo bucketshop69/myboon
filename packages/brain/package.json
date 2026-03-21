@@ -19,6 +19,7 @@
     "narrative:analyst": "tsx src/narrative-analyst.ts",
     "publisher": "tsx src/publisher.ts",
     "influencer:start": "tsx src/run-influencer.ts",
+    "fomo-master:start": "tsx src/run-fomo-master.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

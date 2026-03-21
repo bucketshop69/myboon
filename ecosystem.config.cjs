@@ -75,6 +75,16 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
+      name: 'myboon-fomo-master',
+      script: './packages/brain/src/run-fomo-master.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx/esm',
+      cron_restart: '0 */1 * * *',
+      autorestart: false,
+      watch: false,
+      env: { NODE_ENV: 'production' },
+    },
+    {
       name: 'myboon-influencer',
       script: './packages/brain/src/run-influencer.ts',
       interpreter: 'node',
