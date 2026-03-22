@@ -34,19 +34,21 @@ const FOMO_MASTER_SYSTEM_PROMPT = `You are a fast, sharp financial intelligence 
 Style: Lookonchain — specific numbers, wallet context, story-driven.
 
 Rules:
-- Lead with the number or the story: "$26K new wallet", "71% win rate bettor", "3rd bet this week"
+- Lead with the number or the story: "$26K fresh wallet", "71% win rate bettor", "3rd bet this week"
 - No hashtags, no threads (single post only)
 - Emoji only if it adds urgency: 🚨 ⚡ 💰 (max 1 per post)
 - Sound informed, not hype-y — you're a pro analyst, not a degen
-- End with soft CTA if space: "Full context in the feed."
+- Always end with the wallet's Polymarket profile URL on its own line: https://polymarket.com/{address}
+- When referencing bet history from Nansen, phrase it naturally — not "10-bet whale" but "a wallet that's barely traded before" or "fresh account, only a handful of trades on record"
 
 Examples:
-🚨 New wallet "mzandres" dropped $26K on YES for US forces entering Iran by March 31.
-   Odds sitting at 18%. High conviction, fresh account.
-   Full context in the feed.
+🚨 New wallet dropped $26K on YES for US forces entering Iran by March 31.
+   Odds sitting at 18%. Fresh account — this is their opening position.
+   https://polymarket.com/profile/0xabc123...
 
 ⚡ A wallet with a 71% Polymarket win rate just bet $14K on Trump tariff escalation.
    Third bet on this market this week — total exposure now $38K.
+   https://polymarket.com/profile/0xdef456...
 
 You will receive a batch of WHALE_BET signals. Use the nansen_bettor_profile tool
 to enrich the best picks with wallet win rate context before writing.
@@ -59,11 +61,11 @@ Pick 1-3 of the most interesting stories from the batch. Return JSON:
 }`
 
 const BROADCASTER_SYSTEM_PROMPT = `You are the chief broadcaster for a financial intelligence X account.
-You review draft posts before they go live.
+You are called immediately after fomo_master writes a draft — you review it before it gets saved.
 
 You will receive:
-- The draft post(s) to review
-- Last 7 days of x_posts history (all agents)
+- The draft post(s) just written by fomo_master
+- Last 7 days of x_posts history across all agents (for context on what the account has already covered)
 
 Reject if:
 - Duplicate topic already covered well in the last 24h
@@ -94,6 +96,10 @@ const FomoState = Annotation.Root({
     default: () => null,
   }),
   broadcaster_decision: Annotation<'approved' | 'rejected' | null>({
+    reducer: (_, b) => b,
+    default: () => null,
+  }),
+  broadcaster_reasoning: Annotation<string | null>({
     reducer: (_, b) => b,
     default: () => null,
   }),
@@ -239,12 +245,14 @@ async function broadcastNode(state: typeof FomoState.State): Promise<Partial<typ
     return {
       broadcaster_feedback: output.feedback,
       broadcaster_decision: 'rejected',
+      broadcaster_reasoning: output.reasoning,
       attempt: state.attempt + 1,
     }
   }
 
   return {
     broadcaster_decision: 'approved',
+    broadcaster_reasoning: output.reasoning,
     attempt: state.attempt + 1,
   }
 }
@@ -271,6 +279,8 @@ async function saveNode(state: typeof FomoState.State): Promise<Partial<typeof F
       status: 'draft',
       agent_type: 'fomo_master',
       signal_ids: draft.signal_ids,
+      fomo_reasoning: draft.reasoning,
+      broadcaster_reasoning: state.broadcaster_reasoning,
       reviewed_at: now,
       reviewed_by: 'chief_broadcaster',
     })
@@ -297,6 +307,8 @@ async function saveRejectedNode(state: typeof FomoState.State): Promise<Partial<
       status: 'rejected',
       agent_type: 'fomo_master',
       signal_ids: draft.signal_ids,
+      fomo_reasoning: draft.reasoning,
+      broadcaster_reasoning: state.broadcaster_reasoning,
       reviewed_at: now,
       reviewed_by: 'chief_broadcaster',
     })
