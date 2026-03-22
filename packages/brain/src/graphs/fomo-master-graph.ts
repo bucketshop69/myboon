@@ -121,39 +121,60 @@ function getSupabase() {
 }
 
 // --- robust JSON extraction ---
-// Tries direct parse first, then extracts the first {...} or [...] block by bracket matching
+// Tries direct parse first, then bracket-matching that skips string contents,
+// then truncation repair for incomplete JSON
 
-function extractJson<T>(text: string): T | null {
+function extractJson<T>(text: string, label?: string): T | null {
   const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
 
   // Try direct parse first
   try {
     return JSON.parse(cleaned) as T
   } catch {
-    // Fall through to bracket extraction
+    // fall through
   }
 
-  // Find first { or [ and match its closing bracket
+  // Bracket matching that skips over string contents (handles quotes inside values)
   const start = cleaned.search(/[{[]/)
-  if (start === -1) return null
+  if (start === -1) {
+    if (label) console.warn(`[${label}] No JSON object found in LLM output:\n${cleaned.slice(0, 300)}`)
+    return null
+  }
 
   const opener = cleaned[start]
   const closer = opener === '{' ? '}' : ']'
   let depth = 0
+  let inString = false
+  let escape = false
 
   for (let i = start; i < cleaned.length; i++) {
-    if (cleaned[i] === opener) depth++
-    else if (cleaned[i] === closer) depth--
+    const ch = cleaned[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === opener) depth++
+    else if (ch === closer) depth--
     if (depth === 0) {
       try {
         return JSON.parse(cleaned.slice(start, i + 1)) as T
       } catch {
-        return null
+        break
       }
     }
   }
 
-  return null
+  // Last resort: truncation repair — append closing brackets
+  try {
+    const fragment = cleaned.slice(start)
+    const opens = (fragment.match(/\{/g) ?? []).length - (fragment.match(/\}/g) ?? []).length
+    const arrOpens = (fragment.match(/\[/g) ?? []).length - (fragment.match(/\]/g) ?? []).length
+    const repaired = fragment + ']'.repeat(Math.max(0, arrOpens)) + '}'.repeat(Math.max(0, opens))
+    return JSON.parse(repaired) as T
+  } catch {
+    if (label) console.warn(`[${label}] Failed all JSON extraction attempts. Raw output:\n${cleaned.slice(0, 500)}`)
+    return null
+  }
 }
 
 // --- tool wiring ---
@@ -230,7 +251,7 @@ async function generateNode(state: typeof FomoState.State): Promise<Partial<type
     if (response.stop_reason === 'end_turn' || response.stop_reason === 'max_tokens') {
       const text = extractText(response)
       if (!text) break
-      const parsed = extractJson<{ posts: DraftPost[] }>(text)
+      const parsed = extractJson<{ posts: DraftPost[] }>(text, 'fomo_master')
       if (parsed?.posts?.length) {
         console.log(`[fomo_master] Generated ${parsed.posts.length} draft(s) (attempt ${state.attempt})`)
         return { drafts: parsed.posts }
@@ -267,7 +288,7 @@ async function broadcastNode(state: typeof FomoState.State): Promise<Partial<typ
     { temperature: 0.3 }
   )
 
-  const parsed = extractJson<BroadcasterOutput>(extractText(response))
+  const parsed = extractJson<BroadcasterOutput>(extractText(response), 'chief_broadcaster')
   const output: BroadcasterOutput = parsed ?? {
     decision: 'approved',
     reasoning: 'parse error — auto-approved',
