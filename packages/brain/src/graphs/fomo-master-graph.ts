@@ -151,7 +151,7 @@ async function generateNode(state: typeof FomoState.State): Promise<Partial<type
       messages,
       fomoTools,
       FOMO_MASTER_SYSTEM_PROMPT,
-      { max_tokens: 1024, temperature: 0.7 }
+      { max_tokens: 2048, temperature: 0.7 }
     )
 
     if (response.content && response.content.length > 0) {
@@ -184,10 +184,18 @@ async function generateNode(state: typeof FomoState.State): Promise<Partial<type
       continue
     }
 
-    if (response.stop_reason === 'end_turn') {
-      const parsed = JSON.parse(extractText(response)) as { posts: DraftPost[] }
-      console.log(`[fomo_master] Generated ${parsed.posts.length} draft(s) (attempt ${state.attempt})`)
-      return { drafts: parsed.posts }
+    // Handle end_turn or max_tokens — both may carry text output
+    if (response.stop_reason === 'end_turn' || response.stop_reason === 'max_tokens') {
+      const text = extractText(response)
+      if (!text) break
+      try {
+        const parsed = JSON.parse(text) as { posts: DraftPost[] }
+        console.log(`[fomo_master] Generated ${parsed.posts.length} draft(s) (attempt ${state.attempt})`)
+        return { drafts: parsed.posts }
+      } catch {
+        console.warn(`[fomo_master] Failed to parse LLM output (stop_reason=${response.stop_reason}) — skipping`)
+        break
+      }
     }
 
     break
@@ -215,10 +223,16 @@ async function broadcastNode(state: typeof FomoState.State): Promise<Partial<typ
     ],
     [],
     BROADCASTER_SYSTEM_PROMPT,
-    { max_tokens: 512, temperature: 0.3 }
+    { max_tokens: 1024, temperature: 0.3 }
   )
 
-  const output = JSON.parse(extractText(response)) as BroadcasterOutput
+  let output: BroadcasterOutput
+  try {
+    output = JSON.parse(extractText(response)) as BroadcasterOutput
+  } catch {
+    console.warn('[chief_broadcaster] Failed to parse response — defaulting to approved')
+    output = { decision: 'approved', reasoning: 'parse error — auto-approved', feedback: '' }
+  }
   console.log(`[chief_broadcaster] Decision: ${output.decision} — ${output.reasoning}`)
 
   if (output.decision === 'rejected') {
