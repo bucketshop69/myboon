@@ -11,6 +11,8 @@
  *   pm2 start ecosystem.config.cjs
  *   pm2 save
  *   pm2 startup   ← run the printed command as root
+ *
+ * Env vars are loaded from .env at the monorepo root — never hardcode secrets here.
  */
 
 const ROOT = __dirname
@@ -82,13 +84,7 @@ module.exports = {
       cron_restart: '0 */1 * * *',
       autorestart: false,
       watch: false,
-      env: {
-        NODE_ENV: 'production',
-        SUPABASE_URL: 'https://rrdvpdgebygfdstwknqc.supabase.co',
-        SUPABASE_SERVICE_ROLE_KEY: 'REDACTED_SUPABASE_SERVICE_ROLE_KEY',
-        NANSEN_API_KEY: 'REDACTED_NANSEN_API_KEY',
-        MINIMAX_API_KEY: 'REDACTED_MINIMAX_API_KEY',
-      },
+      env: { NODE_ENV: 'production' },
     },
     {
       name: 'myboon-influencer',
@@ -98,13 +94,7 @@ module.exports = {
       cron_restart: '0 */2 * * *',
       autorestart: false,
       watch: false,
-      env: {
-        NODE_ENV: 'production',
-        SUPABASE_URL: 'https://rrdvpdgebygfdstwknqc.supabase.co',
-        SUPABASE_SERVICE_ROLE_KEY: 'REDACTED_SUPABASE_SERVICE_ROLE_KEY',
-        NANSEN_API_KEY: 'REDACTED_NANSEN_API_KEY',
-        MINIMAX_API_KEY: 'REDACTED_MINIMAX_API_KEY',
-      },
+      env: { NODE_ENV: 'production' },
     },
   ],
 }
