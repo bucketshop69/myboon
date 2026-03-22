@@ -97,12 +97,14 @@ Layer 3 — Influencers (runs every 2-4h)
 - Layer 1 (Analyst) ✅ — clusters signals, filters < 7 score before saving. Extracts market slugs deterministically from `key_signals` (`[slug: xxx]` patterns) and saves to `narratives.slugs[]`. Uses tool calling to fetch live market odds mid-analysis.
 - Layer 2 (Publisher) ✅ — LangGraph `publisher-graph`: publisher node → critic/editor reflection loop (up to 2 revision attempts). Publisher = Editor-in-Chief (research + editorial judgment). Critic = Senior Editor (clarity, angle freshness, lead quality, classification, tone). Sports narratives skip search tools, write from signal data only. Builds `predict` actions from `narrative.slugs` deterministically; LLM may add `perps` actions for crypto signals. MiniMax M2.7 with 8192 max_tokens. `search_news` (Firecrawl) disabled; replaced by `search_published` + `get_tag_history` Supabase tools.
 - Layer 3 (Influencer) ✅ — reads `published_narratives` from last 4h that have no `x_post` yet. LangGraph `influencer-graph` generates X post drafts. Writes to `x_posts` table (`status='draft'`). Human reviews manually before any post goes live. PostgREST two-step query (no raw SQL subqueries).
+- Layer 3b (fomo_master) ✅ — **specialized broadcast floor** (issue #047). Runs hourly via PM2 cron. Reads `WHALE_BET` signals (weight ≥ 8, last 4h) directly — no narrative layer. LangGraph `fomo-master-graph`: `rank → write → broadcast → resolve` loop. Runner does all deterministic enrichment before graph: slug clustering (one representative per market), Nansen bettor profile (cached 24h), live Polymarket odds (no cache), market_history (7d signal aggregate). Ranker picks 1-3 best stories using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Writer produces Lookonchain-style X drafts. `chief_broadcaster` reviews all drafts in one batch call — 3-way decision: approved / soft_reject (max 2 retries) / hard_reject. `resolve` node is the single place broadcast results are processed — bumps attempt counts and splits into approved/pending/rejected state. Approved drafts save as `status='draft'`. Polymarket profile URL appended in code, never by LLM. `why_skipped` written back to `signals.skip_reasoning` after each run.
 
 **Next (pipeline track):**
 
 - Issue #042 — Nansen intelligence layer: wallet PnL via Nansen CLI enriches analyst signal weights
 - Issue #044 — Nansen slug gap fix: PM_EVENT_TRENDING and PM_BETTOR_ACTIVITY dedup + slug enrichment
 - Issue #041 (influencer graph) + #043 (critic/influencer quality) — content pipeline improvements
+- `sports_analyst` + `macro_analyst` — Phase 3 of broadcast floor (see #047)
 
 **Multi-agent consensus plan (post-MVP):**
 

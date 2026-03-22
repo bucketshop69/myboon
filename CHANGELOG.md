@@ -10,6 +10,18 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#047]` Specialized broadcast floor — `fomo_master` agent + inline `chief_broadcaster`
+  - **Runner** (`packages/brain/src/fomo-master.ts`) — deterministic pre-enrichment before graph: slug clustering (one representative per market, highest weight wins; tiebreaker: most recent), `cluster_context` attached to representative, Nansen bettor profile (cached 24h via `NansenClient`), live Polymarket odds (Gamma API, no cache), market_history (7d signal aggregate by slug). Dual timelines: `posted_timeline` (status=posted only, for writer) and `full_timeline` (all 7d, for broadcaster).
+  - **Graph** (`packages/brain/src/graphs/fomo-master-graph.ts`) — 4-node LangGraph: `rank → write → broadcast → resolve`, conditional routing after `resolve`.
+    - `rank` — picks 1-3 signals using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Uses short IDs (S1, S2…) to reduce UUID hallucination. Early exit to END if zero picks. Outputs `why_skipped` map.
+    - `write` — Lookonchain-style X drafts, one per ranked signal. On retry: receives `previous_draft` + directional broadcaster edits `[{issue, fix}]`. Writer owns voice.
+    - `broadcast` — single batch LLM call reviews all pending drafts. 3-way decision: `approved` / `soft_reject` / `hard_reject`.
+    - `resolve` — **new node** (replaces router logic): single place broadcast results are processed. Bumps attempt counts, splits drafts into approved/pending/rejected, stores `broadcaster_reasoning` with each draft. Eliminates double-computation bug and potential infinite loop from unbumped attempt counters.
+  - Max 2 write retries per draft on soft_reject. Hard_reject and max-retry exhaustion save as `status='rejected'`. `why_skipped` written back to `signals.skip_reasoning` after graph run.
+  - Polymarket profile URL (`https://polymarket.com/{address}`) appended deterministically in `saveNode` — never in LLM prompts or broadcaster check.
+  - **PM2 process** `myboon-fomo-master` — `cron_restart: '0 */1 * * *'`, `autorestart: false`.
+  - **DB migrations required**: `x_posts` — `fomo_reasoning TEXT`, `broadcaster_reasoning TEXT`; `signals` — `skip_reasoning TEXT` (plus base columns `agent_type`, `signal_ids`, `reviewed_at`, `reviewed_by` if not already added).
+
 - `[#045]` Landing page — `apps/web` (Next.js 15, `@myboon/web`, port 3001)
   - Hero section: centered phone mockup with 4 floating tab cards (Feed, Predict, Trade, Swap)
   - Independent CSS float animations per element — phone and each card drift on different cycles
