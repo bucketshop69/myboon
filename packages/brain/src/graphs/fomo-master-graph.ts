@@ -120,6 +120,42 @@ function getSupabase() {
   return supabase
 }
 
+// --- robust JSON extraction ---
+// Tries direct parse first, then extracts the first {...} or [...] block by bracket matching
+
+function extractJson<T>(text: string): T | null {
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+
+  // Try direct parse first
+  try {
+    return JSON.parse(cleaned) as T
+  } catch {
+    // Fall through to bracket extraction
+  }
+
+  // Find first { or [ and match its closing bracket
+  const start = cleaned.search(/[{[]/)
+  if (start === -1) return null
+
+  const opener = cleaned[start]
+  const closer = opener === '{' ? '}' : ']'
+  let depth = 0
+
+  for (let i = start; i < cleaned.length; i++) {
+    if (cleaned[i] === opener) depth++
+    else if (cleaned[i] === closer) depth--
+    if (depth === 0) {
+      try {
+        return JSON.parse(cleaned.slice(start, i + 1)) as T
+      } catch {
+        return null
+      }
+    }
+  }
+
+  return null
+}
+
 // --- tool wiring ---
 
 const fomoTools: AnthropicToolDefinition[] = nansenTools
@@ -157,7 +193,7 @@ async function generateNode(state: typeof FomoState.State): Promise<Partial<type
       messages,
       fomoTools,
       FOMO_MASTER_SYSTEM_PROMPT,
-      { max_tokens: 2048, temperature: 0.7 }
+      { temperature: 0.7 }
     )
 
     if (response.content && response.content.length > 0) {
@@ -194,14 +230,13 @@ async function generateNode(state: typeof FomoState.State): Promise<Partial<type
     if (response.stop_reason === 'end_turn' || response.stop_reason === 'max_tokens') {
       const text = extractText(response)
       if (!text) break
-      try {
-        const parsed = JSON.parse(text) as { posts: DraftPost[] }
+      const parsed = extractJson<{ posts: DraftPost[] }>(text)
+      if (parsed?.posts?.length) {
         console.log(`[fomo_master] Generated ${parsed.posts.length} draft(s) (attempt ${state.attempt})`)
         return { drafts: parsed.posts }
-      } catch {
-        console.warn(`[fomo_master] Failed to parse LLM output (stop_reason=${response.stop_reason}) — skipping`)
-        break
       }
+      console.warn(`[fomo_master] Could not extract posts from LLM output (stop_reason=${response.stop_reason})`)
+      break
     }
 
     break
@@ -229,16 +264,16 @@ async function broadcastNode(state: typeof FomoState.State): Promise<Partial<typ
     ],
     [],
     BROADCASTER_SYSTEM_PROMPT,
-    { max_tokens: 1024, temperature: 0.3 }
+    { temperature: 0.3 }
   )
 
-  let output: BroadcasterOutput
-  try {
-    output = JSON.parse(extractText(response)) as BroadcasterOutput
-  } catch {
-    console.warn('[chief_broadcaster] Failed to parse response — defaulting to approved')
-    output = { decision: 'approved', reasoning: 'parse error — auto-approved', feedback: '' }
+  const parsed = extractJson<BroadcasterOutput>(extractText(response))
+  const output: BroadcasterOutput = parsed ?? {
+    decision: 'approved',
+    reasoning: 'parse error — auto-approved',
+    feedback: '',
   }
+  if (!parsed) console.warn('[chief_broadcaster] Failed to parse response — defaulting to approved')
   console.log(`[chief_broadcaster] Decision: ${output.decision} — ${output.reasoning}`)
 
   if (output.decision === 'rejected') {
