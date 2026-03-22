@@ -46,3 +46,13 @@ coverage/
 # Misc
 *.local
 packages/brain/reports/narratives.csv
+
+# Lockfiles
+pnpm-lock.yaml
+package-lock.json
+packages/*/package-lock.json
+
+# Lockfiles
+pnpm-lock.yaml
+package-lock.json
+packages/*/package-lock.json
