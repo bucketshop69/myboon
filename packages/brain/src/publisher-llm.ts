@@ -73,10 +73,13 @@ function buildSystemPrompt(): string {
     '   - Same story but odds/positioning shifted significantly → publish as an update. Reference the previous piece and lead with what moved (e.g. "Iran ceasefire odds jumped from 60% to 80% in under 2 hours").\n' +
     '   - No match → evaluate on its own merits.\n' +
     '2. Give the narrative a publisher_score (1-10). Only narratives you score >= 8 will be saved. Be selective — not everything is worth publishing.\n' +
-    '3. Classify content_type:\n' +
-    '   - "fomo": lead is a specific position or unusual bet ("A $50K position appeared on...")\n' +
+    '3. Classify content_type (pick the FIRST match):\n' +
+    '   - "sports": narrative is about a match, tournament, or sports prediction market (UCL, EPL, NBA, NFL, etc.)\n' +
+    '   - "macro": narrative is about geopolitics, elections, central bank decisions, trade war, or regime change\n' +
+    '   - "fomo": lead is a specific unusual position from one wallet ("A $50K position appeared on...")\n' +
     '   - "signal": lead is a pattern across multiple actors ("Smart money has been consistently buying NO on...")\n' +
-    '   - "news": lead is a real-world event with market context ("After Sporting CP\'s comeback win, odds shifted...")\n\n' +
+    '   - "news": lead is a real-world event with immediate market reaction\n' +
+    '   - "crypto": lead is about token prices, DEX flows, or on-chain crypto activity\n\n' +
     '4. Produce:\n\n' +
     'content_small: 2-4 sentences, punchy, no fluff. Lookonchain style but smarter. State the position, what it signals, why it matters. Written for a trader who has 5 seconds. No markdown. Do not use the word "whale" or "whales" — describe the position and conviction instead (e.g. "smart money", "a $50K position", "concentrated bets").\n\n' +
     'content_full: Deep analysis connecting prediction market signals to real-world context. Use your own knowledge to add context where relevant. Link related themes (e.g. Iran bets + oil prices = same meta-narrative). Do not make up news.\n\n' +
@@ -84,7 +87,7 @@ function buildSystemPrompt(): string {
     'tags: 2-5 lowercase tags (e.g. "iran", "election", "crypto", "oil", "fed", "ai", "geopolitics", "sports").\n\n' +
     'priority: Integer 1-10. Higher = more urgent/time-sensitive.\n\n' +
     'publisher_score: Integer 1-10. Your honest assessment of this narrative\'s publish-worthiness. >= 8 gets published.\n\n' +
-    'content_type: One of "fomo", "signal", or "news" — see classification rules above.\n\n' +
+    'content_type: One of "fomo", "signal", "sports", "macro", "news", "crypto" — see classification rules above.\n\n' +
     'actions: Array of action targets. Predict actions are pre-populated from market slugs — do not add or change them. You may add perps actions only for crypto price signals: { "type": "perps", "asset": "BTC" } — asset is the base symbol only, no pair or suffix. Empty array if no perps action applies.\n\n' +
     'SPORTS:\n' +
     'For sports narratives (cricket, football, esports, tennis, etc.):\n' +

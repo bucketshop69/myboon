@@ -1,6 +1,6 @@
 // Shared types for publisher + critic pipeline
 
-export type ContentType = 'fomo' | 'signal' | 'news'
+export type ContentType = 'fomo' | 'signal' | 'sports' | 'macro' | 'news' | 'crypto'
 
 export interface NarrativeAction {
   type: 'predict' | 'perps'

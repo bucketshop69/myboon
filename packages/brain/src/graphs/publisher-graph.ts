@@ -27,9 +27,12 @@ CHECK FOR THESE PROBLEMS:
    → Only flag if the lead is genuinely weak, not as a preference.
 
 4. CLASSIFICATION: Does the content_type match what was written?
-   - "fomo" → a specific, unusual position or bet caught on-chain
+   - "sports" → match, tournament, or sports prediction market narrative
+   - "macro" → geopolitics, elections, central bank, trade war, regime change
+   - "fomo" → a specific, unusual position or bet from one wallet
    - "signal" → a pattern across multiple actors or time
-   - "news" → a real-world event with market reaction
+   - "news" → a real-world event with immediate market reaction
+   - "crypto" → token prices, DEX flows, on-chain crypto activity
    → Only flag if it's clearly misclassified, not a minor edge case.
 
 5. TONE: Does this sound sharp and informed? No hype, no fluff, no markdown.

@@ -87,6 +87,7 @@ interface NarrativeCluster {
   signal_count: number
   key_signals: string[]
   slugs?: string[]
+  content_type?: string
 }
 
 // Anthropic message content block shapes
@@ -221,7 +222,14 @@ const SYSTEM_PROMPT =
   'If someone bet on the lower-probability outcome (yes_price < 0.3), flag it as a contrarian position. ' +
   'If someone bet heavily on the higher-probability outcome, note the conviction. ' +
   'Do not label bettors as whales — describe the position and what it signals about market sentiment instead. ' +
-  'If a signal contains a conditionId, use get_market_by_condition to resolve the market and get live odds in one call.'
+  'If a signal contains a conditionId, use get_market_by_condition to resolve the market and get live odds in one call. ' +
+  'For each cluster, set content_type using these rules in order: ' +
+  '(1) "sports" if slugs match ucl-*, epl-*, nba-*, nfl-*, la-liga-* or topic contains team/match names; ' +
+  '(2) "macro" if topic is geopolitics, elections, central bank, trade war, or regime change; ' +
+  '(3) "fomo" if signals are dominated by a single wallet placing an unusual large position; ' +
+  '(4) "signal" if multiple wallets converge on the same market; ' +
+  '(5) "news" if topic references a specific real-world event with market reaction; ' +
+  '(6) default to "signal" if none of the above match.'
 
 async function clusterNarratives(
   contexts: MarketContext[]
@@ -238,7 +246,8 @@ Return a JSON array only — no markdown, no explanation. Each element:
   "score": <integer 1-10 urgency/importance>,
   "signal_count": <number of signals in this cluster>,
   "key_signals": ["brief signal 1", "brief signal 2"],
-  "slugs": ["slug-one", "slug-two"]
+  "slugs": ["slug-one", "slug-two"],
+  "content_type": "fomo" | "signal" | "sports" | "macro" | "news" | "crypto"
 }`
 
   const tools = toAnthropicDefinitions(analystTools)
@@ -340,6 +349,7 @@ async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): 
       signal_count: c.signal_count,
       signals_snapshot: signals,
       slugs: c.slugs ?? [],
+      content_type: c.content_type ?? 'signal',
       status: 'draft',
     }))
 

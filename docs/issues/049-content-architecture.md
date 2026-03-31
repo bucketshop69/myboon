@@ -3,11 +3,10 @@
 ## Why This Exists
 
 This is the **reference PRD** for the content creation layer. Every agent that writes
-content for the Feed or X should derive its design from this document. The goal is to
-lock the architecture before the Colosseum hackathon (April 4) so content agents don't
-need to be redesigned mid-sprint.
+content for the Feed or X should derive its design from this document.
 
 Two things in scope here:
+
 1. Expand `content_type` enum to cover all planned content categories
 2. Define the routing table: which agent handles which content type, in which pipeline
 
@@ -38,6 +37,7 @@ Signals ──► Analyst ─┤                                                
 long-form, analytical.
 
 **X pipeline** (distribution): Two paths:
+
 - `fomo_master` / broadcasters: reads signals directly, bypasses narrative layer. Fast,
   punchy, real-time. Whale alerts, market momentum. (~280 chars)
 - `influencer`: reads `published_narratives`, distills them for X. Slower, more considered.

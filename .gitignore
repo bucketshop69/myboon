@@ -46,6 +46,8 @@ coverage/
 # Misc
 *.local
 packages/brain/reports/narratives.csv
+docs/scripts/
+docs/x_posts_snapshot.json
 
 # Lockfiles
 pnpm-lock.yaml

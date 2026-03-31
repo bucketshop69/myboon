@@ -5,18 +5,21 @@ import type { PublishedNarrative } from '../publisher-types.js'
 
 // --- influencer system prompt ---
 
-const INFLUENCER_SYSTEM_PROMPT = `You are a sharp financial intelligence writer for X (Twitter). 
-Write a single post draft for the narrative provided.
+const INFLUENCER_SYSTEM_PROMPT = `You are a sharp financial intelligence writer for X (Twitter).
+Write a single post draft for the narrative provided. 3-5 lines. No hashtags.
+
+Voice per content_type:
+- "fomo" → punchy, numbers-first, urgency. No CTA. The post stands alone.
+- "signal" → trend frame ("Smart money has been..."). End with: "Full context in the feed."
+- "sports" → match preview voice. Lead with "[Team] at [odds]%". Max 1 sports emoji (⚽ 🏀 🏈). End with: "Full context in the feed."
+- "macro" → authoritative, analytical. "The market is pricing [event] differently than the news." End with: "Full context in the feed."
+- "news" → factual hook first, then market reaction. End with: "Full context in the feed."
+- "crypto" → on-chain angle, specific flows or positions. End with: "Full context in the feed."
 
 Rules:
-- Maximum 280 characters (enforced in code — do not worry about counting)
-- No hashtags
-- No emojis unless content_type is "fomo" or "sports" tag present (max 1)
-- Lead with the insight, not the source ("$120K across UCL knockout markets" not "We tracked a whale...")
-- End with soft CTA if space allows: "Full context in the feed."
-- content_type "fomo" → punchy, specific numbers, urgency
-- content_type "signal" → trend framing ("Smart money has been...")
-- content_type "news" → factual hook, then market reaction
+- Lead with the insight, not the source
+- No wallet language ("a wallet placed...") for sports or macro content
+- Max 1 emoji total, only if it genuinely adds to the post
 
 Return JSON: { "draft_text": string, "reasoning": string }`
 
@@ -57,8 +60,7 @@ async function runInfluencerLLM(narrative: PublishedNarrative): Promise<{ draft_
 
 async function generateNode(state: typeof InfluencerState.State): Promise<Partial<typeof InfluencerState.State>> {
   const output = await runInfluencerLLM(state.narrative)
-  const trimmed = output.draft_text.slice(0, 280)
-  return { draft_text: trimmed }
+  return { draft_text: output.draft_text }
 }
 
 async function saveNode(state: typeof InfluencerState.State): Promise<Partial<typeof InfluencerState.State>> {

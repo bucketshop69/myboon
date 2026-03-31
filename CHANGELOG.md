@@ -10,6 +10,14 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#049]` Content type taxonomy expansion + agent routing
+  - **`publisher-types.ts`** — `ContentType` expanded to `'fomo' | 'signal' | 'sports' | 'macro' | 'news' | 'crypto'`
+  - **DB migration** — `published_narratives_content_type_check` constraint updated to include all 6 types
+  - **`narrative-analyst.ts`** — `NarrativeCluster` interface gets `content_type?` field. SYSTEM_PROMPT gets classification rules (sports slug patterns, macro topics, fomo vs signal vs news detection, default `signal`). `saveNarratives` passes `content_type` to DB.
+  - **`publisher-llm.ts`** — content_type classification rules expanded to all 6 types. Sports and macro get first-match priority.
+  - **`publisher-graph.ts`** — critic CLASSIFICATION check updated to recognize sports/macro/crypto.
+  - **`influencer-graph.ts`** — prompt routing for all 6 content types. Removed hardcoded 280 char slice.
+
 - `[#048]` fomo_master persuasion upgrade — archetype classification + voice rewrite
   - **PERSUASION_PLAYBOOK** — 5 archetypes with 4-5 line example posts: CONTRARIAN (bet against consensus), CLUSTER (convergence pattern), AUTHORITY (track record), FRESH_WALLET (curiosity gap), GENERAL (fallback). Observational voice: build tension through facts, end with implication. Not hype.
   - **WRITER_SYSTEM_PROMPT rewrite** — archetype classification priority order (CONTRARIAN → CLUSTER → AUTHORITY → FRESH_WALLET → GENERAL, first match wins). 4-5 line format, no character limit constraint. TIME_SENSITIVE modifier adds timing line as final punctuation when market resolves within 48h.
