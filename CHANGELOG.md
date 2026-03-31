@@ -10,6 +10,12 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#048]` fomo_master persuasion upgrade — archetype classification + voice rewrite
+  - **PERSUASION_PLAYBOOK** — 5 archetypes with 4-5 line example posts: CONTRARIAN (bet against consensus), CLUSTER (convergence pattern), AUTHORITY (track record), FRESH_WALLET (curiosity gap), GENERAL (fallback). Observational voice: build tension through facts, end with implication. Not hype.
+  - **WRITER_SYSTEM_PROMPT rewrite** — archetype classification priority order (CONTRARIAN → CLUSTER → AUTHORITY → FRESH_WALLET → GENERAL, first match wins). 4-5 line format, no character limit constraint. TIME_SENSITIVE modifier adds timing line as final punctuation when market resolves within 48h.
+  - **BROADCASTER_SYSTEM_PROMPT rewrite** — angle fingerprint `{slug}:{archetype}` as duplicate detection unit. Same market + different archetype = fresh angle, always approve. Only `status='posted'` records count toward frequency limits (rejected drafts never published — don't treat as coverage).
+  - **Data flow** — `PendingDraft` + `WriterOutput` now carry `slug` (attached deterministically from `signal.metadata.slug` in `writeNode`, never from LLM) and `archetype` (from LLM writer output). `broadcastNode` passes both to broadcaster.
+
 - `[#047]` Specialized broadcast floor — `fomo_master` agent + inline `chief_broadcaster`
   - **Runner** (`packages/brain/src/fomo-master.ts`) — deterministic pre-enrichment before graph: slug clustering (one representative per market, highest weight wins; tiebreaker: most recent), `cluster_context` attached to representative, Nansen bettor profile (cached 24h via `NansenClient`), live Polymarket odds (Gamma API, no cache), market_history (7d signal aggregate by slug). Dual timelines: `posted_timeline` (status=posted only, for writer) and `full_timeline` (all 7d, for broadcaster).
   - **Graph** (`packages/brain/src/graphs/fomo-master-graph.ts`) — 4-node LangGraph: `rank → write → broadcast → resolve`, conditional routing after `resolve`.

@@ -1,41 +1,45 @@
-# #048 — Cialdini Persuasion Layer: fomo_master Writer + Broadcaster Upgrade
+# #048 — fomo_master Voice Upgrade: Archetype Classification + Observational Tone
 
 ## Problem
 
-The `fomo_master` pipeline produces content that no one has seen yet — zero posts have
-gone live. The broadcaster correctly rejects for duplicate topic, but the underlying
-writer prompts have a different problem: they're written for pro analysts, not the actual
-target audience (meme traders, prediction market participants looking for quick news).
+The `fomo_master` writer prompt was written for pro analysts, not the actual audience:
+Polymarket traders, on-chain degens, prediction market participants looking for quick
+intelligence they can act on.
 
-Three specific failures:
+The existing approved drafts (54 in DB as of March 31) had correct structure — specific
+numbers, wallet context — but read like data alerts, not posts worth sharing.
 
-1. **Writer prompt is analytical, not FOMO-driven.** "Sound like a pro analyst" is the
-   wrong voice for an audience that moves on social proof, urgency, and narrative — not DCF
-   models. Different signal shapes (contrarian bet, cluster, authority wallet, fresh wallet)
-   all get the same generic instruction to lead with numbers and be specific. That's correct
-   but incomplete.
+**Example of what we had:**
+> "A wallet with zero history just bet $13K on CHI vs NYI. Fourth bet in 4 hours — $51K total exposure."
 
-2. **Broadcaster counts rejections as frequency.** The broadcaster receives the full
-   timeline including rejected drafts. "Iran posted 15 times this week" triggers hard
-   reject even when every prior occurrence was itself rejected and never posted. The
-   frequency gate should apply to **posted** content, not the rejection archive.
+Two lines. States facts. No tension, no implication.
 
-3. **Duplicate detection is too coarse.** Same market ≠ same story. A contrarian bet,
-   a cluster bet, and a resolution angle on the same market are three different pieces of
-   content. The current broadcaster has no concept of angle — it only knows topic.
+**Two real problems:**
 
-## Goal
+1. **Writer voice is analytical, not observational.** All signal types got the same
+   generic instruction. Different signals (fresh wallet opening big, wallets converging,
+   high win-rate wallet re-entering) have different stories. They need different leads.
 
-Apply Cialdini's influence principles as signal-type-specific persuasion frames in the
-writer prompt, and upgrade the broadcaster to use angle-fingerprint duplicate detection
-instead of topic-only frequency counting.
+2. **Duplicate detection is too coarse.** Same market ≠ same story. A contrarian bet
+   and a cluster bet on the same market are two different pieces of content. The broadcaster
+   had no concept of angle — it only knew topic.
 
-Two phases delivered as one issue:
+## What We Built
 
-| Phase | Label | What |
-|-------|-------|------|
-| C | Playbook | Write `PERSUASION_PLAYBOOK` const — 5 archetypes + example posts, injected into writer prompt |
-| A | Prompt Rewrite | Rewrite `WRITER_SYSTEM_PROMPT` + `BROADCASTER_SYSTEM_PROMPT`; add `slug` + `archetype` to draft data flow |
+Archetype-based classification + observational 4-5 line voice.
+
+| What | Description |
+|------|-------------|
+| `PERSUASION_PLAYBOOK` | 5 archetypes with 4-5 line example posts (GOOD/BAD). Observational voice: build tension through facts, end with implication. |
+| Writer rewrite | Classifies signal before writing (priority order). 4-5 line format. No character limit. TIME_SENSITIVE modifier adds timing as final line. |
+| Broadcaster rewrite | Angle fingerprint `{slug}:{archetype}` — same market + different archetype = fresh angle. Only `status='posted'` records count toward frequency limits. |
+| Data flow | `slug` attached deterministically from `signal.metadata.slug` in `writeNode`. `archetype` from LLM. Both travel through `PendingDraft` to broadcaster. |
+
+**Example of what it produces now (FRESH_WALLET archetype):**
+> Zero history on this wallet. No bets on record.
+> First four moves: $51K into a single NHL market across four bets in under 4 hours.
+> That's not a tourist learning the platform.
+> Someone opened a fresh account specifically to make this bet.
 
 ## Dependencies
 
