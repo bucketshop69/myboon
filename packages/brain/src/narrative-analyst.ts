@@ -342,6 +342,7 @@ function extractSlugs(keySignals: string[]): string[] {
 async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): Promise<void> {
   const rows = clusters
     .filter((c) => c.score >= 7)
+    .filter((c) => c.content_type !== 'sports')  // sports handled exclusively by sports_broadcaster
     .map((c) => ({
       cluster: c.cluster,
       observation: c.observation,

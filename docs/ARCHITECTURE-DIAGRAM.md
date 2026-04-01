@@ -6,12 +6,14 @@ flowchart TD
         DISC["discovery.ts\nevery 2h\ntop 20 + pinned.json"]
         STREAM["stream.ts\nWebSocket persistent\nprice moves"]
         WHALE["user-tracker.ts\nevery 5min\n18 hardcoded wallets"]
+        MWATCH["match-watcher.ts\nevery 5min\ncalendar slugs T-24h→T+12h"]
         PAC_DISC["pacific/discovery.ts\nplanned #051\ntop markets by volume"]
         PAC_STREAM["pacific/stream.ts\nplanned #051\nFUNDING_SPIKE, ODDS_SHIFT"]
     end
 
     subgraph DB["Supabase"]
         PT[("polymarket_tracked\nslug · token_id\nyes/no price")]
+        XP[("x_posts\nagent_type · slug\ndraft_text · status")]
         PAC[("pacific_tracked\nplanned #051\nsymbol · funding_rate\nopen_interest")]
         SIG[("signals\nsource · type · topic\nslug · weight · metadata\nprocessed")]
         NAR[("narratives\ncluster · observation\nscore · slugs[]\nstatus=draft")]
@@ -23,6 +25,7 @@ flowchart TD
         TOOLS["Tool Calling Loop\nmax 10 turns\nget_market_snapshot\nget_market_by_condition"]
         PB["✅ Publisher\nruns every 30min\ncritic pass · score ≥ 8\nbuilds actions[] from slugs"]
         IN["📢 Influencer\nevery 2-4h\nX post drafts\n(issue #041)"]
+        SB["⚽ Sports Broadcaster\nhourly cron\npreview · live · post_match\n(issue #050)"]
     end
 
     subgraph SDK["Shared SDK — packages/shared"]
@@ -48,6 +51,7 @@ flowchart TD
     STREAM -->|reads token_ids from| PT
     STREAM -->|ODDS_SHIFT >5%| SIG
     WHALE -->|WHALE_BET ≥$500| SIG
+    MWATCH -->|WHALE_BET any wallet| SIG
 
     PAC_DISC -->|seeds & refreshes| PAC
     PAC_DISC -->|MARKET_DISCOVERED| SIG
@@ -63,6 +67,9 @@ flowchart TD
     PB -->|checks duplicates| PUB
     PB -->|status=published| PUB
     PUB -.->|future| IN
+    SIG -->|WHALE_BET sports| SB
+    PT -->|live odds via Dome| SB
+    SB -->|draft post| XP
 
     PUB --> FEED_EP
     PUB --> PRED_EP
@@ -75,6 +82,7 @@ flowchart TD
     PERP_EP -.->|planned| TRADE_TAB
 
     style IN stroke-dasharray: 5 5
+    style MWATCH stroke-width: 2px
     style PAC_DISC stroke-dasharray: 5 5
     style PAC_STREAM stroke-dasharray: 5 5
     style PAC stroke-dasharray: 5 5

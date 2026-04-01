@@ -1,288 +1,287 @@
-# #050 — Sports Content Pipeline: Analyst Tuning + Sports Broadcaster
+# #050 — Sports Content Pipeline: Three-Phase Sports Broadcaster
 
 ## Problem
 
-Sports prediction markets (UCL, EPL) generate signals but the content they produce
-is indistinguishable from geopolitics content. The analyst treats an EPL match the same
-as an Iran regime collapse market: both get wallet-tracking framing, both miss the
-story that makes sports content valuable.
+Sports prediction markets (UCL, EPL) generate signals that are being swallowed by
+fomo_master — which writes wallet-tracking posts about them. That's the wrong framing.
+"Wallet 0x123 bet $8K on Man Utd" is noise. The story is the market odds.
 
-Sports content has a different job:
-- **Not**: "Wallet 0x123 bet $8K on Man Utd vs Nottingham"
-- **Yes**: "Man Utd at 34% for this fixture. They've lost 4 straight. The market isn't
-   buying the manager's confidence."
+Sports also has a known schedule. fomo_master is purely reactive (processes whatever
+came in the last 4h). Sports content can be proactive: we know Arsenal vs Leverkusen
+kicks off at 8pm, so we can post a preview at T-6h, monitor smart money live, and
+close the loop after the final whistle.
 
-The odds ARE the story. The wallet is noise. This is the opposite of fomo_master.
+**Three problems to fix:**
 
-Additionally, the sports broadcaster for X doesn't exist. Sports X posts currently go
-through the generic influencer (if a sports narrative is published), which produces
-bland content because it's designed for wallet intelligence, not match storylines.
+1. fomo_master is eating sports WHALE_BETs and writing them as whale alerts
+2. No pre-match context posts exist — we know the schedule, we're just not using it
+3. No post-match close-out — who did the market call right?
+
+## Signal Reality (from actual DB)
+
+Sports signals are **exclusively WHALE_BET** type. No ODDS_SHIFT signals exist for
+sports slugs — the WebSocket stream doesn't track sports markets. This means:
+
+- Sports broadcaster reads `WHALE_BET` signals on calendar slugs for enrichment
+- Odds story comes from live Polymarket API call at runtime
+- fomo_master must be updated to skip sports slugs (currently overlapping)
 
 ## Goal
 
-1. **Sports analyst tuning**: add a sports prompt path in `narrative-analyst.ts` so sports
-   signal clusters produce narratives with match context, team form, and market momentum
-   framing instead of wallet-tracking framing.
-
-2. **Sports broadcaster** (`sports_broadcaster`): new X agent that reads sports signals
-   directly (ODDS_SHIFT + MARKET_DISCOVERED for sports slugs), enriches with live
-   Polymarket odds, and writes punchy match preview / momentum posts.
-
-3. **Sports influencer prompt path**: update influencer system prompt to handle
-   `content_type='sports'` with match preview voice instead of wallet alert voice.
+1. **fomo_master filter**: exclude sports slugs from fomo_master processing
+2. **Match-aware collector**: subscribe to calendar slugs from T-24h, write trades as signals
+3. **Sports broadcaster** (`sports_broadcaster`): calendar-driven, three-phase X agent
+4. **Narrative analyst**: suppress `content_type='sports'` before influencer — sports broadcaster is the only posting path for sports content
 
 ## Dependencies
 
-- Builds on: #049 (content architecture — `content_type='sports'` enum + routing)
-- Parallel to: #048 (fomo_master persuasion layer — independent, different files)
-- Related: #047 (fomo_master architecture — sports_broadcaster follows same LangGraph pattern)
-- No new data sources required — Polymarket CLOB/Gamma API already provides odds + volume
-
-## Sports Content Model
-
-### What makes a good sports feed card
-
-The feed card (from `published_narratives`) should tell:
-1. **The match** — who's playing, when (from market title)
-2. **The odds story** — where is the market right now (YES/NO/draw prices)
-3. **The form hook** — what context makes these odds interesting (losing streak, injury news IF detectable from market titles, volume surge)
-4. **The market intelligence angle** — where is the smart money going (which outcome is seeing volume)
-
-Example `content_small`:
-> "Man United at 34% to win vs Nottingham. Market odds have dropped 12 points in 48h —
-> volume is building on the draw and away side despite United being at home."
-
-Example `content_full`:
-> "Manchester United's current odds tell a story the BBC won't. At 34% YES for a home
-> win, United are priced as significant underdogs at Old Trafford — unusual for a home
-> fixture. The 12-point drop in YES price over the past 48 hours shows sustained market
-> pressure, not a single whale bet. Across 4 wallets and $22K in volume this week, the
-> pattern is consistent: smart money is fading United at home.
-> 
-> The market is pricing in something beyond recent form. The last 4 fixtures went:
-> [market signals don't give us this — the odds movement is the data]. At 34%,
-> the implied probability is roughly 1-in-3. If you think United wins, the market
-> disagrees with you."
-
-Note: sports content does NOT require external historical data in this phase. The
-market title, current odds, volume, and odds movement (from ODDS_SHIFT signals) tell
-the story. No web search tool required for the analyst.
-
-### What makes a good sports X post
-
-Sports X posts have different mechanics than fomo_master:
-- fomo_master leads with the wallet (who bet what)
-- sports_broadcaster leads with the market story (odds + context)
-
-| fomo_master (whale) | sports_broadcaster (market) |
-|--------------------|-----------------------------|
-| "A wallet with 71% win rate just bet..." | "Manchester United at 34%. The market is fading them at home." |
-| Authority/Curiosity Gap frame | Narrative/Momentum frame |
-| Single bet is the news | Odds movement is the news |
+- Builds on: #049 (`content_type='sports'` enum — already shipped)
+- Parallel to: #048 (fomo_master voice — independent files)
+- Related: #047 (fomo_master pattern — sports_broadcaster follows same LangGraph shape)
+- Scope: EPL and UCL only. NBA has different slug structure — future issue.
 
 ---
 
-## Scope
+## Sports Calendar
 
-### New files
-- `packages/brain/src/graphs/sports-broadcaster-graph.ts` — LangGraph for sports broadcaster
+The sports_broadcaster is calendar-driven. The calendar is the control mechanism —
+it decides what matches to cover and when. The collector is completely separate.
+
+### `packages/brain/src/sports-calendar.json`
+
+```json
+[
+  {
+    "match": "Bournemouth vs Manchester United",
+    "sport": "epl",
+    "kickoff": "2026-04-05T14:00:00Z",
+    "slugs": {
+      "home": "epl-bou-mun-2026-04-05-bou",
+      "away": "epl-bou-mun-2026-04-05-mun",
+      "draw": "epl-bou-mun-2026-04-05-draw"
+    }
+  },
+  {
+    "match": "Arsenal vs Real Madrid",
+    "sport": "ucl",
+    "kickoff": "2026-04-08T19:00:00Z",
+    "slugs": {
+      "home": "ucl-ars-rma-2026-04-08-ars",
+      "away": "ucl-ars-rma-2026-04-08-rma",
+      "draw": "ucl-ars-rma-2026-04-08-draw"
+    }
+  }
+]
+```
+
+**You maintain this file.** Add upcoming fixtures manually before each gameweek.
+No auto-discovery, no dependency on the collector or `polymarket_tracked`.
+
+The runner reads this file at startup. If a match isn't in the calendar, it won't
+be covered. That's intentional — controlled coverage over reactive noise.
+
+### Why not `polymarket_tracked`?
+
+- `polymarket_tracked` is what the collector happened to discover. That's a different
+  concern — feeding signals, not scheduling coverage.
+- `end_date` in Polymarket is the resolution deadline, not kickoff time. Unreliable
+  for phase detection.
+- The calendar gives you exact kickoff times and explicit outcome slug mapping.
+- Clean separation: collector owns signals, calendar owns schedule.
+
+---
+
+## Three-Phase Match Lifecycle
+
+```
+Phase 1 — Preview (kickoff - 26h to kickoff - 2h)
+  Trigger: calendar entry enters preview window AND no preview post exists for this match
+  Source: calendar kickoff time + live Polymarket odds (API call)
+  Content: where does the money sit going into this match?
+  Voice: analytical setup — odds level, which way volume is moving, what it implies
+  Frequency: 1 post per match
+
+Phase 2 — Live (kickoff to kickoff + 6h)
+  Trigger: calendar entry is in live window AND WHALE_BET signals exist for calendar slugs
+  Source: WHALE_BET signals written by match-aware collector + live odds
+  Content: smart money moving during the match
+  Voice: "18K went on Man Utd at 34% with 30 min left. Either conviction or desperation."
+  Frequency: 1 post per match during live window
+  Note: 6h window covers 90min EPL + 120min UCL extra time + penalties with buffer
+
+Phase 3 — Post-match (kickoff + 6h to kickoff + 12h)
+  Trigger: calendar entry has passed live window AND no post_match post exists
+  Source: any WHALE_BET signals from the match window + live (final) odds
+  Content: who did the market have right? close the loop.
+  Voice: "United won. The market had them at 34%. The contrarian call paid off."
+  Frequency: 1 post per match, once
+```
+
+The runner checks all three phases on every hourly run. A single match will produce
+at most 3 posts across its lifecycle.
+
+---
+
+## Architecture
+
+### Files
+
+**New:**
+- `packages/brain/src/sports-calendar.json` — curated match list (you maintain)
+- `packages/brain/src/graphs/sports-broadcaster-graph.ts` — LangGraph
 - `packages/brain/src/sports-broadcaster.ts` — runner
 - `packages/brain/src/run-sports-broadcaster.ts` — PM2 entry
 
-### Changed files
-- `packages/brain/src/narrative-analyst.ts` — sports prompt path in analyst system prompt
-- `packages/brain/src/graphs/influencer-graph.ts` — sports prompt path in influencer
-- `packages/brain/src/publisher-types.ts` — content_type expanded (per #049)
+**Changed:**
+- `packages/brain/src/fomo-master.ts` — add sports slug exclusion filter
+- `packages/brain/src/narrative-analyst.ts` — suppress `content_type='sports'` before influencer routing
+- `packages/collectors/src/index.ts` — extend Polymarket collector to subscribe to calendar slugs from T-24h
 - `ecosystem.config.cjs` — add `myboon-sports-broadcaster` process
 
-### No new DB tables
-- Uses existing `x_posts` with `agent_type='sports_broadcaster'`
-- Uses existing `signals` table (ODDS_SHIFT + MARKET_DISCOVERED with sports slugs)
-- Uses existing `published_narratives` with `content_type='sports'`
+### DB migration
+
+One new column on `x_posts`:
+
+```sql
+ALTER TABLE x_posts ADD COLUMN slug text;
+```
+
+- `slug` is nullable — existing fomo_master rows stay valid
+- Sports broadcaster writes the calendar key (e.g. `"epl-bou-mun-2026-04-05"`) on every save
+- Dedup query: `agent_type = 'sports_broadcaster_preview' AND slug = '...'`
+- Phase encoded in `agent_type`: `sports_broadcaster_preview`, `sports_broadcaster_live`, `sports_broadcaster_post_match`
+- Uses existing `signals` table (WHALE_BET on calendar slugs, populated by match-aware collector from T-24h)
 
 ---
 
-## Sports Signal Detection
-
-Sports signals are identified by slug pattern. Detection rules (in priority order):
+## Runner Logic
 
 ```
-ucl-*       → UCL (UEFA Champions League)
-epl-*       → EPL (English Premier League)
-nba-*       → NBA (add to pinned.json when ready)
-nfl-*       → NFL
-la-liga-*   → La Liga
-série-a-*   → Serie A
+sports-broadcaster.ts (runs hourly via PM2 cron):
+
+const calendar = loadCalendar()  // sports-calendar.json
+const now = new Date()
+
+// Step 1: match-aware collection
+// For every match with kickoff within the next 24h, ensure the Polymarket
+// collector is subscribing to those slugs and writing trades as WHALE_BET /
+// ODDS_SHIFT signals into the signals table. This seeds Phase 2 data.
+for each entry in calendar where kickoff - now <= 24h:
+  ensureCollectorWatching(entry.slugs)  // idempotent — noop if already subscribed
+
+// Step 2: phase detection + posting
+for each entry in calendar:
+  compute phase based on kickoff time vs now
+  derive slug key from entry (e.g. "epl-bou-mun-2026-04-05")
+  check x_posts: WHERE agent_type = 'sports_broadcaster_{phase}' AND slug = key
+  if not posted:
+    enrich: live odds for all outcome slugs (Gamma API)
+    if phase === 'live' or 'post_match':
+      fetch WHALE_BET signals for these slugs from signals table
+    format match block
+    queue for graph
+
+invoke graph once with all queued matches (ranked → written → broadcast → saved)
 ```
 
-In `narrative-analyst.ts`: when building market context, check
-`signal.slug?.match(/^(ucl|epl|nba|nfl|la-liga)-/)` OR
-`signal.topic` contains team names (derived from market title). Tag the cluster as
-`content_type: 'sports'` in analyst output.
-
-In `sports-broadcaster.ts` runner: filter signals where
-`signal.metadata?.slug?.match(/^(ucl|epl|nba|nfl|la-liga)-./)` OR
-`signal.type === 'MARKET_DISCOVERED'` and slug matches sports patterns.
+No `polymarket_tracked` query. No dependency on collector schedule.
 
 ---
 
-## Sports Analyst Prompt Path
-
-Add sports detection to the analyst system prompt. When the analyst identifies a cluster
-as sports-related (slug pattern + topic), it should:
-
-1. Set `content_type: 'sports'` (new field in analyst output)
-2. Lead `observation` with: odds level + which direction volume is moving
-3. NOT lead with wallet addresses or bet amounts as primary hook
-4. Include: which team/market is being bet, current odds from live tool call
-5. Score: sports clusters scoring >= 7 should focus on market momentum, not unusual positions
-
-**Prompt addition for analyst system prompt** (add after existing classification rules):
+## Formatted Match Block (input to LLM)
 
 ```
-Sports content detection:
-If a cluster's signals belong to sports prediction markets (slugs matching ucl-*, epl-*,
-nba-*, nfl-* or topics containing team names), set content_type: "sports".
+PHASE: PREVIEW | LIVE | POST_MATCH
+MATCH: Bournemouth vs Manchester United (EPL)
+Kickoff: 2026-04-05 14:00 UTC (~18h away)
 
-For sports clusters:
-- Lead observation with the odds story: "The market prices [team] at X% for this fixture.
-  [Volume direction] since [timeframe]."
-- Do NOT lead with wallet addresses. Wallet data is supporting context, not the hook.
-- The match or tournament context IS the narrative. Odds movement tells the story.
-- Use live market tool to get current odds before writing observation.
-- Score sports narratives on: odds movement size (big shift > small shift), volume
-  concentration (few wallets = fomo, many = signal), match timing (imminent > distant).
+Outcomes (live odds):
+  Bournemouth win:    40%
+  Draw:               26%
+  Manchester United:  34%
+
+Volume (7d): 18 bets, 12 wallets, $62K total
+
+Whale activity (last 4h):
+  $18K on Man Utd (away win) — 2 wallets
+  $4K on Draw — 1 wallet
 ```
+
+Match title comes directly from `calendar.match`. No slug decoding needed.
+Outcome labels are defined in the calendar `slugs` object keys (`home`, `away`, `draw`).
 
 ---
 
-## Sports Broadcaster Architecture
-
-### System Flow
+## Writer Node — Phase-Aware Voice
 
 ```
-Runner (deterministic, no LLM):
-  1. Detect sports signals: ODDS_SHIFT + MARKET_DISCOVERED (last 4h) with sports slugs
-  2. Dedup: filter signal_ids already consumed in recent sports_broadcaster x_posts
-  3. Cluster by market slug (same slug = same match — pick representative)
-  4. Enrich each representative:
-     - Live Polymarket odds (Gamma API — same as fomo_master)
-     - 7d market history for this slug (volume, bet count, distinct wallets)
-     - Odds movement: compute shift from signals (shift_from → shift_to)
-  5. Format into plaintext match block
-  6. Fetch posted_timeline (sports_broadcaster posts only, last 7d)
-  7. Invoke graph
+PREVIEW:
+  "Bournemouth hosting Man Utd on Saturday. United priced at 34% away —
+   the market has them as underdogs on the road. $22K moved on this
+   fixture in the last 48h, weighted toward the home side.
+   The smart money isn't backing the name here."
+
+LIVE:
+  "$18K went on Man Utd at 34% with kickoff 90 min away.
+   Two wallets, coordinated timing. Either late conviction
+   or someone knows something about the team news."
+
+POST_MATCH:
+  "Man Utd won away at Bournemouth. They were 34% going in.
+   The $18K that backed the away side at that price collected.
+   The market was wrong. The bettors weren't."
 ```
 
-```
-Graph (same LangGraph pattern as fomo_master):
-  rank → write → broadcast → resolve → save
-```
+**Rules:**
 
-### Formatted Match Block (input to ranker)
-
-```
-MATCH: [market question / match title]
-Market: [slug] | Current odds: [yes]% YES / [no]% NO
-Volume (7d): [bet_count] bets, [distinct_wallets] wallets, [total_volume]
-Odds movement: [shift_from]% → [shift_to]% in last [timeframe]
-```
-
-Example:
-```
-MATCH: "Will Manchester United win vs Nottingham Forest? (March 31)"
-Market: epl-manchester-united-nottingham-march-31 | Current odds: 34% YES
-Volume (7d): 12 bets, 8 wallets, $44K total
-Odds movement: 46% → 34% in last 48h (12-point drop)
-```
-
-No Nansen profile needed — sports is about market movement, not wallet tracking.
-
-### Ranker Node
-
-Same structure as fomo_master ranker. Ranking criteria for sports:
-
-1. **Odds movement size** — 15+ point shift in 48h is the strongest signal
-2. **Volume concentration** — 2-3 wallets moving a market vs 15 = different stories
-3. **Match timing** — match in <24h is time-sensitive
-4. **Market size** — larger volume markets are more trustworthy signals
-
-**Picks 1-2 sports stories per run** (vs 1-3 for fomo_master — sports has more repetition risk).
-
-### Writer Node — Sports Voice
-
-```
-SPORTS_WRITER_SYSTEM_PROMPT:
-
-You write X posts for a prediction market intelligence account covering sports.
-Your audience follows prediction market odds, not just match results. They want to
-know what the market knows that the sports media doesn't.
-
-Lead with the odds story, not the wallet.
-
-Archetypes:
-
-MOMENTUM (odds moving fast in one direction):
-"[Team] falling in [market]. Down 12 points in 48h — now at 34% to win at home.
-The market is pricing in something the media hasn't caught yet."
-
-CONTRARIAN (market going against expected favorite):
-"Everyone expects [Team] to win. The market gives them 34%. At home.
-That's the prediction market saying 'not so fast.'"
-
-VOLUME SURGE (unusual betting activity):
-"$44K moved on [match] in 48h. Usually this market stays quiet. Something changed."
-
-TIME_SENSITIVE modifier (match in <24h):
-Add "This resolves tonight." or "Kick-off in Xh." to any archetype.
-
-Rules:
-- Lead with odds % and direction. Always.
-- No wallet addresses (sports is market story, not whale tracking)
-- No hashtags
-- Max 1 emoji: ⚽ 🏀 🏈 — only if it adds to the match identity
-- Do NOT mention "prediction market" or "Polymarket" explicitly — just say "the market"
-- NEVER write "Full context in the feed." (sports X posts stand alone)
-
-Return JSON: { "drafts": [{ "signal_id": "...", "archetype": "MOMENTUM|CONTRARIAN|VOLUME_SURGE", "draft_text": "...", "reasoning": "..." }] }
-```
-
-### Broadcaster Node
-
-Same `chief_broadcaster` logic as fomo_master. Key differences for sports:
-
-- Duplicate check: `{slug}:{archetype}` for sports too
-- Sports has stricter frequency: same match posted 2+ times = hard reject (matches resolve,
-  no need for multiple posts on same fixture)
-- Time sensitivity: if match has resolved, hard reject (stale content)
-- Broadcaster receives `full_timeline` filtered to sports_broadcaster posts only
-  (not mixed with fomo_master timeline — different audience context)
-
-### Save Node
-
-Same as fomo_master save. Insert with:
-- `agent_type: 'sports_broadcaster'`
-- `signal_ids: [signal_id]`
-- `status: 'draft'`
-- No Polymarket wallet URL (sports posts don't have a wallet to link)
-- Optionally append Polymarket market URL: `\nhttps://polymarket.com/event/{slug}`
-  (appended in code, not by LLM — same pattern as fomo_master)
+- No wallet addresses in any phase
+- Lead with odds % and match context
+- No hashtags, max 1 emoji (⚽ 🏀)
+- Sports posts stand alone — no "Full context in the feed." CTA
+- Return JSON: `{ "drafts": [{ "match": "...", "phase": "...", "archetype": "MOMENTUM|CONTRARIAN|VOLUME_SURGE|RESULT", "draft_text": "...", "reasoning": "..." }] }`
 
 ---
 
-## Sports Influencer Prompt Path
+## Broadcaster Node
 
-Update `INFLUENCER_SYSTEM_PROMPT` in `influencer-graph.ts`:
+Same `chief_broadcaster` pattern as fomo_master. Key rules:
 
+- Hard reject: same match + same phase already posted (`agent_type` + `slug` check)
+- Hard reject: POST_MATCH for a match that hasn't reached kickoff + 6h yet
+- Frequency: max 3 posts per match total (1 per phase)
+- Timeline: filtered to `sports_broadcaster_*` agent_types only
+
+---
+
+## fomo_master Filter
+
+One change in `packages/brain/src/fomo-master.ts` — after fetching WHALE_BET signals,
+filter out sports slugs:
+
+```ts
+const SPORTS_SLUG = /^(ucl|epl|nba|nfl|la-liga)-/
+const signals = rawSignals.filter(s => !SPORTS_SLUG.test(s.metadata?.slug ?? ''))
 ```
-When content_type is 'sports':
-- Lead with the match + current odds hook
-- Include team form context if present in content_small/full
-- Frame as: "[Team] at [X]%. The market [interpretation]."
-- Max 1 sports emoji (⚽ 🏀 🏈)
-- End with: "Full context in the feed." (the published narrative IS the full context)
-- Do NOT use wallet language ("a wallet placed...") for sports content
+
+Sports WHALE_BETs go to sports_broadcaster. Everything else stays in fomo_master.
+
+---
+
+## Narrative Analyst — Sports Suppression
+
+Sports content must NOT flow through the influencer path. The sports broadcaster is
+the only posting path for EPL/UCL content.
+
+Change in `narrative-analyst.ts`: after clustering, before saving narratives, filter
+out any cluster with `content_type === 'sports'`:
+
+```ts
+const filtered = clusters.filter(c => c.content_type !== 'sports')
+// only filtered clusters proceed to narratives table insert
 ```
+
+This prevents duplicate posts where both the influencer and the sports broadcaster
+write about the same match.
 
 ---
 
@@ -294,91 +293,104 @@ When content_type is 'sports':
   script: './packages/brain/src/run-sports-broadcaster.ts',
   interpreter: 'node',
   interpreter_args: '--import tsx/esm',
-  cron_restart: '0 */2 * * *',   // every 2h (matches are less frequent than whale bets)
+  cron_restart: '0 * * * *',
   autorestart: false,
   watch: false,
   env: { NODE_ENV: 'production' }
 }
 ```
 
-Run it more frequently (hourly) when a major match is within 24h. Manual override via
-`pm2 restart myboon-sports-broadcaster` is sufficient for hackathon phase.
-
 ---
 
-## Interface: FormattedMatchSignal
+## Interface: CalendarEntry + FormattedMatchSignal
 
 ```ts
+export interface CalendarEntry {
+  match: string                        // "Bournemouth vs Manchester United"
+  sport: 'epl' | 'ucl'
+  kickoff: string                      // ISO timestamp
+  slugs: {
+    home: string
+    away: string
+    draw?: string                      // not all sports have draws
+  }
+}
+
 export interface FormattedMatchSignal {
-  id: string
-  type: string
-  weight: number
-  metadata: Record<string, unknown>
-  created_at: string
-  live_odds: number | null          // current YES probability
+  entry: CalendarEntry
+  phase: 'preview' | 'live' | 'post_match'
+  outcomes: Array<{
+    label: string                      // "home" | "away" | "draw"
+    slug: string
+    live_odds: number | null
+  }>
   market_history: {
     bet_count: number
     distinct_wallets: number
     total_volume: number
   }
-  odds_shift: {                     // computed from ODDS_SHIFT signals for this slug
-    from: number | null
-    to: number | null
-    hours_ago: number | null
-  } | null
-  match_context: {                  // parsed from market question text
-    match_title: string             // "Manchester United vs Nottingham Forest"
-    sport: string                   // "epl" | "ucl" | etc.
-    resolution_date: string | null  // "March 31" if parseable from question
-  }
+  recent_whale_activity: Array<{
+    slug: string
+    amount: number
+    side: string
+  }>
+  kickoff_hint: string                 // "~18h away" | "Live now" | "Ended 2h ago"
   formatted_text: string
 }
 ```
-
-No Nansen profile field — sports broadcaster doesn't track wallets.
 
 ---
 
 ## Acceptance Criteria
 
-### Sports analyst tuning
-- [ ] `content_type: 'sports'` is output by analyst for UCL/EPL signal clusters
-- [ ] Sports narrative `observation` leads with odds level + direction, not wallet address
-- [ ] Sports narrative `content_small` in published_narratives uses match framing
-- [ ] `ContentType` enum includes `'sports'` in `publisher-types.ts`
+### Calendar
+
+- [ ] `sports-calendar.json` exists with at least one upcoming EPL/UCL fixture
+- [ ] Runner loads and parses calendar correctly
+- [ ] Runner computes correct phase based on `kickoff` field
+
+### fomo_master filter
+
+- [ ] Sports slugs are excluded from fomo_master WHALE_BET processing
+- [ ] Non-sports signals unaffected
+
+### DB migration
+
+- [ ] `x_posts` has `slug text` nullable column
+- [ ] Sports broadcaster writes `slug` on every save
+
+### Match-aware collector
+
+- [ ] Polymarket collector subscribes to calendar slugs when kickoff <= 24h away
+- [ ] Trades from those slugs written as WHALE_BET / ODDS_SHIFT signals to `signals` table
+- [ ] `ensureCollectorWatching()` is idempotent (no duplicate subscriptions)
 
 ### Sports broadcaster
-- [ ] `packages/brain/src/graphs/sports-broadcaster-graph.ts` exports `sportsBroadcasterGraph`
-- [ ] `packages/brain/src/sports-broadcaster.ts` runner detects sports slugs correctly
-- [ ] Runner enriches with: live odds, 7d market history, odds shift from signals
-- [ ] Formatted match block includes: match title, slug, current odds, volume, odds movement
-- [ ] Ranker picks 1-2 sports stories per run (not more)
-- [ ] Writer produces MOMENTUM / CONTRARIAN / VOLUME_SURGE archetype posts
-- [ ] Writer never uses wallet addresses in sports posts
-- [ ] Broadcaster rejects same match posted twice (frequency: 2 per slug per week max)
-- [ ] Posts saved with `agent_type='sports_broadcaster'`
-- [ ] PM2 process `myboon-sports-broadcaster` starts cleanly
-- [ ] `pnpm --filter @myboon/brain sports-broadcaster:start` runs without error
 
-### Sports influencer path
-- [ ] `content_type='sports'` narratives produce X drafts with match + odds lead
-- [ ] No wallet language ("a wallet placed...") in sports influencer output
-- [ ] Sports emoji (⚽) appears only on sports posts
+- [ ] Phase 1 posts when kickoff is 2–26h away and no preview exists for that `slug`
+- [ ] Phase 2 posts when in live window (kickoff to kickoff+6h) and WHALE_BET signals exist
+- [ ] Phase 3 posts after kickoff+6h and no post_match post exists for that `slug`
+- [ ] Writer uses correct phase voice (PREVIEW / LIVE / POST_MATCH)
+- [ ] Writer never uses wallet addresses
+- [ ] Broadcaster enforces 1 post per phase per match (dedup via `agent_type` + `slug`)
+- [ ] Posts saved with `agent_type='sports_broadcaster_preview|live|post_match'`
+- [ ] PM2 process starts cleanly
+
+### Narrative analyst suppression
+
+- [ ] `content_type: 'sports'` clusters filtered out before narratives table insert
+- [ ] No sports content reaches influencer path
 
 ### Integration
-- [ ] fomo_master and sports_broadcaster run independently without interfering
-  (different signal filters, different x_posts agent_type, different broadcaster timelines)
-- [ ] A sports signal (epl-*) is NOT picked up by fomo_master (it filters WHALE_BET weight ≥ 8 only, and sports ODDS_SHIFT signals have lower weights — verify this holds)
+
+- [ ] Sports WHALE_BET not processed by fomo_master
+- [ ] fomo_master and sports_broadcaster x_posts timelines stay separate
+- [ ] No duplicate posts for same match from both broadcaster and influencer
 
 ---
 
-## Future: Macro Broadcaster (#051)
+## Future
 
-Following the same pattern as sports_broadcaster, a `macro_broadcaster` will handle:
-- Signals: ODDS_SHIFT + WHALE_BET on geopolitics/election/macro slugs
-- Enrichment: live odds + Nansen wallet context (macro has wallets worth tracking)
-- Voice: authoritative thesis, contrarian position forming
-- When: after sports_broadcaster is stable and hackathon SDK work is underway
-
-The macro_broadcaster effectively replaces the generic influencer for geopolitics content.
-The influencer becomes primarily a catch-all for content types without a dedicated broadcaster.
+- NBA support — different slug structure, different outcome model (no draw)
+- Auto-suggest calendar entries from Polymarket discovery (semi-automated, human approves)
+- Macro broadcaster (#051) — same three-phase concept adapted for geopolitics events

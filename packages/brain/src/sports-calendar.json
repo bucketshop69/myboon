@@ -1,0 +1,32 @@
+[
+  {
+    "match": "Real Madrid CF vs. FC Bayern München",
+    "sport": "ucl",
+    "kickoff": "2026-04-07T19:00:00Z",
+    "slugs": {
+      "home": "ucl-rma1-bay1-2026-04-07-rma1",
+      "away": "ucl-rma1-bay1-2026-04-07-bay1",
+      "draw": "ucl-rma1-bay1-2026-04-07-draw"
+    }
+  },
+  {
+    "match": "FC Barcelona vs. Club Atlético de Madrid",
+    "sport": "ucl",
+    "kickoff": "2026-04-08T19:00:00Z",
+    "slugs": {
+      "home": "ucl-fcb1-atm1-2026-04-08-fcb1",
+      "away": "ucl-fcb1-atm1-2026-04-08-atm1",
+      "draw": "ucl-fcb1-atm1-2026-04-08-draw"
+    }
+  },
+  {
+    "match": "Paris Saint-Germain FC vs. Liverpool FC",
+    "sport": "ucl",
+    "kickoff": "2026-04-08T19:00:00Z",
+    "slugs": {
+      "home": "ucl-psg1-liv1-2026-04-08-psg1",
+      "away": "ucl-psg1-liv1-2026-04-08-liv1",
+      "draw": "ucl-psg1-liv1-2026-04-08-draw"
+    }
+  }
+]

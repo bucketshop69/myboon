@@ -87,6 +87,16 @@ module.exports = {
       env: { NODE_ENV: 'production' },
     },
     {
+      name: 'myboon-sports-broadcaster',
+      script: './packages/brain/src/run-sports-broadcaster.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx/esm',
+      cron_restart: '0 * * * *',
+      autorestart: false,
+      watch: false,
+      env: { NODE_ENV: 'production' },
+    },
+    {
       name: 'myboon-influencer',
       script: './packages/brain/src/run-influencer.ts',
       interpreter: 'node',

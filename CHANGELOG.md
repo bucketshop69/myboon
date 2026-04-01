@@ -10,6 +10,21 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#050]` Sports Content Pipeline — Phase 1 (Preview) + Phase 2 (Match-Aware Collection)
+  - **`packages/brain/src/sports-broadcaster.ts`** — Runner: loads `sports-calendar.json`, registers calendar matches in `polymarket_tracked` (T-24h window via Dome API), detects phase (`preview` / `live` / `post_match`), deduplicates per match+phase via `x_posts.slug` + `agent_type`, fetches batch odds via Dome
+  - **`packages/brain/src/graphs/sports-broadcaster-graph.ts`** — LangGraph `sportsBroadcasterGraph`: `write → broadcast → resolve → save`. Writer has distinct voice sections per phase. Broadcaster hard-rejects hype, enforces odds presence + tension lead. Max 2 retries on `soft_reject`. Saves as `agent_type = 'sports_broadcaster_{phase}'` with `slug` column for dedup.
+  - **`packages/brain/src/sports-calendar.json`** — 3 UCL fixtures (Real Madrid vs Bayern, Barcelona vs Atlético, PSG vs Liverpool — April 2026). Each entry: `match`, `sport`, `kickoff`, `slugs: { home, away, draw }` from Polymarket.
+  - **`packages/brain/src/dome.ts`** — Dome API REST client (geo-unrestricted Polymarket proxy, `api.domeapi.io/v1`). `fetchOutcomeOdds(slugs)`: single round-trip market lookup + parallel price fetches. `resolveMarketBySlug(slug)`: market metadata for `polymarket_tracked` registration. Replaces Gamma API throughout brain + collectors.
+  - **`packages/brain/src/run-sports-broadcaster.ts`** — PM2 entry point
+  - **`packages/collectors/src/polymarket/match-watcher.ts`** — Match-aware collector: polls `data-api.polymarket.com/activity` per calendar slug every 5min from T-24h to T+12h. Writes `WHALE_BET` signals with `source: 'match-watcher'`. Resolves `conditionId` from `polymarket_tracked`, falls back to Dome API.
+  - **`ecosystem.config.cjs`** — Added `myboon-sports-broadcaster` PM2 process (hourly cron)
+  - **`packages/collectors/src/index.ts`** — Added `startMatchWatcher()` call
+  - **`packages/brain/src/fomo-master.ts`** — Sports slug filter: signals matching `/^(ucl|epl|nba|nfl|la-liga)-/` excluded to prevent duplicate coverage
+  - **`packages/brain/src/narrative-analyst.ts`** — Sports `content_type` filter: clusters with `content_type='sports'` excluded before `narratives` insert
+  - **DB migration** — `ALTER TABLE x_posts ADD COLUMN IF NOT EXISTS slug text` — run in Supabase dashboard
+  - **Phase windows**: preview = T-26h to T-2h · live = T to T+6h (covers UCL extra time + penalties) · post_match = T+6h to T+12h (deferred to backlog #002)
+  - **`docs/tutorials/08-dome-api.md`** — Dome API reference: prices, OHLCV, events, wallet analytics, order book
+
 - `[#052]` Pacific Protocol TypeScript API Client
   - **`packages/shared/src/pacific/`** — New Pacific SDK module
     - `PacificClient` — REST API wrapper with 20+ methods (getMarkets, getPrices, getPositions, createMarketOrder, etc.)

@@ -178,8 +178,11 @@ export async function runFomoMaster(): Promise<void> {
     return
   }
 
-  // Step 3: dedup — filter out already-consumed signal IDs
-  const unprocessed = (signals ?? []).filter((s: { id: string }) => !consumedIds.has(s.id))
+  // Step 3: dedup — filter out already-consumed signal IDs, exclude sports slugs (handled by sports_broadcaster)
+  const SPORTS_SLUG = /^(ucl|epl|nba|nfl|la-liga)-/
+  const unprocessed = (signals ?? [])
+    .filter((s: { id: string }) => !consumedIds.has(s.id))
+    .filter((s) => !SPORTS_SLUG.test((s.metadata?.slug as string | undefined) ?? ''))
 
   if (!unprocessed.length) {
     console.log('[fomo_master] No new high-weight signals to process')
