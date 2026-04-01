@@ -44,6 +44,48 @@ function getSupabase() {
   return supabase
 }
 
+// --- JSON extraction with truncation repair (handles unterminated strings from LLM) ---
+
+function extractJson<T>(text: string, label?: string): T | null {
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+
+  try { return JSON.parse(cleaned) as T } catch { /* fall through */ }
+
+  const start = cleaned.search(/[{[]/)
+  if (start === -1) {
+    if (label) console.warn(`[${label}] No JSON object found:\n${cleaned.slice(0, 300)}`)
+    return null
+  }
+
+  const opener = cleaned[start]
+  const closer = opener === '{' ? '}' : ']'
+  let depth = 0, inString = false, escape = false
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === opener) depth++
+    else if (ch === closer) depth--
+    if (depth === 0) {
+      try { return JSON.parse(cleaned.slice(start, i + 1)) as T } catch { break }
+    }
+  }
+
+  // Truncation repair — close any unclosed braces/arrays
+  try {
+    const fragment = cleaned.slice(start)
+    const opens = (fragment.match(/\{/g) ?? []).length - (fragment.match(/\}/g) ?? []).length
+    const arrOpens = (fragment.match(/\[/g) ?? []).length - (fragment.match(/\]/g) ?? []).length
+    const repaired = fragment + ']'.repeat(Math.max(0, arrOpens)) + '}'.repeat(Math.max(0, opens))
+    return JSON.parse(repaired) as T
+  } catch {
+    if (label) console.warn(`[${label}] All JSON extraction attempts failed:\n${cleaned.slice(0, 500)}`)
+    return null
+  }
+}
+
 // --- influencer LLM call ---
 
 async function runInfluencerLLM(narrative: PublishedNarrative): Promise<{ draft_text: string; reasoning: string }> {
@@ -53,7 +95,9 @@ async function runInfluencerLLM(narrative: PublishedNarrative): Promise<{ draft_
     INFLUENCER_SYSTEM_PROMPT,
     { max_tokens: 512, temperature: 0.5 }
   )
-  return JSON.parse(extractText(response)) as { draft_text: string; reasoning: string }
+  const parsed = extractJson<{ draft_text: string; reasoning: string }>(extractText(response), 'influencer')
+  if (!parsed?.draft_text) throw new Error('[influencer] LLM returned unparseable JSON')
+  return parsed
 }
 
 // --- nodes ---
