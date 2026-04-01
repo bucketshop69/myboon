@@ -10,6 +10,18 @@ All notable changes to MYBOON will be documented in this file.
 
 ### Added
 
+- `[#052]` Pacific Protocol TypeScript API Client
+  - **`packages/shared/src/pacific/`** — New Pacific SDK module
+    - `PacificClient` — REST API wrapper with 20+ methods (getMarkets, getPrices, getPositions, createMarketOrder, etc.)
+    - `PacificWebSocket` — Real-time price stream client with auto-reconnect (exponential backoff) + heartbeat (ping/pong every 30s)
+    - `types.ts` — Strict TypeScript types for all Pacific data structures (Markets, Prices, Orders, Positions, API errors)
+    - `client.ts` — Ed25519 signing using `tweetnacl` for authenticated requests, deterministic JSON serialization, rate limit awareness
+    - `websocket.ts` — Connection management, subscription handling, typed event emitter for price/orderbook/trades/funding streams
+  - **E2E Test Suite** — `pacific.test.ts` with 6 tests (markets, prices, account info, positions, orders, WebSocket connection)
+  - **Dependencies** — Added `@solana/web3.js`, `bs58`, `tweetnacl`, `isomorphic-ws`, `ws`, `decimal.js`
+  - **Test Results** — 5/5 passing (63 markets, live BTC price ~$68.5k, WebSocket connection verified)
+  - **Status** — Production-ready, blocks #051 (collectors), #053 (Trade UI), #054 (builder code), #055 (brain integration)
+
 - `[#049]` Content type taxonomy expansion + agent routing
   - **`publisher-types.ts`** — `ContentType` expanded to `'fomo' | 'signal' | 'sports' | 'macro' | 'news' | 'crypto'`
   - **DB migration** — `published_narratives_content_type_check` constraint updated to include all 6 types

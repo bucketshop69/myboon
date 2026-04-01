@@ -36,6 +36,11 @@ Polymarket collectors    →     signals table      →        Brain agents
   - stream (WebSocket)         (processed flag)   →        X posts
   - user tracker (5min)
 
+Pacific collectors       →     signals table      →        Brain agents
+  (planned #051)           (FUNDING_SPIKE,
+  - discovery (2h REST)     ODDS_SHIFT, VOLUME_SURGE)
+  - stream (WebSocket)
+
 On-chain stream (future) →     signals table
   - 90 wallet registry
   - tx-parser output
@@ -124,10 +129,10 @@ apps/
   web/              Landing page — Next.js 15 App Router (@myboon/web, port 3001)
 
 packages/
-  shared/           Shared SDK — PolymarketClient, types (imported by brain, collectors, apps)
+  shared/           Shared SDK — PolymarketClient, PacificClient (REST+WebSocket), types
   tx-parser/        Solana tx parsing — Jupiter, Meteora, SOL transfers
   brain/            All LLM agents — classifier, research, analyst (live), publisher (live)
-  collectors/       Data ingestion scripts — Polymarket (live), X (planned), Kalshi (planned)
+  collectors/       Data ingestion scripts — Polymarket (live), Pacific (planned), X/Kalshi (planned)
   entity-memory/    In-memory entity store (pre-persistence MVP)
 ```
 
@@ -234,13 +239,14 @@ Expo Router stack with Predict detail routes:
 - `/predict-market/[slug]` geopolitics market detail
 - `/predict-sport/[sport]/[slug]` sports market detail
 - `/swap` interactive preview screen (no execution)
-- `/trade` placeholder screen
+- `/trade` placeholder screen (Pacific perps integration planned #053)
 
 Service layer split:
 
 - Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives` + `GET /narratives/:id` + `GET /predict/markets/:slug`
 - Predict service (`features/predict/predict.api.ts`) consumes curated/sports list + detail endpoints
 - Swap service (`features/swap/swap.api.ts`) consumes Jupiter GET endpoints (`tokens`, `price`, `quote`)
+- Perps service (planned #053) — will consume Pacific markets, prices, positions via `PacificClient`
 
 Feed card design:
 
@@ -290,3 +296,4 @@ Execution policy:
 | CSV → Supabase for narratives | CSV was for testing only, narratives need to be queryable by API |
 | Feed-first for hackathon (with swap preview) | Differentiator is insights; swap preview is UX scaffolding without execution risk |
 | Publisher brain before influencer | Single pipeline must work before adding consensus/redundancy |
+| Pacific SDK in `packages/shared` (#052) | Reusable across collectors, API layer, and mobile app; TypeScript types + REST + WebSocket in one module |

@@ -6,10 +6,13 @@ flowchart TD
         DISC["discovery.ts\nevery 2h\ntop 20 + pinned.json"]
         STREAM["stream.ts\nWebSocket persistent\nprice moves"]
         WHALE["user-tracker.ts\nevery 5min\n18 hardcoded wallets"]
+        PAC_DISC["pacific/discovery.ts\nplanned #051\ntop markets by volume"]
+        PAC_STREAM["pacific/stream.ts\nplanned #051\nFUNDING_SPIKE, ODDS_SHIFT"]
     end
 
     subgraph DB["Supabase"]
         PT[("polymarket_tracked\nslug · token_id\nyes/no price")]
+        PAC[("pacific_tracked\nplanned #051\nsymbol · funding_rate\nopen_interest")]
         SIG[("signals\nsource · type · topic\nslug · weight · metadata\nprocessed")]
         NAR[("narratives\ncluster · observation\nscore · slugs[]\nstatus=draft")]
         PUB[("published_narratives\ncontent_small · content_full\nactions[] · slugs[] · tags[]\nscore · reasoning")]
@@ -22,15 +25,22 @@ flowchart TD
         IN["📢 Influencer\nevery 2-4h\nX post drafts\n(issue #041)"]
     end
 
+    subgraph SDK["Shared SDK — packages/shared"]
+        POLY_SDK["PolymarketClient\nREST + WebSocket"]
+        PAC_SDK["PacificClient #052\nREST + WebSocket\n63 markets · live prices\nEd25519 signing"]
+    end
+
     subgraph API["Feed API — packages/api · Hono · VPS"]
         FEED_EP["GET /narratives\nGET /narratives/:id"]
         PRED_EP["GET /predict/markets/:slug\nGET /predict/sports/:sport\nGET /predict/sports/:sport/:slug\nGET /predict/history/:tokenId\nPOST /predict/order"]
+        PERP_EP["planned #053\nGET /perps/markets\nGET /perps/prices\nPOST /perps/order"]
     end
 
     subgraph App["myboon — Mobile · apps/hybrid-expo"]
         FEED_TAB["Feed Tab\nnarrative cards\n→ NarrativeSheet\n→ predict block"]
         PRED_TAB["Predict Tab\nGeopolitics · EPL · UCL"]
         SWAP_TAB["Swap Tab\nJupiter preview"]
+        TRADE_TAB["Trade Tab\nplanned #053\nPacific perps"]
     end
 
     DISC -->|seeds & refreshes| PT
@@ -38,6 +48,11 @@ flowchart TD
     STREAM -->|reads token_ids from| PT
     STREAM -->|ODDS_SHIFT >5%| SIG
     WHALE -->|WHALE_BET ≥$500| SIG
+
+    PAC_DISC -->|seeds & refreshes| PAC
+    PAC_DISC -->|MARKET_DISCOVERED| SIG
+    PAC_STREAM -->|reads from| PAC
+    PAC_STREAM -->|FUNDING_SPIKE\nODDS_SHIFT\nVOLUME_SURGE| SIG
 
     SIG -->|processed=false| AN
     AN <-->|live odds mid-analysis| TOOLS
@@ -51,19 +66,28 @@ flowchart TD
 
     PUB --> FEED_EP
     PUB --> PRED_EP
+    PAC_SDK -.->|planned| PERP_EP
 
     FEED_EP --> FEED_TAB
     PRED_EP --> FEED_TAB
     PRED_EP --> PRED_TAB
     SWAP_TAB
+    PERP_EP -.->|planned| TRADE_TAB
 
     style IN stroke-dasharray: 5 5
+    style PAC_DISC stroke-dasharray: 5 5
+    style PAC_STREAM stroke-dasharray: 5 5
+    style PAC stroke-dasharray: 5 5
+    style PERP_EP stroke-dasharray: 5 5
+    style TRADE_TAB stroke-dasharray: 5 5
 ```
 
 > Solid lines = built and live. Dashed = planned.
 >
-> **Collector signals:** `MARKET_DISCOVERED` · `VOLUME_SURGE` · `MARKET_CLOSING` · `ODDS_SHIFT` · `WHALE_BET`
+> **Collector signals:** `MARKET_DISCOVERED` · `VOLUME_SURGE` · `MARKET_CLOSING` · `ODDS_SHIFT` · `WHALE_BET` · `FUNDING_SPIKE` (planned) · `VOLUME_SURGE` (planned)
 >
 > **Analyst tools (live):** `get_market_snapshot(slug)` · `get_market_by_condition(conditionId)`
 >
 > **Published narrative actions:** `{ type: 'predict', slug }` built deterministically from `narrative.slugs[]` · `{ type: 'perps', symbol }` added by LLM for crypto signals
+>
+> **Pacific SDK (#052):** ✅ Complete — `PacificClient` (REST + WebSocket) in `packages/shared`, blocks #051 (collectors), #053 (Trade UI)

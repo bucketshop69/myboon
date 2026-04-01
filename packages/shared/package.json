@@ -13,18 +13,25 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsx src/pacific/pacific.test.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
+    "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.39.0",
+    "bs58": "^6.0.0",
+    "decimal.js": "^10.6.0",
+    "isomorphic-ws": "^5.0.0",
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.19.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.7.0",
     "typescript": "^5.9.3"
   }
