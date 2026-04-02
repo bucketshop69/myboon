@@ -129,6 +129,7 @@ True deposit/withdrawal stats require on-chain data. Pacific users deposit USDC 
 
 - Resolves part of: #051 (Pacific Collectors)
 - Resolves signal design for: #057 (Pacific Signal Design)
+- Blocks: #059 (crypto_god broadcaster — consumes these signals directly)
 - Blocks: #055 (Pacific Brain — needs signals to exist first)
 
 ## Reference
