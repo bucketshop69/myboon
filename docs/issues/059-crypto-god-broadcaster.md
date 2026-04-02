@@ -266,12 +266,25 @@ pnpm --filter @myboon/brain run crypto-god:start
 Watch for JSON parse errors in the output — the `extractJson` fallback handles most
 LLM formatting issues but log any unrecovered failures for prompt tuning.
 
+### Test results — 2026-04-02
+
+`pnpm --filter @myboon/brain run crypto-god:test` ✅ passed on VPS. 2 x_posts created:
+
+| Signal | Archetype | Decision | Draft |
+|--------|-----------|----------|-------|
+| BTC LIQUIDATION_CASCADE | WIPEOUT | approved | "$3.6M in BTC longs got stopped out on Pacific — OI dropped 16.1%, price fell 8.2%" |
+| ETH FUNDING_SPIKE | CROWDED | approved | "ETH funding on Pacific: 0.0150%/hr — 131% annualized — $8.2M in OI carrying the cost, funding going to 0.0180%/hr next" |
+| SOL OI_SURGE | POSITIONING | skipped by ranker | BTC/ETH size ranked higher |
+
+Broadcaster approved both on first pass. No soft_reject cycles. No JSON parse errors.
+SOL POSITIONING skipped by ranker — correct behaviour, BTC/ETH signals were larger stories.
+
 ## Acceptance Criteria
 
-- [ ] `pnpm --filter @myboon/brain run crypto-god:test` completes without crashing
-- [ ] `x_posts` table gets rows with `agent_type = 'crypto_god'` and `status = 'draft'` after a run
-- [ ] `WIPEOUT` draft leads with USD liquidation amount in the first line
-- [ ] `CROWDED` draft includes annualized funding rate (not just raw rate)
+- [x] `pnpm --filter @myboon/brain run crypto-god:test` completes without crashing
+- [x] `x_posts` table gets rows with `agent_type = 'crypto_god'` and `status = 'draft'` after a run
+- [x] `WIPEOUT` draft leads with USD liquidation amount in the first line
+- [x] `CROWDED` draft includes annualized funding rate (not just raw rate)
 - [ ] `POSITIONING` draft leads with USD OI increase and percentage
 - [ ] Broadcaster hard-rejects a `WIPEOUT` post if same `{symbol}:WIPEOUT` was posted in last 24h
 - [ ] `why_skipped` written back to `signals.skip_reasoning` for all un-picked signals
