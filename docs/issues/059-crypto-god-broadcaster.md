@@ -246,8 +246,29 @@ Add after `myboon-fomo-master`:
 },
 ```
 
+## Testing
+
+A test harness is included at `packages/brain/src/test-crypto-god.ts`.
+It seeds all 3 signal types with realistic Pacific data (BTC liquidation $3.6M,
+ETH funding 131% annualized, SOL OI +30%) then runs the full pipeline and prints results.
+
+```bash
+# Full pipeline test — seeds signals, runs graph, prints x_posts, cleans up
+pnpm --filter @myboon/brain run crypto-god:test
+
+# Keep seeded signals in DB for manual inspection
+KEEP_SEEDS=1 pnpm --filter @myboon/brain run crypto-god:test
+
+# Run the broadcaster standalone (requires real Pacific signals in DB)
+pnpm --filter @myboon/brain run crypto-god:start
+```
+
+Watch for JSON parse errors in the output — the `extractJson` fallback handles most
+LLM formatting issues but log any unrecovered failures for prompt tuning.
+
 ## Acceptance Criteria
 
+- [ ] `pnpm --filter @myboon/brain run crypto-god:test` completes without crashing
 - [ ] `x_posts` table gets rows with `agent_type = 'crypto_god'` and `status = 'draft'` after a run
 - [ ] `WIPEOUT` draft leads with USD liquidation amount in the first line
 - [ ] `CROWDED` draft includes annualized funding rate (not just raw rate)
