@@ -1,5 +1,5 @@
-import { SectionPlaceholderScreen } from '@/features/navigation/SectionPlaceholderScreen';
+import { TradeListScreen } from '@/features/perps/TradeListScreen';
 
-export default function TradeScreen() {
-  return <SectionPlaceholderScreen title="Trade" />;
+export default function TradeRoute() {
+  return <TradeListScreen />;
 }

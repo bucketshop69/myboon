@@ -12,6 +12,7 @@ export default function RootLayout() {
         <Stack.Screen name="predict-sport/[sport]/[slug]" options={{ headerShown: false }} />
         <Stack.Screen name="swap" options={{ headerShown: false }} />
         <Stack.Screen name="trade" options={{ headerShown: false }} />
+        <Stack.Screen name="trade/[symbol]" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="light" />
     </>

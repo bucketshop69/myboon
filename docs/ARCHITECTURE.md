@@ -149,8 +149,8 @@ packages/
 - **Brain agents run on:** Local (dev) → VPS (prod)
 - **Mobile:** Expo (React Native) — `apps/hybrid-expo`
 - **Landing page:** Next.js 15 App Router — `apps/web` (`pnpm --filter @myboon/web dev`, port 3001)
-  - `/` — Hero section (phone mockup + floating tab cards)
-  - `/world` — Interactive pixel art newsroom (Canvas 2D, scroll-to-zoom, drag-to-pan)
+  - `/` — Hero (Framer Motion stagger entrance) → FeaturesScroll (sticky phone + 4 panels) → NewsroomSection (newsroom canvas inline)
+  - `/world` — Standalone newsroom (deprecated banner; route kept alive)
 - **Monorepo:** pnpm workspaces
 - **Process manager:** PM2 — `ecosystem.config.cjs` at monorepo root starts all 4 services in one command (`pm2 start ecosystem.config.cjs`); auto-restarts on crash; survives reboots via `pm2 startup`. See `docs/DEPLOY.md`.
 
@@ -242,14 +242,15 @@ Expo Router stack with Predict detail routes:
 - `/predict-market/[slug]` geopolitics market detail
 - `/predict-sport/[sport]/[slug]` sports market detail
 - `/swap` interactive preview screen (no execution)
-- `/trade` placeholder screen (Pacific perps integration planned #053)
+- `/trade` Pacific perps market list — asset strip (top 6 trending) + full table (#053 ✅)
+- `/trade/[symbol]` Market detail — hero price (WebSocket live) + chart placeholder + Market tab (order form) + Profile tab (wallet card, equity, open positions) + fixed action dock (Long/Short pinned above nav)
 
 Service layer split:
 
 - Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives` + `GET /narratives/:id` + `GET /predict/markets/:slug`
 - Predict service (`features/predict/predict.api.ts`) consumes curated/sports list + detail endpoints
 - Swap service (`features/swap/swap.api.ts`) consumes Jupiter GET endpoints (`tokens`, `price`, `quote`)
-- Perps service (planned #053) — will consume Pacific markets, prices, positions via `PacificClient`
+- Perps service (`features/perps/perps.api.ts`) — direct Pacific REST (`api.pacifica.fi/api/v1`); `usePerpsWebSocket.ts` for live prices (RN-native global WebSocket, bypasses isomorphic-ws)
 
 Feed card design:
 
