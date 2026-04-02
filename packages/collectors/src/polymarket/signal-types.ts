@@ -1,5 +1,5 @@
 export interface Signal {
-  source: 'POLYMARKET' | 'NANSEN'
+  source: 'POLYMARKET' | 'NANSEN' | 'PACIFIC'
   type:
     | 'MARKET_DISCOVERED'
     | 'ODDS_SHIFT'
@@ -8,6 +8,9 @@ export interface Signal {
     | 'MARKET_CLOSING'
     | 'PM_MARKET_SURGE'
     | 'PM_EVENT_TRENDING'
+    | 'LIQUIDATION_CASCADE'
+    | 'OI_SURGE'
+    | 'FUNDING_SPIKE'
   topic: string
   slug?: string
   weight: number

@@ -87,6 +87,16 @@ module.exports = {
       env: { NODE_ENV: 'production' },
     },
     {
+      name: 'myboon-crypto-god',
+      script: './packages/brain/src/run-crypto-god.ts',
+      interpreter: 'node',
+      interpreter_args: '--import tsx/esm',
+      cron_restart: '30 * * * *',   // offset 30min from fomo_master to spread LLM load
+      autorestart: false,
+      watch: false,
+      env: { NODE_ENV: 'production' },
+    },
+    {
       name: 'myboon-sports-broadcaster',
       script: './packages/brain/src/run-sports-broadcaster.ts',
       interpreter: 'node',

@@ -20,6 +20,8 @@
     "publisher": "tsx src/publisher.ts",
     "influencer:start": "tsx src/run-influencer.ts",
     "fomo-master:start": "tsx src/run-fomo-master.ts",
+    "crypto-god:start": "tsx src/run-crypto-god.ts",
+    "crypto-god:test": "tsx src/test-crypto-god.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
