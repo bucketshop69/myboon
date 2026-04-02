@@ -32,6 +32,8 @@ export interface CallMinimaxOptions {
 }
 
 const TOKEN_WARN_THRESHOLD = 40_000
+const RETRY_STATUS_CODES = new Set([429, 500, 502, 503, 520])
+const MAX_RETRIES = 3
 
 export function estimateTokens(messages: AnthropicMessage[], systemPrompt: string): number {
   const systemChars = systemPrompt.length
@@ -49,7 +51,7 @@ export function estimateTokens(messages: AnthropicMessage[], systemPrompt: strin
 
 /**
  * Call the MiniMax API (Anthropic-compatible endpoint).
- * Accepts a system prompt and optional overrides for max_tokens and temperature.
+ * Retries up to 3 times with exponential backoff on 5xx / 429 / 520 errors.
  */
 export async function callMinimax(
   messages: AnthropicMessage[],
@@ -78,21 +80,41 @@ export async function callMinimax(
     body.tool_choice = { type: 'auto' }
   }
 
-  const res = await fetch('https://api.minimax.io/anthropic/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
+  let lastError: Error | null = null
 
-  if (!res.ok) {
-    throw new Error(`MiniMax request failed: ${res.status} ${await res.text()}`)
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delayMs = 2000 * Math.pow(2, attempt - 1) // 2s, 4s, 8s
+      console.warn(`[minimax] Retry ${attempt}/${MAX_RETRIES - 1} after ${delayMs}ms...`)
+      await new Promise((r) => setTimeout(r, delayMs))
+    }
+
+    const res = await fetch('https://api.minimax.io/anthropic/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (res.ok) {
+      return res.json() as Promise<AnthropicResponse>
+    }
+
+    const errorText = await res.text()
+    lastError = new Error(`MiniMax request failed: ${res.status} ${errorText}`)
+
+    if (!RETRY_STATUS_CODES.has(res.status)) {
+      // 4xx (except 429) are not retryable
+      throw lastError
+    }
+
+    console.warn(`[minimax] Retryable error (attempt ${attempt + 1}): ${res.status} ${errorText.slice(0, 120)}`)
   }
 
-  return res.json() as Promise<AnthropicResponse>
+  throw lastError!
 }
 
 /**
