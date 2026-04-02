@@ -1,18 +1,10 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
 import PhoneFrame from './PhoneFrame'
 import FloatingCards from './FloatingCards'
 import { type TabId } from './TabCard'
-
-function ComingSoonTip({ id }: { id: string }) {
-  return (
-    <div
-      id={id}
-      className="coming-soon-tip absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 bg-[#0f0e08] border border-primary text-primary font-headline text-[9px] tracking-[0.2em] px-3 py-1 whitespace-nowrap pointer-events-none opacity-0 transition-opacity duration-150 rounded-[2px]"
-    />
-  )
-}
 
 function showComingSoon(id: string) {
   const el = document.getElementById(id)
@@ -22,36 +14,62 @@ function showComingSoon(id: string) {
   setTimeout(() => { el.style.opacity = '0' }, 1800)
 }
 
+const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: EASE } },
+}
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
+}
+
 export default function HeroSection() {
   const [hoveredCard, setHoveredCard] = useState<TabId | null>(null)
 
   return (
-    <main className="relative h-screen flex flex-col items-center justify-center overflow-hidden">
+    <section className="relative h-screen flex flex-col items-center justify-center overflow-hidden">
       {/* Background: dot grid */}
       <div className="absolute inset-0 dot-grid opacity-[0.05] pointer-events-none" />
       {/* Background: hero glow */}
       <div className="absolute inset-0 hero-glow pointer-events-none" />
 
       {/* Centered Typography */}
-      <div className="relative z-20 text-center max-w-3xl px-6 mb-6">
-        <h1 className="text-3xl lg:text-5xl font-headline font-bold tracking-tight text-on-surface leading-tight mb-3">
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="relative z-20 text-center max-w-3xl px-6 mb-6"
+      >
+        <motion.h1
+          variants={fadeUp}
+          className="text-3xl lg:text-5xl font-headline font-bold tracking-tight text-on-surface leading-tight mb-3"
+        >
           Narrative intelligence for{' '}
           <span className="text-primary italic">on-chain</span> traders.
-        </h1>
-        <p className="text-sm text-on-surface-variant max-w-xl mx-auto leading-relaxed">
+        </motion.h1>
+        <motion.p
+          variants={fadeUp}
+          className="text-sm text-on-surface-variant max-w-xl mx-auto leading-relaxed"
+        >
           Powered by Polymarket signals, on-chain flow, and a multi-agent brain.
-        </p>
-        <div className="mt-4 flex justify-center">
+        </motion.p>
+        <motion.div variants={fadeUp} className="mt-4 flex justify-center">
           <img
             src="/branding/myboon-wordmark-small@2x.png"
             alt="myboon"
             className="h-12 opacity-80"
           />
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* Centerpiece: Phone + Floating Cards */}
-      <div
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.7, delay: 0.4 }}
         className="relative w-full max-w-5xl flex items-center justify-center perspective-container"
         style={{ height: '520px' }}
       >
@@ -60,12 +78,17 @@ export default function HeroSection() {
           onHover={setHoveredCard}
           onLeave={() => setHoveredCard(null)}
         />
-        <PhoneFrame hoveredCard={hoveredCard} />
+        <PhoneFrame activeTab={hoveredCard ?? 'feed'} />
         <div className="absolute -bottom-12 w-[400px] h-12 bg-black/60 blur-2xl rounded-full opacity-40 z-10 pointer-events-none" />
-      </div>
+      </motion.div>
 
       {/* CTA + icon row */}
-      <div className="mt-6 z-40 flex flex-col items-center gap-4">
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.55, delay: 0.7, ease: EASE }}
+        className="mt-6 z-40 flex flex-col items-center gap-4"
+      >
 
         {/* Get Early Access */}
         <div className="relative">
@@ -89,9 +112,7 @@ export default function HeroSection() {
 
           {/* Newsroom */}
           <a
-            href="/world"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#newsroom"
             className="group flex flex-col items-center gap-1"
             title="The Newsroom"
           >
@@ -156,7 +177,7 @@ export default function HeroSection() {
           </div>
 
         </div>
-      </div>
-    </main>
+      </motion.div>
+    </section>
   )
 }
