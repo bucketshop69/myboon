@@ -38,14 +38,15 @@ async function fetchDraftNarratives(): Promise<Narrative[]> {
 }
 
 async function isTopicCapped(clusterTitle: string): Promise<boolean> {
-  const keyword = clusterTitle.split(/\s+/)[0].toLowerCase()
-  const encoded = encodeURIComponent(`%${keyword}%`)
+  // Cap: same cluster title already published in the last 24h → skip.
+  // Queries the narratives table directly on cluster + status to avoid
+  // the old first-word keyword approach which was blocking unrelated topics.
   const since = new Date(Date.now() - 86400000).toISOString()
-  const url = `${SUPABASE_URL}/rest/v1/published_narratives?content_small=ilike.${encoded}&created_at=gte.${encodeURIComponent(since)}&select=id`
+  const url = `${SUPABASE_URL}/rest/v1/narratives?cluster=eq.${encodeURIComponent(clusterTitle)}&status=eq.published&updated_at=gte.${encodeURIComponent(since)}&select=id&limit=1`
   const res = await fetch(url, { headers: supabaseHeaders() })
   if (!res.ok) return false
   const rows = await res.json() as unknown[]
-  return Array.isArray(rows) && rows.length >= 7
+  return Array.isArray(rows) && rows.length >= 1
 }
 
 async function findExistingThread(slugs: string[]): Promise<string | null> {
