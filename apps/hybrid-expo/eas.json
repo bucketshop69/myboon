@@ -7,24 +7,24 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "pnpm": "10.28.0"
+      "installDependencies": "pnpm install --frozen-lockfile"
     },
     "dapp-store": {
       "distribution": "internal",
-      "pnpm": "10.28.0",
+      "installDependencies": "pnpm install --frozen-lockfile",
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
-      "pnpm": "10.28.0",
+      "installDependencies": "pnpm install --frozen-lockfile",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "pnpm": "10.28.0",
+      "installDependencies": "pnpm install --frozen-lockfile",
       "android": {
         "buildType": "app-bundle"
       }
