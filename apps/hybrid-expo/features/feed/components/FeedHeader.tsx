@@ -1,4 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
 import { semantic, tokens } from '@/theme';
 
 export function FeedHeader() {
@@ -9,12 +10,7 @@ export function FeedHeader() {
         style={styles.logo}
         resizeMode="contain"
       />
-      <View style={styles.livePill}>
-        <View style={styles.liveDotOuter}>
-          <View style={styles.liveDotInner} />
-        </View>
-        <Text style={styles.liveText}>Live</Text>
-      </View>
+      <WalletHeaderButton />
     </View>
   );
 }
