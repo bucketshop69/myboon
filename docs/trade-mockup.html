@@ -1,0 +1,3277 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pacific Trade — V2</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        :root {
+            --bg0: #080806;
+            --bg1: #0f0f0c;
+            --bg2: #141410;
+            --bg3: #1a1a15;
+            --bg4: #21211a;
+            --bg5: #292920;
+            --border0: rgba(255, 255, 255, 0.04);
+            --border1: rgba(255, 255, 255, 0.08);
+            --border2: rgba(255, 255, 255, 0.13);
+            --a: #e8c547;
+            --a2: #c9a630;
+            --a3: rgba(232, 197, 71, 0.12);
+            --a4: rgba(232, 197, 71, 0.06);
+            --pos: #34c77b;
+            --pos2: rgba(52, 199, 123, 0.12);
+            --neg: #f4584e;
+            --neg2: rgba(244, 88, 78, 0.10);
+            --hi: #ede8d5;
+            --mid: #6b6850;
+            --lo: #35342a;
+            --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+            --sans: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+        }
+
+        body {
+            background: var(--bg0);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 48px 20px 80px;
+            font-family: var(--sans);
+            gap: 0;
+        }
+
+        /* ─── TOAST SYSTEM ─── */
+        .toast-stack {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+            width: 320px;
+        }
+
+        .toast {
+            background: var(--bg4);
+            border: 1px solid var(--border2);
+            border-radius: 10px;
+            padding: 11px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: toastIn 0.3s cubic-bezier(0.2, 0, 0, 1) forwards;
+            pointer-events: auto;
+            backdrop-filter: blur(20px);
+        }
+
+        .toast.removing {
+            animation: toastOut 0.25s ease forwards
+        }
+
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translateY(-8px) scale(0.97)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1)
+            }
+        }
+
+        @keyframes toastOut {
+            from {
+                opacity: 1;
+                transform: translateY(0)
+            }
+
+            to {
+                opacity: 0;
+                transform: translateY(-8px)
+            }
+        }
+
+        .toast-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .toast.success .toast-icon {
+            background: rgba(52, 199, 123, 0.2);
+            color: var(--pos)
+        }
+
+        .toast.error .toast-icon {
+            background: rgba(244, 88, 78, 0.2);
+            color: var(--neg)
+        }
+
+        .toast.pending .toast-icon {
+            background: rgba(232, 197, 71, 0.15);
+            color: var(--a)
+        }
+
+        .toast-body {
+            flex: 1
+        }
+
+        .toast-title {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--hi);
+            letter-spacing: 0.3px
+        }
+
+        .toast-sub {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            color: var(--mid);
+            margin-top: 2px;
+            letter-spacing: 0.3px
+        }
+
+        .toast-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 2px;
+            border-radius: 0 0 10px 10px;
+            background: var(--a);
+            animation: toastProgress linear forwards;
+        }
+
+        .toast {
+            position: relative;
+            overflow: hidden
+        }
+
+        @keyframes toastProgress {
+            from {
+                width: 100%
+            }
+
+            to {
+                width: 0%
+            }
+        }
+
+        /* ─── FLOW LABEL ─── */
+        .flow-label {
+            font-family: var(--mono);
+            font-size: 8px;
+            letter-spacing: 3.5px;
+            text-transform: uppercase;
+            color: var(--mid);
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .flow-label::before,
+        .flow-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border0)
+        }
+
+        /* ─── SCREENS ROW ─── */
+        .screens-row {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start
+        }
+
+        .screen-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px
+        }
+
+        .screen-label {
+            font-family: var(--mono);
+            font-size: 8px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--mid);
+            text-align: center;
+        }
+
+        /* ─── PHONE SHELL ─── */
+        .phone {
+            width: 375px;
+            height: 812px;
+            background: var(--bg1);
+            border-radius: 50px;
+            border: 1px solid var(--border1);
+            box-shadow:
+                0 0 0 8px #0b0b09,
+                0 0 0 9px rgba(255, 255, 255, 0.04),
+                0 60px 100px rgba(0, 0, 0, 0.85);
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        .phone::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 110px;
+            height: 30px;
+            background: #0b0b09;
+            border-radius: 0 0 22px 22px;
+            z-index: 200;
+        }
+
+        /* ─── STATUS BAR ─── */
+        .status-bar {
+            height: 46px;
+            padding: 16px 22px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            z-index: 10;
+            position: relative;
+        }
+
+        .st-time {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--hi);
+            letter-spacing: -0.2px
+        }
+
+        .st-icons {
+            display: flex;
+            gap: 5px;
+            align-items: center
+        }
+
+        .signal-bar {
+            width: 3px;
+            background: var(--hi);
+            border-radius: 1px
+        }
+
+        /* ─── NAV BAR ─── */
+        .nav-bar {
+            height: 68px;
+            background: rgba(15, 15, 12, 0.95);
+            border-top: 1px solid var(--border1);
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-around;
+            padding-top: 11px;
+            flex-shrink: 0;
+            backdrop-filter: blur(16px);
+            position: relative;
+            z-index: 50;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            padding: 0 12px;
+            transition: opacity 0.15s
+        }
+
+        .nav-item:active {
+            opacity: 0.7
+        }
+
+        .nav-icon {
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.3;
+            transition: opacity 0.2s
+        }
+
+        .nav-icon.active {
+            opacity: 1
+        }
+
+        .nav-icon svg {
+            width: 18px;
+            height: 18px
+        }
+
+        .nav-label {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--lo);
+            transition: color 0.2s
+        }
+
+        .nav-label.active {
+            color: var(--a2)
+        }
+
+        .nav-dot {
+            width: 4px;
+            height: 4px;
+            background: var(--a);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(232, 197, 71, 0.6);
+            margin-top: -3px;
+            animation: dot-pulse 2s ease-in-out infinite
+        }
+
+        @keyframes dot-pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 4px rgba(232, 197, 71, 0.5)
+            }
+
+            50% {
+                box-shadow: 0 0 12px rgba(232, 197, 71, 0.9), 0 0 24px rgba(232, 197, 71, 0.4)
+            }
+        }
+
+        /* ════════════════════════════════
+   SCREEN 1 — TRADE LIST
+════════════════════════════════ */
+
+        .list-header {
+            padding: 8px 16px 10px;
+            border-bottom: 1px solid var(--border0);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .list-title {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: var(--mid)
+        }
+
+        .live-chip {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(52, 199, 123, 0.08);
+            border: 1px solid rgba(52, 199, 123, 0.18);
+            border-radius: 4px;
+            padding: 3px 7px;
+        }
+
+        .live-dot {
+            width: 5px;
+            height: 5px;
+            background: var(--pos);
+            border-radius: 50%;
+            animation: dot-pulse 1.5s ease-in-out infinite
+        }
+
+        .live-text {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--pos)
+        }
+
+        /* Narrative bridge */
+        .narrative-hint {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            border-bottom: 1px solid var(--border0);
+            cursor: pointer;
+            transition: background 0.15s;
+            flex-shrink: 0;
+            background: rgba(232, 197, 71, 0.03);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .narrative-hint::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, transparent, var(--a), transparent);
+        }
+
+        .narrative-hint:active {
+            background: rgba(232, 197, 71, 0.07)
+        }
+
+        .nh-source {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.2px;
+            color: var(--mid);
+            text-transform: uppercase
+        }
+
+        .nh-text {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            color: var(--hi);
+            letter-spacing: 0.2px;
+            flex: 1;
+            line-height: 1.4
+        }
+
+        .nh-text em {
+            color: var(--a);
+            font-style: normal;
+            font-weight: 700
+        }
+
+        .nh-arrow {
+            opacity: 0.4;
+            flex-shrink: 0;
+            transition: opacity 0.15s, transform 0.15s
+        }
+
+        .narrative-hint:hover .nh-arrow {
+            opacity: 0.8;
+            transform: translateX(3px)
+        }
+
+        /* Asset strip */
+        .asset-strip-wrap {
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--border0);
+            padding: 9px 0 10px
+        }
+
+        .strip-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px 7px
+        }
+
+        .strip-label {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            color: var(--lo)
+        }
+
+        .asset-strip {
+            display: flex;
+            gap: 6px;
+            padding: 0 16px;
+            overflow-x: auto;
+            scrollbar-width: none
+        }
+
+        .asset-strip::-webkit-scrollbar {
+            display: none
+        }
+
+        .strip-card {
+            flex-shrink: 0;
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-width: 72px;
+            cursor: pointer;
+            transition: all 0.18s cubic-bezier(0.2, 0, 0, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .strip-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(232, 197, 71, 0);
+            transition: background 0.15s;
+            pointer-events: none;
+        }
+
+        .strip-card:hover::after {
+            background: rgba(232, 197, 71, 0.04)
+        }
+
+        .strip-card:active {
+            transform: scale(0.96)
+        }
+
+        .strip-card.active {
+            border-color: rgba(232, 197, 71, 0.35);
+            background: var(--a4)
+        }
+
+        .strip-sym {
+            font-family: var(--mono);
+            font-size: 10.5px;
+            font-weight: 700;
+            color: var(--hi);
+            letter-spacing: 0.3px
+        }
+
+        .strip-change {
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 600;
+            margin-top: 2px
+        }
+
+        .strip-spark {
+            width: 100%;
+            height: 20px;
+            margin-top: 4px
+        }
+
+        .up {
+            color: var(--pos)
+        }
+
+        .down {
+            color: var(--neg)
+        }
+
+        /* Markets Table */
+        .table-wrap {
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: none
+        }
+
+        .table-wrap::-webkit-scrollbar {
+            display: none
+        }
+
+        .table-header {
+            display: grid;
+            grid-template-columns: 1fr 80px 55px 60px;
+            padding: 7px 14px;
+            border-bottom: 1px solid var(--border0);
+            position: sticky;
+            top: 0;
+            background: var(--bg1);
+            z-index: 5;
+        }
+
+        .th {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--lo);
+            cursor: pointer;
+            transition: color 0.15s
+        }
+
+        .th:hover {
+            color: var(--mid)
+        }
+
+        .th.right {
+            text-align: right
+        }
+
+        .th.sort {
+            color: var(--a2)
+        }
+
+        .table-section-label {
+            padding: 9px 14px 5px;
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--lo);
+            background: var(--bg1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .table-section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border0)
+        }
+
+        .market-row {
+            display: grid;
+            grid-template-columns: 1fr 80px 55px 60px;
+            padding: 9px 14px;
+            border-bottom: 1px solid rgba(26, 26, 21, 0.6);
+            cursor: pointer;
+            transition: background 0.12s;
+            align-items: center;
+            position: relative;
+        }
+
+        .market-row::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 0;
+            background: var(--a);
+            transition: width 0.2s;
+        }
+
+        .market-row:hover {
+            background: rgba(232, 197, 71, 0.03)
+        }
+
+        .market-row:hover::before {
+            width: 2px
+        }
+
+        .market-row:active {
+            background: rgba(232, 197, 71, 0.06)
+        }
+
+        .row-sym-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 2px
+        }
+
+        .row-sym {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--hi);
+            letter-spacing: 0.3px
+        }
+
+        .row-sub {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 0.8px;
+            color: var(--lo)
+        }
+
+        .row-price {
+            font-family: var(--mono);
+            font-size: 10.5px;
+            font-weight: 600;
+            color: var(--hi);
+            text-align: right;
+            transition: color 0.3s
+        }
+
+        .row-change {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            font-weight: 600;
+            text-align: right
+        }
+
+        .row-oi {
+            font-family: var(--mono);
+            font-size: 9px;
+            color: var(--mid);
+            text-align: right
+        }
+
+        /* Price flash */
+        @keyframes flash-pos {
+            0% {
+                color: var(--pos)
+            }
+
+            100% {
+                color: var(--hi)
+            }
+        }
+
+        @keyframes flash-neg {
+            0% {
+                color: var(--neg)
+            }
+
+            100% {
+                color: var(--hi)
+            }
+        }
+
+        .price-flash-pos {
+            animation: flash-pos 0.8s ease
+        }
+
+        .price-flash-neg {
+            animation: flash-neg 0.8s ease
+        }
+
+        /* Skeleton loader */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 3px;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: 200% 0
+            }
+
+            100% {
+                background-position: -200% 0
+            }
+        }
+
+        /* ════════════════════════════════
+   SCREEN 2 — MARKET DETAIL
+════════════════════════════════ */
+
+        .detail-header {
+            padding: 7px 14px 9px;
+            border-bottom: 1px solid var(--border0);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            padding: 5px 8px 5px 0;
+            opacity: 0.6;
+            transition: opacity 0.15s;
+            border-radius: 4px;
+        }
+
+        .back-btn:hover {
+            opacity: 1
+        }
+
+        .back-btn:active {
+            opacity: 0.4
+        }
+
+        .back-btn svg {
+            width: 15px;
+            height: 15px;
+            stroke: var(--hi)
+        }
+
+        .back-label {
+            font-family: var(--mono);
+            font-size: 8px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--hi)
+        }
+
+        .detail-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px
+        }
+
+        .detail-sym {
+            font-family: var(--mono);
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--hi);
+            letter-spacing: 0.3px
+        }
+
+        .detail-type-chip {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--a2);
+            border: 1px solid rgba(232, 197, 71, 0.2);
+            border-radius: 3px;
+            padding: 2px 5px;
+            background: var(--a4);
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center
+        }
+
+        .dab {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .dab:hover {
+            border-color: var(--border2);
+            background: var(--bg4)
+        }
+
+        .dab:active {
+            transform: scale(0.92)
+        }
+
+        .dab svg {
+            width: 13px;
+            height: 13px;
+            stroke: var(--mid)
+        }
+
+        /* Hero zone */
+        .hero-zone {
+            padding: 12px 16px 11px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--border0);
+        }
+
+        .hero-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px
+        }
+
+        .hero-timeframes {
+            display: flex;
+            gap: 3px
+        }
+
+        .tf-btn {
+            font-family: var(--mono);
+            font-size: 8px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--lo);
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 3px 7px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .tf-btn:hover {
+            color: var(--mid);
+            border-color: var(--border1)
+        }
+
+        .tf-btn.active {
+            color: var(--a);
+            border-color: rgba(232, 197, 71, 0.25);
+            background: var(--a4)
+        }
+
+        .hero-price-col {
+            text-align: right
+        }
+
+        .hero-price {
+            font-family: var(--mono);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--hi);
+            line-height: 1;
+            letter-spacing: -0.5px;
+            transition: color 0.3s;
+        }
+
+        .hero-change {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 3px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            justify-content: flex-end
+        }
+
+        /* Mini chart */
+        .mini-chart {
+            width: 100%;
+            height: 58px;
+            margin-bottom: 10px;
+            position: relative
+        }
+
+        .mini-chart svg {
+            width: 100%;
+            height: 100%
+        }
+
+        .chart-overlay {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        /* Hero stats */
+        .hero-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 0
+        }
+
+        .hstat {
+            display: flex;
+            flex-direction: column;
+            gap: 3px
+        }
+
+        .hstat-label {
+            font-family: var(--mono);
+            font-size: 6.5px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--lo)
+        }
+
+        .hstat-val {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--hi)
+        }
+
+        /* Bottom tab bar */
+        .bottom-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border0);
+            flex-shrink: 0;
+            background: var(--bg1);
+            position: relative;
+        }
+
+        .btab {
+            flex: 1;
+            padding: 10px 0 9px;
+            text-align: center;
+            font-family: var(--mono);
+            font-size: 8.5px;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            color: var(--mid);
+            cursor: pointer;
+            transition: color 0.2s;
+            position: relative;
+        }
+
+        .btab.active {
+            color: var(--a)
+        }
+
+        .tab-indicator {
+            position: absolute;
+            bottom: 0;
+            height: 2px;
+            background: var(--a);
+            border-radius: 2px 2px 0 0;
+            transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 -2px 8px rgba(232, 197, 71, 0.4);
+        }
+
+        /* Tab panels */
+        .tab-panels {
+            flex: 1;
+            overflow: hidden;
+            position: relative
+        }
+
+        .tab-panel {
+            position: absolute;
+            inset: 0;
+            overflow-y: auto;
+            scrollbar-width: none;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            will-change: opacity;
+        }
+
+        .tab-panel::-webkit-scrollbar {
+            display: none
+        }
+
+        .tab-panel.active {
+            opacity: 1;
+            pointer-events: auto
+        }
+
+        /* ─── ORDER ZONE ─── */
+        .order-zone {
+            padding: 12px 16px 8px
+        }
+
+        /* Long/Short toggle */
+        .ls-toggle {
+            display: flex;
+            border: 1px solid var(--border1);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 12px;
+            background: var(--bg3);
+            position: relative;
+            padding: 3px;
+            gap: 3px;
+        }
+
+        .ls-btn {
+            flex: 1;
+            padding: 8px 0;
+            text-align: center;
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+            color: var(--mid);
+            border-radius: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ls-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0);
+            transition: background 0.15s;
+        }
+
+        .ls-btn:active::after {
+            background: rgba(255, 255, 255, 0.05)
+        }
+
+        .ls-btn.long.active {
+            background: rgba(52, 199, 123, 0.15);
+            color: var(--pos);
+            box-shadow: inset 0 0 0 1px rgba(52, 199, 123, 0.25)
+        }
+
+        .ls-btn.short.active {
+            background: rgba(244, 88, 78, 0.13);
+            color: var(--neg);
+            box-shadow: inset 0 0 0 1px rgba(244, 88, 78, 0.22)
+        }
+
+        /* Order inputs */
+        .order-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 11px
+        }
+
+        .o-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px
+        }
+
+        .o-label {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--lo)
+        }
+
+        .o-input {
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--hi);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: text;
+            transition: border-color 0.15s;
+        }
+
+        .o-input:hover {
+            border-color: var(--border2)
+        }
+
+        .o-input-unit {
+            font-size: 8.5px;
+            color: var(--mid);
+            letter-spacing: 1px
+        }
+
+        /* Leverage slider */
+        .lev-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 11px;
+            gap: 10px
+        }
+
+        .lev-label {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--mid);
+            flex-shrink: 0
+        }
+
+        .lev-track {
+            flex: 1;
+            height: 4px;
+            background: var(--border0);
+            border-radius: 2px;
+            position: relative;
+            cursor: pointer;
+            border: 1px solid var(--border0);
+        }
+
+        .lev-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--a2), var(--a));
+            border-radius: 2px;
+            width: 11.1%;
+            transition: width 0.1s
+        }
+
+        .lev-thumb {
+            position: absolute;
+            top: 50%;
+            left: 11.1%;
+            transform: translate(-50%, -50%);
+            width: 14px;
+            height: 14px;
+            background: var(--a);
+            border-radius: 50%;
+            border: 2px solid var(--bg1);
+            box-shadow: 0 0 0 3px rgba(232, 197, 71, 0.15);
+            cursor: grab;
+            transition: box-shadow 0.15s, transform 0.15s;
+        }
+
+        .lev-thumb:hover {
+            box-shadow: 0 0 0 5px rgba(232, 197, 71, 0.2)
+        }
+
+        .lev-thumb.dragging {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(1.15)
+        }
+
+        .lev-val {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--a);
+            flex-shrink: 0;
+            width: 32px;
+            text-align: right
+        }
+
+        /* Lev presets */
+        .lev-presets {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 11px
+        }
+
+        .lev-preset {
+            flex: 1;
+            padding: 4px 0;
+            text-align: center;
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 0.8px;
+            color: var(--lo);
+            background: var(--bg3);
+            border: 1px solid var(--border0);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .lev-preset:hover {
+            color: var(--a);
+            border-color: rgba(232, 197, 71, 0.2)
+        }
+
+        .lev-preset:active {
+            transform: scale(0.95)
+        }
+
+        .lev-preset.active {
+            color: var(--a);
+            border-color: rgba(232, 197, 71, 0.3);
+            background: var(--a4)
+        }
+
+        /* Order preview */
+        .order-preview {
+            background: var(--bg3);
+            border: 1px solid var(--border0);
+            border-radius: 6px;
+            padding: 9px 11px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0;
+            margin-bottom: 11px;
+        }
+
+        .op-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px
+        }
+
+        .op-item:last-child {
+            text-align: right
+        }
+
+        .op-item:nth-child(2) {
+            text-align: center
+        }
+
+        .op-label {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--mid)
+        }
+
+        .op-val {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            font-weight: 600;
+            color: var(--hi)
+        }
+
+        /* Execute button — full state machine */
+        .execute-btn {
+            width: 100%;
+            padding: 13px;
+            background: var(--bg3);
+            border: 1px solid rgba(232, 197, 71, 0.18);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .execute-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(232, 197, 71, 0.0) 0%, rgba(232, 197, 71, 0.06) 100%);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .execute-btn:hover::before {
+            opacity: 1
+        }
+
+        .execute-btn:not(:disabled):hover {
+            border-color: rgba(232, 197, 71, 0.32)
+        }
+
+        .execute-btn:not(:disabled):active {
+            transform: scale(0.985)
+        }
+
+        .execute-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed
+        }
+
+        .execute-btn.loading {
+            pointer-events: none
+        }
+
+        .execute-btn.wallet-connected {
+            border-color: rgba(232, 197, 71, 0.35);
+            background: rgba(232, 197, 71, 0.08);
+            cursor: pointer;
+        }
+
+        .execute-btn.wallet-connected .exec-text {
+            color: var(--a)
+        }
+
+        .execute-btn.success-state {
+            border-color: rgba(52, 199, 123, 0.4);
+            background: rgba(52, 199, 123, 0.08);
+            pointer-events: none;
+        }
+
+        .execute-btn.error-state {
+            border-color: rgba(244, 88, 78, 0.35);
+            background: rgba(244, 88, 78, 0.07);
+            pointer-events: none;
+        }
+
+        .exec-text {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: var(--hi);
+            transition: color 0.2s
+        }
+
+        .exec-hint {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--lo);
+            text-align: center
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(232, 197, 71, 0.2);
+            border-top: 2px solid var(--a);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        /* Ripple */
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(232, 197, 71, 0.2);
+            transform: scale(0);
+            animation: ripple-anim 0.5s ease-out;
+            pointer-events: none;
+        }
+
+        @keyframes ripple-anim {
+            to {
+                transform: scale(4);
+                opacity: 0
+            }
+        }
+
+        /* Wallet connect button */
+        .wallet-btn {
+            width: 100%;
+            padding: 13px;
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 11px;
+        }
+
+        .wallet-btn:hover {
+            border-color: var(--border2);
+            background: var(--bg4)
+        }
+
+        .wallet-btn:active {
+            transform: scale(0.985)
+        }
+
+        .wallet-btn-text {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--mid)
+        }
+
+        /* Market info */
+        .market-info-section {
+            padding: 8px 16px 4px
+        }
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(26, 26, 21, 0.5);
+        }
+
+        .info-row:last-child {
+            border-bottom: none
+        }
+
+        .info-key {
+            font-family: var(--mono);
+            font-size: 8px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--mid)
+        }
+
+        .info-val {
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--hi)
+        }
+
+        .funding-chip {
+            background: var(--a4);
+            border: 1px solid rgba(232, 197, 71, 0.15);
+            border-radius: 3px;
+            padding: 2px 7px;
+            font-family: var(--mono);
+            font-size: 8.5px;
+            font-weight: 700;
+            color: var(--a);
+            letter-spacing: 1px;
+        }
+
+        /* ─── PROFILE TAB ─── */
+        .profile-zone {
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px
+        }
+
+        .wallet-card {
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+        }
+
+        .wallet-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between
+        }
+
+        .wallet-label {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--lo)
+        }
+
+        .wallet-addr {
+            font-family: var(--mono);
+            font-size: 9px;
+            color: var(--mid);
+            letter-spacing: 0.5px
+        }
+
+        .wc-chip {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            background: rgba(52, 199, 123, 0.10);
+            border: 1px solid rgba(52, 199, 123, 0.22);
+            border-radius: 4px;
+            padding: 3px 8px;
+            color: var(--pos);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .wc-dot {
+            width: 5px;
+            height: 5px;
+            background: var(--pos);
+            border-radius: 50%;
+            animation: dot-pulse 2s infinite
+        }
+
+        .equity-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0;
+            padding-top: 8px;
+            border-top: 1px solid var(--border0);
+        }
+
+        .eq-item {
+            display: flex;
+            flex-direction: column;
+            gap: 3px
+        }
+
+        .eq-item:nth-child(2) {
+            text-align: center
+        }
+
+        .eq-item:last-child {
+            text-align: right
+        }
+
+        .eq-label {
+            font-family: var(--mono);
+            font-size: 6.5px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--lo)
+        }
+
+        .eq-val {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--hi)
+        }
+
+        .eq-val.pos {
+            color: var(--pos)
+        }
+
+        .eq-val.neg {
+            color: var(--neg)
+        }
+
+        /* Alert banner */
+        .alert-banner {
+            background: rgba(244, 88, 78, 0.06);
+            border: 1px solid rgba(244, 88, 78, 0.2);
+            border-radius: 6px;
+            padding: 8px 11px;
+            display: flex;
+            align-items: flex-start;
+            gap: 7px;
+        }
+
+        .alert-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            background: rgba(244, 88, 78, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1px
+        }
+
+        .alert-text {
+            font-family: var(--mono);
+            font-size: 8px;
+            letter-spacing: 0.3px;
+            color: var(--mid);
+            line-height: 1.6
+        }
+
+        .alert-text strong {
+            color: var(--hi)
+        }
+
+        /* Stats grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px
+        }
+
+        .stat-card {
+            background: var(--bg3);
+            border: 1px solid var(--border0);
+            border-radius: 7px;
+            padding: 9px 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: border-color 0.15s;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border1)
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--mid);
+            line-height: 1
+        }
+
+        .stat-val {
+            font-family: var(--mono);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--hi);
+            line-height: 1.1;
+            letter-spacing: -0.5px
+        }
+
+        .stat-val.pos {
+            color: var(--pos)
+        }
+
+        .stat-val.neg {
+            color: var(--neg)
+        }
+
+        /* Profile chart */
+        .profile-chart-wrap {
+            background: var(--bg3);
+            border: 1px solid var(--border0);
+            border-radius: 7px;
+            padding: 10px 12px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .pchart-title {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--mid)
+        }
+
+        .pchart-svg {
+            width: 100%
+        }
+
+        .pchart-axis {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 2px
+        }
+
+        .pchart-tick {
+            font-family: var(--mono);
+            font-size: 6.5px;
+            color: var(--lo);
+            letter-spacing: 0.5px
+        }
+
+        /* Positions */
+        .positions-section {
+            display: flex;
+            flex-direction: column;
+            gap: 7px
+        }
+
+        .section-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2px
+        }
+
+        .section-title {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--mid)
+        }
+
+        .section-badge {
+            font-family: var(--mono);
+            font-size: 7px;
+            color: var(--a2);
+            background: var(--a4);
+            border: 1px solid rgba(232, 197, 71, 0.15);
+            border-radius: 3px;
+            padding: 1px 6px
+        }
+
+        .pos-row {
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 7px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pos-row::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 0;
+            transition: width 0.2s;
+        }
+
+        .pos-row.long-row::before {
+            background: var(--pos)
+        }
+
+        .pos-row.short-row::before {
+            background: var(--neg)
+        }
+
+        .pos-row:hover::before {
+            width: 2.5px
+        }
+
+        .pos-row:hover {
+            border-color: var(--border2)
+        }
+
+        .pos-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px
+        }
+
+        .pos-sym-wrap {
+            display: flex;
+            align-items: center;
+            gap: 5px
+        }
+
+        .pos-sym {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--hi)
+        }
+
+        .pos-dir {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            padding: 2px 5px;
+            border-radius: 3px
+        }
+
+        .pos-dir.long {
+            background: rgba(52, 199, 123, 0.12);
+            color: var(--pos);
+            border: 1px solid rgba(52, 199, 123, 0.22)
+        }
+
+        .pos-dir.short {
+            background: rgba(244, 88, 78, 0.10);
+            color: var(--neg);
+            border: 1px solid rgba(244, 88, 78, 0.20)
+        }
+
+        .pos-sub {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            color: var(--lo)
+        }
+
+        .pos-right {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            align-items: flex-end
+        }
+
+        .pos-pnl {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 700
+        }
+
+        .pos-meta {
+            font-family: var(--mono);
+            font-size: 7.5px;
+            color: var(--mid)
+        }
+
+        .close-btn {
+            font-family: var(--mono);
+            font-size: 7px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--neg);
+            background: rgba(244, 88, 78, 0.08);
+            border: 1px solid rgba(244, 88, 78, 0.18);
+            border-radius: 3px;
+            padding: 3px 7px;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-top: 2px;
+        }
+
+        .close-btn:hover {
+            background: rgba(244, 88, 78, 0.15);
+            border-color: rgba(244, 88, 78, 0.3)
+        }
+
+        .close-btn:active {
+            transform: scale(0.93)
+        }
+
+        .close-btn.loading-state {
+            opacity: 0.6;
+            pointer-events: none;
+            color: var(--mid);
+            border-color: var(--border1)
+        }
+
+        /* Confirm modal */
+        .confirm-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(8, 8, 6, 0.88);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            align-items: flex-end;
+            padding: 0;
+            animation: fadeInOverlay 0.2s ease;
+        }
+
+        @keyframes fadeInOverlay {
+            from {
+                opacity: 0
+            }
+
+            to {
+                opacity: 1
+            }
+        }
+
+        .confirm-sheet {
+            background: var(--bg2);
+            border: 1px solid var(--border1);
+            border-radius: 18px 18px 0 0;
+            padding: 20px 20px 30px;
+            width: 100%;
+            animation: slideUpSheet 0.3s cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        @keyframes slideUpSheet {
+            from {
+                transform: translateY(100%)
+            }
+
+            to {
+                transform: translateY(0)
+            }
+        }
+
+        .confirm-handle {
+            width: 36px;
+            height: 4px;
+            background: var(--border2);
+            border-radius: 2px;
+            margin: 0 auto 16px;
+        }
+
+        .confirm-title {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--mid);
+            margin-bottom: 14px
+        }
+
+        .confirm-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border0)
+        }
+
+        .confirm-row:last-of-type {
+            border-bottom: none;
+            margin-bottom: 16px
+        }
+
+        .confirm-key {
+            font-family: var(--mono);
+            font-size: 8.5px;
+            letter-spacing: 0.5px;
+            color: var(--mid)
+        }
+
+        .confirm-val {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            font-weight: 700;
+            color: var(--hi)
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px
+        }
+
+        .confirm-cancel {
+            flex: 1;
+            padding: 11px;
+            background: var(--bg3);
+            border: 1px solid var(--border1);
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--mid);
+        }
+
+        .confirm-cancel:hover {
+            border-color: var(--border2);
+            color: var(--hi)
+        }
+
+        .confirm-submit {
+            flex: 2;
+            padding: 11px;
+            background: rgba(52, 199, 123, 0.12);
+            border: 1px solid rgba(52, 199, 123, 0.3);
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--pos);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+        }
+
+        .confirm-submit.short-mode {
+            background: rgba(244, 88, 78, 0.10);
+            border-color: rgba(244, 88, 78, 0.28);
+            color: var(--neg);
+        }
+
+        .confirm-submit:hover {
+            filter: brightness(1.1)
+        }
+
+        .confirm-submit:active {
+            transform: scale(0.97)
+        }
+
+        /* Annotations */
+        .annotations {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            max-width: 790px;
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        .ann {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start
+        }
+
+        .ann-num {
+            font-family: var(--mono);
+            font-size: 8px;
+            font-weight: 700;
+            color: var(--a);
+            background: var(--a4);
+            border: 1px solid rgba(232, 197, 71, 0.15);
+            border-radius: 2px;
+            padding: 2px 5px;
+            flex-shrink: 0;
+            margin-top: 1px;
+            min-width: 22px;
+            text-align: center;
+        }
+
+        .ann-text {
+            font-family: var(--mono);
+            font-size: 9px;
+            letter-spacing: 0.3px;
+            color: var(--mid);
+            line-height: 1.7
+        }
+
+        .ann-text strong {
+            color: var(--hi)
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Toast system -->
+    <div class="toast-stack" id="toast-stack"></div>
+
+    <div class="flow-label">Pacific Trade · UI V2</div>
+
+    <div class="screens-row">
+
+        <!-- ══════════════════════════════════
+     PHONE A — SCREEN 1: TRADE LIST
+══════════════════════════════════ -->
+        <div class="screen-col">
+            <div class="screen-label">① Trade · Markets</div>
+            <div class="phone" id="phone-list">
+
+                <div class="status-bar">
+                    <span class="st-time">9:41</span>
+                    <div class="st-icons">
+                        <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+                            <rect x="0" y="4" width="2.5" height="7" rx="0.8" fill="#ede8d5" />
+                            <rect x="4" y="2.5" width="2.5" height="8.5" rx="0.8" fill="#ede8d5" />
+                            <rect x="8" y="1" width="2.5" height="10" rx="0.8" fill="#ede8d5" />
+                            <rect x="12" y="0" width="2.5" height="11" rx="0.8" fill="#ede8d5" />
+                        </svg>
+                        <svg width="13" height="10" viewBox="0 0 13 10" fill="none">
+                            <path
+                                d="M6.5 2.2C9 2.2 11.2 3.3 12.8 5L11.4 6.3C10.2 5.1 8.4 4.3 6.5 4.3C4.6 4.3 2.8 5.1 1.6 6.3L0.2 5C1.8 3.3 4 2.2 6.5 2.2Z"
+                                fill="#ede8d5" />
+                            <path
+                                d="M6.5 5.6C8.1 5.6 9.5 6.2 10.5 7.2L9.1 8.5C8.4 7.8 7.5 7.4 6.5 7.4C5.5 7.4 4.6 7.8 3.9 8.5L2.5 7.2C3.5 6.2 4.9 5.6 6.5 5.6Z"
+                                fill="#ede8d5" />
+                            <circle cx="6.5" cy="10" r="0.9" fill="#ede8d5" />
+                        </svg>
+                        <span style="font-family:var(--mono);font-size:10px;color:var(--hi)">100%</span>
+                    </div>
+                </div>
+
+                <div class="list-header">
+                    <span class="list-title">Trade</span>
+                    <div class="live-chip">
+                        <div class="live-dot"></div>
+                        <span class="live-text">Live</span>
+                    </div>
+                </div>
+
+                <!-- Narrative bridge -->
+                <div class="narrative-hint"
+                    onclick="goToDetail('BTC','$67,420','▲ 2.14%','up','67,418','+0.012%','$842M','10×')">
+                    <div style="display:flex;flex-direction:column;gap:2px">
+                        <span class="nh-source">From Feed</span>
+                        <span class="nh-text">BTC halving — <em>supply shock incoming</em></span>
+                    </div>
+                    <svg class="nh-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--a)"
+                        stroke-width="1.4" stroke-linecap="round">
+                        <path d="M5 3L9 7L5 11" />
+                    </svg>
+                </div>
+
+                <!-- Asset strip -->
+                <div class="asset-strip-wrap">
+                    <div class="strip-top">
+                        <span class="strip-label">Trending</span>
+                    </div>
+                    <div class="asset-strip">
+
+                        <div class="strip-card active"
+                            onclick="goToDetail('BTC','$67,420','▲ 2.14%','up','67,418','+0.012%','$842M','10×')">
+                            <div class="strip-sym">BTC</div>
+                            <div class="strip-change up">+2.14%</div>
+                            <svg class="strip-spark" viewBox="0 0 72 20" fill="none">
+                                <defs>
+                                    <linearGradient id="sg1" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#34c77b" stop-opacity="0.3" />
+                                        <stop offset="100%" stop-color="#34c77b" stop-opacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,18 L12,14 L24,16 L36,10 L48,6 L60,4 L72,1 L72,20 L0,20 Z"
+                                    fill="url(#sg1)" />
+                                <path d="M0,18 L12,14 L24,16 L36,10 L48,6 L60,4 L72,1" stroke="#34c77b"
+                                    stroke-width="1.3" fill="none" />
+                            </svg>
+                        </div>
+
+                        <div class="strip-card"
+                            onclick="goToDetail('SOL','$143.20','▲ 4.80%','up','143.18','+0.008%','$210M','10×')">
+                            <div class="strip-sym">SOL</div>
+                            <div class="strip-change up">+4.80%</div>
+                            <svg class="strip-spark" viewBox="0 0 72 20" fill="none">
+                                <defs>
+                                    <linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#34c77b" stop-opacity="0.3" />
+                                        <stop offset="100%" stop-color="#34c77b" stop-opacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,17 L12,19 L24,12 L36,8 L48,10 L60,4 L72,1 L72,20 L0,20 Z"
+                                    fill="url(#sg2)" />
+                                <path d="M0,17 L12,19 L24,12 L36,8 L48,10 L60,4 L72,1" stroke="#34c77b"
+                                    stroke-width="1.3" fill="none" />
+                            </svg>
+                        </div>
+
+                        <div class="strip-card"
+                            onclick="goToDetail('WIF','$2.41','▲ 11.2%','up','2.41','+0.031%','$38M','5×')">
+                            <div class="strip-sym">WIF</div>
+                            <div class="strip-change up">+11.2%</div>
+                            <svg class="strip-spark" viewBox="0 0 72 20" fill="none">
+                                <defs>
+                                    <linearGradient id="sg3" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#34c77b" stop-opacity="0.3" />
+                                        <stop offset="100%" stop-color="#34c77b" stop-opacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,19 L12,17 L24,14 L36,11 L48,7 L60,3 L72,1 L72,20 L0,20 Z"
+                                    fill="url(#sg3)" />
+                                <path d="M0,19 L12,17 L24,14 L36,11 L48,7 L60,3 L72,1" stroke="#34c77b"
+                                    stroke-width="1.3" fill="none" />
+                            </svg>
+                        </div>
+
+                        <div class="strip-card"
+                            onclick="goToDetail('ETH','$3,184','▼ 0.62%','down','3,182','-0.003%','$620M','10×')">
+                            <div class="strip-sym">ETH</div>
+                            <div class="strip-change down">−0.62%</div>
+                            <svg class="strip-spark" viewBox="0 0 72 20" fill="none">
+                                <defs>
+                                    <linearGradient id="sg4" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#f4584e" stop-opacity="0" />
+                                        <stop offset="100%" stop-color="#f4584e" stop-opacity="0.25" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,4 L12,6 L24,5 L36,9 L48,12 L60,15 L72,18 L72,20 L0,20 Z" fill="url(#sg4)" />
+                                <path d="M0,4 L12,6 L24,5 L36,9 L48,12 L60,15 L72,18" stroke="#f4584e"
+                                    stroke-width="1.3" fill="none" />
+                            </svg>
+                        </div>
+
+                        <div class="strip-card"
+                            onclick="goToDetail('DOGE','$0.172','▼ 1.43%','down','0.172','-0.006%','$95M','5×')">
+                            <div class="strip-sym">DOGE</div>
+                            <div class="strip-change down">−1.43%</div>
+                            <svg class="strip-spark" viewBox="0 0 72 20" fill="none">
+                                <defs>
+                                    <linearGradient id="sg5" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#f4584e" stop-opacity="0" />
+                                        <stop offset="100%" stop-color="#f4584e" stop-opacity="0.25" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,5 L12,4 L24,7 L36,11 L48,13 L60,16 L72,18 L72,20 L0,20 Z"
+                                    fill="url(#sg5)" />
+                                <path d="M0,5 L12,4 L24,7 L36,11 L48,13 L60,16 L72,18" stroke="#f4584e"
+                                    stroke-width="1.3" fill="none" />
+                            </svg>
+                        </div>
+
+                        <div class="strip-card"
+                            onclick="goToDetail('BONK','$0.000028','▲ 8.4%','up','0.000027','+0.044%','$22M','5×')">
+                            <div class="strip-sym">BONK</div>
+                            <div class="strip-change up">+8.4%</div>
+                            <svg class="strip-spark" viewBox="0 0 72 20" fill="none">
+                                <defs>
+                                    <linearGradient id="sg6" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#34c77b" stop-opacity="0.3" />
+                                        <stop offset="100%" stop-color="#34c77b" stop-opacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,19 L12,18 L24,15 L36,11 L48,7 L60,3 L72,1 L72,20 L0,20 Z"
+                                    fill="url(#sg6)" />
+                                <path d="M0,19 L12,18 L24,15 L36,11 L48,7 L60,3 L72,1" stroke="#34c77b"
+                                    stroke-width="1.3" fill="none" />
+                            </svg>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Markets Table -->
+                <div class="table-wrap">
+                    <div class="table-header">
+                        <div class="th">Market</div>
+                        <div class="th right">Price</div>
+                        <div class="th right sort">24h ▾</div>
+                        <div class="th right">OI</div>
+                    </div>
+
+                    <div class="table-section-label">Top by Volume</div>
+
+                    <div class="market-row"
+                        onclick="goToDetail('BTC','$67,420','▲ 2.14%','up','67,418','+0.012%','$842M','10×')">
+                        <div class="row-sym-wrap"><span class="row-sym">BTC</span><span class="row-sub">PERP ·
+                                10×</span></div>
+                        <div class="row-price" id="list-price-BTC">$67,420</div>
+                        <div class="row-change up">+2.14%</div>
+                        <div class="row-oi">$842M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('ETH','$3,184','▼ 0.62%','down','3,182','-0.003%','$620M','10×')">
+                        <div class="row-sym-wrap"><span class="row-sym">ETH</span><span class="row-sub">PERP ·
+                                10×</span></div>
+                        <div class="row-price" id="list-price-ETH">$3,184</div>
+                        <div class="row-change down">−0.62%</div>
+                        <div class="row-oi">$620M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('SOL','$143.20','▲ 4.80%','up','143.18','+0.008%','$210M','10×')">
+                        <div class="row-sym-wrap"><span class="row-sym">SOL</span><span class="row-sub">PERP ·
+                                10×</span></div>
+                        <div class="row-price" id="list-price-SOL">$143.20</div>
+                        <div class="row-change up">+4.80%</div>
+                        <div class="row-oi">$210M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('AVAX','$38.42','▲ 1.20%','up','38.40','+0.007%','$88M','10×')">
+                        <div class="row-sym-wrap"><span class="row-sym">AVAX</span><span class="row-sub">PERP ·
+                                10×</span></div>
+                        <div class="row-price">$38.42</div>
+                        <div class="row-change up">+1.20%</div>
+                        <div class="row-oi">$88M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('DOGE','$0.172','▼ 1.43%','down','0.172','-0.006%','$95M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">DOGE</span><span class="row-sub">PERP ·
+                                5×</span></div>
+                        <div class="row-price">$0.1720</div>
+                        <div class="row-change down">−1.43%</div>
+                        <div class="row-oi">$95M</div>
+                    </div>
+
+                    <div class="table-section-label">Trending Now</div>
+
+                    <div class="market-row"
+                        onclick="goToDetail('WIF','$2.41','▲ 11.2%','up','2.41','+0.031%','$38M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">WIF</span><span class="row-sub">PERP · 5×</span>
+                        </div>
+                        <div class="row-price">$2.41</div>
+                        <div class="row-change up">+11.2%</div>
+                        <div class="row-oi">$38M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('BONK','$0.000028','▲ 8.4%','up','0.000027','+0.044%','$22M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">BONK</span><span class="row-sub">PERP ·
+                                5×</span></div>
+                        <div class="row-price">$0.0000284</div>
+                        <div class="row-change up">+8.4%</div>
+                        <div class="row-oi">$22M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('JUP','$0.891','▲ 5.7%','up','0.890','+0.019%','$31M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">JUP</span><span class="row-sub">PERP · 5×</span>
+                        </div>
+                        <div class="row-price">$0.891</div>
+                        <div class="row-change up">+5.7%</div>
+                        <div class="row-oi">$31M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('RNDR','$7.18','▲ 3.2%','up','7.17','+0.011%','$19M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">RNDR</span><span class="row-sub">PERP ·
+                                5×</span></div>
+                        <div class="row-price">$7.18</div>
+                        <div class="row-change up">+3.2%</div>
+                        <div class="row-oi">$19M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('PYTH','$0.421','▼ 2.1%','down','0.420','-0.008%','$14M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">PYTH</span><span class="row-sub">PERP ·
+                                5×</span></div>
+                        <div class="row-price">$0.421</div>
+                        <div class="row-change down">−2.1%</div>
+                        <div class="row-oi">$14M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('LINK','$14.82','▼ 0.8%','down','14.80','-0.004%','$41M','10×')">
+                        <div class="row-sym-wrap"><span class="row-sym">LINK</span><span class="row-sub">PERP ·
+                                10×</span></div>
+                        <div class="row-price">$14.82</div>
+                        <div class="row-change down">−0.8%</div>
+                        <div class="row-oi">$41M</div>
+                    </div>
+                    <div class="market-row"
+                        onclick="goToDetail('ARB','$1.04','▲ 0.5%','up','1.03','+0.003%','$28M','5×')">
+                        <div class="row-sym-wrap"><span class="row-sym">ARB</span><span class="row-sub">PERP · 5×</span>
+                        </div>
+                        <div class="row-price">$1.04</div>
+                        <div class="row-change up">+0.5%</div>
+                        <div class="row-oi">$28M</div>
+                    </div>
+                </div>
+
+                <!-- Nav -->
+                <div class="nav-bar">
+                    <div class="nav-item">
+                        <div class="nav-icon"><svg viewBox="0 0 18 18" fill="none" stroke="#ede8d5" stroke-width="1.4"
+                                stroke-linecap="round">
+                                <path d="M2 9L9 2L16 9" />
+                                <path d="M4 7.5V15H8V11H10V15H14V7.5" />
+                            </svg></div>
+                        <div class="nav-label">Feed</div>
+                    </div>
+                    <div class="nav-item">
+                        <div class="nav-icon"><svg viewBox="0 0 18 18" fill="none" stroke="#ede8d5" stroke-width="1.4"
+                                stroke-linecap="round">
+                                <circle cx="9" cy="9" r="7" />
+                                <path d="M9 5V9L12 11" />
+                            </svg></div>
+                        <div class="nav-label">Predict</div>
+                    </div>
+                    <div class="nav-item">
+                        <div class="nav-icon active"><svg viewBox="0 0 18 18" fill="none" stroke-width="1.4"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 13L7 8L10 11L14 5" stroke="#e8c547" />
+                                <path d="M12 5H14V7" stroke="#e8c547" />
+                            </svg></div>
+                        <div class="nav-dot"></div>
+                        <div class="nav-label active">Trade</div>
+                    </div>
+                    <div class="nav-item">
+                        <div class="nav-icon"><svg viewBox="0 0 18 18" fill="none" stroke="#ede8d5" stroke-width="1.4"
+                                stroke-linecap="round">
+                                <path d="M4 9H14M10 5L14 9L10 13" />
+                            </svg></div>
+                        <div class="nav-label">Swap</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════
+     PHONE B — SCREEN 2: MARKET DETAIL
+══════════════════════════════════ -->
+        <div class="screen-col">
+            <div class="screen-label">② Market Detail</div>
+            <div class="phone" id="phone-detail">
+
+                <!-- Skeleton overlay (shown during asset switch) -->
+                <div id="skeleton-overlay"
+                    style="display:none;position:absolute;inset:0;background:var(--bg1);z-index:60;padding:54px 16px 0">
+                    <div
+                        style="height:46px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                        <div class="skeleton" style="width:70px;height:16px"></div>
+                        <div class="skeleton" style="width:50px;height:20px"></div>
+                        <div class="skeleton" style="width:60px;height:28px"></div>
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <div class="skeleton" style="width:140px;height:28px;margin-bottom:6px"></div>
+                        <div class="skeleton" style="width:80px;height:14px"></div>
+                    </div>
+                    <div class="skeleton" style="width:100%;height:60px;margin-bottom:12px"></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+                        <div class="skeleton" style="height:32px"></div>
+                        <div class="skeleton" style="height:32px"></div>
+                        <div class="skeleton" style="height:32px"></div>
+                        <div class="skeleton" style="height:32px"></div>
+                    </div>
+                </div>
+
+                <!-- Confirm modal -->
+                <div id="confirm-overlay" style="display:none" class="confirm-overlay">
+                    <div class="confirm-sheet">
+                        <div class="confirm-handle"></div>
+                        <div class="confirm-title" id="confirm-title">Confirm Long · BTC</div>
+                        <div class="confirm-row"><span class="confirm-key">Symbol</span><span class="confirm-val"
+                                id="cm-sym">BTC-PERP</span></div>
+                        <div class="confirm-row"><span class="confirm-key">Direction</span><span class="confirm-val"
+                                id="cm-dir" style="color:var(--pos)">Long</span></div>
+                        <div class="confirm-row"><span class="confirm-key">Size</span><span class="confirm-val">$100
+                                USDC</span></div>
+                        <div class="confirm-row"><span class="confirm-key">Leverage</span><span class="confirm-val"
+                                id="cm-lev">2×</span></div>
+                        <div class="confirm-row"><span class="confirm-key">Notional</span><span
+                                class="confirm-val">$200</span></div>
+                        <div class="confirm-row"><span class="confirm-key">Est. Fee</span><span
+                                class="confirm-val">$0.04</span></div>
+                        <div class="confirm-row"><span class="confirm-key">Liq. Price</span><span class="confirm-val"
+                                id="cm-liq" style="color:var(--neg)">~$33,710</span></div>
+                        <div class="confirm-actions">
+                            <button class="confirm-cancel" onclick="closeConfirm()">Cancel</button>
+                            <button class="confirm-submit" id="confirm-submit-btn" onclick="submitOrder()">
+                                <span id="confirm-btn-text">Place Order</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="status-bar">
+                    <span class="st-time">9:41</span>
+                    <div class="st-icons">
+                        <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
+                            <rect x="0" y="4" width="2.5" height="7" rx="0.8" fill="#ede8d5" />
+                            <rect x="4" y="2.5" width="2.5" height="8.5" rx="0.8" fill="#ede8d5" />
+                            <rect x="8" y="1" width="2.5" height="10" rx="0.8" fill="#ede8d5" />
+                            <rect x="12" y="0" width="2.5" height="11" rx="0.8" fill="#ede8d5" />
+                        </svg>
+                        <span style="font-family:var(--mono);font-size:10px;color:var(--hi)">100%</span>
+                    </div>
+                </div>
+
+                <div class="detail-header">
+                    <div class="back-btn" onclick="showToast('info','← Back','Returning to markets…')">
+                        <svg viewBox="0 0 15 15" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 3L5 7.5L10 12" stroke-width="1.5" />
+                        </svg>
+                        <span class="back-label">Markets</span>
+                    </div>
+                    <div class="detail-title-wrap">
+                        <span class="detail-sym" id="detail-sym">BTC</span>
+                        <span class="detail-type-chip">PERP</span>
+                    </div>
+                    <div class="detail-actions">
+                        <div class="dab" onclick="showToast('info','Market Info','Opening market details…')">
+                            <svg viewBox="0 0 14 14" fill="none" stroke-linecap="round">
+                                <circle cx="7" cy="7" r="5.5" stroke-width="1.2" />
+                                <path d="M7 6.5V9.5M7 4.5V5" stroke-width="1.5" />
+                            </svg>
+                        </div>
+                        <div class="dab" onclick="toggleAlert()">
+                            <svg viewBox="0 0 14 14" fill="none" stroke-linecap="round">
+                                <path
+                                    d="M7 2C7 2 3.5 5.5 3.5 8C3.5 9.7 5.07 11 7 11C8.93 11 10.5 9.7 10.5 8C10.5 5.5 7 2 7 2Z"
+                                    stroke-width="1.2" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hero Zone -->
+                <div class="hero-zone">
+                    <div class="hero-top">
+                        <div class="hero-timeframes">
+                            <div class="tf-btn active" onclick="setTf(this,'15m')">15m</div>
+                            <div class="tf-btn" onclick="setTf(this,'1h')">1h</div>
+                            <div class="tf-btn" onclick="setTf(this,'4h')">4h</div>
+                            <div class="tf-btn" onclick="setTf(this,'1d')">1d</div>
+                        </div>
+                        <div class="hero-price-col">
+                            <div class="hero-price" id="detail-price">$67,420</div>
+                            <div class="hero-change up" id="detail-change">
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                                    <path d="M4.5 1L8 6H1L4.5 1Z" fill="#34c77b" />
+                                </svg>
+                                <span>2.14%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mini-chart">
+                        <svg viewBox="0 0 343 58" preserveAspectRatio="none" fill="none" id="detail-chart-svg">
+                            <defs>
+                                <linearGradient id="cg1" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="#e8c547" stop-opacity="0.12" />
+                                    <stop offset="100%" stop-color="#e8c547" stop-opacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <path id="detail-chart-fill"
+                                d="M0,46 L22,40 L50,43 L75,36 L98,33 L122,38 L144,30 L170,25 L192,20 L216,16 L238,13 L260,15 L280,9 L300,5 L320,3 L343,2 L343,58 L0,58 Z"
+                                fill="url(#cg1)" />
+                            <path id="detail-chart-line"
+                                d="M0,46 L22,40 L50,43 L75,36 L98,33 L122,38 L144,30 L170,25 L192,20 L216,16 L238,13 L260,15 L280,9 L300,5 L320,3 L343,2"
+                                stroke="#e8c547" stroke-width="1.4" fill="none" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                            <!-- Current price line -->
+                            <line x1="343" y1="0" x2="343" y2="58" stroke="#e8c547" stroke-width="0.6"
+                                stroke-dasharray="2,3" opacity="0.5" />
+                            <circle cx="343" cy="2" r="2.5" fill="#e8c547" opacity="0.8" />
+                        </svg>
+                    </div>
+
+                    <div class="hero-stats">
+                        <div class="hstat"><span class="hstat-label">Mark</span><span class="hstat-val"
+                                id="detail-mark">67,418</span></div>
+                        <div class="hstat"><span class="hstat-label">Fund/8h</span><span class="hstat-val up"
+                                id="detail-fund">+0.012%</span></div>
+                        <div class="hstat"><span class="hstat-label">OI</span><span class="hstat-val"
+                                id="detail-oi">$842M</span></div>
+                        <div class="hstat"><span class="hstat-label">Max Lev</span><span class="hstat-val"
+                                id="detail-lev">10×</span></div>
+                    </div>
+                </div>
+
+                <!-- Bottom tab bar -->
+                <div class="bottom-tabs">
+                    <div class="btab active" id="btab-market" onclick="switchTab('market')">Market</div>
+                    <div class="btab" id="btab-profile" onclick="switchTab('profile')">Profile</div>
+                    <div class="tab-indicator" id="tab-indicator" style="left:0;width:50%"></div>
+                </div>
+
+                <!-- Tab panels -->
+                <div class="tab-panels">
+
+                    <!-- MARKET TAB -->
+                    <div class="tab-panel active" id="panel-market">
+                        <div class="order-zone">
+
+                            <!-- Wallet connect bar (shown when not connected) -->
+                            <div id="wallet-bar"
+                                style="display:none;background:var(--bg3);border:1px solid var(--border1);border-radius:8px;padding:10px 12px;margin-bottom:11px;display:flex;align-items:center;justify-content:space-between">
+                                <div style="display:flex;flex-direction:column;gap:2px">
+                                    <span
+                                        style="font-family:var(--mono);font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mid)">Wallet
+                                        Required</span>
+                                    <span style="font-family:var(--mono);font-size:7.5px;color:var(--lo)">Connect to
+                                        place orders</span>
+                                </div>
+                                <div id="connect-wallet-btn" onclick="connectWallet()"
+                                    style="background:var(--a4);border:1px solid rgba(232,197,71,0.25);border-radius:5px;padding:6px 10px;cursor:pointer;font-family:var(--mono);font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--a);transition:all 0.15s;display:flex;align-items:center;gap:5px">
+                                    <span id="wallet-btn-inner">Connect</span>
+                                </div>
+                            </div>
+
+                            <!-- Long/Short -->
+                            <div class="ls-toggle">
+                                <div class="ls-btn long active" id="btn-long" onclick="toggleSide('long')">Long</div>
+                                <div class="ls-btn short" id="btn-short" onclick="toggleSide('short')">Short</div>
+                            </div>
+
+                            <div class="order-inputs">
+                                <div class="o-field">
+                                    <span class="o-label">Size</span>
+                                    <div class="o-input"><span>100</span><span class="o-input-unit">USDC</span></div>
+                                </div>
+                                <div class="o-field">
+                                    <span class="o-label">Order Type</span>
+                                    <div class="o-input"><span>Market</span><span class="o-input-unit">▾</span></div>
+                                </div>
+                            </div>
+
+                            <!-- Leverage -->
+                            <div class="lev-row">
+                                <span class="lev-label">Leverage</span>
+                                <div class="lev-track" id="lev-track">
+                                    <div class="lev-fill" id="lev-fill"></div>
+                                    <div class="lev-thumb" id="lev-thumb"></div>
+                                </div>
+                                <span class="lev-val" id="lev-val">2×</span>
+                            </div>
+                            <div class="lev-presets">
+                                <div class="lev-preset active" onclick="setLevPreset(this, 1)">1×</div>
+                                <div class="lev-preset" onclick="setLevPreset(this, 2)">2×</div>
+                                <div class="lev-preset" onclick="setLevPreset(this, 5)">5×</div>
+                                <div class="lev-preset" onclick="setLevPreset(this, 10)">10×</div>
+                            </div>
+
+                            <!-- Order preview -->
+                            <div class="order-preview">
+                                <div class="op-item"><span class="op-label">Notional</span><span class="op-val"
+                                        id="op-notional">$200</span></div>
+                                <div class="op-item"><span class="op-label">Fee</span><span class="op-val"
+                                        id="op-fee">$0.04</span></div>
+                                <div class="op-item"><span class="op-label">Liq. Price</span><span class="op-val"
+                                        id="op-liq" style="color:var(--neg)">~$33,710</span></div>
+                            </div>
+
+                            <!-- Execute button — state machine -->
+                            <button class="execute-btn" id="execute-btn" onclick="handleExecute(event)">
+                                <svg id="exec-lock" width="13" height="13" viewBox="0 0 13 13" fill="none"
+                                    stroke="var(--mid)" stroke-linecap="round" stroke-width="1.3">
+                                    <rect x="2.5" y="5.5" width="8" height="6" rx="1" />
+                                    <path d="M4.5 5.5V3.8C4.5 2.5 5.4 1.5 6.5 1.5C7.6 1.5 8.5 2.5 8.5 3.8V5.5" />
+                                    <circle cx="6.5" cy="8.5" r="1" fill="var(--mid)" />
+                                </svg>
+                                <span class="exec-text" id="exec-text">Connect Wallet</span>
+                            </button>
+                            <div class="exec-hint" id="exec-hint">Pacific Protocol · Solana perps · up to 10×</div>
+                        </div>
+
+                        <!-- Market info -->
+                        <div class="market-info-section">
+                            <div class="info-row">
+                                <span class="info-key">24h Volume</span>
+                                <span class="info-val">$2.14B</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-key">24h High / Low</span>
+                                <span class="info-val">$68,410 / $65,820</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-key">Index Price</span>
+                                <span class="info-val">$67,415</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-key">Next Funding</span>
+                                <span class="info-val"><span class="funding-chip"
+                                        id="funding-timer">02:14:38</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PROFILE TAB -->
+                    <div class="tab-panel" id="panel-profile">
+                        <div class="profile-zone">
+
+                            <div class="wallet-card">
+                                <div class="wallet-row">
+                                    <span class="wallet-label">Wallet</span>
+                                    <div class="wc-chip">
+                                        <div class="wc-dot"></div><span>Connected</span>
+                                    </div>
+                                </div>
+                                <div class="wallet-row">
+                                    <span class="wallet-addr">7xKp···m3Qr</span>
+                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                                        style="opacity:0.35;cursor:pointer">
+                                        <rect x="1" y="3" width="7" height="8" rx="1" stroke="var(--hi)"
+                                            stroke-width="1.1" />
+                                        <path d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9"
+                                            stroke="var(--hi)" stroke-width="1.1" />
+                                    </svg>
+                                </div>
+                                <div class="equity-row">
+                                    <div class="eq-item"><span class="eq-label">Equity</span><span
+                                            class="eq-val">$1,284</span></div>
+                                    <div class="eq-item"><span class="eq-label">Unrealised</span><span
+                                            class="eq-val pos">+$82</span></div>
+                                    <div class="eq-item"><span class="eq-label">Free Margin</span><span
+                                            class="eq-val">$960</span></div>
+                                </div>
+                            </div>
+
+                            <div class="alert-banner">
+                                <div class="alert-icon">
+                                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                                        <path d="M4.5 1L8 7.5H1L4.5 1Z" fill="#f4584e" opacity="0.8" />
+                                        <line x1="4.5" y1="4" x2="4.5" y2="6" stroke="var(--bg1)" stroke-width="1"
+                                            stroke-linecap="round" />
+                                        <circle cx="4.5" cy="7" r="0.5" fill="var(--bg1)" />
+                                    </svg>
+                                </div>
+                                <span class="alert-text"><strong>1 margin liquidation on record</strong> — review risk
+                                    on ZEC and XMR positions.</span>
+                            </div>
+
+                            <div class="stats-grid">
+                                <div class="stat-card"><span class="stat-label">Net PnL (after fees)</span><span
+                                        class="stat-val pos">+$108</span></div>
+                                <div class="stat-card"><span class="stat-label">Gross PnL</span><span
+                                        class="stat-val pos">+$196</span></div>
+                                <div class="stat-card"><span class="stat-label">Total fees paid</span><span
+                                        class="stat-val neg">−$88</span></div>
+                                <div class="stat-card"><span class="stat-label">Total trades</span><span
+                                        class="stat-val">553</span></div>
+                                <div class="stat-card"><span class="stat-label">Win rate</span><span
+                                        class="stat-val neg">17%</span></div>
+                                <div class="stat-card"><span class="stat-label">Avg winner</span><span
+                                        class="stat-val pos">+$13.66</span></div>
+                                <div class="stat-card"><span class="stat-label">Avg loser</span><span
+                                        class="stat-val neg">−$2.55</span></div>
+                                <div class="stat-card"><span class="stat-label">Best single day</span><span
+                                        class="stat-val pos">+$187</span></div>
+                            </div>
+
+                            <!-- Cumulative PnL chart -->
+                            <div class="profile-chart-wrap">
+                                <span class="pchart-title">Cumulative PnL</span>
+                                <svg class="pchart-svg" height="72" viewBox="0 0 320 72" fill="none"
+                                    preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="pnlG" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2" />
+                                            <stop offset="100%" stop-color="#34c77b" stop-opacity="0" />
+                                        </linearGradient>
+                                        <linearGradient id="pnlGN" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stop-color="#f4584e" stop-opacity="0" />
+                                            <stop offset="100%" stop-color="#f4584e" stop-opacity="0.18" />
+                                        </linearGradient>
+                                    </defs>
+                                    <line x1="0" y1="42" x2="320" y2="42" stroke="#1a1a15" stroke-width="0.8" />
+                                    <path
+                                        d="M0,42 L20,44 L40,46 L60,52 L80,62 L100,68 L120,58 L140,50 L160,55 L180,60 L200,52 L220,44 L240,42 L260,42 L280,42 L300,42 L320,42 L320,72 L0,72 Z"
+                                        fill="url(#pnlGN)" opacity="0.6" />
+                                    <path d="M220,42 L240,38 L260,32 L280,24 L300,18 L310,14 L320,10 L320,42 L220,42 Z"
+                                        fill="url(#pnlG)" />
+                                    <path
+                                        d="M0,42 L20,44 L40,46 L60,52 L80,62 L100,68 L120,58 L140,50 L160,55 L180,60 L200,52 L220,44 L240,38 L260,32 L280,24 L300,18 L310,14 L320,10"
+                                        stroke="#34c77b" stroke-width="1.4" fill="none" stroke-linejoin="round" />
+                                </svg>
+                                <div class="pchart-axis">
+                                    <span class="pchart-tick">Dec 15</span>
+                                    <span class="pchart-tick">Jan 8</span>
+                                    <span class="pchart-tick">Feb 16</span>
+                                    <span class="pchart-tick">Mar 19</span>
+                                </div>
+                            </div>
+
+                            <!-- PnL by symbol -->
+                            <div class="profile-chart-wrap">
+                                <span class="pchart-title">PnL by symbol</span>
+                                <svg class="pchart-svg" height="68" viewBox="0 0 320 68" fill="none">
+                                    <line x1="0" y1="38" x2="320" y2="38" stroke="#1a1a15" stroke-width="0.8" />
+                                    <rect x="8" y="4" width="18" height="34" rx="1" fill="#34c77b" opacity="0.75" />
+                                    <rect x="32" y="10" width="18" height="28" rx="1" fill="#34c77b" opacity="0.65" />
+                                    <rect x="56" y="18" width="18" height="20" rx="1" fill="#34c77b" opacity="0.60" />
+                                    <rect x="80" y="22" width="18" height="16" rx="1" fill="#34c77b" opacity="0.55" />
+                                    <rect x="104" y="28" width="18" height="10" rx="1" fill="#34c77b" opacity="0.50" />
+                                    <rect x="128" y="32" width="18" height="6" rx="1" fill="#34c77b" opacity="0.45" />
+                                    <rect x="152" y="36" width="18" height="3" rx="1" fill="#34c77b" opacity="0.38" />
+                                    <rect x="176" y="38" width="18" height="6" rx="1" fill="#f4584e" opacity="0.50" />
+                                    <rect x="200" y="38" width="18" height="8" rx="1" fill="#f4584e" opacity="0.55" />
+                                    <rect x="224" y="38" width="18" height="14" rx="1" fill="#f4584e" opacity="0.65" />
+                                    <rect x="248" y="38" width="18" height="24" rx="1" fill="#f4584e" opacity="0.78" />
+                                    <text x="17" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">BTC</text>
+                                    <text x="41" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">ETH</text>
+                                    <text x="65" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">SOL</text>
+                                    <text x="89" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">HYPE</text>
+                                    <text x="113" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">PUMP</text>
+                                    <text x="137" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">JUP</text>
+                                    <text x="161" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">WIF</text>
+                                    <text x="185" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">LINK</text>
+                                    <text x="209" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">ARB</text>
+                                    <text x="233" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">XMR</text>
+                                    <text x="257" y="66" text-anchor="middle" font-family="'SF Mono',monospace"
+                                        font-size="5.5" fill="#35342a">ZEC</text>
+                                </svg>
+                            </div>
+
+                            <!-- Open Positions -->
+                            <div class="positions-section">
+                                <div class="section-row">
+                                    <span class="section-title">Open Positions</span>
+                                    <span class="section-badge">2 open</span>
+                                </div>
+                                <div class="pos-row long-row">
+                                    <div class="pos-left">
+                                        <div class="pos-sym-wrap"><span class="pos-sym">BTC</span><span
+                                                class="pos-dir long">Long</span></div>
+                                        <span class="pos-sub">0.003 BTC · 2× · Entry $65,200</span>
+                                    </div>
+                                    <div class="pos-right">
+                                        <span class="pos-pnl up">+$64.20</span>
+                                        <span class="pos-meta">+3.28%</span>
+                                        <span class="close-btn" id="close-btc"
+                                            onclick="closePosition('BTC','close-btc')">Close</span>
+                                    </div>
+                                </div>
+                                <div class="pos-row short-row">
+                                    <div class="pos-left">
+                                        <div class="pos-sym-wrap"><span class="pos-sym">SOL</span><span
+                                                class="pos-dir short">Short</span></div>
+                                        <span class="pos-sub">0.5 SOL · 3× · Entry $147.00</span>
+                                    </div>
+                                    <div class="pos-right">
+                                        <span class="pos-pnl up">+$18.40</span>
+                                        <span class="pos-meta">+2.50%</span>
+                                        <span class="close-btn" id="close-sol"
+                                            onclick="closePosition('SOL','close-sol')">Close</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Nav -->
+                <div class="nav-bar">
+                    <div class="nav-item">
+                        <div class="nav-icon"><svg viewBox="0 0 18 18" fill="none" stroke="#ede8d5" stroke-width="1.4"
+                                stroke-linecap="round">
+                                <path d="M2 9L9 2L16 9" />
+                                <path d="M4 7.5V15H8V11H10V15H14V7.5" />
+                            </svg></div>
+                        <div class="nav-label">Feed</div>
+                    </div>
+                    <div class="nav-item">
+                        <div class="nav-icon"><svg viewBox="0 0 18 18" fill="none" stroke="#ede8d5" stroke-width="1.4"
+                                stroke-linecap="round">
+                                <circle cx="9" cy="9" r="7" />
+                                <path d="M9 5V9L12 11" />
+                            </svg></div>
+                        <div class="nav-label">Predict</div>
+                    </div>
+                    <div class="nav-item">
+                        <div class="nav-icon active"><svg viewBox="0 0 18 18" fill="none" stroke-width="1.4"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 13L7 8L10 11L14 5" stroke="#e8c547" />
+                                <path d="M12 5H14V7" stroke="#e8c547" />
+                            </svg></div>
+                        <div class="nav-dot"></div>
+                        <div class="nav-label active">Trade</div>
+                    </div>
+                    <div class="nav-item">
+                        <div class="nav-icon"><svg viewBox="0 0 18 18" fill="none" stroke="#ede8d5" stroke-width="1.4"
+                                stroke-linecap="round">
+                                <path d="M4 9H14M10 5L14 9L10 13" />
+                            </svg></div>
+                        <div class="nav-label">Swap</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div><!-- end screens-row -->
+
+    <!-- Annotations -->
+    <div class="annotations">
+        <div class="ann"><span class="ann-num">1</span><span class="ann-text"><strong>Live price feed.</strong> Prices
+                on the list auto-flash green/red on every simulated update tick. Click any row → skeleton loader →
+                detail.</span></div>
+        <div class="ann"><span class="ann-num">2</span><span class="ann-text"><strong>Skeleton loader.</strong> Asset
+                switch shows a 600ms skeleton shimmer before data populates — zero perceived latency.</span></div>
+        <div class="ann"><span class="ann-num">3</span><span class="ann-text"><strong>Button state machine.</strong>
+                Execute button cycles through: Locked → Connect Wallet (loading spinner) → Connected (unlocked) →
+                Confirm sheet → Placing (spinner) → Success ✓ / Error ✗ → reset. Try the bell icon too for the alert
+                toast.</span></div>
+        <div class="ann"><span class="ann-num">4</span><span class="ann-text"><strong>Order confirmation sheet.</strong>
+                Slides up from bottom with a blur backdrop — shows full order breakdown before committing. Cancel or
+                Place Order triggers the full loading + outcome flow.</span></div>
+        <div class="ann"><span class="ann-num">5</span><span class="ann-text"><strong>Close position flow.</strong> Each
+                position Close button shows inline loading state then success/error toast — no full screen
+                reload.</span></div>
+        <div class="ann"><span class="ann-num">6</span><span class="ann-text"><strong>Toast system.</strong> Stacked
+                amber/green/red toasts at top with auto-dismiss progress bar. All critical actions surface here.</span>
+        </div>
+    </div>
+
+    <script>
+        /* ── STATE ── */
+        let walletConnected = false;
+        let currentSide = 'long';
+        let currentSym = 'BTC';
+        let currentLev = 2;
+        let alertEnabled = false;
+
+        /* ── TOAST SYSTEM ── */
+        let toastId = 0;
+        function showToast(type, title, sub, duration) {
+            duration = duration || 3500;
+            const stack = document.getElementById('toast-stack');
+            const id = ++toastId;
+            const el = document.createElement('div');
+            el.className = 'toast ' + (type === 'success' ? 'success' : type === 'error' ? 'error' : 'pending');
+            el.innerHTML = `
+    <div class="toast-icon">${type === 'success' ? '✓' : type === 'error' ? '✗' : '·'}</div>
+    <div class="toast-body">
+      <div class="toast-title">${title}</div>
+      ${sub ? `<div class="toast-sub">${sub}</div>` : ''}
+    </div>
+    <div class="toast-progress" style="animation-duration:${duration}ms"></div>
+  `;
+            el.setAttribute('data-id', id);
+            stack.appendChild(el);
+            setTimeout(() => removeToast(id), duration);
+            return id;
+        }
+        function removeToast(id) {
+            const el = document.querySelector(`[data-id="${id}"]`);
+            if (!el) return;
+            el.classList.add('removing');
+            setTimeout(() => el.remove(), 250);
+        }
+
+        /* ── WALLET CONNECT ── */
+        function connectWallet() {
+            if (walletConnected) return;
+            const btn = document.getElementById('connect-wallet-btn');
+            const inner = document.getElementById('wallet-btn-inner');
+            inner.innerHTML = '<div class="spinner" style="width:10px;height:10px;border-width:1.5px"></div>';
+            const tid = showToast('pending', 'Connecting Wallet…', 'Awaiting Phantom approval', 4000);
+            setTimeout(() => {
+                removeToast(tid);
+                walletConnected = true;
+                inner.textContent = '✓ Connected';
+                btn.style.background = 'rgba(52,199,123,0.1)';
+                btn.style.borderColor = 'rgba(52,199,123,0.25)';
+                btn.style.color = 'var(--pos)';
+                // Update execute button
+                const execBtn = document.getElementById('execute-btn');
+                const execText = document.getElementById('exec-text');
+                const execLock = document.getElementById('exec-lock');
+                execBtn.className = 'execute-btn wallet-connected';
+                execLock.style.stroke = 'var(--a)';
+                execText.style.color = 'var(--a)';
+                execText.textContent = currentSide === 'long' ? `Place Long ${currentSym}` : `Place Short ${currentSym}`;
+                showToast('success', 'Wallet Connected', '7xKp···m3Qr via Phantom');
+                document.getElementById('exec-hint').textContent = '1-click order · market execution';
+            }, 1800);
+        }
+
+        /* ── EXECUTE BUTTON ── */
+        function handleExecute(e) {
+            addRipple(e);
+            if (!walletConnected) {
+                connectWallet();
+                return;
+            }
+            // Show confirm sheet
+            const side = currentSide;
+            const sym = currentSym;
+            document.getElementById('confirm-title').textContent = `Confirm ${side === 'long' ? 'Long' : 'Short'} · ${sym}`;
+            document.getElementById('cm-sym').textContent = sym + '-PERP';
+            const dirEl = document.getElementById('cm-dir');
+            dirEl.textContent = side === 'long' ? 'Long' : 'Short';
+            dirEl.style.color = side === 'long' ? 'var(--pos)' : 'var(--neg)';
+            document.getElementById('cm-lev').textContent = currentLev + '×';
+            const csBtn = document.getElementById('confirm-submit-btn');
+            csBtn.className = 'confirm-submit' + (side === 'short' ? ' short-mode' : '');
+            document.getElementById('confirm-btn-text').textContent = side === 'long' ? 'Place Long Order' : 'Place Short Order';
+            document.getElementById('confirm-overlay').style.display = 'flex';
+        }
+
+        function closeConfirm() {
+            document.getElementById('confirm-overlay').style.display = 'none';
+        }
+
+        function submitOrder() {
+            const btn = document.getElementById('confirm-submit-btn');
+            const btnText = document.getElementById('confirm-btn-text');
+            btn.style.pointerEvents = 'none';
+            btnText.innerHTML = '<div class="spinner" style="width:12px;height:12px;border-width:1.5px;border-top-color:var(--pos)"></div>';
+            const toastId = showToast('pending', 'Placing Order…', 'Broadcasting to Solana', 5000);
+            setTimeout(() => {
+                removeToast(toastId);
+                closeConfirm();
+                const success = Math.random() > 0.2;
+                if (success) {
+                    showToast('success', 'Order Filled', `${currentSide === 'long' ? 'Long' : 'Short'} ${currentSym} · Market · ${currentLev}×`);
+                    const execBtn = document.getElementById('execute-btn');
+                    execBtn.className = 'execute-btn success-state';
+                    document.getElementById('exec-text').textContent = '✓ Order Placed';
+                    document.getElementById('exec-lock').style.display = 'none';
+                    setTimeout(() => {
+                        execBtn.className = 'execute-btn wallet-connected';
+                        document.getElementById('exec-text').textContent = `Place ${currentSide === 'long' ? 'Long' : 'Short'} ${currentSym}`;
+                        document.getElementById('exec-lock').style.display = '';
+                        document.getElementById('exec-lock').style.stroke = 'var(--a)';
+                    }, 2500);
+                } else {
+                    showToast('error', 'Order Failed', 'Insufficient margin or slippage exceeded');
+                    const execBtn = document.getElementById('execute-btn');
+                    execBtn.className = 'execute-btn error-state';
+                    document.getElementById('exec-text').textContent = '✗ Order Failed';
+                    document.getElementById('exec-lock').style.display = 'none';
+                    setTimeout(() => {
+                        execBtn.className = 'execute-btn wallet-connected';
+                        document.getElementById('exec-text').textContent = `Place ${currentSide === 'long' ? 'Long' : 'Short'} ${currentSym}`;
+                        document.getElementById('exec-lock').style.display = '';
+                        document.getElementById('exec-lock').style.stroke = 'var(--a)';
+                    }, 2500);
+                }
+                btn.style.pointerEvents = '';
+                btnText.textContent = currentSide === 'long' ? 'Place Long Order' : 'Place Short Order';
+            }, 2200);
+        }
+
+        /* ── RIPPLE ── */
+        function addRipple(e) {
+            const btn = e.currentTarget;
+            const rect = btn.getBoundingClientRect();
+            const r = document.createElement('div');
+            r.className = 'ripple';
+            const size = Math.max(rect.width, rect.height);
+            r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px`;
+            btn.appendChild(r);
+            setTimeout(() => r.remove(), 500);
+        }
+
+        /* ── CLOSE POSITION ── */
+        function closePosition(sym, btnId) {
+            const btn = document.getElementById(btnId);
+            btn.className = 'close-btn loading-state';
+            btn.textContent = '···';
+            const tid = showToast('pending', `Closing ${sym}…`, 'Broadcasting close order', 4000);
+            setTimeout(() => {
+                removeToast(tid);
+                const success = Math.random() > 0.15;
+                if (success) {
+                    showToast('success', 'Position Closed', `${sym} · Settled to USDC`);
+                    btn.textContent = '✓ Closed';
+                    btn.style.color = 'var(--pos)';
+                    btn.style.borderColor = 'rgba(52,199,123,0.25)';
+                    btn.style.background = 'rgba(52,199,123,0.06)';
+                } else {
+                    showToast('error', 'Close Failed', `${sym} · Retry or use limit order`);
+                    btn.className = 'close-btn';
+                    btn.textContent = 'Retry';
+                }
+            }, 1600);
+        }
+
+        /* ── ALERT TOGGLE ── */
+        function toggleAlert() {
+            alertEnabled = !alertEnabled;
+            if (alertEnabled) {
+                showToast('success', 'Alert Set', `Monitoring ${currentSym} breakout levels`);
+            } else {
+                showToast('pending', 'Alert Removed', `${currentSym} alerts cleared`);
+            }
+        }
+
+        /* ── NAVIGATE LIST → DETAIL ── */
+        function goToDetail(sym, price, change, dir, mark, fund, oi, maxlev) {
+            currentSym = sym;
+            const overlay = document.getElementById('skeleton-overlay');
+            overlay.style.display = 'block';
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                document.getElementById('detail-sym').textContent = sym;
+                document.getElementById('detail-price').textContent = price;
+                const chEl = document.getElementById('detail-change');
+                const isUp = dir === 'up';
+                chEl.innerHTML = `<svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="${isUp ? 'M4.5 1L8 6H1L4.5 1Z' : 'M4.5 8L1 3H8L4.5 8Z'}" fill="${isUp ? 'var(--pos)' : 'var(--neg)'}"/></svg><span>${change.replace('▲', '').replace('▼', '').trim()}</span>`;
+                chEl.className = 'hero-change ' + dir;
+                document.getElementById('detail-mark').textContent = mark;
+                const fundEl = document.getElementById('detail-fund');
+                fundEl.textContent = fund;
+                fundEl.className = 'hstat-val ' + (fund.startsWith('+') ? 'up' : 'down');
+                document.getElementById('detail-oi').textContent = oi;
+                document.getElementById('detail-lev').textContent = maxlev;
+                // Flash the price
+                document.getElementById('detail-price').classList.add(isUp ? 'price-flash-pos' : 'price-flash-neg');
+                setTimeout(() => document.getElementById('detail-price').className = 'hero-price', 900);
+                // Update chart color
+                const lineColor = isUp ? '#e8c547' : '#f4584e';
+                const fillColor = isUp ? '#e8c547' : '#f4584e';
+                document.getElementById('detail-chart-line').style.stroke = lineColor;
+                // Update execute button text if connected
+                if (walletConnected) {
+                    document.getElementById('exec-text').textContent = `Place ${currentSide === 'long' ? 'Long' : 'Short'} ${sym}`;
+                }
+                showToast('info', sym + ' · ' + price, dir === 'up' ? `▲ ${change}  OI: ${oi}` : `▼ ${change}  OI: ${oi}`);
+            }, 600);
+        }
+
+        /* ── TAB SWITCHING ── */
+        function switchTab(tab) {
+            document.getElementById('btab-market').classList.toggle('active', tab === 'market');
+            document.getElementById('btab-profile').classList.toggle('active', tab === 'profile');
+            document.getElementById('panel-market').classList.toggle('active', tab === 'market');
+            document.getElementById('panel-profile').classList.toggle('active', tab === 'profile');
+            const ind = document.getElementById('tab-indicator');
+            ind.style.left = tab === 'market' ? '0' : '50%';
+            ind.style.width = '50%';
+        }
+
+        /* ── LONG/SHORT TOGGLE ── */
+        function toggleSide(side) {
+            currentSide = side;
+            document.getElementById('btn-long').classList.toggle('active', side === 'long');
+            document.getElementById('btn-short').classList.toggle('active', side === 'short');
+            if (walletConnected) {
+                document.getElementById('exec-text').textContent = `Place ${side === 'long' ? 'Long' : 'Short'} ${currentSym}`;
+                const execBtn = document.getElementById('execute-btn');
+                execBtn.style.borderColor = side === 'long' ? 'rgba(52,199,123,0.25)' : 'rgba(244,88,78,0.22)';
+                execBtn.style.background = side === 'long' ? 'rgba(52,199,123,0.07)' : 'rgba(244,88,78,0.07)';
+            }
+        }
+
+        /* ── TIMEFRAME ── */
+        function setTf(el, tf) {
+            document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            showToast('pending', tf + ' Chart', 'Loading candles…');
+        }
+
+        /* ── LEVERAGE SLIDER ── */
+        const levTrack = document.getElementById('lev-track');
+        const levFill = document.getElementById('lev-fill');
+        const levThumb = document.getElementById('lev-thumb');
+        const levValEl = document.getElementById('lev-val');
+        let isDragging = false;
+
+        function setLeveragePct(pct, animate) {
+            const c = Math.max(0.01, Math.min(1, pct));
+            currentLev = Math.round(c * 9) + 1;
+            const pctStr = (c * 100) + '%';
+            if (animate !== false) {
+                levFill.style.transition = 'width 0.15s';
+                levThumb.style.transition = 'left 0.15s';
+            } else {
+                levFill.style.transition = 'none';
+                levThumb.style.transition = 'none';
+            }
+            levFill.style.width = pctStr;
+            levThumb.style.left = pctStr;
+            levValEl.textContent = currentLev + '×';
+            document.getElementById('cm-lev').textContent = currentLev + '×';
+            document.getElementById('op-notional').textContent = '$' + (100 * currentLev);
+            // Update presets
+            document.querySelectorAll('.lev-preset').forEach(p => {
+                p.classList.toggle('active', parseInt(p.textContent) === currentLev);
+            });
+        }
+
+        function setLevPreset(el, lev) {
+            const pct = (lev - 1) / 9;
+            setLeveragePct(pct);
+        }
+
+        levTrack.addEventListener('click', e => {
+            const rect = levTrack.getBoundingClientRect();
+            setLeveragePct((e.clientX - rect.left) / rect.width);
+        });
+
+        levThumb.addEventListener('mousedown', e => {
+            isDragging = true;
+            levThumb.classList.add('dragging');
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            const rect = levTrack.getBoundingClientRect();
+            setLeveragePct((e.clientX - rect.left) / rect.width, false);
+        });
+        document.addEventListener('mouseup', () => {
+            if (isDragging) { isDragging = false; levThumb.classList.remove('dragging'); }
+        });
+
+        // Touch
+        levThumb.addEventListener('touchstart', e => { isDragging = true; levThumb.classList.add('dragging'); e.preventDefault(); }, { passive: false });
+        document.addEventListener('touchmove', e => {
+            if (!isDragging) return;
+            const rect = levTrack.getBoundingClientRect();
+            setLeveragePct((e.touches[0].clientX - rect.left) / rect.width, false);
+        }, { passive: true });
+        document.addEventListener('touchend', () => { isDragging = false; levThumb.classList.remove('dragging'); });
+
+        // Init leverage at 2x
+        setLeveragePct(1 / 9);
+
+        /* ── FUNDING COUNTDOWN ── */
+        let fundSecs = 8078;
+        function updateFunding() {
+            if (fundSecs <= 0) fundSecs = 28800;
+            fundSecs--;
+            const h = Math.floor(fundSecs / 3600);
+            const m = Math.floor((fundSecs % 3600) / 60);
+            const s = fundSecs % 60;
+            document.getElementById('funding-timer').textContent =
+                String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+        setInterval(updateFunding, 1000);
+
+        /* ── LIVE PRICE TICKS ── */
+        const priceEls = {
+            BTC: document.getElementById('list-price-BTC'),
+            ETH: document.getElementById('list-price-ETH'),
+            SOL: document.getElementById('list-price-SOL'),
+        };
+        const prices = { BTC: 67420, ETH: 3184, SOL: 143.20 };
+
+        function tickPrices() {
+            Object.keys(prices).forEach(sym => {
+                const drift = (Math.random() - 0.49) * (sym === 'BTC' ? 15 : sym === 'ETH' ? 2 : 0.3);
+                const prev = prices[sym];
+                prices[sym] = Math.max(prices[sym] * 0.998, prices[sym] + drift);
+                const el = priceEls[sym];
+                if (!el) return;
+                const isUp = prices[sym] >= prev;
+                const fmt = sym === 'BTC' ? '$' + prices[sym].toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                    : sym === 'ETH' ? '$' + prices[sym].toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                        : '$' + prices[sym].toFixed(2);
+                el.textContent = fmt;
+                el.classList.remove('price-flash-pos', 'price-flash-neg');
+                void el.offsetWidth;
+                el.classList.add(isUp ? 'price-flash-pos' : 'price-flash-neg');
+                // If this is the selected asset, update hero price too
+                if (sym === currentSym) {
+                    const hp = document.getElementById('detail-price');
+                    hp.textContent = fmt;
+                    hp.classList.remove('price-flash-pos', 'price-flash-neg');
+                    void hp.offsetWidth;
+                    hp.classList.add(isUp ? 'price-flash-pos' : 'price-flash-neg');
+                }
+            });
+        }
+        setInterval(tickPrices, 1800 + Math.random() * 800);
+    </script>
+</body>
+
+</html>

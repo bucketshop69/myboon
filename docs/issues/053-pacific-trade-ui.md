@@ -69,15 +69,37 @@ Follow `features/predict/` exactly:
 - `perps.types.ts` — display-ready merged type (`PerpsMarket = MarketInfo & PriceInfo fields`)
 - Screen components use `useEffect` + `useState` for loading/error/data states
 
+## Progress (as of 2026-04-03)
+
+- [x] TradeListScreen — asset strip + markets table + loading/error states
+- [x] MarketDetailScreen — hero price (WebSocket live) + Market/Profile tabs + ActionDock
+- [x] Market tab — order form UI (size, leverage slider, order preview) — **disabled, no submission**
+- [x] Profile tab — wallet card (equity/margin from `getAccountInfo`), open positions with PnL calc
+- [x] ActionDock — "Connect Wallet" when disconnected, Long/Short + param chips when connected
+- [x] perps.api.ts — direct Pacific REST fetch functions
+- [x] usePerpsWebSocket.ts — RN-native WebSocket hook (bypasses isomorphic-ws)
+- [x] Routes: `/trade` and `/trade/[symbol]`
+- [ ] **Wallet connect broken** — uses `@solana/wallet-adapter-react` (web-only), not functional in Expo
+- [ ] **Order submission** — UI exists but no signing/execution (#054 + #068)
+- [ ] **Trade history / PnL stats** — placeholder, Pacific has no `getTradeHistory()` endpoint
+- [ ] **Chart** — SVG sparkline stub, no candlestick chart
+
+## Phase 2 items (not in original issue, discovered during build)
+
+- Order submission requires Solana keypair signing via PacificClient (#068)
+- Builder code approval flow needed before orders include `MYBOON` (#054)
+- WalletProvider.tsx uses web-only SDK — must be fixed by #063 before any wallet features work
+- `isomorphic-ws` in PacificWebSocket doesn't work in RN — workaround already in place via usePerpsWebSocket.ts
+
 ## Acceptance
 
-- [ ] Trade list shows markets with price, 24h%, OI — data from `getPrices()` merged with `getMarkets()`
-- [ ] Asset strip shows top 6 trending markets (sorted by 24h% abs)
-- [ ] Tapping strip card or table row navigates to `/trade/[symbol]`
-- [ ] Market detail shows live price updates via WebSocket (patched for RN)
-- [ ] **Action dock** pinned above nav: "Connect Wallet" when disconnected; Short/Long buttons + param chips (Size · Lev · Liq) when connected
-- [ ] Profile tab shows wallet card (equity/margin from `getAccountInfo` when connected)
-- [ ] Profile tab shows open positions with PnL calc: `(mark - entry) × size × direction`
-- [ ] Profile stats section renders (mock data clearly marked, not fake-live)
-- [ ] All screens have loading skeleton + error states
-- [ ] Back navigation from detail → list works
+- [x] Trade list shows markets with price, 24h%, OI — data from `getPrices()` merged with `getMarkets()`
+- [x] Asset strip shows top 6 trending markets (sorted by 24h% abs)
+- [x] Tapping strip card or table row navigates to `/trade/[symbol]`
+- [x] Market detail shows live price updates via WebSocket (patched for RN)
+- [x] **Action dock** pinned above nav: "Connect Wallet" when disconnected; Short/Long buttons + param chips (Size · Lev · Liq) when connected
+- [x] Profile tab shows wallet card (equity/margin from `getAccountInfo` when connected)
+- [x] Profile tab shows open positions with PnL calc: `(mark - entry) × size × direction`
+- [x] Profile stats section renders (mock data clearly marked, not fake-live)
+- [x] All screens have loading skeleton + error states
+- [x] Back navigation from detail → list works

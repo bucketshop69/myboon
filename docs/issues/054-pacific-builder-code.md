@@ -18,8 +18,9 @@ Integrate Pacific Builder Code for fee sharing:
 
 ## Dependencies
 
-- Blocks: none
-- Builds on: #052 (API client — needs signing for approval)
+- **#063 done** — Wallet Connect (approval requires wallet signature)
+- **#068** — Order Execution (orders must include `builder_code` param)
+- Builds on: #052 (API client — `approveBuilderCode()` method exists)
 
 ## Files to Create
 

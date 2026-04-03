@@ -1,0 +1,2309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Predict — Mockup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --bg0: #080806;
+      --bg1: #0f0f0c;
+      --bg2: #141410;
+      --bg3: #1a1a15;
+      --bg4: #21211a;
+      --bg5: #292920;
+      --border0: rgba(255,255,255,0.04);
+      --border1: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.13);
+      --a:  #e8c547;
+      --a2: #c9a630;
+      --a3: rgba(232,197,71,0.12);
+      --a4: rgba(232,197,71,0.06);
+      --pos:  #34c77b;
+      --pos2: rgba(52,199,123,0.12);
+      --neg:  #f4584e;
+      --neg2: rgba(244,88,78,0.10);
+      --hi:  #ede8d5;
+      --mid: #6b6850;
+      --lo:  #35342a;
+      --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
+      --sans: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+
+    body {
+      background: var(--bg0);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px 80px;
+      font-family: var(--sans);
+      gap: 0;
+    }
+
+    /* ─── FLOW LABEL ─── */
+    .flow-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 3.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 1320px;
+    }
+    .flow-label::before, .flow-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border0);
+    }
+
+    /* ─── SCREENS ROW ─── */
+    .screens-row {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .screen-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .screen-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+
+    /* ─── PHONE SHELL ─── */
+    .phone {
+      width: 375px;
+      height: 812px;
+      background: var(--bg1);
+      border-radius: 50px;
+      border: 1px solid var(--border1);
+      box-shadow:
+        0 0 0 8px #0b0b09,
+        0 0 0 9px rgba(255,255,255,0.04),
+        0 60px 100px rgba(0,0,0,0.85);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 110px; height: 30px;
+      background: #0b0b09;
+      border-radius: 0 0 22px 22px;
+      z-index: 200;
+    }
+
+    /* ─── STATUS BAR ─── */
+    .status-bar {
+      height: 46px;
+      padding: 16px 22px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+      position: relative;
+    }
+    .st-time {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -0.2px;
+    }
+    .st-icons { display: flex; gap: 5px; align-items: center }
+    .signal-bar { width: 3px; background: var(--hi); border-radius: 1px }
+
+    /* ─── NAV BAR ─── */
+    .nav-bar {
+      height: 68px;
+      background: rgba(15,15,12,0.95);
+      border-top: 1px solid var(--border1);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-around;
+      padding-top: 11px;
+      flex-shrink: 0;
+      backdrop-filter: blur(16px);
+      position: relative;
+      z-index: 50;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      padding: 0 12px;
+      transition: opacity 0.15s;
+    }
+    .nav-icon {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0.3;
+    }
+    .nav-icon.active { opacity: 1 }
+    .nav-icon svg { width: 18px; height: 18px }
+    .nav-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .nav-label.active { color: var(--a2) }
+    .nav-dot {
+      width: 4px; height: 4px;
+      background: var(--a);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(232,197,71,0.6);
+      margin-top: -3px;
+      animation: dot-pulse 2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse {
+      0%,100% { box-shadow: 0 0 4px rgba(232,197,71,0.5) }
+      50%      { box-shadow: 0 0 12px rgba(232,197,71,0.9), 0 0 24px rgba(232,197,71,0.4) }
+    }
+
+    /* ─── SCROLLABLE CONTENT ─── */
+    .screen-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    .screen-scroll::-webkit-scrollbar { display: none }
+
+    /* ════════════════════════════════
+       SCREEN 1 — PREDICT LIST
+    ════════════════════════════════ */
+
+    .predict-header {
+      padding: 8px 16px 10px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .predict-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .live-chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(52,199,123,0.08);
+      border: 1px solid rgba(52,199,123,0.18);
+      border-radius: 4px;
+      padding: 3px 7px;
+    }
+    .live-dot {
+      width: 5px; height: 5px;
+      background: var(--pos);
+      border-radius: 50%;
+      animation: dot-pulse 1.5s ease-in-out infinite;
+    }
+    .live-text {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--pos);
+      letter-spacing: 1px;
+    }
+
+    /* ─── TRENDING STRIP ─── */
+    .trending-section {
+      padding: 12px 0 0;
+      border-bottom: 1px solid var(--border0);
+    }
+    .trending-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      padding: 0 16px 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trending-label svg { opacity: 0.5 }
+    .trending-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 0 16px 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .trending-scroll::-webkit-scrollbar { display: none }
+    .trend-card {
+      flex-shrink: 0;
+      width: 140px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .trend-card:hover {
+      border-color: var(--border2);
+      background: var(--bg3);
+    }
+    .trend-card.hot { border-color: rgba(232,197,71,0.2) }
+    .trend-q {
+      font-family: var(--sans);
+      font-size: 10px;
+      color: var(--hi);
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 8px;
+      min-height: 27px;
+    }
+    .trend-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .yes-pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--pos2);
+      color: var(--pos);
+    }
+    .yes-pill.low {
+      background: var(--neg2);
+      color: var(--neg);
+    }
+    .trend-vol {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+    }
+    .trend-mini-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--border0);
+    }
+    .trend-mini-fill {
+      height: 100%;
+      background: var(--pos);
+      border-radius: 1px;
+      transition: width 0.3s;
+    }
+    .trend-mini-fill.low { background: var(--neg) }
+
+    /* ─── FILTER CHIPS ─── */
+    .filter-row {
+      display: flex;
+      gap: 6px;
+      padding: 10px 16px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-row::-webkit-scrollbar { display: none }
+    .chip {
+      flex-shrink: 0;
+      font-family: var(--mono);
+      font-size: 8.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--border1);
+      color: var(--mid);
+      background: var(--bg2);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip.active {
+      background: var(--a3);
+      border-color: rgba(232,197,71,0.3);
+      color: var(--a);
+    }
+
+    /* ─── SECTION HEADER ─── */
+    .section-hdr {
+      padding: 10px 16px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-title {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .section-count {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+    }
+
+    /* ─── GEOPOLITICS CARD ─── */
+    .geo-card {
+      margin: 0 12px 8px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .geo-card:hover {
+      border-color: var(--border2);
+      background: var(--bg3);
+    }
+    .geo-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .geo-img {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--bg4);
+      flex-shrink: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .geo-question {
+      flex: 1;
+      font-family: var(--sans);
+      font-size: 11.5px;
+      color: var(--hi);
+      line-height: 1.4;
+    }
+    .geo-bar-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 7px;
+    }
+    .geo-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--bg4);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .geo-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      border-radius: 2px;
+    }
+    .yes-fill { background: var(--pos) }
+    .no-fill { background: var(--neg); right: 0; left: auto }
+    .geo-pcts {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pct-yes {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--pos);
+    }
+    .pct-no {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--neg);
+    }
+    .vol-badge {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      background: var(--bg3);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    /* ─── SPORT CARD ─── */
+    .sport-card {
+      margin: 0 12px 8px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .sport-card:hover {
+      border-color: var(--border2);
+      background: var(--bg3);
+    }
+    .sport-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .sport-league {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .sport-kick {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+    }
+    .sport-teams {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .team-name {
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--hi);
+      flex: 1;
+    }
+    .team-name.right { text-align: right }
+    .vs-badge {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--lo);
+      padding: 0 8px;
+    }
+    .sport-outcomes {
+      display: flex;
+      gap: 4px;
+    }
+    .outcome-pill {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg3);
+      border: 1px solid var(--border0);
+      border-radius: 7px;
+      padding: 6px 4px;
+    }
+    .outcome-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 3px;
+    }
+    .outcome-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .outcome-pct.win1 { color: var(--pos) }
+    .outcome-pct.draw { color: var(--a) }
+    .outcome-pct.win2 { color: var(--neg) }
+
+    /* ─── PROFILE HEADER BUTTON ─── */
+    .profile-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .profile-avatar-ring {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e8c547 0%, #34c77b 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-avatar-inner {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* ════════════════════════════════
+       SCREEN 4 — PROFILE
+    ════════════════════════════════ */
+    .profile-screen-scroll { flex: 1; overflow-y: auto; overflow-x: hidden }
+    .profile-screen-scroll::-webkit-scrollbar { display: none }
+
+    .profile-identity {
+      padding: 16px 16px 14px;
+      border-bottom: 1px solid var(--border0);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .profile-avatar-lg {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e8c547 0%, #34c77b 100%);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .profile-avatar-lg-inner {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .profile-identity-info { flex: 1 }
+    .profile-handle {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      margin-bottom: 3px;
+    }
+    .profile-addr-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .profile-addr {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--mid);
+      letter-spacing: 0.3px;
+    }
+    .copy-icon {
+      opacity: 0.35;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .profile-wc-chip {
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(52,199,123,0.10);
+      border: 1px solid rgba(52,199,123,0.22);
+      border-radius: 4px;
+      padding: 2px 7px;
+      margin-top: 5px;
+      width: fit-content;
+    }
+    .profile-wc-dot {
+      width: 4px; height: 4px;
+      background: var(--pos);
+      border-radius: 50%;
+      animation: dot-pulse 2s infinite;
+    }
+    .profile-wc-text {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      color: var(--pos);
+    }
+
+    .profile-equity-card {
+      margin: 12px 16px 0;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .profile-equity-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+      border-bottom: 1px solid var(--border0);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .pf-eq-item { display: flex; flex-direction: column; gap: 3px }
+    .pf-eq-item:nth-child(2) { text-align: center }
+    .pf-eq-item:last-child { text-align: right }
+    .pf-eq-label {
+      font-family: var(--mono);
+      font-size: 6.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .pf-eq-val {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .pf-eq-val.pos { color: var(--pos) }
+    .pf-eq-val.neg { color: var(--neg) }
+    .pf-assets-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+      margin-bottom: 6px;
+    }
+    .pf-asset-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .pf-asset-row + .pf-asset-row { border-top: 1px solid var(--border0) }
+    .pf-asset-name {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--mid);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pf-asset-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .pf-asset-amount {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .pf-asset-usd {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      text-align: right;
+    }
+
+    .profile-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin: 12px 16px 0;
+    }
+    .pf-stat-card {
+      background: var(--bg2);
+      border: 1px solid var(--border0);
+      border-radius: 8px;
+      padding: 9px 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .pf-stat-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .pf-stat-val {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--hi);
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+    }
+    .pf-stat-val.pos { color: var(--pos) }
+    .pf-stat-val.neg { color: var(--neg) }
+
+    .profile-chart-card {
+      margin: 12px 16px 0;
+      background: var(--bg2);
+      border: 1px solid var(--border0);
+      border-radius: 8px;
+      padding: 10px 12px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pf-chart-title {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .pf-chart-axis {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+    .pf-chart-tick {
+      font-family: var(--mono);
+      font-size: 6.5px;
+      color: var(--lo);
+    }
+
+    .profile-positions-section {
+      margin: 12px 16px 16px;
+    }
+    .pf-pos-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .pf-pos-title {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .pf-pos-count {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+    }
+    .pf-pos-row {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 9px 11px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+    .pf-side-badge {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .pf-side-badge.yes { background: var(--pos2); color: var(--pos) }
+    .pf-side-badge.no  { background: var(--neg2); color: var(--neg) }
+    .pf-pos-q {
+      flex: 1;
+      font-size: 9.5px;
+      color: var(--hi);
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .pf-pos-pnl {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .pf-pos-pnl.up { color: var(--pos) }
+    .pf-pos-pnl.dn { color: var(--neg) }
+    .pf-pos-entry {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+      flex-shrink: 0;
+    }
+
+    /* ════════════════════════════════
+       SCREEN 2 — BINARY MARKET DETAIL
+    ════════════════════════════════ */
+
+    .detail-header {
+      height: 44px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+    }
+    .back-btn {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .back-btn svg { width: 12px; height: 12px; color: var(--hi) }
+    .detail-header-title {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      flex: 1;
+    }
+    .poly-badge {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--a);
+      background: var(--a4);
+      border: 1px solid rgba(232,197,71,0.15);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+
+    .detail-scroll { flex: 1; overflow-y: auto; overflow-x: hidden }
+    .detail-scroll::-webkit-scrollbar { display: none }
+
+    .detail-body { padding: 14px 16px }
+
+    .detail-question {
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--hi);
+      line-height: 1.45;
+      margin-bottom: 4px;
+    }
+    .detail-end {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--mid);
+      margin-bottom: 14px;
+    }
+
+    /* ─── SPARKLINE SECTION ─── */
+    .spark-section {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .spark-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .spark-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .spark-yes {
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--pos);
+    }
+    .spark-change {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--pos);
+    }
+    .spark-change.neg { color: var(--neg) }
+    .spark-updated {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .refresh-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--pos);
+      animation: dot-pulse 2s ease-in-out infinite;
+    }
+    .spark-range-row {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .range-chip {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border1);
+      color: var(--mid);
+      background: var(--bg3);
+      cursor: pointer;
+    }
+    .range-chip.active {
+      background: var(--a4);
+      border-color: rgba(232,197,71,0.25);
+      color: var(--a);
+    }
+    .spark-chart {
+      width: 100%;
+      height: 64px;
+      position: relative;
+    }
+    .spark-chart svg {
+      width: 100%;
+      height: 100%;
+    }
+    .spark-skeleton {
+      width: 100%;
+      height: 64px;
+      background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 6px;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0 }
+      100% { background-position: -200% 0 }
+    }
+
+    /* ─── YES/NO BARS ─── */
+    .odds-section {
+      margin-bottom: 12px;
+    }
+    .odds-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .odds-bar-wrap {
+      flex: 1;
+    }
+    .odds-bar-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .odds-bar-label.yes { color: var(--pos) }
+    .odds-bar-label.no  { color: var(--neg) }
+    .odds-bar-track {
+      height: 28px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+    .odds-bar-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+    }
+    .odds-bar-fill.yes-bar { background: rgba(52,199,123,0.15) }
+    .odds-bar-fill.no-bar  { background: rgba(244,88,78,0.12) }
+    .odds-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .odds-pct.yes-c { color: var(--pos) }
+    .odds-pct.no-c  { color: var(--neg) }
+
+    /* ─── STATS ROW ─── */
+    .stats-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .stat-box {
+      flex: 1;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* ─── DESCRIPTION ─── */
+    .desc-box {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .desc-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 8px;
+    }
+    .desc-text {
+      font-size: 11.5px;
+      color: var(--mid);
+      line-height: 1.55;
+    }
+
+    /* ─── CTA ─── */
+    .trade-cta {
+      padding: 0 16px 12px;
+    }
+    .cta-btn {
+      width: 100%;
+      height: 44px;
+      border-radius: 11px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .cta-btn-text {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .cta-lock {
+      font-size: 12px;
+    }
+
+    /* ════════════════════════════════
+       SCREEN 3 — SPORT DETAIL
+    ════════════════════════════════ */
+
+    .match-hero {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border0);
+    }
+    .match-league-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .match-league-badge {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--a);
+      background: var(--a4);
+      border: 1px solid rgba(232,197,71,0.15);
+      border-radius: 4px;
+      padding: 2px 7px;
+    }
+    .match-kick-off {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+    }
+    .match-teams-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .match-team {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .match-team-badge {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--bg4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .match-team-name {
+      font-family: var(--sans);
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--hi);
+      text-align: center;
+    }
+    .match-vs {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--lo);
+      padding: 0 6px;
+    }
+    .match-vol-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .match-vol-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .match-vol-value {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--hi);
+    }
+
+    /* ─── OUTCOME TABS ─── */
+    .outcome-tabs {
+      display: flex;
+      padding: 10px 16px 0;
+      gap: 0;
+      border-bottom: 1px solid var(--border0);
+    }
+    .outcome-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 4px 8px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      position: relative;
+    }
+    .outcome-tab.active { border-bottom-color: var(--a) }
+    .outcome-tab-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .outcome-tab.active .outcome-tab-label { color: var(--a) }
+    .outcome-tab-pct {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .outcome-tab.active .outcome-tab-pct { color: var(--hi) }
+    .outcome-tab:not(.active) .outcome-tab-pct { color: var(--lo) }
+
+    /* ─── SPORT SPARK SECTION ─── */
+    .sport-spark {
+      padding: 12px 16px 0;
+    }
+    .sport-spark-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ─── THREE-WAY BARS ─── */
+    .threeway-section {
+      padding: 12px 16px 0;
+    }
+    .threeway-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 8px;
+    }
+    .threeway-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .tw-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .tw-name {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+    .tw-track {
+      height: 40px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+    }
+    .tw-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      border-radius: 6px 6px 0 0;
+    }
+    .tw-fill.team1 { background: rgba(52,199,123,0.2) }
+    .tw-fill.draw  { background: rgba(232,197,71,0.15) }
+    .tw-fill.team2 { background: rgba(244,88,78,0.15) }
+    .tw-pct {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      padding-bottom: 4px;
+    }
+    .tw-pct.c1 { color: var(--pos) }
+    .tw-pct.cd { color: var(--a) }
+    .tw-pct.c2 { color: var(--neg) }
+  </style>
+</head>
+<body>
+
+  <div class="flow-label">Predict — UI Mockup · Issue #061</div>
+
+  <div class="screens-row">
+
+    <!-- ═══════════════════════════════════
+         SCREEN 1: PREDICT LIST
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">01 · List Screen</div>
+      <div class="phone">
+        <!-- notch -->
+        <!-- status bar -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div class="predict-header">
+          <div class="profile-avatar-ring" style="width:28px;height:28px;cursor:pointer">
+            <div class="profile-avatar-inner">B</div>
+          </div>
+          <span class="predict-title" style="flex:1;text-align:center">Predict</span>
+          <div class="live-chip">
+            <div class="live-dot"></div>
+            <span class="live-text">LIVE</span>
+          </div>
+        </div>
+
+        <!-- trending strip -->
+        <div class="trending-section">
+          <div class="trending-label">
+            <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+            Trending
+          </div>
+          <div class="trending-scroll">
+
+            <!-- card 1 -->
+            <div class="trend-card hot">
+              <div class="trend-q">US forces enter Iran by April 30?</div>
+              <div class="trend-footer">
+                <span class="yes-pill">62%</span>
+                <span class="trend-vol">$14.3M</span>
+              </div>
+              <div class="trend-mini-bar"><div class="trend-mini-fill" style="width:62%"></div></div>
+            </div>
+
+            <!-- card 2 -->
+            <div class="trend-card">
+              <div class="trend-q">Iranian regime falls by April 30?</div>
+              <div class="trend-footer">
+                <span class="yes-pill low">31%</span>
+                <span class="trend-vol">$7.8M</span>
+              </div>
+              <div class="trend-mini-bar"><div class="trend-mini-fill low" style="width:31%"></div></div>
+            </div>
+
+            <!-- card 3 -->
+            <div class="trend-card">
+              <div class="trend-q">US–Iran ceasefire by April 15?</div>
+              <div class="trend-footer">
+                <span class="yes-pill low">44%</span>
+                <span class="trend-vol">$6.5M</span>
+              </div>
+              <div class="trend-mini-bar"><div class="trend-mini-fill low" style="width:44%"></div></div>
+            </div>
+
+            <!-- card 4 -->
+            <div class="trend-card">
+              <div class="trend-q">Will Trump visit China by April 30?</div>
+              <div class="trend-footer">
+                <span class="yes-pill">58%</span>
+                <span class="trend-vol">$2.9M</span>
+              </div>
+              <div class="trend-mini-bar"><div class="trend-mini-fill" style="width:58%"></div></div>
+            </div>
+
+            <!-- card 5 -->
+            <div class="trend-card">
+              <div class="trend-q">Netanyahu out by April 30?</div>
+              <div class="trend-footer">
+                <span class="yes-pill low">22%</span>
+                <span class="trend-vol">$3.4M</span>
+              </div>
+              <div class="trend-mini-bar"><div class="trend-mini-fill low" style="width:22%"></div></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- filter chips -->
+        <div class="filter-row">
+          <div class="chip active">All</div>
+          <div class="chip">Geopolitics</div>
+          <div class="chip">EPL</div>
+          <div class="chip">UCL</div>
+        </div>
+
+        <!-- scrollable list -->
+        <div class="screen-scroll">
+
+          <!-- geopolitics section -->
+          <div class="section-hdr">
+            <span class="section-title">Geopolitics</span>
+            <span class="section-count">8 markets</span>
+          </div>
+
+          <div class="geo-card">
+            <div class="geo-top">
+              <div class="geo-img">🇮🇷</div>
+              <div class="geo-question">US forces enter Iran by April 30?</div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:62%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">62%</span>
+              <span class="vol-badge">$14.3M wk</span>
+              <span class="pct-no">38%</span>
+            </div>
+          </div>
+
+          <div class="geo-card">
+            <div class="geo-top">
+              <div class="geo-img">🕊️</div>
+              <div class="geo-question">US–Iran ceasefire by April 15?</div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:44%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">44%</span>
+              <span class="vol-badge">$6.5M wk</span>
+              <span class="pct-no">56%</span>
+            </div>
+          </div>
+
+          <div class="geo-card">
+            <div class="geo-top">
+              <div class="geo-img">🇨🇳</div>
+              <div class="geo-question">Will China invade Taiwan before 2027?</div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:18%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">18%</span>
+              <span class="vol-badge">$2.1M wk</span>
+              <span class="pct-no">82%</span>
+            </div>
+          </div>
+
+          <!-- sports section -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">Champions League · UCL</span>
+            <span class="section-count">4 matches</span>
+          </div>
+
+          <div class="sport-card">
+            <div class="sport-meta">
+              <span class="sport-league">UCL · Semi-final</span>
+              <span class="sport-kick">Apr 7 · 21:00</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Real Madrid</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Bayern Munich</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Madrid</div>
+                <div class="outcome-pct win1">47%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">24%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Bayern</div>
+                <div class="outcome-pct win2">29%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sport-card">
+            <div class="sport-meta">
+              <span class="sport-league">UCL · Semi-final</span>
+              <span class="sport-kick">Apr 8 · 21:00</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Arsenal</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">PSG</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Arsenal</div>
+                <div class="outcome-pct win1">39%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">27%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">PSG</div>
+                <div class="outcome-pct win2">34%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">Premier League · EPL</span>
+            <span class="section-count">3 matches</span>
+          </div>
+
+          <div class="sport-card" style="margin-bottom:16px">
+            <div class="sport-meta">
+              <span class="sport-league">EPL · GW31</span>
+              <span class="sport-kick">Apr 5 · 17:30</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Man United</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Arsenal</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">United</div>
+                <div class="outcome-pct win2">22%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">29%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Arsenal</div>
+                <div class="outcome-pct win1">49%</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         SCREEN 2: BINARY MARKET DETAIL
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">02 · Market Detail (Geopolitics)</div>
+      <div class="phone">
+        <!-- notch -->
+        <!-- status bar -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- detail header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Market Detail</span>
+          <div class="poly-badge">Polymarket</div>
+        </div>
+
+        <!-- detail scroll -->
+        <div class="detail-scroll">
+          <div class="detail-body">
+
+            <div class="detail-question">US forces enter Iran by April 30?</div>
+            <div class="detail-end">Resolves Apr 30, 2026 · $14.3M weekly volume</div>
+
+            <!-- sparkline card -->
+            <div class="spark-section">
+              <div class="spark-top">
+                <div class="spark-price-row">
+                  <span class="spark-yes">62%</span>
+                  <span class="spark-change">▲ +3.1%</span>
+                </div>
+                <div class="spark-updated">
+                  <div class="refresh-dot"></div>
+                  updated 8s ago
+                </div>
+              </div>
+              <div class="spark-range-row">
+                <div class="range-chip active">1D</div>
+                <div class="range-chip">1W</div>
+              </div>
+              <!-- SVG sparkline — 1D hourly data (simulated) -->
+              <div class="spark-chart">
+                <svg viewBox="0 0 343 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="sg1" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2"/>
+                      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <!-- area fill -->
+                  <path d="M0 42 L14 40 L28 44 L43 41 L57 38 L71 36 L85 39 L100 35 L114 30 L128 32 L142 28 L157 25 L171 27 L185 22 L200 20 L214 23 L228 19 L242 21 L257 17 L271 14 L285 12 L300 10 L314 8 L328 9 L343 7 L343 64 L0 64 Z"
+                    fill="url(#sg1)"/>
+                  <!-- line -->
+                  <path d="M0 42 L14 40 L28 44 L43 41 L57 38 L71 36 L85 39 L100 35 L114 30 L128 32 L142 28 L157 25 L171 27 L185 22 L200 20 L214 23 L228 19 L242 21 L257 17 L271 14 L285 12 L300 10 L314 8 L328 9 L343 7"
+                    stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+                  <!-- current price dot -->
+                  <circle cx="343" cy="7" r="3" fill="#34c77b"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- YES/NO bars -->
+            <div class="odds-section">
+              <div class="odds-row">
+                <div class="odds-bar-wrap">
+                  <div class="odds-bar-label yes">
+                    <span>YES</span>
+                    <span>$0.62</span>
+                  </div>
+                  <div class="odds-bar-track">
+                    <div class="odds-bar-fill yes-bar" style="width:62%">
+                      <span class="odds-pct yes-c">62%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="odds-bar-wrap">
+                  <div class="odds-bar-label no">
+                    <span>NO</span>
+                    <span>$0.38</span>
+                  </div>
+                  <div class="odds-bar-track">
+                    <div class="odds-bar-fill no-bar" style="width:38%">
+                      <span class="odds-pct no-c">38%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- stats -->
+            <div class="stats-row">
+              <div class="stat-box">
+                <div class="stat-label">Vol (7d)</div>
+                <div class="stat-value">$14.3M</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Vol (Total)</div>
+                <div class="stat-value">$48.1M</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Closes</div>
+                <div class="stat-value">Apr 30</div>
+              </div>
+            </div>
+
+            <!-- description -->
+            <div class="desc-box">
+              <div class="desc-label">Resolution</div>
+              <div class="desc-text">Resolves YES if US ground, air, or naval forces conduct confirmed offensive operations inside Iranian territory before April 30, 2026 UTC. Strikes on proxies do not count. Resolution source: Reuters, AP.</div>
+            </div>
+
+          </div>
+
+          <!-- CTA -->
+          <div class="trade-cta">
+            <div class="cta-btn">
+              <span class="cta-lock">🔒</span>
+              <span class="cta-btn-text">Connect Wallet to Trade</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         SCREEN 3: SPORT MATCH DETAIL
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">03 · Market Detail (Sport)</div>
+      <div class="phone">
+        <!-- notch -->
+        <!-- status bar -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- detail header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Match Detail</span>
+          <div class="poly-badge">Polymarket</div>
+        </div>
+
+        <!-- sport detail scroll -->
+        <div class="detail-scroll">
+
+          <!-- match hero -->
+          <div class="match-hero">
+            <div class="match-league-row">
+              <div class="match-league-badge">UCL · Semi-final</div>
+              <div class="match-kick-off">Apr 7, 2026 · 21:00 CET</div>
+            </div>
+            <div class="match-teams-row">
+              <div class="match-team">
+                <div class="match-team-badge">⚪</div>
+                <div class="match-team-name">Real Madrid</div>
+              </div>
+              <div class="match-vs">vs</div>
+              <div class="match-team">
+                <div class="match-team-badge">🔴</div>
+                <div class="match-team-name">Bayern Munich</div>
+              </div>
+            </div>
+            <div class="match-vol-row">
+              <span class="match-vol-label">Vol 7d</span>
+              <span class="match-vol-value">$4.1M</span>
+              <span style="color:var(--lo);font-size:8px;margin:0 4px">·</span>
+              <span class="match-vol-label">Updated</span>
+              <span class="match-vol-value" style="display:flex;align-items:center;gap:3px">
+                <span style="width:4px;height:4px;background:var(--pos);border-radius:50%;display:inline-block"></span>
+                12s ago
+              </span>
+            </div>
+          </div>
+
+          <!-- outcome tabs -->
+          <div class="outcome-tabs">
+            <div class="outcome-tab active">
+              <div class="outcome-tab-label">Real Madrid</div>
+              <div class="outcome-tab-pct">47%</div>
+            </div>
+            <div class="outcome-tab">
+              <div class="outcome-tab-label">Draw</div>
+              <div class="outcome-tab-pct">24%</div>
+            </div>
+            <div class="outcome-tab">
+              <div class="outcome-tab-label">Bayern</div>
+              <div class="outcome-tab-pct">29%</div>
+            </div>
+          </div>
+
+          <!-- sport sparkline -->
+          <div class="sport-spark">
+            <div class="sport-spark-label">
+              <span>Real Madrid win — price history</span>
+              <div style="display:flex;gap:4px">
+                <div class="range-chip active" style="padding:2px 6px;font-size:7px">1D</div>
+                <div class="range-chip" style="padding:2px 6px;font-size:7px">1W</div>
+              </div>
+            </div>
+            <div class="spark-section" style="padding:10px;margin-bottom:10px">
+              <div class="spark-chart">
+                <svg viewBox="0 0 343 56" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#34c77b" stop-opacity="0.18"/>
+                      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M0 35 L17 33 L34 37 L51 34 L68 32 L85 34 L102 30 L120 28 L137 31 L154 26 L171 28 L188 24 L205 22 L222 25 L240 20 L257 18 L274 16 L291 19 L308 15 L325 13 L343 11 L343 56 L0 56 Z"
+                    fill="url(#sg2)"/>
+                  <path d="M0 35 L17 33 L34 37 L51 34 L68 32 L85 34 L102 30 L120 28 L137 31 L154 26 L171 28 L188 24 L205 22 L222 25 L240 20 L257 18 L274 16 L291 19 L308 15 L325 13 L343 11"
+                    stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+                  <circle cx="343" cy="11" r="3" fill="#34c77b"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- three-way bars -->
+          <div class="threeway-section">
+            <div class="threeway-label">Outcome Odds</div>
+            <div class="threeway-row">
+              <div class="tw-item">
+                <div class="tw-name">Madrid Win</div>
+                <div class="tw-track" style="height:52px">
+                  <div class="tw-fill team1" style="height:47%"></div>
+                  <div class="tw-pct c1">47%</div>
+                </div>
+              </div>
+              <div class="tw-item">
+                <div class="tw-name">Draw</div>
+                <div class="tw-track" style="height:52px">
+                  <div class="tw-fill draw" style="height:24%"></div>
+                  <div class="tw-pct cd">24%</div>
+                </div>
+              </div>
+              <div class="tw-item">
+                <div class="tw-name">Bayern Win</div>
+                <div class="tw-track" style="height:52px">
+                  <div class="tw-fill team2" style="height:29%"></div>
+                  <div class="tw-pct c2">29%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- stats -->
+          <div style="padding: 0 16px 10px">
+            <div class="stats-row">
+              <div class="stat-box">
+                <div class="stat-label">Vol (7d)</div>
+                <div class="stat-value">$4.1M</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Kick-off</div>
+                <div class="stat-value">Apr 7</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">Markets</div>
+                <div class="stat-value">3</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <div class="trade-cta" style="padding: 0 16px 16px">
+            <div class="cta-btn">
+              <span class="cta-lock">🔒</span>
+              <span class="cta-btn-text">Connect Wallet to Trade</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         SCREEN 4: PROFILE
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">04 · Profile Screen</div>
+      <div class="phone">
+        <!-- notch -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Profile</span>
+          <!-- settings icon -->
+          <div class="back-btn" style="background:transparent;border-color:transparent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6b6850" stroke-width="1.5" width="16" height="16">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- profile scroll -->
+        <div class="profile-screen-scroll">
+
+          <!-- identity -->
+          <div class="profile-identity">
+            <div class="profile-avatar-lg">
+              <div class="profile-avatar-lg-inner">B</div>
+            </div>
+            <div class="profile-identity-info">
+              <div class="profile-handle">bucketshop69</div>
+              <div class="profile-addr-row">
+                <span class="profile-addr">7xKp···m3Qr</span>
+                <svg class="copy-icon" width="10" height="10" viewBox="0 0 12 12" fill="none">
+                  <rect x="1" y="3" width="7" height="8" rx="1" stroke="#ede8d5" stroke-width="1.1"/>
+                  <path d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9" stroke="#ede8d5" stroke-width="1.1"/>
+                </svg>
+              </div>
+              <div class="profile-wc-chip">
+                <div class="profile-wc-dot"></div>
+                <span class="profile-wc-text">Connected</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- equity card -->
+          <div class="profile-equity-card">
+            <div class="profile-equity-row">
+              <div class="pf-eq-item">
+                <span class="pf-eq-label">Portfolio</span>
+                <span class="pf-eq-val">$1,840</span>
+              </div>
+              <div class="pf-eq-item">
+                <span class="pf-eq-label">Unrealised</span>
+                <span class="pf-eq-val pos">+$84.70</span>
+              </div>
+              <div class="pf-eq-item">
+                <span class="pf-eq-label">Cash</span>
+                <span class="pf-eq-val">$1,192</span>
+              </div>
+            </div>
+            <!-- assets -->
+            <div class="pf-assets-label">Holdings</div>
+            <div class="pf-asset-row">
+              <div class="pf-asset-name">
+                <div class="pf-asset-dot" style="background:#9945ff"></div>
+                USDC (Solana)
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <div class="pf-asset-amount">1,192.00</div>
+                <div class="pf-asset-usd">$1,192.00</div>
+              </div>
+            </div>
+            <div class="pf-asset-row">
+              <div class="pf-asset-name">
+                <div class="pf-asset-dot" style="background:#34c77b"></div>
+                Open Positions
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <div class="pf-asset-amount">4 markets</div>
+                <div class="pf-asset-usd">$648.00 cost</div>
+              </div>
+            </div>
+            <div class="pf-asset-row">
+              <div class="pf-asset-name">
+                <div class="pf-asset-dot" style="background:#e8c547"></div>
+                SOL
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <div class="pf-asset-amount">0.41</div>
+                <div class="pf-asset-usd">~$68.04</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- stats grid -->
+          <div class="profile-stats-grid">
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Net PnL</span>
+              <span class="pf-stat-val pos">+$142</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Realised PnL</span>
+              <span class="pf-stat-val pos">+$57</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Win Rate</span>
+              <span class="pf-stat-val pos">63%</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Markets traded</span>
+              <span class="pf-stat-val">17</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Avg winner</span>
+              <span class="pf-stat-val pos">+$28</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Avg loser</span>
+              <span class="pf-stat-val neg">−$9</span>
+            </div>
+          </div>
+
+          <!-- cumulative P&L chart -->
+          <div class="profile-chart-card">
+            <span class="pf-chart-title">Cumulative P&amp;L</span>
+            <svg width="100%" height="72" viewBox="0 0 343 72" fill="none" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="cpnlG" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2"/>
+                  <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="cpnlGN" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#f4584e" stop-opacity="0"/>
+                  <stop offset="100%" stop-color="#f4584e" stop-opacity="0.18"/>
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="45" x2="343" y2="45" stroke="#1a1a15" stroke-width="0.8"/>
+              <!-- loss zone (early) -->
+              <path d="M0,45 L30,47 L60,50 L90,58 L110,65 L130,62 L150,55 L170,58 L185,60 L200,55 L210,50 L220,45 L220,72 L0,72 Z"
+                fill="url(#cpnlGN)" opacity="0.6"/>
+              <!-- gain zone (recovery + growth) -->
+              <path d="M210,45 L230,40 L255,34 L275,28 L300,20 L320,14 L343,8 L343,45 L210,45 Z"
+                fill="url(#cpnlG)"/>
+              <!-- line -->
+              <path d="M0,45 L30,47 L60,50 L90,58 L110,65 L130,62 L150,55 L170,58 L185,60 L200,55 L210,50 L220,45 L230,40 L255,34 L275,28 L300,20 L320,14 L343,8"
+                stroke="#34c77b" stroke-width="1.4" fill="none" stroke-linejoin="round"/>
+              <circle cx="343" cy="8" r="2.5" fill="#34c77b"/>
+            </svg>
+            <div class="pf-chart-axis">
+              <span class="pf-chart-tick">Jan</span>
+              <span class="pf-chart-tick">Feb</span>
+              <span class="pf-chart-tick">Mar</span>
+              <span class="pf-chart-tick">Apr</span>
+            </div>
+          </div>
+
+          <!-- active positions list -->
+          <div class="profile-positions-section">
+            <div class="pf-pos-header">
+              <span class="pf-pos-title">Open Positions</span>
+              <span class="pf-pos-count">4 active</span>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge yes">YES</span>
+              <span class="pf-pos-q">US forces enter Iran by Apr 30?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl up">+$48.40</span>
+                <span class="pf-pos-entry">0.41→0.62</span>
+              </div>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge no">NO</span>
+              <span class="pf-pos-q">China invades Taiwan before 2027?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl up">+$22.10</span>
+                <span class="pf-pos-entry">0.76→0.82</span>
+              </div>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge yes">YES</span>
+              <span class="pf-pos-q">Real Madrid win vs Bayern Apr 7?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl up">+$24.10</span>
+                <span class="pf-pos-entry">0.38→0.47</span>
+              </div>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge no">NO</span>
+              <span class="pf-pos-q">US–Iran ceasefire by April 7?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl dn">−$9.80</span>
+                <span class="pf-pos-entry">0.62→0.56</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-label">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── ANNOTATIONS ─── -->
+  <div style="margin-top:40px;width:100%;max-width:1320px">
+    <div class="flow-label">Annotations · Issue #061</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-family:var(--mono);font-size:10px;color:var(--mid)">
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 01 — List</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Header: avatar ring (left) → title → LIVE chip</li>
+          <li>· Tap avatar → navigates to Profile screen (04)</li>
+          <li>· Trending strip — horizontal scroll, top 10 by volume</li>
+          <li>· Filter chips: All / Geopolitics / EPL / UCL</li>
+          <li>· Geo cards: emoji + question + YES/NO bar + vol</li>
+          <li>· Sport cards: league + kick-off + 3-way outcome pills</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 02 — Binary Detail</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Question + end date + volume in sub-header</li>
+          <li>· Sparkline card: current yes%, Δ change, "updated Xs ago"</li>
+          <li>· 1D / 1W range toggle (switches hourly → daily candles)</li>
+          <li>· SVG path chart — area fill + line stroke + dot at tip</li>
+          <li>· YES/NO bars side-by-side with token price ($0.62)</li>
+          <li>· Stats row: vol 7d, vol total, close date</li>
+          <li>· Resolution text + locked "Connect Wallet" CTA</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 03 — Sport Detail</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Match hero: league badge + kick-off + team emblems</li>
+          <li>· "Updated Xs ago" with live dot in hero row</li>
+          <li>· Outcome tabs: tap to switch sparkline to that token</li>
+          <li>· Sparkline shows selected outcome's price history</li>
+          <li>· Three-way bar chart: column height = probability</li>
+          <li>· Stats: 7d vol, kick-off date, market count</li>
+          <li>· Same locked CTA pattern as binary detail</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 04 — Profile</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Identity: avatar ring + handle + truncated address + copy</li>
+          <li>· Connected wallet chip with live dot</li>
+          <li>· Portfolio card: total value, unrealised P&amp;L, cash</li>
+          <li>· Holdings: USDC, open positions cost basis, SOL</li>
+          <li>· Stats grid 2×3: net PnL, realised, win rate, markets, avg winner/loser</li>
+          <li>· Cumulative P&amp;L SVG — starts negative, recovers and grows</li>
+          <li>· Open Positions list — side badge, question, P&amp;L, entry→current</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>
