@@ -3,17 +3,17 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Wallet } from 'lucide-react-native';
 import { WalletModal } from './WalletModal';
 import { WalletDetailsModal } from './WalletDetailsModal';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/hooks/useWallet';
 
 /**
  * Wallet button for the page.
  * - Disconnected: Shows wallet icon, opens connection modal on click
  * - Connected: Shows wallet icon + truncated address, opens details modal on click
  *
- * Supports both Solana Wallet Adapter and Lazorkit connections.
+ * Uses MWA via useWallet() hook — works on Seeker and any MWA-compatible Android wallet.
  */
 export function WalletButton() {
-  const { publicKey, wallet, connecting, connected } = useWallet();
+  const { connected, shortAddress } = useWallet();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalKey, setModalKey] = useState(0);
@@ -29,27 +29,18 @@ export function WalletButton() {
   const closeDetails = () => setIsDetailsOpen(false);
 
   // Connected state - clicking opens details modal
-  if (connected && publicKey) {
-    const displayAddress = publicKey.toBase58();
-    const truncatedAddress = `${displayAddress.slice(0, 4)}...${displayAddress.slice(-4)}`;
-
+  if (connected && shortAddress) {
     return (
       <>
         <View style={styles.connectedContainer}>
-          <TouchableOpacity
-            onPress={openDetails}
-            style={styles.connectedButton}
-          >
+          <TouchableOpacity onPress={openDetails} style={styles.connectedButton}>
             <Wallet size={18} color="#00ffff" />
-            <Text style={styles.addressText}>{truncatedAddress}</Text>
+            <Text style={styles.addressText}>{shortAddress}</Text>
           </TouchableOpacity>
           <Text style={styles.helperText}>Click to Transfer or Swap</Text>
         </View>
 
-        <WalletDetailsModal
-          isOpen={isDetailsOpen}
-          onClose={closeDetails}
-        />
+        <WalletDetailsModal isOpen={isDetailsOpen} onClose={closeDetails} />
       </>
     );
   }
@@ -57,19 +48,11 @@ export function WalletButton() {
   // Disconnected state
   return (
     <>
-      <TouchableOpacity
-        onPress={openModal}
-        disabled={connecting}
-        style={[styles.connectButton, connecting && styles.disabledButton]}
-      >
+      <TouchableOpacity onPress={openModal} style={styles.connectButton}>
         <Text style={styles.connectButtonText}>Connect Wallet</Text>
       </TouchableOpacity>
 
-      <WalletModal
-        key={modalKey}
-        isOpen={isModalOpen}
-        onClose={closeModal}
-      />
+      <WalletModal key={modalKey} isOpen={isModalOpen} onClose={closeModal} />
     </>
   );
 }
@@ -104,9 +87,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#ffffff',
     borderRadius: 12,
-  },
-  disabledButton: {
-    opacity: 0.5,
   },
   connectButtonText: {
     fontFamily: 'monospace',

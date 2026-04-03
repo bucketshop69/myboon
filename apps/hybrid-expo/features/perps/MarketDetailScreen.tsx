@@ -1,5 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '@/hooks/useWallet';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
@@ -42,7 +42,7 @@ interface MarketDetailScreenProps {
 
 export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const router = useRouter();
-  const { connected, publicKey } = useWallet();
+  const { connected, address } = useWallet();
 
   // Market data
   const [market, setMarket] = useState<PerpsMarket | null>(null);
@@ -114,13 +114,13 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   }, [symbol]);
 
   useEffect(() => {
-    if (connected && publicKey) {
-      void loadProfile(publicKey.toString());
+    if (connected && address) {
+      void loadProfile(address);
     } else {
       setPositions([]);
       setAccount(null);
     }
-  }, [connected, publicKey]);
+  }, [connected, address]);
 
   const change24h = market?.change24h ?? 0;
   const isUp = change24h >= 0;

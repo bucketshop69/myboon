@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { semantic, tokens } from '@/theme';
+import { useWallet } from '@/hooks/useWallet';
 
 interface WalletModalProps {
   isOpen: boolean;
@@ -7,26 +9,45 @@ interface WalletModalProps {
 }
 
 export function WalletModal({ isOpen, onClose }: WalletModalProps) {
-  // TODO: Implement wallet connection options
+  const { connected, shortAddress, connect, disconnect } = useWallet();
+
+  async function handleConnect() {
+    await connect();
+    onClose();
+  }
+
+  async function handleDisconnect() {
+    await disconnect();
+    onClose();
+  }
+
   return (
-    <Modal visible={isOpen} transparent={true} onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Connect Wallet</Text>
+    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <Text style={styles.title}>
+            {connected ? 'Wallet Connected' : 'Connect Wallet'}
+          </Text>
 
-          {/* Placeholder for wallet options */}
-          <TouchableOpacity style={styles.walletOption}>
-            <Text>Phantom</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.walletOption}>
-            <Text>Solflare</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.walletOption}>
-            <Text>Lazorkit</Text>
-          </TouchableOpacity>
+          {connected && shortAddress ? (
+            <>
+              <View style={styles.addressRow}>
+                <Text style={styles.addressLabel}>Address</Text>
+                <Text style={styles.addressValue}>{shortAddress}</Text>
+              </View>
 
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>Close</Text>
+              <TouchableOpacity style={styles.disconnectButton} onPress={handleDisconnect}>
+                <Text style={styles.disconnectButtonText}>Disconnect</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity style={styles.connectButton} onPress={handleConnect}>
+              <Text style={styles.connectButtonText}>Connect Wallet</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -35,39 +56,86 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: semantic.background.surface,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderColor: semantic.border.muted,
+    padding: tokens.spacing.xl,
+    paddingBottom: 40,
+    gap: tokens.spacing.md,
+  },
+  title: {
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'JetBrainsMono_700Bold',
+    color: semantic.text.primary,
+    letterSpacing: tokens.letterSpacing.mono,
+    marginBottom: tokens.spacing.sm,
+    textAlign: 'center',
+  },
+  addressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: semantic.background.lift,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
+  },
+  addressLabel: {
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.dim,
+    fontFamily: 'JetBrainsMono_400Regular',
+    letterSpacing: tokens.letterSpacing.mono,
+  },
+  addressValue: {
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.accent,
+    fontFamily: 'JetBrainsMono_700Bold',
+    letterSpacing: tokens.letterSpacing.monoWide,
+  },
+  connectButton: {
+    backgroundColor: tokens.colors.primary,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.spacing.lg,
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: '#1f1f1f',
-    borderRadius: 12,
-    padding: 20,
-    minWidth: 300,
+  connectButtonText: {
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'JetBrainsMono_700Bold',
+    color: tokens.colors.backgroundDark,
+    letterSpacing: tokens.letterSpacing.mono,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-    color: '#ffffff',
+  disconnectButton: {
+    backgroundColor: 'transparent',
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.vermillion,
+    paddingVertical: tokens.spacing.lg,
+    alignItems: 'center',
   },
-  walletOption: {
-    backgroundColor: '#333',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+  disconnectButtonText: {
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'JetBrainsMono_700Bold',
+    color: tokens.colors.vermillion,
+    letterSpacing: tokens.letterSpacing.mono,
   },
-  closeButton: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: '#555',
-    borderRadius: 8,
+  cancelButton: {
+    paddingVertical: tokens.spacing.md,
+    alignItems: 'center',
   },
-  closeButtonText: {
-    textAlign: 'center',
-    color: '#fff',
+  cancelButtonText: {
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.dim,
+    fontFamily: 'JetBrainsMono_400Regular',
+    letterSpacing: tokens.letterSpacing.mono,
   },
 });
