@@ -49,13 +49,7 @@ packages/brain/reports/narratives.csv
 docs/scripts/
 docs/x_posts_snapshot.json
 
-# Lockfiles
-pnpm-lock.yaml
-package-lock.json
-packages/*/package-lock.json
-
-# Lockfiles
-pnpm-lock.yaml
+# Lockfiles (keep pnpm-lock.yaml committed — needed for EAS builds)
 package-lock.json
 packages/*/package-lock.json
 .claude/skills/
