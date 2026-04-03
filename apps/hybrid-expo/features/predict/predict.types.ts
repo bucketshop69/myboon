@@ -1,6 +1,34 @@
 export type PredictSport = 'epl' | 'ucl';
 export type PredictFilter = 'All' | 'Geopolitics' | 'EPL' | 'UCL';
 
+export interface TrendingMarket {
+  slug: string;
+  question: string;
+  category: string;
+  yesPrice: number | null;
+  noPrice: number | null;
+  volume24h: number | null;
+  endDate: string | null;
+  active: boolean | null;
+  image: string | null;
+}
+
+export interface PricePoint {
+  t: number; // unix timestamp seconds
+  p: number; // price 0–1
+}
+
+export interface PriceHistory {
+  history: PricePoint[];
+}
+
+export interface LivePrice {
+  slug: string;
+  yesPrice: number | null;
+  noPrice: number | null;
+  fetchedAt: string;
+}
+
 export interface GeopoliticsMarket {
   slug: string;
   question: string;

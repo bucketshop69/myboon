@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Polymarket-Prediction_Markets-green?style=for-the-badge" alt="Polymarket" />
 </p>
 
-> **Markets don't move on facts. They move on narratives. We built the machine that reads them.**
+> **Markets don't move on data. They move on narratives. We built the machine that reads them before you do.**
 
 myboon is a mobile-first narrative intelligence app for on-chain traders and prediction market participants. A multi-agent brain watches prediction markets and on-chain signals 24/7, clusters them into narratives, stress-tests them, and surfaces only what matters — directly to your feed.
 

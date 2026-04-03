@@ -13,7 +13,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Connect Wallet</Text>
-          
+
           {/* Placeholder for wallet options */}
           <TouchableOpacity style={styles.walletOption}>
             <Text>Phantom</Text>
@@ -24,7 +24,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
           <TouchableOpacity style={styles.walletOption}>
             <Text>Lazorkit</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Text style={styles.closeButtonText}>Close</Text>
           </TouchableOpacity>

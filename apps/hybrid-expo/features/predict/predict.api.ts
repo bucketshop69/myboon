@@ -2,11 +2,15 @@ import { Platform } from 'react-native';
 import type {
   GeopoliticsMarket,
   GeopoliticsMarketDetail,
+  LivePrice,
   PredictSport,
+  PriceHistory,
+  PricePoint,
   SportMarket,
   SportMarketDetail,
   SportOutcome,
   SportOutcomeDetail,
+  TrendingMarket,
 } from '@/features/predict/predict.types';
 
 function resolveApiBaseUrl(): string {
@@ -237,4 +241,53 @@ export async function fetchSportMarketDetail(sport: PredictSport, slug: string):
   const detail = mapSportMarketDetail(payload);
   if (!detail) throw new Error('Invalid sport detail response');
   return detail;
+}
+
+function mapTrendingMarket(row: unknown): TrendingMarket | null {
+  if (!row || typeof row !== 'object') return null;
+  const m = row as Record<string, unknown>;
+  const slug = typeof m.slug === 'string' ? m.slug : null;
+  const question = typeof m.question === 'string' ? m.question : null;
+  if (!slug || !question) return null;
+  return {
+    slug,
+    question,
+    category: typeof m.category === 'string' ? m.category : 'geopolitics',
+    yesPrice: toNumber(m.yesPrice),
+    noPrice: toNumber(m.noPrice),
+    volume24h: toNumber(m.volume24h),
+    endDate: typeof m.endDate === 'string' ? m.endDate : null,
+    active: typeof m.active === 'boolean' ? m.active : null,
+    image: typeof m.image === 'string' ? m.image : null,
+  };
+}
+
+export async function fetchTrendingMarkets(limit = 10): Promise<TrendingMarket[]> {
+  const payload = await getJson(`/predict/trending?limit=${limit}`);
+  if (!Array.isArray(payload)) throw new Error('Invalid trending response');
+  return payload.map(mapTrendingMarket).filter((m): m is TrendingMarket => m !== null);
+}
+
+export async function fetchMarketPrice(slug: string): Promise<LivePrice> {
+  const payload = await getJson(`/predict/markets/${encodeURIComponent(slug)}/price`);
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid price response');
+  const p = payload as Record<string, unknown>;
+  return {
+    slug: typeof p.slug === 'string' ? p.slug : slug,
+    yesPrice: toNumber(p.yesPrice),
+    noPrice: toNumber(p.noPrice),
+    fetchedAt: typeof p.fetchedAt === 'string' ? p.fetchedAt : new Date().toISOString(),
+  };
+}
+
+export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' = '1h'): Promise<PriceHistory> {
+  const payload = await getJson(`/predict/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid history response');
+  const p = payload as Record<string, unknown>;
+  const rawHistory = Array.isArray(p.history) ? p.history : [];
+  const history: PricePoint[] = rawHistory
+    .filter((pt): pt is Record<string, unknown> => !!pt && typeof pt === 'object')
+    .map((pt) => ({ t: toNumber(pt.t) ?? 0, p: toNumber(pt.p) ?? 0 }))
+    .filter((pt) => pt.t > 0);
+  return { history };
 }

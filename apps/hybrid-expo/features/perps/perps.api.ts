@@ -119,3 +119,4 @@ export function formatFunding(rate: number): string {
   const sign = rate >= 0 ? '+' : '';
   return `${sign}${(rate * 100).toFixed(4)}%`;
 }
+

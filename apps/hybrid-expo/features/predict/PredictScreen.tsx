@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarkets, fetchSportsMarkets } from '@/features/predict/predict.api';
-import type { GeopoliticsMarket, PredictFilter, SportMarket } from '@/features/predict/predict.types';
+import { fetchCuratedMarkets, fetchSportsMarkets, fetchTrendingMarkets } from '@/features/predict/predict.api';
+import type { GeopoliticsMarket, PredictFilter, SportMarket, TrendingMarket } from '@/features/predict/predict.types';
 import { semantic, tokens } from '@/theme';
 
 const FILTERS: PredictFilter[] = ['All', 'Geopolitics', 'EPL', 'UCL'];
@@ -45,6 +44,30 @@ function formatKickoff(isoDate: string | null): string {
   const day = date.getDate();
   const clock = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${month} ${day} · ${clock}`;
+}
+
+function TrendingCard({ market, onPress }: { market: TrendingMarket; onPress: () => void }) {
+  const yes = market.yesPrice !== null ? Math.round(market.yesPrice * 100) : null;
+  const isHigh = yes !== null && yes >= 50;
+  const volText = market.volume24h !== null ? formatUsdCompact(market.volume24h) : '--';
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.trendCard, pressed && styles.cardPressed]}>
+      <Text style={styles.trendQuestion} numberOfLines={2}>{market.question}</Text>
+      <View style={styles.trendFooter}>
+        <View style={[styles.trendPill, isHigh ? styles.trendPillYes : styles.trendPillNo]}>
+          <Text style={[styles.trendPillText, isHigh ? styles.trendPillTextYes : styles.trendPillTextNo]}>
+            {yes !== null ? `${yes}%` : '--'}
+          </Text>
+        </View>
+        <Text style={styles.trendVol}>{volText}</Text>
+      </View>
+      {/* mini progress bar */}
+      <View style={styles.trendBar}>
+        <View style={[styles.trendBarFill, { width: `${yes ?? 50}%` }, isHigh ? styles.trendBarFillYes : styles.trendBarFillNo]} />
+      </View>
+    </Pressable>
+  );
 }
 
 function BinaryMarketCard({ market, featured, onPress }: { market: GeopoliticsMarket; featured: boolean; onPress: () => void }) {
@@ -162,6 +185,7 @@ export default function PredictScreen() {
   const [geoMarkets, setGeoMarkets] = useState<GeopoliticsMarket[]>([]);
   const [eplMarkets, setEplMarkets] = useState<SportMarket[]>([]);
   const [uclMarkets, setUclMarkets] = useState<SportMarket[]>([]);
+  const [trendingMarkets, setTrendingMarkets] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -169,15 +193,17 @@ export default function PredictScreen() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const [geo, epl, ucl] = await Promise.all([
+      const [geo, epl, ucl, trending] = await Promise.all([
         fetchCuratedMarkets(),
         fetchSportsMarkets('epl'),
         fetchSportsMarkets('ucl'),
+        fetchTrendingMarkets(10).catch(() => [] as TrendingMarket[]),
       ]);
 
       setGeoMarkets(geo);
       setEplMarkets(epl);
       setUclMarkets(ucl);
+      setTrendingMarkets(trending);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load predict markets';
       setErrorMessage(message);
@@ -199,7 +225,36 @@ export default function PredictScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <FeedHeader />
+      {/* header */}
+      <View style={styles.predictHeader}>
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
+          <View style={styles.avatarInner}><Text style={styles.avatarText}>B</Text></View>
+        </Pressable>
+        <Text style={styles.predictTitle}>Predict</Text>
+        <View style={styles.liveChip}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
+      </View>
+
+      {/* trending strip */}
+      {trendingMarkets.length > 0 ? (
+        <View style={styles.trendSection}>
+          <Text style={styles.trendLabel}>↗ Trending</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.trendScroll}>
+            {trendingMarkets.map((m) => (
+              <TrendingCard
+                key={m.slug}
+                market={m}
+                onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: m.slug } })}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <ScrollView
         horizontal
@@ -307,6 +362,141 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: semantic.background.screen,
   },
+  // ─── predict header ───
+  predictHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+  },
+  avatarRing: {
+    width: 28, height: 28,
+    borderRadius: 14,
+    padding: 2,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: semantic.text.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInner: {
+    width: 20, height: 20,
+    borderRadius: 10,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: semantic.text.primary,
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  predictTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xs,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    fontFamily: 'monospace',
+  },
+  liveChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(52,199,123,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,123,0.18)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  liveDot: {
+    width: 5, height: 5,
+    borderRadius: 3,
+    backgroundColor: semantic.sentiment.positive,
+  },
+  liveText: {
+    color: semantic.sentiment.positive,
+    fontSize: 8,
+    letterSpacing: 1,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  // ─── trending strip ───
+  trendSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+    paddingTop: 10,
+  },
+  trendLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontFamily: 'monospace',
+    paddingHorizontal: tokens.spacing.lg,
+    marginBottom: 8,
+  },
+  trendScroll: {
+    gap: 8,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingBottom: 12,
+  },
+  trendCard: {
+    width: 144,
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.sm,
+    padding: 10,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  trendQuestion: {
+    color: semantic.text.primary,
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 8,
+    minHeight: 28,
+  },
+  trendFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trendPill: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  trendPillYes: { backgroundColor: 'rgba(52,199,123,0.15)' },
+  trendPillNo:  { backgroundColor: 'rgba(244,88,78,0.12)' },
+  trendPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  trendPillTextYes: { color: semantic.sentiment.positive },
+  trendPillTextNo:  { color: semantic.sentiment.negative },
+  trendVol: {
+    color: semantic.text.faint,
+    fontSize: 8,
+    fontFamily: 'monospace',
+  },
+  trendBar: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: 2,
+    backgroundColor: semantic.border.muted,
+  },
+  trendBarFill: { height: 2, borderRadius: 1 },
+  trendBarFillYes: { backgroundColor: semantic.sentiment.positive },
+  trendBarFillNo:  { backgroundColor: semantic.sentiment.negative },
+  // ─── filter strip ───
   filterStripShell: {
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,

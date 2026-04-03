@@ -1,14 +1,16 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  PanResponder,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
@@ -56,7 +58,9 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const [activeTab, setActiveTab] = useState<Tab>('market');
   const [side, setSide] = useState<Side>('long');
   const [leverage, setLeverage] = useState(2);
+  const [size, setSize] = useState(100);
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
+
 
   // Live price via WebSocket
   const livePrice = usePerpsLivePrice(symbol);
@@ -236,6 +240,9 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
               side={side}
               leverage={leverage}
               displayPrice={displayPrice}
+              size={size}
+              onSizeChange={setSize}
+              onLeverageChange={setLeverage}
             />
           ) : (
             <ProfileTab
@@ -269,11 +276,36 @@ interface MarketTabProps {
   side: Side;
   leverage: number;
   displayPrice: number;
+  size: number;
+  onSizeChange: (val: number) => void;
+  onLeverageChange: (val: number) => void;
 }
 
-function MarketTab({ market, side, leverage, displayPrice }: MarketTabProps) {
+function MarketTab({ market, side, leverage, displayPrice, size, onSizeChange, onLeverageChange }: MarketTabProps) {
+  const trackWidthRef = useRef(0);
+  const startLevRef = useRef(leverage);
   const leveragePct = (leverage - 1) / (LEVERAGE_MAX - 1);
-  const notional = 100 * leverage;
+  const notional = size * leverage;
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      startLevRef.current = leverage;
+      const x = evt.nativeEvent.locationX;
+      if (trackWidthRef.current > 0) {
+        const pct = Math.max(0, Math.min(1, x / trackWidthRef.current));
+        onLeverageChange(Math.max(1, Math.round(1 + pct * (LEVERAGE_MAX - 1))));
+      }
+    },
+    onPanResponderMove: (_evt, gestureState) => {
+      if (trackWidthRef.current === 0) return;
+      const startPct = (startLevRef.current - 1) / (LEVERAGE_MAX - 1);
+      const deltaPct = gestureState.dx / trackWidthRef.current;
+      const pct = Math.max(0, Math.min(1, startPct + deltaPct));
+      onLeverageChange(Math.max(1, Math.round(1 + pct * (LEVERAGE_MAX - 1))));
+    },
+  }), [leverage, onLeverageChange]);
   const liqEstimate =
     side === 'long'
       ? displayPrice * (1 - 1 / leverage)
@@ -287,8 +319,17 @@ function MarketTab({ market, side, leverage, displayPrice }: MarketTabProps) {
       <View style={styles.orderInputsRow}>
         <View style={styles.oField}>
           <Text style={styles.oLabel}>Size</Text>
-          <View style={styles.oInput}>
-            <Text style={styles.oInputVal}>100</Text>
+          <View style={[styles.oInput, styles.oInputActive]}>
+            <TextInput
+              style={styles.oInputVal}
+              value={size === 0 ? '' : String(size)}
+              onChangeText={(t) => {
+                const n = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                onSizeChange(isNaN(n) ? 0 : n);
+              }}
+              keyboardType="numeric"
+              selectTextOnFocus
+            />
             <Text style={styles.oInputUnit}>USDC</Text>
           </View>
         </View>
@@ -304,7 +345,10 @@ function MarketTab({ market, side, leverage, displayPrice }: MarketTabProps) {
       {/* Leverage row */}
       <View style={styles.levRow}>
         <Text style={styles.levLabel}>Leverage</Text>
-        <View style={styles.levTrack}>
+        <View
+          style={styles.levTrack}
+          onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width; }}
+          {...panResponder.panHandlers}>
           <View style={[styles.levFill, { width: `${leveragePct * 100}%` }]} />
           <View style={[styles.levThumb, { left: `${leveragePct * 100}%` as any }]} />
         </View>
@@ -1255,4 +1299,11 @@ const styles = StyleSheet.create({
   textNeg: {
     color: tokens.colors.vermillion,
   },
+
+  // oInput active (editable size field)
+  oInputActive: {
+    opacity: 1,
+    borderColor: 'rgba(199,183,112,0.28)',
+  },
+
 });
