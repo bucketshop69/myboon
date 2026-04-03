@@ -20,32 +20,22 @@ apps/hybrid-expo/components/wallet/WalletButton.tsx — exists, status unknown
 hooks/useWallet.ts — DOES NOT EXIST
 ```
 
-## Approach options
+## Approach: Solana Mobile Wallet Adapter (MWA) — Seeker-native
 
-### Option A: Phantom Deep Link (simplest, recommended for MVP)
+**Package:** `@wallet-ui/react-native-web3js`
+**Docs:** https://docs.solanamobile.com
+**Tutorial:** `docs/tutorials/09-solana-mobile-wallet-adapter.md`
 
-Phantom supports a deep link protocol for React Native:
-1. App opens `phantom://connect?...` with a redirect URI
-2. Phantom app opens, user approves
-3. Phantom redirects back with the public key + session
-4. App stores the address in AsyncStorage
+myboon debuts as a **Seeker-exclusive** app. MWA is the native wallet SDK on Seeker phones.
 
-Pros: No SDK dependency, works with any Expo setup, most users have Phantom.
-Cons: Phantom-only (add more wallets later), requires `expo-linking` for redirect handling.
+Why MWA over Phantom deep links:
+- Works with ANY MWA wallet (Phantom, Solflare, Seeker built-in)
+- `signMessage()` built in — Pacific order signing works directly (#068)
+- `signAndSendTransaction()` built in — on-chain txs ready
+- Seeker-native — zero friction on target hardware
+- Expo compatible (custom dev build, no Expo Go)
 
-### Option B: Mobile Wallet Adapter (`@solana-mobile/wallet-adapter-mobile`)
-
-Solana's official mobile standard. Works with any compliant wallet (Phantom, Solflare, etc).
-Pros: Multi-wallet support out of the box.
-Cons: More complex setup, may need `expo-prebuild` (no Expo Go).
-
-### Option C: WalletConnect v2
-
-Uses `@walletconnect/react-native-compat`.
-Pros: Universal (Ethereum + Solana wallets).
-Cons: Heaviest dependency, complex setup, WalletConnect infra sometimes flaky.
-
-**Recommendation:** Option A (Phantom deep link) for MVP. Fastest to ship, covers 80%+ of Solana mobile users. Expand to Option B later.
+**Expo constraint:** MWA is Android-only (Seeker is Android). iOS Phantom deep link fallback can be added later.
 
 ## Scope
 
@@ -53,38 +43,59 @@ Cons: Heaviest dependency, complex setup, WalletConnect infra sometimes flaky.
 - Delete or rewrite `providers/WalletProvider.tsx` — remove `@solana/wallet-adapter-react` import
 - Rewrite `WalletModal.tsx` — show Phantom connect option with deep link
 
-### 2. Create `useWallet()` hook
+### 2. Create `useWallet()` hook — thin wrapper around `useMobileWallet()`
 
 ```ts
 // apps/hybrid-expo/hooks/useWallet.ts
-interface WalletState {
-  connected: boolean
-  address: string | null           // base58 Solana pubkey
-  shortAddress: string | null      // "7xKp···m3Qr"
-  connect: () => Promise<void>     // triggers Phantom deep link
-  disconnect: () => void           // clears stored state
+import { useMobileWallet } from '@wallet-ui/react-native-web3js';
+
+export function useWallet() {
+  const { account, connect, disconnect, signMessage, signAndSendTransaction, connection } = useMobileWallet();
+  return {
+    connected: !!account,
+    address: account?.address ?? null,
+    shortAddress: account ? `${account.address.slice(0,4)}···${account.address.slice(-4)}` : null,
+    connect,
+    disconnect,
+    signMessage,              // for Pacific order signing (#068)
+    signAndSendTransaction,   // for on-chain txs
+    connection,               // Solana RPC Connection
+  };
 }
 ```
 
-- State backed by React Context + AsyncStorage (persists across app restarts)
-- `connect()` opens Phantom deep link, handles redirect callback
 - Both Trade tab and Predict tab consume the same hook
+- `signMessage` eliminates need for separate signing infra
 
-### 3. Expo deep link setup
-- Configure `app.json` with custom scheme for redirect (e.g. `myboon://`)
-- Use `expo-linking` to handle the return callback from Phantom
-- Parse the `phantom_encryption_public_key` + `nonce` + `data` from redirect
+### 3. Polyfill + entry point setup
 
-### 4. Wallet state UI
-- Connected: show short address + disconnect option in WalletModal
-- Disconnected: show "Connect Phantom" button
+```js
+// polyfill.js — must load before @solana/web3.js
+import { install } from 'react-native-quick-crypto';
+install();
+
+// index.js — new app entry
+import './polyfill';
+import 'expo-router/entry';
+```
+
+### 4. Provider in `_layout.tsx`
+
+```tsx
+<MobileWalletProvider chain="solana:mainnet-beta" endpoint={rpcUrl} identity={appIdentity}>
+  <Slot />
+</MobileWalletProvider>
+```
+
+### 5. Build configuration
+- `expo run:android` (no Expo Go — MWA uses Kotlin native modules)
+- Add `expo-dev-client` to dependencies
 
 ## Dependencies
 
-- `expo-linking` — handle deep link redirects (may already be in Expo)
-- `@react-native-async-storage/async-storage` — persist wallet address
-- `tweetnacl` — decrypt Phantom's response payload (already in shared package)
-- `bs58` — base58 encode/decode (already in shared package)
+```bash
+pnpm --filter hybrid-expo add @wallet-ui/react-native-web3js react-native-quick-crypto @solana/web3.js expo-dev-client
+```
 
 ## NOT in scope
 
