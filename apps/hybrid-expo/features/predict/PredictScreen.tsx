@@ -3,8 +3,10 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
+import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { fetchCuratedMarkets, fetchSportsMarkets, fetchTrendingMarkets } from '@/features/predict/predict.api';
 import type { GeopoliticsMarket, PredictFilter, SportMarket, TrendingMarket } from '@/features/predict/predict.types';
+import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 
 const FILTERS: PredictFilter[] = ['All', 'Geopolitics', 'EPL', 'UCL'];
@@ -46,7 +48,7 @@ function formatKickoff(isoDate: string | null): string {
   return `${month} ${day} · ${clock}`;
 }
 
-function TrendingCard({ market, onPress }: { market: TrendingMarket; onPress: () => void }) {
+function TrendingCard({ market, onPress, formatOdds }: { market: TrendingMarket; onPress: () => void; formatOdds: (p: number | null) => string }) {
   const yes = market.yesPrice !== null ? Math.round(market.yesPrice * 100) : null;
   const isHigh = yes !== null && yes >= 50;
   const volText = market.volume24h !== null ? formatUsdCompact(market.volume24h) : '--';
@@ -57,7 +59,7 @@ function TrendingCard({ market, onPress }: { market: TrendingMarket; onPress: ()
       <View style={styles.trendFooter}>
         <View style={[styles.trendPill, isHigh ? styles.trendPillYes : styles.trendPillNo]}>
           <Text style={[styles.trendPillText, isHigh ? styles.trendPillTextYes : styles.trendPillTextNo]}>
-            {yes !== null ? `${yes}%` : '--'}
+            {formatOdds(market.yesPrice)}
           </Text>
         </View>
         <Text style={styles.trendVol}>{volText}</Text>
@@ -70,10 +72,10 @@ function TrendingCard({ market, onPress }: { market: TrendingMarket; onPress: ()
   );
 }
 
-function BinaryMarketCard({ market, featured, onPress }: { market: GeopoliticsMarket; featured: boolean; onPress: () => void }) {
-  const yesText = formatPercent(market.yesPrice);
+function BinaryMarketCard({ market, featured, onPress, formatOdds }: { market: GeopoliticsMarket; featured: boolean; onPress: () => void; formatOdds: (p: number | null) => string }) {
   const fallbackNo = market.yesPrice !== null ? 1 - market.yesPrice : null;
-  const noText = formatPercent(market.noPrice ?? fallbackNo);
+  const yesText = formatOdds(market.yesPrice);
+  const noText = formatOdds(market.noPrice ?? fallbackNo);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.cardBase, featured && styles.cardFeatured, pressed && styles.cardPressed]}>
@@ -123,7 +125,7 @@ function BinaryMarketCard({ market, featured, onPress }: { market: GeopoliticsMa
   );
 }
 
-function SportMarketCard({ market, onPress }: { market: SportMarket; onPress: () => void }) {
+function SportMarketCard({ market, onPress, formatOdds }: { market: SportMarket; onPress: () => void; formatOdds: (p: number | null) => string }) {
   const rankedOutcomes = [...market.outcomes]
     .slice(0, 3)
     .sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
@@ -163,7 +165,7 @@ function SportMarketCard({ market, onPress }: { market: SportMarket; onPress: ()
                 </Text>
               </View>
               <Text style={isLead ? styles.outcomePctLead : styles.outcomePctDim}>
-                {formatPercent(outcome.price)}
+                {formatOdds(outcome.price)}
               </Text>
             </View>
           );
@@ -181,6 +183,7 @@ function SportMarketCard({ market, onPress }: { market: SportMarket; onPress: ()
 
 export default function PredictScreen() {
   const router = useRouter();
+  const { format, setFormat, formatOdds } = useOddsFormat();
   const [filter, setFilter] = useState<PredictFilter>('All');
   const [geoMarkets, setGeoMarkets] = useState<GeopoliticsMarket[]>([]);
   const [eplMarkets, setEplMarkets] = useState<SportMarket[]>([]);
@@ -250,29 +253,36 @@ export default function PredictScreen() {
                 key={m.slug}
                 market={m}
                 onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: m.slug } })}
+                formatOdds={formatOdds}
               />
             ))}
           </ScrollView>
         </View>
       ) : null}
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterStrip}
-        style={styles.filterStripShell}>
-        {FILTERS.map((value) => {
-          const active = value === filter;
-          return (
-            <Pressable
-              key={value}
-              onPress={() => setFilter(value)}
-              style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
-              <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{value}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.filterStripShell}>
+        <View style={styles.filterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterStrip}>
+            {FILTERS.map((value) => {
+              const active = value === filter;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setFilter(value)}
+                  style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
+                  <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{value}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <View style={styles.toggleWrap}>
+            <OddsFormatToggle format={format} onFormatChange={setFormat} />
+          </View>
+        </View>
+      </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.feedContent}>
         {loading ? (
@@ -304,6 +314,7 @@ export default function PredictScreen() {
                 market={market}
                 featured={index === 0}
                 onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: market.slug } })}
+                formatOdds={formatOdds}
               />
             ))}
           </View>
@@ -325,6 +336,7 @@ export default function PredictScreen() {
                     params: { sport: market.sport, slug: market.slug },
                   })
                 }
+                formatOdds={formatOdds}
               />
             ))}
           </View>
@@ -346,6 +358,7 @@ export default function PredictScreen() {
                     params: { sport: market.sport, slug: market.slug },
                   })
                 }
+                formatOdds={formatOdds}
               />
             ))}
           </View>
@@ -501,9 +514,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,
   },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   filterStrip: {
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    flex: 1,
+  },
+  toggleWrap: {
+    paddingRight: tokens.spacing.lg,
     paddingVertical: tokens.spacing.sm,
   },
   filterChip: {

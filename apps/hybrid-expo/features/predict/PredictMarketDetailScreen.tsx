@@ -5,8 +5,10 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Tex
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
+import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
+import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 
 interface PredictMarketDetailScreenProps {
@@ -106,6 +108,7 @@ function Sparkline({ points, width, height }: { points: PricePoint[]; width: num
 
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
+  const { format, setFormat, formatOdds } = useOddsFormat();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -214,7 +217,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             <View style={styles.sparkCard}>
               <View style={styles.sparkTopRow}>
                 <View style={styles.sparkPriceRow}>
-                  <Text style={styles.sparkYes}>{yesPct !== null ? `${yesPct}%` : '--'}</Text>
+                  <Text style={styles.sparkYes}>{formatOdds(yesPrice)}</Text>
                 </View>
                 <View style={styles.updatedRow}>
                   <View style={styles.updatedDot} />
@@ -250,6 +253,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
             {/* YES / NO bars */}
             <View style={styles.oddsSection}>
+              <View style={styles.oddsSectionHeader}>
+                <Text style={styles.oddsSectionTitle}>Odds</Text>
+                <OddsFormatToggle format={format} onFormatChange={setFormat} />
+              </View>
               <View style={styles.oddsPair}>
                 {/* YES */}
                 <View style={styles.oddsBarWrap}>
@@ -259,7 +266,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   </View>
                   <View style={styles.oddsTrack}>
                     <View style={[styles.oddsFillYes, { width: `${yesPct ?? 50}%` }]}>
-                      <Text style={styles.oddsPctYes}>{yesPct !== null ? `${yesPct}%` : '--'}</Text>
+                      <Text style={styles.oddsPctYes}>{formatOdds(yesPrice)}</Text>
                     </View>
                   </View>
                 </View>
@@ -271,7 +278,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   </View>
                   <View style={styles.oddsTrack}>
                     <View style={[styles.oddsFillNo, { width: `${noPct ?? 50}%` }]}>
-                      <Text style={styles.oddsPctNo}>{noPct !== null ? `${noPct}%` : '--'}</Text>
+                      <Text style={styles.oddsPctNo}>{formatOdds(noPrice)}</Text>
                     </View>
                   </View>
                 </View>
@@ -379,7 +386,9 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.background.surfaceRaised,
   },
   // odds bars
-  oddsSection: {},
+  oddsSection: { gap: 10 },
+  oddsSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  oddsSectionTitle: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase' },
   oddsPair: { gap: 8 },
   oddsBarWrap: { gap: 5 },
   oddsBarLabel: { flexDirection: 'row', justifyContent: 'space-between' },
