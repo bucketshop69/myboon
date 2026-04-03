@@ -5,8 +5,10 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Tex
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
+import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { fetchSportMarketDetail, fetchPriceHistory } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail } from '@/features/predict/predict.types';
+import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 
 interface PredictSportDetailScreenProps {
@@ -94,6 +96,7 @@ function Sparkline({ points, width, height, color }: { points: PricePoint[]; wid
 
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
+  const { format, setFormat, formatOdds } = useOddsFormat();
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -214,7 +217,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                     <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]} numberOfLines={1}>
                       {outcome.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw')}
                     </Text>
-                    <Text style={[styles.tabPct, isActive && styles.tabPctActive]}>{pct}</Text>
+                    <Text style={[styles.tabPct, isActive && styles.tabPctActive]}>{formatOdds(outcome.price)}</Text>
                   </Pressable>
                 );
               })}
@@ -252,6 +255,10 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
             {/* 3-way outcome bars */}
             <View style={styles.outcomesSection}>
+              <View style={styles.outcomesSectionHeader}>
+                <Text style={styles.outcomesSectionTitle}>Outcomes</Text>
+                <OddsFormatToggle format={format} onFormatChange={setFormat} />
+              </View>
               {sortedOutcomes.map((outcome) => {
                 const isLead = leadPrice !== null && outcome.price === leadPrice;
                 const isDraw = outcome.label.toLowerCase().includes('draw');
@@ -263,7 +270,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                       <Text style={[styles.outcomeBarLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
                         {isDraw ? 'Draw' : outcome.label}
                       </Text>
-                      <Text style={[styles.outcomeBarPct, { color }]}>{formatPercent(outcome.price)}</Text>
+                      <Text style={[styles.outcomeBarPct, { color }]}>{formatOdds(outcome.price)}</Text>
                     </View>
                     <View style={styles.outcomeTrack}>
                       <View style={[styles.outcomeFill, { width: `${pct}%`, backgroundColor: color, opacity: isLead ? 0.2 : 0.12 }]} />
@@ -409,6 +416,8 @@ const styles = StyleSheet.create({
   chartSkeleton: { flex: 1, borderRadius: 6, backgroundColor: semantic.background.surfaceRaised },
   // outcome bars
   outcomesSection: { gap: 8 },
+  outcomesSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  outcomesSectionTitle: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase' },
   outcomeBar: { gap: 5 },
   outcomeBarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   outcomeBarLabel: { fontSize: tokens.fontSize.sm, fontWeight: '500', flex: 1 },
