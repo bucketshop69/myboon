@@ -6,21 +6,25 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "pnpm": "10.28.0"
     },
     "dapp-store": {
       "distribution": "internal",
+      "pnpm": "10.28.0",
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
+      "pnpm": "10.28.0",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "pnpm": "10.28.0",
       "android": {
         "buildType": "app-bundle"
       }
