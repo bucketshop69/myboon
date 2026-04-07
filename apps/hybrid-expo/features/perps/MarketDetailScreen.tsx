@@ -17,19 +17,16 @@ import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import {
-  fetchPerpsAccount,
   fetchPerpsMarkets,
-  fetchPerpsPositions,
   formatChange,
   formatFunding,
   formatPrice,
   formatUsdCompact,
 } from '@/features/perps/perps.api';
-import type { PerpsAccount, PerpsMarket, PerpsPosition } from '@/features/perps/perps.types';
+import type { PerpsMarket } from '@/features/perps/perps.types';
 import { usePerpsLivePrice } from '@/features/perps/usePerpsWebSocket';
 import { semantic, tokens } from '@/theme';
 
-type Tab = 'market' | 'profile';
 type Side = 'long' | 'short';
 type Timeframe = '15m' | '1h' | '4h' | '1d';
 
@@ -42,20 +39,14 @@ interface MarketDetailScreenProps {
 
 export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const router = useRouter();
-  const { connected, address } = useWallet();
+  const { connected, connect } = useWallet();
 
   // Market data
   const [market, setMarket] = useState<PerpsMarket | null>(null);
   const [loadingMarket, setLoadingMarket] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
 
-  // Profile data (loaded when wallet connected)
-  const [positions, setPositions] = useState<PerpsPosition[]>([]);
-  const [account, setAccount] = useState<PerpsAccount | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
-
   // UI state
-  const [activeTab, setActiveTab] = useState<Tab>('market');
   const [side, setSide] = useState<Side>('long');
   const [leverage, setLeverage] = useState(2);
   const [size, setSize] = useState(100);
@@ -92,35 +83,9 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
     }
   }
 
-  // Load profile data when wallet connects
-  async function loadProfile(address: string) {
-    setLoadingProfile(true);
-    try {
-      const [pos, acc] = await Promise.all([
-        fetchPerpsPositions(address),
-        fetchPerpsAccount(address),
-      ]);
-      setPositions(pos);
-      setAccount(acc);
-    } catch {
-      // Non-fatal — positions stay empty
-    } finally {
-      setLoadingProfile(false);
-    }
-  }
-
   useEffect(() => {
     void loadMarket();
   }, [symbol]);
-
-  useEffect(() => {
-    if (connected && address) {
-      void loadProfile(address);
-    } else {
-      setPositions([]);
-      setAccount(null);
-    }
-  }, [connected, address]);
 
   const change24h = market?.change24h ?? 0;
   const isUp = change24h >= 0;
@@ -219,39 +184,16 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
             </View>
           </View>
 
-          {/* Tab bar */}
-          <View style={styles.tabBar}>
-            {(['market', 'profile'] as Tab[]).map((tab) => (
-              <Pressable
-                key={tab}
-                style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-                onPress={() => setActiveTab(tab)}>
-                <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
-                  {tab === 'market' ? 'Market' : 'Profile'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Tab content */}
-          {activeTab === 'market' ? (
-            <MarketTab
-              market={market}
-              side={side}
-              leverage={leverage}
-              displayPrice={displayPrice}
-              size={size}
-              onSizeChange={setSize}
-              onLeverageChange={setLeverage}
-            />
-          ) : (
-            <ProfileTab
-              connected={connected}
-              account={account}
-              positions={positions}
-              loading={loadingProfile}
-            />
-          )}
+          {/* Market content */}
+          <MarketTab
+            market={market}
+            side={side}
+            leverage={leverage}
+            displayPrice={displayPrice}
+            size={size}
+            onSizeChange={setSize}
+            onLeverageChange={setLeverage}
+          />
 
           {/* Action dock — Long/Short pinned at thumb zone above nav */}
           <ActionDock
@@ -259,7 +201,9 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
             side={side}
             onSideChange={setSide}
             leverage={leverage}
+            size={size}
             displayPrice={displayPrice}
+            onConnect={connect}
           />
         </>
       )}
@@ -394,95 +338,6 @@ function MarketTab({ market, side, leverage, displayPrice, size, onSizeChange, o
   );
 }
 
-// ─── Profile Tab ─────────────────────────────────────────────────────────────
-
-interface ProfileTabProps {
-  connected: boolean;
-  account: PerpsAccount | null;
-  positions: PerpsPosition[];
-  loading: boolean;
-}
-
-function ProfileTab({ connected, account, positions, loading }: ProfileTabProps) {
-  return (
-    <ScrollView
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.tabScrollContent}>
-      {/* Wallet card */}
-      <View style={styles.walletCard}>
-        <View style={styles.walletRow}>
-          <Text style={styles.walletLabel}>Wallet</Text>
-          {connected ? (
-            <View style={styles.connectedBadge}>
-              <Text style={styles.connectedBadgeText}>Connected</Text>
-            </View>
-          ) : (
-            <View style={styles.connectBtn}>
-              <Text style={styles.connectBtnText}>Connect</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.equityRow}>
-          <View style={styles.eqItem}>
-            <Text style={styles.eqLabel}>Equity</Text>
-            <Text style={styles.eqVal}>
-              {account ? `$${account.equity.toFixed(2)}` : '—'}
-            </Text>
-          </View>
-          <View style={[styles.eqItem, styles.eqItemCenter]}>
-            <Text style={styles.eqLabel}>Margin Used</Text>
-            <Text style={styles.eqVal}>
-              {account ? `$${account.totalMarginUsed.toFixed(2)}` : '—'}
-            </Text>
-          </View>
-          <View style={[styles.eqItem, styles.eqItemRight]}>
-            <Text style={styles.eqLabel}>Available</Text>
-            <Text style={styles.eqVal}>
-              {account ? `$${account.availableToSpend.toFixed(2)}` : '—'}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Stats placeholder — no trade history API yet */}
-      <View style={styles.statsPlaceholder}>
-        <MaterialIcons name="bar-chart" size={20} color={semantic.text.faint} />
-        <Text style={styles.statsPlaceholderText}>
-          PnL stats available once trade history{'\n'}endpoint is added to Pacific API
-        </Text>
-      </View>
-
-      {/* Open positions */}
-      <View style={styles.posSection}>
-        <View style={styles.posSectionHeader}>
-          <Text style={styles.posSectionTitle}>Open Positions</Text>
-          <Text style={styles.posSectionBadge}>
-            {loading ? '…' : `${positions.length} open`}
-          </Text>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator size="small" color={semantic.text.accent} style={styles.posLoader} />
-        ) : !connected ? (
-          <View style={styles.posEmpty}>
-            <Text style={styles.posEmptyText}>Connect wallet to view positions</Text>
-          </View>
-        ) : positions.length === 0 ? (
-          <View style={styles.posEmpty}>
-            <MaterialIcons name="inbox" size={22} color={semantic.text.faint} />
-            <Text style={styles.posEmptyText}>No open positions</Text>
-          </View>
-        ) : (
-          positions.map((pos) => <PositionRow key={pos.symbol} pos={pos} />)
-        )}
-      </View>
-
-      <View style={styles.tabFooterPad} />
-    </ScrollView>
-  );
-}
-
 // ─── Action Dock ─────────────────────────────────────────────────────────────
 
 interface ActionDockProps {
@@ -490,10 +345,12 @@ interface ActionDockProps {
   side: Side;
   onSideChange: (s: Side) => void;
   leverage: number;
+  size: number;
   displayPrice: number;
+  onConnect: () => void;
 }
 
-function ActionDock({ connected, side, onSideChange, leverage, displayPrice }: ActionDockProps) {
+function ActionDock({ connected, side, onSideChange, leverage, size, displayPrice, onConnect }: ActionDockProps) {
   const liqEstimate =
     side === 'long'
       ? displayPrice * (1 - 1 / leverage)
@@ -503,7 +360,8 @@ function ActionDock({ connected, side, onSideChange, leverage, displayPrice }: A
     <View style={styles.actionDock}>
       {!connected ? (
         <Pressable
-          style={({ pressed }) => [styles.dockConnectBtn, pressed && styles.dockConnectBtnPressed]}>
+          style={({ pressed }) => [styles.dockConnectBtn, pressed && styles.dockConnectBtnPressed]}
+          onPress={onConnect}>
           <MaterialIcons name="lock-outline" size={14} color={semantic.text.dim} />
           <Text style={styles.dockConnectText}>Connect Wallet</Text>
         </Pressable>
@@ -513,7 +371,7 @@ function ActionDock({ connected, side, onSideChange, leverage, displayPrice }: A
           <View style={styles.dockParams}>
             <View style={styles.dockChip}>
               <Text style={styles.dockChipLabel}>Size</Text>
-              <Text style={styles.dockChipVal}>$100</Text>
+              <Text style={styles.dockChipVal}>${size}</Text>
             </View>
             <Text style={styles.dockSep}>·</Text>
             <View style={styles.dockChip}>
@@ -552,38 +410,6 @@ function ActionDock({ connected, side, onSideChange, leverage, displayPrice }: A
           </View>
         </>
       )}
-    </View>
-  );
-}
-
-function PositionRow({ pos }: { pos: PerpsPosition }) {
-  const isUp = pos.unrealizedPnl >= 0;
-  return (
-    <View style={styles.posRow}>
-      <View style={styles.posLeft}>
-        <View style={styles.posSymRow}>
-          <Text style={styles.posSym}>{pos.symbol}</Text>
-          <View style={[styles.posDirBadge, pos.side === 'long' ? styles.posDirLong : styles.posDirShort]}>
-            <Text style={[styles.posDirText, pos.side === 'long' ? styles.textPos : styles.textNeg]}>
-              {pos.side === 'long' ? 'Long' : 'Short'}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.posSubText}>
-          {pos.size.toFixed(4)} · Entry {formatPrice(pos.entryPrice)}
-        </Text>
-      </View>
-      <View style={styles.posRight}>
-        <Text style={[styles.posPnl, isUp ? styles.textPos : styles.textNeg]}>
-          {isUp ? '+' : ''}${pos.unrealizedPnl.toFixed(2)}
-        </Text>
-        <Text style={[styles.posPnlPct, isUp ? styles.textPos : styles.textNeg]}>
-          {isUp ? '+' : ''}{pos.unrealizedPnlPct.toFixed(2)}%
-        </Text>
-        <View style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>Close</Text>
-        </View>
-      </View>
     </View>
   );
 }
@@ -782,33 +608,6 @@ const styles = StyleSheet.create({
     color: semantic.text.primary,
   },
 
-  // Tab bar
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  tabItem: {
-    flex: 1,
-    paddingVertical: 9,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabItemActive: {
-    borderBottomColor: tokens.colors.primary,
-  },
-  tabLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1.8,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-  },
-  tabLabelActive: {
-    color: tokens.colors.primary,
-  },
-
   // Shared scroll content padding
   tabScrollContent: {
     padding: tokens.spacing.lg,
@@ -962,229 +761,6 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xxs + 1,
     fontWeight: '600',
     color: semantic.text.primary,
-  },
-
-  // Profile tab — wallet card
-  walletCard: {
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 8,
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.sm,
-  },
-  walletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  walletLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  connectedBadge: {
-    backgroundColor: 'rgba(74,140,111,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.25)',
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  connectedBadgeText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1,
-    color: tokens.colors.viridian,
-  },
-  connectBtn: {
-    backgroundColor: 'rgba(199,183,112,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(199,183,112,0.18)',
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  connectBtnText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1.5,
-    color: tokens.colors.primary,
-  },
-  equityRow: {
-    flexDirection: 'row',
-    paddingTop: tokens.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-  },
-  eqItem: {
-    flex: 1,
-    gap: 2,
-  },
-  eqItemCenter: {
-    alignItems: 'center',
-  },
-  eqItemRight: {
-    alignItems: 'flex-end',
-  },
-  eqLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs - 1,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  eqVal: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs + 1,
-    fontWeight: '700',
-    color: semantic.text.primary,
-  },
-
-  // Stats placeholder
-  statsPlaceholder: {
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 8,
-    padding: tokens.spacing.lg,
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  statsPlaceholderText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 0.5,
-    color: semantic.text.faint,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-
-  // Positions section
-  posSection: {
-    gap: tokens.spacing.sm,
-  },
-  posSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  posSectionTitle: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-  },
-  posSectionBadge: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    color: semantic.text.faint,
-  },
-  posLoader: {
-    paddingVertical: tokens.spacing.md,
-  },
-  posEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: tokens.spacing.xs,
-    paddingVertical: tokens.spacing.xl,
-    opacity: 0.4,
-  },
-  posEmptyText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-    textAlign: 'center',
-  },
-  posRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 8,
-    padding: tokens.spacing.sm,
-  },
-  posLeft: {
-    flex: 1,
-    gap: 3,
-  },
-  posSymRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-  },
-  posSym: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
-    fontWeight: '700',
-    color: semantic.text.primary,
-  },
-  posDirBadge: {
-    borderWidth: 1,
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  posDirLong: {
-    backgroundColor: 'rgba(74,140,111,0.15)',
-    borderColor: 'rgba(74,140,111,0.25)',
-  },
-  posDirShort: {
-    backgroundColor: 'rgba(217,83,79,0.12)',
-    borderColor: 'rgba(217,83,79,0.20)',
-  },
-  posDirText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  posSubText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    color: semantic.text.faint,
-    letterSpacing: 0.5,
-  },
-  posRight: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  posPnl: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
-    fontWeight: '700',
-  },
-  posPnlPct: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '600',
-  },
-  closeBtn: {
-    backgroundColor: 'rgba(217,83,79,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(217,83,79,0.18)',
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginTop: 2,
-  },
-  closeBtnText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: tokens.colors.vermillion,
-  },
-
-  tabFooterPad: {
-    height: 0,
   },
 
   // Action dock
