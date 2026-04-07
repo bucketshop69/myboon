@@ -22,6 +22,101 @@ function safeNum(val: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// ─── Signing helpers (matches Python SDK's common/utils.py) ─────────────────
+
+type SignMessageFn = (message: Uint8Array) => Promise<Uint8Array>;
+
+/** Deep-sort all object keys recursively (matches Python SDK sort_json_keys) */
+function sortJsonKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonKeys);
+  if (value !== null && typeof value === 'object') {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      sorted[key] = sortJsonKeys((value as Record<string, unknown>)[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/** Build the signing message exactly as Pacific expects */
+function buildSigningMessage(
+  type: string,
+  payload: Record<string, unknown>,
+  timestamp: number,
+  expiryWindow: number = 5000,
+): string {
+  const header = {
+    timestamp,
+    expiry_window: expiryWindow,
+    type,
+    data: payload,
+  };
+  return JSON.stringify(sortJsonKeys(header));
+}
+
+const BS58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function bs58Encode(bytes: Uint8Array): string {
+  let num = BigInt(0);
+  for (const byte of bytes) num = num * 256n + BigInt(byte);
+  let encoded = '';
+  while (num > 0n) { encoded = BS58_CHARS[Number(num % 58n)] + encoded; num = num / 58n; }
+  for (const byte of bytes) { if (byte === 0) encoded = '1' + encoded; else break; }
+  return encoded;
+}
+
+/** Sign and POST to Pacific authenticated endpoint */
+async function pacificSignedPost(
+  path: string,
+  type: string,
+  payload: Record<string, unknown>,
+  account: string,
+  signMessage: SignMessageFn,
+  expiryWindow: number = 5000,
+): Promise<any> {
+  const timestamp = Date.now();
+  const message = buildSigningMessage(type, payload, timestamp, expiryWindow);
+  const messageBytes = new TextEncoder().encode(message);
+  const signatureBytes = await signMessage(messageBytes);
+  console.log('[Pacific] signMessage returned', signatureBytes.length, 'bytes');
+
+  // bs58 encode the signature
+  const encoded = bs58Encode(signatureBytes);
+
+  const body = {
+    account,
+    signature: encoded,
+    timestamp,
+    expiry_window: expiryWindow,
+    ...payload,
+  };
+
+  console.log('[Pacific] POST', path, 'type:', type);
+  console.log('[Pacific] message to sign:', message);
+  console.log('[Pacific] body:', JSON.stringify(body));
+
+  const res = await fetch(`${PACIFIC_REST}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (res.status === 429) throw new Error('Rate limit — try again shortly');
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  if (!res.ok || json.success === false) {
+    throw new Error(json.error ?? text ?? `HTTP ${res.status}`);
+  }
+  return json;
+}
+
+// ─── Public GET helper ──────────────────────────────────────────────────────
+
 async function pacificGet<T>(path: string): Promise<T> {
   const res = await fetch(`${PACIFIC_REST}${path}`);
   if (res.status === 429) throw new Error('Rate limit — try again shortly');
@@ -97,6 +192,23 @@ export async function fetchPerpsAccount(address: string): Promise<PerpsAccount> 
     totalMarginUsed: safeNum(acc.total_margin_used),
     positionsCount: acc.positions_count,
   };
+}
+
+// ─── Withdrawal (signed API call) ───────────────────────────────────────────
+
+export async function requestWithdrawal(
+  amountUsdc: number,
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<void> {
+  await pacificSignedPost(
+    '/account/withdraw',
+    'withdraw',
+    { amount: amountUsdc.toFixed(6) },
+    account,
+    signMessage,
+    30000,
+  );
 }
 
 // Format helpers used across screens
