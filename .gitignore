@@ -54,3 +54,6 @@ package-lock.json
 packages/*/package-lock.json
 .claude/skills/
 .gstack/
+
+# POC packages (not for main)
+packages/polymarket-poc/
