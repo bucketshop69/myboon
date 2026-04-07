@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Modal,
   PanResponder,
   Pressable,
   SafeAreaView,
@@ -22,7 +23,9 @@ import {
   formatFunding,
   formatPrice,
   formatUsdCompact,
+  placeOrder,
 } from '@/features/perps/perps.api';
+import { DepositModal } from '@/features/perps/DepositModal';
 import type { PerpsMarket } from '@/features/perps/perps.types';
 import { usePerpsLivePrice } from '@/features/perps/usePerpsWebSocket';
 import { semantic, tokens } from '@/theme';
@@ -39,7 +42,7 @@ interface MarketDetailScreenProps {
 
 export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const router = useRouter();
-  const { connected, connect } = useWallet();
+  const { connected, connect, address, signMessage } = useWallet();
 
   // Market data
   const [market, setMarket] = useState<PerpsMarket | null>(null);
@@ -52,6 +55,15 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const [size, setSize] = useState(100);
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
 
+  // Deposit modal
+  const [depositVisible, setDepositVisible] = useState(false);
+
+  // Confirm sheet state
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmSide, setConfirmSide] = useState<Side>('long');
+  const [orderStatus, setOrderStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [orderResult, setOrderResult] = useState<string>('');
+  const [isInsufficientMargin, setIsInsufficientMargin] = useState(false);
 
   // Live price via WebSocket
   const livePrice = usePerpsLivePrice(symbol);
@@ -204,7 +216,61 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
             size={size}
             displayPrice={displayPrice}
             onConnect={connect}
+            onTrade={(tradeSide) => {
+              setConfirmSide(tradeSide);
+              setOrderStatus('idle');
+              setOrderResult('');
+              setIsInsufficientMargin(false);
+              setConfirmVisible(true);
+            }}
           />
+
+          {/* Confirm order sheet */}
+          <ConfirmSheet
+            visible={confirmVisible}
+            symbol={symbol}
+            side={confirmSide}
+            size={size}
+            leverage={leverage}
+            displayPrice={displayPrice}
+            status={orderStatus}
+            resultMessage={orderResult}
+            onConfirm={async () => {
+              if (!address) return;
+              setOrderStatus('submitting');
+              try {
+                const apiSide = confirmSide === 'long' ? 'bid' : 'ask';
+                const lotSizeStr = market?.lotSize ?? '0.00001';
+                const lotSize = parseFloat(lotSizeStr);
+                const lotDecimals = (lotSizeStr.split('.')[1] ?? '').length;
+                const notional = size * leverage;
+                const rawAmount = notional / displayPrice;
+                // Round down to nearest lot size multiple
+                const steps = Math.floor(rawAmount / lotSize);
+                const amount = (steps * lotSize).toFixed(lotDecimals);
+                const orderId = await placeOrder(
+                  { symbol, side: apiSide as 'bid' | 'ask', amount, slippage: '1', leverage },
+                  address,
+                  signMessage,
+                );
+                setOrderStatus('success');
+                setOrderResult(`Order #${orderId}`);
+              } catch (err: any) {
+                setOrderStatus('error');
+                const msg = err instanceof Error ? err.message : 'Order failed';
+                setIsInsufficientMargin(err?.code === 4);
+                setOrderResult(err?.code === 4 ? 'Insufficient margin' : msg);
+              }
+            }}
+            onClose={() => setConfirmVisible(false)}
+            insufficientMargin={isInsufficientMargin}
+            onDeposit={() => {
+              setConfirmVisible(false);
+              setDepositVisible(true);
+            }}
+          />
+
+          <DepositModal visible={depositVisible} onClose={() => setDepositVisible(false)} />
         </>
       )}
 
@@ -348,9 +414,10 @@ interface ActionDockProps {
   size: number;
   displayPrice: number;
   onConnect: () => void;
+  onTrade: (side: Side) => void;
 }
 
-function ActionDock({ connected, side, onSideChange, leverage, size, displayPrice, onConnect }: ActionDockProps) {
+function ActionDock({ connected, side, onSideChange, leverage, size, displayPrice, onConnect, onTrade }: ActionDockProps) {
   const liqEstimate =
     side === 'long'
       ? displayPrice * (1 - 1 / leverage)
@@ -394,7 +461,7 @@ function ActionDock({ connected, side, onSideChange, leverage, size, displayPric
                 side === 'short' && styles.dockShortActive,
                 pressed && styles.dockBtnPressed,
               ]}
-              onPress={() => onSideChange('short')}>
+              onPress={() => onTrade('short')}>
               <Text style={[styles.dockBtnText, styles.textNeg]}>Short</Text>
             </Pressable>
             <Pressable
@@ -404,13 +471,145 @@ function ActionDock({ connected, side, onSideChange, leverage, size, displayPric
                 side === 'long' && styles.dockLongActive,
                 pressed && styles.dockBtnPressed,
               ]}
-              onPress={() => onSideChange('long')}>
+              onPress={() => onTrade('long')}>
               <Text style={[styles.dockBtnText, styles.textPos]}>Long</Text>
             </Pressable>
           </View>
         </>
       )}
     </View>
+  );
+}
+
+// ─── Confirm Sheet ──────────────────────────────────────────────────────────
+
+interface ConfirmSheetProps {
+  visible: boolean;
+  symbol: string;
+  side: Side;
+  size: number;
+  leverage: number;
+  displayPrice: number;
+  status: 'idle' | 'submitting' | 'success' | 'error';
+  resultMessage: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  insufficientMargin?: boolean;
+  onDeposit?: () => void;
+}
+
+function ConfirmSheet({
+  visible, symbol, side, size, leverage, displayPrice,
+  status, resultMessage, onConfirm, onClose,
+  insufficientMargin, onDeposit,
+}: ConfirmSheetProps) {
+  const notional = size * leverage;
+  const fee = notional * 0.0002;
+  const liqEstimate =
+    side === 'long'
+      ? displayPrice * (1 - 1 / leverage)
+      : displayPrice * (1 + 1 / leverage);
+  const isLong = side === 'long';
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetOverlay} onPress={onClose}>
+        <Pressable style={styles.sheetContainer} onPress={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Confirm Order</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <MaterialIcons name="close" size={18} color={semantic.text.dim} />
+            </Pressable>
+          </View>
+
+          {/* Order details */}
+          <View style={styles.sheetDetails}>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Symbol</Text>
+              <Text style={styles.sheetVal}>{symbol}</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Side</Text>
+              <Text style={[styles.sheetVal, isLong ? styles.textPos : styles.textNeg]}>
+                {side.toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Size</Text>
+              <Text style={styles.sheetVal}>${size} USDC</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Leverage</Text>
+              <Text style={styles.sheetVal}>{leverage}×</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Notional</Text>
+              <Text style={styles.sheetVal}>${notional.toFixed(0)}</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Est Fee</Text>
+              <Text style={styles.sheetVal}>${fee.toFixed(2)}</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetLabel}>Est Liq Price</Text>
+              <Text style={[styles.sheetVal, styles.textNeg]}>~{formatPrice(liqEstimate)}</Text>
+            </View>
+          </View>
+
+          {/* Action area */}
+          {status === 'idle' && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.sheetConfirmBtn,
+                isLong ? styles.dockLongActive : styles.dockShortActive,
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={onConfirm}>
+              <Text style={[styles.sheetConfirmText, isLong ? styles.textPos : styles.textNeg]}>
+                Confirm {side.toUpperCase()}
+              </Text>
+            </Pressable>
+          )}
+
+          {status === 'submitting' && (
+            <View style={styles.sheetStatusRow}>
+              <ActivityIndicator size="small" color={semantic.text.accent} />
+              <Text style={styles.sheetStatusText}>Signing & submitting…</Text>
+            </View>
+          )}
+
+          {status === 'success' && (
+            <View style={styles.sheetStatusRow}>
+              <MaterialIcons name="check-circle" size={18} color={tokens.colors.viridian} />
+              <Text style={[styles.sheetStatusText, styles.textPos]}>{resultMessage}</Text>
+            </View>
+          )}
+
+          {status === 'error' && (
+            <>
+              <View style={styles.sheetStatusRow}>
+                <MaterialIcons name="error-outline" size={18} color={tokens.colors.vermillion} />
+                <Text style={[styles.sheetStatusText, styles.textNeg]}>{resultMessage}</Text>
+              </View>
+              {insufficientMargin && onDeposit ? (
+                <Pressable
+                  style={({ pressed }) => [styles.sheetDepositBtn, pressed && { opacity: 0.7 }]}
+                  onPress={onDeposit}>
+                  <Text style={styles.sheetDepositText}>Deposit USDC</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={({ pressed }) => [styles.sheetRetryBtn, pressed && { opacity: 0.7 }]}
+                  onPress={onConfirm}>
+                  <Text style={styles.sheetRetryText}>Retry</Text>
+                </Pressable>
+              )}
+            </>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -882,4 +1081,112 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(199,183,112,0.28)',
   },
 
+  // Confirm sheet
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: semantic.background.screen,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderColor: semantic.border.muted,
+    padding: tokens.spacing.lg,
+    paddingBottom: 40,
+    gap: tokens.spacing.md,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sheetTitle: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: semantic.text.primary,
+  },
+  sheetDetails: {
+    gap: 0,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(48,47,32,0.4)',
+  },
+  sheetLabel: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: semantic.text.dim,
+  },
+  sheetVal: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '600',
+    color: semantic.text.primary,
+  },
+  sheetConfirmBtn: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  sheetConfirmText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+  },
+  sheetStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.sm,
+  },
+  sheetStatusText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    color: semantic.text.dim,
+  },
+  sheetRetryBtn: {
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.sm,
+  },
+  sheetRetryText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: semantic.text.accent,
+  },
+  sheetDepositBtn: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'rgba(199,183,112,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(199,183,112,0.28)',
+  },
+  sheetDepositText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: tokens.colors.primary,
+  },
 });

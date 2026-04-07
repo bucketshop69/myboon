@@ -110,7 +110,10 @@ async function pacificSignedPost(
     throw new Error(text || `HTTP ${res.status}`);
   }
   if (!res.ok || json.success === false) {
-    throw new Error(json.error ?? text ?? `HTTP ${res.status}`);
+    console.error('[Pacific] Error response:', text);
+    const err = new Error(json.error ?? json.message ?? text ?? `HTTP ${res.status}`);
+    (err as any).code = json.code ?? res.status;
+    throw err;
   }
   return json;
 }
@@ -148,6 +151,7 @@ export async function fetchPerpsMarkets(): Promise<PerpsMarket[]> {
         symbol: m.symbol,
         maxLeverage: m.max_leverage,
         tickSize: m.tick_size,
+        lotSize: m.lot_size,
         minOrderSize: m.min_order_size,
         markPrice: mark,
         oraclePrice: safeNum(p.oracle),
@@ -192,6 +196,60 @@ export async function fetchPerpsAccount(address: string): Promise<PerpsAccount> 
     totalMarginUsed: safeNum(acc.total_margin_used),
     positionsCount: acc.positions_count,
   };
+}
+
+// ─── Trade execution (signed API calls) ─────────────────────────────────────
+
+export async function placeOrder(
+  params: {
+    symbol: string;
+    side: 'bid' | 'ask';
+    amount: string;
+    slippage: string;
+    leverage: number;
+  },
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<number> {
+  const res = await pacificSignedPost(
+    '/orders/create_market',
+    'create_market_order',
+    {
+      symbol: params.symbol,
+      side: params.side,
+      amount: params.amount,
+      slippage_percent: params.slippage,
+      reduce_only: false,
+      client_order_id: crypto.randomUUID(),
+    },
+    account,
+    signMessage,
+  );
+  return res.order_id;
+}
+
+export async function closePosition(
+  symbol: string,
+  side: 'bid' | 'ask',
+  amount: string,
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<number> {
+  const res = await pacificSignedPost(
+    '/orders/create_market',
+    'create_market_order',
+    {
+      symbol,
+      side,
+      amount,
+      slippage_percent: '1',
+      reduce_only: true,
+      client_order_id: crypto.randomUUID(),
+    },
+    account,
+    signMessage,
+  );
+  return res.order_id;
 }
 
 // ─── Withdrawal (signed API call) ───────────────────────────────────────────

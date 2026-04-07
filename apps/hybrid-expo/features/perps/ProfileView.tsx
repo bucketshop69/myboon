@@ -2,14 +2,16 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Platform } from 'react-native';
 import { useWallet } from '@/hooks/useWallet';
-import { fetchPerpsAccount, fetchPerpsPositions, formatPrice } from '@/features/perps/perps.api';
+import { closePosition, fetchPerpsAccount, fetchPerpsPositions, formatPrice } from '@/features/perps/perps.api';
 import type { PerpsAccount, PerpsPosition } from '@/features/perps/perps.types';
 import { semantic, tokens } from '@/theme';
 
@@ -18,26 +20,69 @@ interface ProfileViewProps {
 }
 
 export function ProfileView({ onBack }: ProfileViewProps) {
-  const { connected, address, shortAddress, connect } = useWallet();
+  const { connected, address, shortAddress, connect, signMessage } = useWallet();
   const [account, setAccount] = useState<PerpsAccount | null>(null);
   const [positions, setPositions] = useState<PerpsPosition[]>([]);
   const [loading, setLoading] = useState(false);
+  const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
+
+  function refreshData() {
+    if (!connected || !address) return;
+    setLoading(true);
+    Promise.all([fetchPerpsPositions(address), fetchPerpsAccount(address)])
+      .then(([pos, acc]) => {
+        setPositions(pos);
+        setAccount(acc);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
 
   useEffect(() => {
     if (connected && address) {
-      setLoading(true);
-      Promise.all([fetchPerpsPositions(address), fetchPerpsAccount(address)])
-        .then(([pos, acc]) => {
-          setPositions(pos);
-          setAccount(acc);
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
+      refreshData();
     } else {
       setAccount(null);
       setPositions([]);
     }
   }, [connected, address]);
+
+  async function handleClose(pos: PerpsPosition) {
+    if (!address) return;
+    // Opposite side to close
+    const closeSide = pos.side === 'long' ? 'ask' : 'bid';
+    const doClose = async () => {
+      setClosingSymbol(pos.symbol);
+      try {
+        await closePosition(pos.symbol, closeSide as 'bid' | 'ask', String(pos.size), address, signMessage);
+        refreshData();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Close failed';
+        if (Platform.OS === 'web') {
+          window.alert(msg);
+        } else {
+          Alert.alert('Close failed', msg);
+        }
+      } finally {
+        setClosingSymbol(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Close ${pos.side.toUpperCase()} ${pos.symbol} (${pos.size})?`)) {
+        await doClose();
+      }
+    } else {
+      Alert.alert(
+        'Close Position',
+        `Close ${pos.side.toUpperCase()} ${pos.symbol} (${pos.size})?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Close', style: 'destructive', onPress: doClose },
+        ],
+      );
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -116,6 +161,7 @@ export function ProfileView({ onBack }: ProfileViewProps) {
           ) : (
             positions.map((pos) => {
               const isUp = pos.unrealizedPnl >= 0;
+              const isClosing = closingSymbol === pos.symbol;
               return (
                 <View key={pos.symbol} style={styles.posRow}>
                   <View style={styles.posLeft}>
@@ -129,6 +175,16 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                     <Text style={[styles.posPnl, isUp ? styles.textPos : styles.textNeg]}>
                       {isUp ? '+' : ''}{pos.unrealizedPnl.toFixed(2)} ({pos.unrealizedPnlPct.toFixed(1)}%)
                     </Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
+                      onPress={() => handleClose(pos)}
+                      disabled={isClosing}>
+                      {isClosing ? (
+                        <ActivityIndicator size="small" color={tokens.colors.vermillion} />
+                      ) : (
+                        <Text style={styles.closeBtnText}>Close</Text>
+                      )}
+                    </Pressable>
                   </View>
                 </View>
               );
@@ -325,4 +381,22 @@ const styles = StyleSheet.create({
 
   textPos: { color: tokens.colors.viridian },
   textNeg: { color: tokens.colors.vermillion },
+  closeBtn: {
+    marginTop: 4,
+    backgroundColor: 'rgba(217,83,79,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.25)',
+    borderRadius: tokens.radius.xs,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    alignSelf: 'flex-end',
+  },
+  closeBtnText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: tokens.colors.vermillion,
+  },
 });
