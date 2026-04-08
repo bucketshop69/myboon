@@ -1,14 +1,22 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { fetchSportMarketDetail, fetchPriceHistory } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail } from '@/features/predict/predict.types';
-import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 
 interface PredictSportDetailScreenProps {
@@ -17,11 +25,7 @@ interface PredictSportDetailScreenProps {
 }
 
 type Interval = '1h' | '1d';
-
-function formatPercent(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return '--';
-  return `${Math.round(value * 100)}%`;
-}
+type Tab = 'position' | 'stats' | 'rules' | 'feed';
 
 function formatUsdCompact(value: number | null): string {
   if (value === null || !Number.isFinite(value) || value <= 0) return '--';
@@ -39,11 +43,6 @@ function formatKickoff(isoDate: string | null): string {
   const day = date.getDate();
   const clock = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${month} ${day} · ${clock}`;
-}
-
-function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
-  if (outcome.label.toLowerCase().includes('draw')) return semantic.text.accent;
-  return isLead ? semantic.sentiment.positive : semantic.sentiment.negative;
 }
 
 function buildSparkPath(points: PricePoint[], w: number, h: number): { linePath: string; areaPath: string } | null {
@@ -94,16 +93,39 @@ function Sparkline({ points, width, height, color }: { points: PricePoint[]; wid
   );
 }
 
+const QUICK_AMOUNTS = [10, 25, 50, 100];
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'position', label: 'Position' },
+  { key: 'stats', label: 'Stats' },
+  { key: 'rules', label: 'Rules' },
+  { key: 'feed', label: 'Feed' },
+];
+
+function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
+  if (outcome.label.toLowerCase().includes('draw')) return semantic.text.accent;
+  return isLead ? semantic.sentiment.positive : semantic.sentiment.negative;
+}
+
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
-  const { format, setFormat, formatOdds } = useOddsFormat();
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState(0);
   const [interval, setInterval] = useState<Interval>('1h');
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('position');
+
+  // Sparkline tracks which outcome index
+  const [sparkOutcomeIdx, setSparkOutcomeIdx] = useState(0);
+
+  // Bet slip state
+  const [betSlipVisible, setBetSlipVisible] = useState(false);
+  const [betSlipSide, setBetSlipSide] = useState<'yes' | 'no'>('yes');
+  const [betSlipLabel, setBetSlipLabel] = useState('');
+  const [betSlipOutcome, setBetSlipOutcome] = useState('');
+  const [betSlipPrice, setBetSlipPrice] = useState(0.5);
+  const [betSlipAmount, setBetSlipAmount] = useState(50);
 
   async function loadDetail() {
     setLoading(true);
@@ -136,175 +158,374 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   useEffect(() => { void loadDetail(); }, [slug, sport]);
 
   useEffect(() => {
-    if (!detail?.outcomes[activeTab]) return;
-    void loadHistory(detail.outcomes[activeTab], interval);
-  }, [detail, activeTab, interval]);
+    if (!detail?.outcomes[sparkOutcomeIdx]) return;
+    void loadHistory(detail.outcomes[sparkOutcomeIdx], interval);
+  }, [detail, sparkOutcomeIdx, interval]);
 
-  // Sort outcomes: draw in middle, teams on sides — keep display order stable
+  // Sort outcomes: lead team first, draw in middle
   const sortedOutcomes = detail
     ? [...detail.outcomes].sort((a, b) => {
         const aIsDraw = a.label.toLowerCase().includes('draw');
         const bIsDraw = b.label.toLowerCase().includes('draw');
-        if (aIsDraw) return 0;
-        if (bIsDraw) return 0;
+        if (aIsDraw && !bIsDraw) return 1;
+        if (!aIsDraw && bIsDraw) return -1;
         return (b.price ?? -1) - (a.price ?? -1);
       })
     : [];
 
-  const activeOutcome = sortedOutcomes[activeTab] ?? null;
   const leadPrice = sortedOutcomes[0]?.price ?? null;
-  const activeColor = activeOutcome
-    ? outcomeColor(activeOutcome, activeOutcome.price === leadPrice)
+  const sparkOutcome = sortedOutcomes[sparkOutcomeIdx] ?? null;
+  const sparkColor = sparkOutcome
+    ? outcomeColor(sparkOutcome, sparkOutcome.price === leadPrice)
     : semantic.sentiment.positive;
+
+  const isUp = history.length >= 2 ? history[history.length - 1].p >= history[0].p : true;
+
+  // The displayed sparkline price is the current outcome's price
+  const sparkPct = sparkOutcome?.price !== null ? Math.round((sparkOutcome?.price ?? 0) * 100) : null;
+
+  function openBetSlip(outcome: SportOutcomeDetail, side: 'yes' | 'no') {
+    const price = side === 'yes' ? (outcome.bestAsk ?? outcome.price ?? 0.5) : (outcome.bestBid ?? (1 - (outcome.price ?? 0.5)));
+    setBetSlipSide(side);
+    setBetSlipLabel(side.toUpperCase());
+    setBetSlipOutcome(outcome.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw'));
+    setBetSlipPrice(price);
+    setBetSlipAmount(50);
+    setBetSlipVisible(true);
+  }
+
+  const payout = betSlipPrice > 0 ? betSlipAmount / betSlipPrice : 0;
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+      {/* ── HEADER BAR ── */}
+      <View style={styles.headerBar}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={16} color={semantic.text.primary} />
-          <Text style={styles.backText}>Predict</Text>
         </Pressable>
-        <View style={styles.polyBadge}>
-          <Text style={styles.polyBadgeText}>Polymarket</Text>
+        <Text style={styles.headerTitle} numberOfLines={2}>
+          {detail?.title ?? 'Loading...'}
+        </Text>
+        <View style={styles.avatarRing}>
+          <View style={styles.avatarInner} />
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {loading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator size="small" color={semantic.text.accent} />
-            <Text style={styles.stateText}>Loading fixture...</Text>
-          </View>
-        ) : null}
+      {/* ── LOADING / ERROR ── */}
+      {loading ? (
+        <View style={styles.stateWrap}>
+          <ActivityIndicator size="small" color={semantic.text.accent} />
+          <Text style={styles.stateText}>Loading fixture...</Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.stateWrap}>
+          <Text style={styles.stateTitle}>Fixture unavailable</Text>
+          <Text style={styles.stateText}>{errorMessage}</Text>
+          <Pressable onPress={() => void loadDetail()} style={styles.retryBtn}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </Pressable>
+        </View>
+      ) : detail ? (
+        <View style={styles.body}>
 
-        {!loading && errorMessage ? (
-          <View style={styles.stateCard}>
-            <Text style={styles.stateTitle}>Fixture unavailable</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable onPress={() => void loadDetail()} style={styles.retryButton}>
-              <Text style={styles.retryText}>Try Again</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {!loading && !errorMessage && detail ? (
-          <>
-            {/* match hero */}
-            <View style={styles.heroCard}>
-              <View style={styles.heroMetaRow}>
-                <View style={styles.leagueBadge}>
-                  <Text style={styles.leagueBadgeText}>{detail.sport.toUpperCase()}</Text>
-                </View>
-                <Text style={styles.kickoffText}>{formatKickoff(detail.endDate ?? detail.startDate)}</Text>
-              </View>
-              <Text style={styles.matchTitle}>{detail.title}</Text>
-              <View style={styles.heroFootRow}>
-                <Text style={styles.heroVolLabel}>Vol 7d</Text>
-                <Text style={styles.heroVolValue}>{formatUsdCompact(detail.volume24h)}</Text>
-              </View>
-            </View>
-
-            {/* outcome tabs */}
-            <View style={styles.tabRow}>
-              {sortedOutcomes.map((outcome, i) => {
-                const isActive = i === activeTab;
-                const pct = formatPercent(outcome.price);
-                return (
-                  <Pressable
-                    key={outcome.conditionId ?? outcome.label}
-                    onPress={() => setActiveTab(i)}
-                    style={[styles.tab, isActive && styles.tabActive]}>
-                    <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]} numberOfLines={1}>
-                      {outcome.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw')}
-                    </Text>
-                    <Text style={[styles.tabPct, isActive && styles.tabPctActive]}>{formatOdds(outcome.price)}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* sparkline for active outcome */}
+          {/* ── TOP ZONE: SPARKLINE CARD ── */}
+          <View style={styles.topZone}>
             <View style={styles.sparkCard}>
-              <View style={styles.sparkHeaderRow}>
-                <Text style={styles.sparkOutcomeName} numberOfLines={1}>
-                  {activeOutcome?.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw') ?? ''} — price history
-                </Text>
-                <View style={styles.intervalRow}>
-                  {(['1h', '1d'] as Interval[]).map((iv) => (
+              <View style={styles.sparkTopRow}>
+                <View>
+                  <Text style={[styles.bigPrice, { color: sparkColor }]}>
+                    {sparkPct !== null ? `${sparkPct}%` : '--'}
+                  </Text>
+                  <Text style={styles.sparkOutcomeName} numberOfLines={1}>
+                    {sparkOutcome?.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw') ?? ''}
+                  </Text>
+                </View>
+                <View style={styles.sparkRightCol}>
+                  <View style={styles.liveBadge}>
+                    <View style={[styles.liveDot, { backgroundColor: sparkColor }]} />
+                    <Text style={styles.liveText}>live</Text>
+                  </View>
+                  <View style={styles.intervalRow}>
+                    {(['1h', '1d'] as Interval[]).map((iv) => (
+                      <Pressable
+                        key={iv}
+                        onPress={() => setInterval(iv)}
+                        style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
+                        <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
+                          {iv === '1h' ? '1D' : '1W'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* Outcome selector pills for sparkline */}
+              <View style={styles.sparkOutcomeRow}>
+                {sortedOutcomes.map((outcome, i) => {
+                  const isDraw = outcome.label.toLowerCase().includes('draw');
+                  const label = isDraw ? 'Draw' : outcome.label;
+                  return (
                     <Pressable
-                      key={iv}
-                      onPress={() => setInterval(iv)}
-                      style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
-                      <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
-                        {iv === '1h' ? '1D' : '1W'}
+                      key={outcome.conditionId ?? outcome.label}
+                      onPress={() => setSparkOutcomeIdx(i)}
+                      style={[styles.sparkOutcomeChip, sparkOutcomeIdx === i && styles.sparkOutcomeChipActive]}>
+                      <Text
+                        style={[styles.sparkOutcomeChipText, sparkOutcomeIdx === i && styles.sparkOutcomeChipTextActive]}
+                        numberOfLines={1}>
+                        {label}
                       </Text>
                     </Pressable>
-                  ))}
-                </View>
+                  );
+                })}
               </View>
+
               <View style={styles.chartArea}>
                 {historyLoading ? (
                   <View style={styles.chartSkeleton} />
                 ) : history.length >= 2 ? (
-                  <Sparkline points={history} width={315} height={64} color={activeColor} />
+                  <Sparkline points={history} width={315} height={64} color={sparkColor} />
                 ) : (
                   <View style={[styles.chartSkeleton, { opacity: 0.4 }]} />
                 )}
               </View>
             </View>
+          </View>
 
-            {/* 3-way outcome bars */}
-            <View style={styles.outcomesSection}>
-              <View style={styles.outcomesSectionHeader}>
-                <Text style={styles.outcomesSectionTitle}>Outcomes</Text>
-                <OddsFormatToggle format={format} onFormatChange={setFormat} />
-              </View>
-              {sortedOutcomes.map((outcome) => {
-                const isLead = leadPrice !== null && outcome.price === leadPrice;
-                const isDraw = outcome.label.toLowerCase().includes('draw');
-                const pct = outcome.price !== null ? Math.round(outcome.price * 100) : 0;
-                const color = outcomeColor(outcome, isLead);
-                return (
-                  <View key={outcome.conditionId ?? outcome.label} style={styles.outcomeBar}>
-                    <View style={styles.outcomeBarHeader}>
-                      <Text style={[styles.outcomeBarLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
-                        {isDraw ? 'Draw' : outcome.label}
-                      </Text>
-                      <Text style={[styles.outcomeBarPct, { color }]}>{formatOdds(outcome.price)}</Text>
+          {/* ── MID ZONE: TABS ── */}
+          <View style={styles.midZone}>
+            {/* Tab bar */}
+            <View style={styles.tabBar}>
+              {TABS.map((tab) => (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={[styles.tabChip, activeTab === tab.key && styles.tabChipActive]}>
+                  <Text style={[styles.tabChipText, activeTab === tab.key && styles.tabChipTextActive]}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Tab content */}
+            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}>
+
+              {/* POSITION TAB */}
+              {activeTab === 'position' ? (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                  <Text style={styles.emptyTitle}>No positions yet</Text>
+                  <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                </View>
+              ) : null}
+
+              {/* STATS TAB */}
+              {activeTab === 'stats' ? (
+                <View style={styles.tabSection}>
+                  {/* Metric row */}
+                  <View style={styles.metricRow}>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Traders</Text>
+                      <Text style={styles.metricValue}>--</Text>
                     </View>
-                    <View style={styles.outcomeTrack}>
-                      <View style={[styles.outcomeFill, { width: `${pct}%`, backgroundColor: color, opacity: isLead ? 0.2 : 0.12 }]} />
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Volume</Text>
+                      <Text style={styles.metricValue}>{formatUsdCompact(detail.volume24h)}</Text>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Liquidity</Text>
+                      <Text style={styles.metricValue}>{formatUsdCompact(detail.liquidity)}</Text>
                     </View>
                   </View>
-                );
-              })}
-            </View>
 
-            {/* stats */}
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Vol (7d)</Text>
-                <Text style={styles.statValue}>{formatUsdCompact(detail.volume24h)}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Kick-off</Text>
-                <Text style={styles.statValue}>{formatKickoff(detail.startDate).split('·')[0].trim()}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Markets</Text>
-                <Text style={styles.statValue}>{detail.outcomes.length}</Text>
-              </View>
-            </View>
+                  {/* Outcome concentration */}
+                  <View style={styles.statsCard}>
+                    <Text style={styles.cardLabel}>Outcome Concentration</Text>
+                    {sortedOutcomes.map((outcome) => {
+                      const isDraw = outcome.label.toLowerCase().includes('draw');
+                      const isLead = leadPrice !== null && outcome.price === leadPrice;
+                      const color = outcomeColor(outcome, isLead);
+                      const pct = outcome.price !== null ? Math.round(outcome.price * 100) : 0;
+                      return (
+                        <View key={outcome.conditionId ?? outcome.label} style={styles.concBar}>
+                          <View style={styles.concBarHeader}>
+                            <Text style={[styles.concBarLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
+                              {isDraw ? 'Draw' : outcome.label}
+                            </Text>
+                            <Text style={[styles.concBarPct, { color }]}>{pct}%</Text>
+                          </View>
+                          <View style={styles.concTrack}>
+                            <View style={[styles.concFill, { width: `${pct}%`, backgroundColor: color, opacity: isLead ? 0.25 : 0.15 }]} />
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
 
-            {/* CTA */}
-            <View style={styles.ctaWrap}>
-              <View style={styles.ctaBtn}>
-                <Text style={styles.ctaText}>🔒  Connect Wallet to Trade</Text>
-              </View>
+                  {/* 24h Activity */}
+                  <View style={styles.statsCard}>
+                    <Text style={styles.cardLabel}>24h Activity</Text>
+                    <View style={styles.activityRow}>
+                      <View style={styles.activityItem}>
+                        <Text style={styles.activityKey}>Kick-off</Text>
+                        <Text style={styles.activityVal}>{formatKickoff(detail.startDate)}</Text>
+                      </View>
+                      <View style={styles.activityItem}>
+                        <Text style={styles.activityKey}>Markets</Text>
+                        <Text style={styles.activityVal}>{detail.outcomes.length}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* RULES TAB */}
+              {activeTab === 'rules' ? (
+                <View style={styles.tabSection}>
+                  <View style={styles.statsCard}>
+                    <Text style={styles.cardLabel}>Resolution Criteria</Text>
+                    <Text style={styles.rulesText}>
+                      {detail.description ?? 'No resolution criteria provided.'}
+                    </Text>
+                    <View style={styles.rulesMeta}>
+                      <Text style={styles.rulesMetaItem}>Source: Polymarket</Text>
+                      <Text style={styles.rulesMetaItem}>{formatKickoff(detail.endDate)}</Text>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* FEED TAB */}
+              {activeTab === 'feed' ? (
+                <View style={styles.tabSection}>
+                  {[
+                    { source: 'Smart Money Alert', text: 'Sharp money rotating into the home team — $8K YES at 58¢', time: '2m ago' },
+                    { source: 'Market Signal', text: 'Draw probability dropped 4% after team news update', time: '22m ago' },
+                    { source: 'Whale Watch', text: 'Top 3 traders net long home team by $19K', time: '1h ago' },
+                  ].map((item, i) => (
+                    <View key={i} style={styles.feedCard}>
+                      <View style={styles.feedCardHeader}>
+                        <Text style={styles.feedSource}>{item.source}</Text>
+                        <Text style={styles.feedTime}>{item.time}</Text>
+                      </View>
+                      <Text style={styles.feedText}>{item.text}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+            </ScrollView>
+          </View>
+
+          {/* ── BOTTOM ZONE: OUTCOME SELECTION ROWS ── */}
+          <View style={styles.bottomZone}>
+            {sortedOutcomes.map((outcome) => {
+              const isDraw = outcome.label.toLowerCase().includes('draw');
+              const isLead = leadPrice !== null && outcome.price === leadPrice;
+              const label = isDraw ? 'Draw' : outcome.label;
+              const yesCents = outcome.price !== null ? Math.round(outcome.price * 100) : null;
+              const noCents = outcome.price !== null ? Math.round((1 - outcome.price) * 100) : null;
+              return (
+                <View key={outcome.conditionId ?? outcome.label} style={styles.outcomeRow}>
+                  <View style={styles.outcomeMeta}>
+                    <Text style={[styles.outcomeLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    <Text style={styles.outcomeVol}>{formatUsdCompact(outcome.volume24h)} vol</Text>
+                  </View>
+                  <View style={styles.outcomeBtns}>
+                    <Pressable
+                      style={styles.outcomeBtnYes}
+                      onPress={() => openBetSlip(outcome, 'yes')}>
+                      <Text style={styles.outcomeBtnYesLabel}>YES</Text>
+                      <Text style={styles.outcomeBtnYesPrice}>{yesCents !== null ? `${yesCents}¢` : '--'}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.outcomeBtnNo}
+                      onPress={() => openBetSlip(outcome, 'no')}>
+                      <Text style={styles.outcomeBtnNoLabel}>NO</Text>
+                      <Text style={styles.outcomeBtnNoPrice}>{noCents !== null ? `${noCents}¢` : '--'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+        </View>
+      ) : null}
+
+      {/* ── BET SLIP BOTTOM SHEET ── */}
+      <Modal
+        visible={betSlipVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBetSlipVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setBetSlipVisible(false)} />
+        <View style={styles.betSlip}>
+          <View style={styles.betSlipHandle} />
+          <View style={styles.betSlipHeader}>
+            <View style={styles.betSlipTitleCol}>
+              <Text style={styles.betSlipOutcome}>{betSlipOutcome}</Text>
+              <Text style={styles.betSlipTitle}>{detail?.title ?? ''}</Text>
             </View>
-          </>
-        ) : null}
-      </ScrollView>
+            <View style={[styles.sideBadge, betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+              <Text style={[styles.sideBadgeText, { color: betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                {betSlipLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.betSlipRow}>
+            <Text style={styles.betSlipMeta}>Entry price</Text>
+            <Text style={styles.betSlipMetaVal}>{Math.round(betSlipPrice * 100)}¢</Text>
+          </View>
+
+          {/* Amount input */}
+          <View style={styles.amountWrap}>
+            <Text style={styles.amountLabel}>Amount</Text>
+            <View style={styles.amountInputRow}>
+              <Text style={styles.amountDollar}>$</Text>
+              <TextInput
+                style={styles.amountInput}
+                keyboardType="numeric"
+                value={betSlipAmount.toString()}
+                onChangeText={(v) => {
+                  const n = parseFloat(v);
+                  if (!Number.isNaN(n)) setBetSlipAmount(n);
+                }}
+              />
+            </View>
+          </View>
+
+          <View style={styles.quickAmounts}>
+            {QUICK_AMOUNTS.map((amt) => (
+              <Pressable
+                key={amt}
+                onPress={() => setBetSlipAmount(amt)}
+                style={[styles.quickBtn, betSlipAmount === amt && styles.quickBtnActive]}>
+                <Text style={[styles.quickBtnText, betSlipAmount === amt && styles.quickBtnTextActive]}>
+                  ${amt}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.payoutRow}>
+            <Text style={styles.payoutLabel}>Est. Payout</Text>
+            <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
+          </View>
+
+          <Pressable
+            style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
+            onPress={() => setBetSlipVisible(false)}>
+            <Text style={styles.confirmBtnText}>
+              Confirm {betSlipLabel} — ${betSlipAmount}
+            </Text>
+          </Pressable>
+        </View>
+      </Modal>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </SafeAreaView>
@@ -313,159 +534,629 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.background.screen },
-  topBar: {
+
+  // ── Header ──
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,
-    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    flexShrink: 0,
   },
-  backButton: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs },
-  backText: { color: semantic.text.primary, fontSize: tokens.fontSize.sm, fontWeight: '600' },
-  polyBadge: {
-    backgroundColor: semantic.predict.badgeGeoBg,
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  polyBadgeText: {
-    color: semantic.text.accentDim,
+  headerTitle: {
+    flex: 1,
+    color: semantic.text.primary,
     fontSize: tokens.fontSize.xxs,
     fontFamily: 'monospace',
     letterSpacing: 0.8,
-  },
-  content: { padding: tokens.spacing.lg, paddingBottom: 128, gap: tokens.spacing.sm },
-  // hero
-  heroCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    padding: 14,
-    gap: 8,
-  },
-  heroMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  leagueBadge: {
-    backgroundColor: semantic.predict.badgeSportBg,
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  leagueBadgeText: {
-    color: semantic.sentiment.positive,
-    fontSize: tokens.fontSize.xxs,
-    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    fontFamily: 'monospace',
-    fontWeight: '500',
+    textAlign: 'center',
   },
-  kickoffText: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace' },
-  matchTitle: { color: semantic.text.primary, fontSize: 17, fontWeight: '700', lineHeight: 22 },
-  heroFootRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroVolLabel: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 1 },
-  heroVolValue: { color: semantic.text.primary, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', fontWeight: '700' },
-  // tabs
-  tabRow: { flexDirection: 'row', gap: 0 },
-  tab: {
-    flex: 1,
+  avatarRing: {
+    width: 32,
+    height: 32,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1.5,
+    borderColor: semantic.text.accentDim,
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.xs,
-    marginHorizontal: 2,
-    gap: 2,
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  tabActive: {
-    borderBottomColor: semantic.text.accent,
-    borderColor: semantic.border.muted,
+  avatarInner: {
+    width: 24,
+    height: 24,
+    borderRadius: tokens.radius.full,
+    backgroundColor: semantic.background.surfaceRaised,
   },
-  tabLabel: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 0.8 },
-  tabLabelActive: { color: semantic.text.accent },
-  tabPct: { color: semantic.text.faint, fontSize: 13, fontWeight: '700', fontFamily: 'monospace' },
-  tabPctActive: { color: semantic.text.primary },
-  // sparkline
+
+  // ── Body layout ──
+  body: { flex: 1 },
+
+  // ── Top zone ──
+  topZone: { flexShrink: 0, padding: tokens.spacing.md },
   sparkCard: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: tokens.radius.md,
-    padding: 12,
-    gap: 8,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
   },
-  sparkHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sparkOutcomeName: { flex: 1, color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 1 },
-  intervalRow: { flexDirection: 'row', gap: 4 },
+  sparkTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  bigPrice: {
+    fontSize: tokens.fontSize.lg,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    lineHeight: 28,
+  },
+  sparkOutcomeName: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  sparkRightCol: {
+    alignItems: 'flex-end',
+    gap: tokens.spacing.xs,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: tokens.radius.full,
+  },
+  liveText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  intervalRow: { flexDirection: 'row', gap: tokens.spacing.xs },
   intervalChip: {
-    paddingHorizontal: 7,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: tokens.radius.sm,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     backgroundColor: semantic.background.surfaceRaised,
   },
-  intervalChipActive: { backgroundColor: 'rgba(232,197,71,0.08)', borderColor: 'rgba(232,197,71,0.25)' },
-  intervalText: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 1 },
+  intervalChipActive: {
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderColor: 'rgba(232,197,71,0.15)',
+  },
+  intervalText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+  },
   intervalTextActive: { color: semantic.text.accent },
+  sparkOutcomeRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+    flexWrap: 'wrap',
+  },
+  sparkOutcomeChip: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 3,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+  },
+  sparkOutcomeChipActive: {
+    backgroundColor: 'rgba(232,197,71,0.10)',
+    borderColor: 'rgba(232,197,71,0.2)',
+  },
+  sparkOutcomeChipText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  sparkOutcomeChipTextActive: { color: semantic.text.accent },
   chartArea: { height: 64 },
-  chartSkeleton: { flex: 1, borderRadius: 6, backgroundColor: semantic.background.surfaceRaised },
-  // outcome bars
-  outcomesSection: { gap: 8 },
-  outcomesSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  outcomesSectionTitle: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase' },
-  outcomeBar: { gap: 5 },
-  outcomeBarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  outcomeBarLabel: { fontSize: tokens.fontSize.sm, fontWeight: '500', flex: 1 },
-  outcomeBarPct: { fontSize: 16, fontWeight: '700', fontFamily: 'monospace' },
-  outcomeTrack: { height: 8, backgroundColor: semantic.background.surfaceRaised, borderRadius: 4, overflow: 'hidden' },
-  outcomeFill: { height: '100%', borderRadius: 4 },
-  // stats
-  statsRow: { flexDirection: 'row', gap: 6 },
-  statBox: {
+  chartSkeleton: {
+    flex: 1,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: semantic.background.surfaceRaised,
+  },
+
+  // ── Mid zone ──
+  midZone: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+    flexShrink: 0,
+  },
+  tabChip: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tabChipActive: {
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderColor: 'rgba(232,197,71,0.15)',
+  },
+  tabChipText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  tabChipTextActive: { color: semantic.text.accent },
+  tabContent: { flex: 1 },
+  tabContentInner: { padding: tokens.spacing.md, gap: tokens.spacing.sm, paddingBottom: tokens.spacing.xl },
+
+  // ── Empty state ──
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.xl,
+    gap: tokens.spacing.sm,
+  },
+  emptyTitle: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  emptyBody: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    textAlign: 'center',
+  },
+
+  // ── Stats tab ──
+  tabSection: { gap: tokens.spacing.sm },
+  statsCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.md,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  cardLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  metricRow: { flexDirection: 'row', gap: tokens.spacing.xs },
+  metricBox: {
     flex: 1,
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: tokens.radius.sm,
-    padding: 10,
+    padding: tokens.spacing.sm,
   },
-  statLabel: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', marginBottom: 4 },
-  statValue: { color: semantic.text.primary, fontSize: tokens.fontSize.sm, fontWeight: '700', fontFamily: 'monospace' },
-  // cta
-  ctaWrap: { paddingBottom: 4 },
-  ctaBtn: {
-    height: 44,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
+  metricLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  metricValue: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  concBar: { gap: 4 },
+  concBarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  ctaText: { color: semantic.text.faint, fontSize: tokens.fontSize.xs, fontFamily: 'monospace', letterSpacing: 1.5, textTransform: 'uppercase' },
-  // states
-  stateCard: {
+  concBarLabel: {
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  concBarPct: {
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  concTrack: {
+    height: 8,
+    backgroundColor: semantic.background.surfaceRaised,
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+  },
+  concFill: {
+    height: '100%',
+    borderRadius: tokens.radius.full,
+  },
+  activityRow: { flexDirection: 'row', gap: tokens.spacing.xl },
+  activityItem: { gap: 4 },
+  activityKey: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  activityVal: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+
+  // ── Rules tab ──
+  rulesText: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.sm,
+    lineHeight: 18,
+  },
+  rulesMeta: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    paddingTop: tokens.spacing.sm,
+  },
+  rulesMetaItem: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+
+  // ── Feed tab ──
+  feedCard: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: tokens.radius.md,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  feedCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  feedSource: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  feedTime: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  feedText: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.sm,
+    lineHeight: 18,
+  },
+
+  // ── Bottom zone: Sport outcome rows ──
+  bottomZone: {
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    paddingHorizontal: tokens.spacing.md,
+    paddingTop: tokens.spacing.sm,
+    paddingBottom: tokens.spacing.xs,
+    gap: tokens.spacing.xs,
+  },
+  outcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+  },
+  outcomeMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  outcomeLabel: {
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  outcomeVol: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  outcomeBtns: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+  },
+  outcomeBtnYes: {
+    width: 56,
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    backgroundColor: 'rgba(52,199,123,0.15)',
+    borderColor: 'rgba(52,199,123,0.3)',
+    alignItems: 'center',
+    gap: 1,
+  },
+  outcomeBtnYesLabel: {
+    color: semantic.sentiment.positive,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  outcomeBtnYesPrice: {
+    color: semantic.sentiment.positive,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  outcomeBtnNo: {
+    width: 56,
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    backgroundColor: 'rgba(244,88,78,0.12)',
+    borderColor: 'rgba(244,88,78,0.25)',
+    alignItems: 'center',
+    gap: 1,
+  },
+  outcomeBtnNoLabel: {
+    color: semantic.sentiment.negative,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  outcomeBtnNoPrice: {
+    color: semantic.sentiment.negative,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+
+  // ── Bet slip ──
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  betSlip: {
+    backgroundColor: semantic.background.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: semantic.border.muted,
     padding: tokens.spacing.lg,
+    gap: tokens.spacing.md,
+    paddingBottom: 40,
+  },
+  betSlipHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: tokens.radius.full,
+    backgroundColor: semantic.border.muted,
+    alignSelf: 'center',
+    marginBottom: tokens.spacing.xs,
+  },
+  betSlipHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: tokens.spacing.sm,
   },
-  stateTitle: { color: semantic.text.primary, fontSize: tokens.fontSize.md, fontWeight: '700' },
+  betSlipTitleCol: {
+    flex: 1,
+    gap: 3,
+  },
+  betSlipOutcome: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  betSlipTitle: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    lineHeight: 17,
+  },
+  sideBadge: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xxs,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  sideBadgeYes: {
+    backgroundColor: 'rgba(52,199,123,0.12)',
+    borderColor: 'rgba(52,199,123,0.3)',
+  },
+  sideBadgeNo: {
+    backgroundColor: 'rgba(244,88,78,0.12)',
+    borderColor: 'rgba(244,88,78,0.3)',
+  },
+  sideBadgeText: {
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  betSlipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  betSlipMeta: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+  },
+  betSlipMetaVal: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  amountWrap: { gap: tokens.spacing.xs },
+  amountLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  amountInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: semantic.background.surfaceRaised,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.spacing.md,
+  },
+  amountDollar: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    marginRight: tokens.spacing.xs,
+  },
+  amountInput: {
+    flex: 1,
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    paddingVertical: tokens.spacing.sm,
+  },
+  quickAmounts: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+  },
+  quickBtn: {
+    flex: 1,
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+  },
+  quickBtnActive: {
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderColor: 'rgba(232,197,71,0.25)',
+  },
+  quickBtnText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  quickBtnTextActive: { color: semantic.text.accent },
+  payoutRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: tokens.spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+  },
+  payoutLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  payoutValue: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  confirmBtn: {
+    height: 48,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnYes: { backgroundColor: semantic.sentiment.positive },
+  confirmBtnNo: { backgroundColor: semantic.sentiment.negative },
+  confirmBtnText: {
+    color: '#fff',
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+
+  // ── Loading / error states ──
+  stateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    padding: tokens.spacing.lg,
+  },
+  stateTitle: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.md,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
   stateText: { color: semantic.text.dim, fontSize: tokens.fontSize.md },
-  retryButton: {
+  retryBtn: {
     marginTop: tokens.spacing.xs,
     backgroundColor: semantic.text.accent,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     borderRadius: tokens.radius.xs,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
   },
-  retryText: { color: semantic.background.screen, fontSize: tokens.fontSize.sm, fontFamily: 'monospace', textTransform: 'uppercase', fontWeight: '700' },
+  retryText: {
+    color: semantic.background.screen,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
 });

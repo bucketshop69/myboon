@@ -1,14 +1,22 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
-import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 
 interface PredictMarketDetailScreenProps {
@@ -16,11 +24,7 @@ interface PredictMarketDetailScreenProps {
 }
 
 type Interval = '1h' | '1d';
-
-function formatPercent(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return '--';
-  return `${Math.round(value * 100)}%`;
-}
+type Tab = 'position' | 'stats' | 'rules' | 'feed';
 
 function formatUsdCompact(value: number | null): string {
   if (value === null || !Number.isFinite(value) || value <= 0) return '--';
@@ -45,7 +49,6 @@ function formatSecondsAgo(isoStr: string): string {
   return `${Math.floor(diff / 60)}m ago`;
 }
 
-// Build an SVG path from price history points fitting into a given width×height box
 function buildSparkPath(points: PricePoint[], w: number, h: number): { linePath: string; areaPath: string } | null {
   if (points.length < 2) return null;
   const minT = points[0].t;
@@ -78,7 +81,6 @@ function Sparkline({ points, width, height }: { points: PricePoint[]; width: num
   const color = isUp ? semantic.sentiment.positive : semantic.sentiment.negative;
   const gradId = isUp ? 'sgUp' : 'sgDn';
 
-  const dotCoords = buildSparkPath([last], width, height);
   const lastCoord = (() => {
     const rangeT = (points[points.length - 1].t - points[0].t) || 1;
     const prices = points.map((p) => p.p);
@@ -106,9 +108,16 @@ function Sparkline({ points, width, height }: { points: PricePoint[]; width: num
   );
 }
 
+const QUICK_AMOUNTS = [10, 25, 50, 100];
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'position', label: 'Position' },
+  { key: 'stats', label: 'Stats' },
+  { key: 'rules', label: 'Rules' },
+  { key: 'feed', label: 'Feed' },
+];
+
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
-  const { format, setFormat, formatOdds } = useOddsFormat();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -116,6 +125,15 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [livePrice, setLivePrice] = useState<LivePrice | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('position');
+
+  // Bet slip state
+  const [betSlipVisible, setBetSlipVisible] = useState(false);
+  const [betSlipSide, setBetSlipSide] = useState<'yes' | 'no'>('yes');
+  const [betSlipLabel, setBetSlipLabel] = useState('');
+  const [betSlipPrice, setBetSlipPrice] = useState(0.5);
+  const [betSlipAmount, setBetSlipAmount] = useState(50);
+
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
   async function loadMarket() {
@@ -132,10 +150,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
   }
 
-  async function loadHistory(iv: Interval, tokenId: string) {
+  async function loadHistory(iv: Interval) {
     setHistoryLoading(true);
     try {
-      const result = await fetchPriceHistory(tokenId, iv);
+      const result = await fetchPriceHistory(slug, iv);
       setHistory(result.history);
     } catch {
       setHistory([]);
@@ -151,16 +169,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     } catch { /* silent */ }
   }
 
-  // Load history when detail or interval changes
   useEffect(() => {
     if (!detail) return;
-    const tokenId = detail.outcomes[0] === 'Yes' ? detail.outcomePrices[0]?.toString() : null;
-    // Use slug-based price endpoint for live; for history we need a clobTokenId
-    // fetchPriceHistory needs a tokenId — if we don't have one yet use the slug as a no-op
-    void loadHistory(interval, slug);
+    void loadHistory(interval);
   }, [detail, interval]);
 
-  // 30s live price refresh
   useEffect(() => {
     void refreshPrice();
     refreshTimer.current = globalThis.setInterval(() => { void refreshPrice(); }, 30_000);
@@ -176,68 +189,88 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const yesPct   = yesPrice !== null ? Math.round(yesPrice * 100) : null;
   const noPct    = noPrice  !== null ? Math.round(noPrice * 100)  : null;
 
+  const isUp = history.length >= 2 ? history[history.length - 1].p >= history[0].p : true;
+  const changePct = history.length >= 2
+    ? ((history[history.length - 1].p - history[0].p) / (history[0].p || 0.01)) * 100
+    : null;
+
+  function openBetSlip(side: 'yes' | 'no') {
+    const price = side === 'yes' ? (yesPrice ?? 0.5) : (noPrice ?? 0.5);
+    setBetSlipSide(side);
+    setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
+    setBetSlipPrice(price);
+    setBetSlipAmount(50);
+    setBetSlipVisible(true);
+  }
+
+  const payout = betSlipPrice > 0 ? betSlipAmount / betSlipPrice : 0;
+
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+      {/* ── HEADER BAR ── */}
+      <View style={styles.headerBar}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={16} color={semantic.text.primary} />
-          <Text style={styles.backText}>Predict</Text>
         </Pressable>
-        <View style={styles.polyBadge}>
-          <Text style={styles.polyBadgeText}>Polymarket</Text>
+        <Text style={styles.headerTitle} numberOfLines={2}>
+          {detail?.question ?? 'Loading...'}
+        </Text>
+        <View style={styles.avatarRing}>
+          <View style={styles.avatarInner} />
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {loading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator size="small" color={semantic.text.accent} />
-            <Text style={styles.stateText}>Loading market...</Text>
-          </View>
-        ) : null}
+      {/* ── LOADING / ERROR ── */}
+      {loading ? (
+        <View style={styles.stateWrap}>
+          <ActivityIndicator size="small" color={semantic.text.accent} />
+          <Text style={styles.stateText}>Loading market...</Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.stateWrap}>
+          <Text style={styles.stateTitle}>Market unavailable</Text>
+          <Text style={styles.stateText}>{errorMessage}</Text>
+          <Pressable onPress={() => void loadMarket()} style={styles.retryBtn}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </Pressable>
+        </View>
+      ) : detail ? (
+        <View style={styles.body}>
 
-        {!loading && errorMessage ? (
-          <View style={styles.stateCard}>
-            <Text style={styles.stateTitle}>Market unavailable</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable onPress={() => void loadMarket()} style={styles.retryButton}>
-              <Text style={styles.retryText}>Try Again</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {!loading && !errorMessage && detail ? (
-          <>
-            <View style={styles.questionWrap}>
-              <Text style={styles.title}>{detail.question}</Text>
-              <Text style={styles.endDate}>{formatDeadline(detail.endDate, detail.active)} · {formatUsdCompact(detail.volume24h)} weekly vol</Text>
-            </View>
-
-            {/* sparkline card */}
+          {/* ── TOP ZONE: SPARKLINE CARD ── */}
+          <View style={styles.topZone}>
             <View style={styles.sparkCard}>
               <View style={styles.sparkTopRow}>
-                <View style={styles.sparkPriceRow}>
-                  <Text style={styles.sparkYes}>{formatOdds(yesPrice)}</Text>
-                </View>
-                <View style={styles.updatedRow}>
-                  <View style={styles.updatedDot} />
-                  <Text style={styles.updatedText}>
-                    {livePrice ? formatSecondsAgo(livePrice.fetchedAt) : 'loading...'}
+                <View>
+                  <Text style={[styles.bigPrice, { color: isUp ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                    {yesPct !== null ? `${yesPct}%` : '--'}
                   </Text>
-                </View>
-              </View>
-
-              <View style={styles.intervalRow}>
-                {(['1h', '1d'] as Interval[]).map((iv) => (
-                  <Pressable
-                    key={iv}
-                    onPress={() => setInterval(iv)}
-                    style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
-                    <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
-                      {iv === '1h' ? '1D' : '1W'}
+                  {changePct !== null ? (
+                    <Text style={[styles.changeText, { color: isUp ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                      {isUp ? '▲' : '▼'} {isUp ? '+' : ''}{changePct.toFixed(1)}%
                     </Text>
-                  </Pressable>
-                ))}
+                  ) : null}
+                </View>
+                <View style={styles.sparkRightCol}>
+                  <View style={styles.liveBadge}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveText}>
+                      {livePrice ? `updated ${formatSecondsAgo(livePrice.fetchedAt)}` : 'loading...'}
+                    </Text>
+                  </View>
+                  <View style={styles.intervalRow}>
+                    {(['1h', '1d'] as Interval[]).map((iv) => (
+                      <Pressable
+                        key={iv}
+                        onPress={() => setInterval(iv)}
+                        style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
+                        <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
+                          {iv === '1h' ? '1D' : '1W'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
               </View>
 
               <View style={styles.chartArea}>
@@ -250,74 +283,214 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 )}
               </View>
             </View>
+          </View>
 
-            {/* YES / NO bars */}
-            <View style={styles.oddsSection}>
-              <View style={styles.oddsSectionHeader}>
-                <Text style={styles.oddsSectionTitle}>Odds</Text>
-                <OddsFormatToggle format={format} onFormatChange={setFormat} />
-              </View>
-              <View style={styles.oddsPair}>
-                {/* YES */}
-                <View style={styles.oddsBarWrap}>
-                  <View style={styles.oddsBarLabel}>
-                    <Text style={styles.oddsLabelYes}>YES</Text>
-                    <Text style={styles.oddsPrice}>${yesPrice?.toFixed(2) ?? '--'}</Text>
+          {/* ── MID ZONE: TABS ── */}
+          <View style={styles.midZone}>
+            {/* Tab bar */}
+            <View style={styles.tabBar}>
+              {TABS.map((tab) => (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={[styles.tabChip, activeTab === tab.key && styles.tabChipActive]}>
+                  <Text style={[styles.tabChipText, activeTab === tab.key && styles.tabChipTextActive]}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Tab content */}
+            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}>
+
+              {/* POSITION TAB */}
+              {activeTab === 'position' ? (
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                  <Text style={styles.emptyTitle}>No positions yet</Text>
+                  <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                </View>
+              ) : null}
+
+              {/* STATS TAB */}
+              {activeTab === 'stats' ? (
+                <View style={styles.tabSection}>
+                  {/* Smart money bar */}
+                  <View style={styles.statsCard}>
+                    <Text style={styles.cardLabel}>Smart Money</Text>
+                    <View style={styles.smartMoneyRow}>
+                      <Text style={styles.smYesLabel}>YES</Text>
+                      <View style={styles.smTrack}>
+                        <View style={[styles.smFillYes, { width: `${yesPct ?? 50}%` }]} />
+                      </View>
+                      <Text style={styles.smNoLabel}>NO</Text>
+                    </View>
+                    <View style={styles.smPctRow}>
+                      <Text style={styles.smYesPct}>{yesPct ?? '--'}%</Text>
+                      <Text style={styles.smNoPct}>{noPct ?? '--'}%</Text>
+                    </View>
                   </View>
-                  <View style={styles.oddsTrack}>
-                    <View style={[styles.oddsFillYes, { width: `${yesPct ?? 50}%` }]}>
-                      <Text style={styles.oddsPctYes}>{formatOdds(yesPrice)}</Text>
+
+                  {/* Metric row */}
+                  <View style={styles.metricRow}>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Traders</Text>
+                      <Text style={styles.metricValue}>--</Text>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Volume</Text>
+                      <Text style={styles.metricValue}>{formatUsdCompact(detail.volume24h)}</Text>
+                    </View>
+                    <View style={styles.metricBox}>
+                      <Text style={styles.metricLabel}>Liquidity</Text>
+                      <Text style={styles.metricValue}>{formatUsdCompact(detail.liquidity)}</Text>
+                    </View>
+                  </View>
+
+                  {/* 24h Activity */}
+                  <View style={styles.statsCard}>
+                    <Text style={styles.cardLabel}>24h Activity</Text>
+                    <View style={styles.activityRow}>
+                      <View style={styles.activityItem}>
+                        <Text style={styles.activityKey}>Closes</Text>
+                        <Text style={styles.activityVal}>{formatDeadline(detail.endDate, detail.active)}</Text>
+                      </View>
+                      <View style={styles.activityItem}>
+                        <Text style={styles.activityKey}>Vol (Total)</Text>
+                        <Text style={styles.activityVal}>{formatUsdCompact(detail.volume)}</Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-                {/* NO */}
-                <View style={styles.oddsBarWrap}>
-                  <View style={styles.oddsBarLabel}>
-                    <Text style={styles.oddsLabelNo}>NO</Text>
-                    <Text style={styles.oddsPrice}>${noPrice?.toFixed(2) ?? '--'}</Text>
-                  </View>
-                  <View style={styles.oddsTrack}>
-                    <View style={[styles.oddsFillNo, { width: `${noPct ?? 50}%` }]}>
-                      <Text style={styles.oddsPctNo}>{formatOdds(noPrice)}</Text>
+              ) : null}
+
+              {/* RULES TAB */}
+              {activeTab === 'rules' ? (
+                <View style={styles.tabSection}>
+                  <View style={styles.statsCard}>
+                    <Text style={styles.cardLabel}>Resolution Criteria</Text>
+                    <Text style={styles.rulesText}>
+                      {detail.description ?? 'No resolution criteria provided.'}
+                    </Text>
+                    <View style={styles.rulesMeta}>
+                      <Text style={styles.rulesMetaItem}>Source: Polymarket</Text>
+                      <Text style={styles.rulesMetaItem}>{formatDeadline(detail.endDate, detail.active)}</Text>
                     </View>
                   </View>
                 </View>
-              </View>
-            </View>
+              ) : null}
 
-            {/* stats */}
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Vol (7d)</Text>
-                <Text style={styles.statValue}>{formatUsdCompact(detail.volume24h)}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Vol (Total)</Text>
-                <Text style={styles.statValue}>{formatUsdCompact(detail.volume)}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Closes</Text>
-                <Text style={styles.statValue}>{formatDeadline(detail.endDate, detail.active)}</Text>
-              </View>
-            </View>
+              {/* FEED TAB */}
+              {activeTab === 'feed' ? (
+                <View style={styles.tabSection}>
+                  {[
+                    { source: 'Smart Money Alert', text: 'Large YES position opened — $12K notional at 61¢', time: '4m ago' },
+                    { source: 'Market Signal', text: 'Price moved +3.2% in the last 2h on elevated volume', time: '18m ago' },
+                    { source: 'Whale Watch', text: 'Top 5 traders net long YES by $28K combined', time: '1h ago' },
+                  ].map((item, i) => (
+                    <View key={i} style={styles.feedCard}>
+                      <View style={styles.feedCardHeader}>
+                        <Text style={styles.feedSource}>{item.source}</Text>
+                        <Text style={styles.feedTime}>{item.time}</Text>
+                      </View>
+                      <Text style={styles.feedText}>{item.text}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
 
-            {/* description */}
-            {detail.description ? (
-              <View style={styles.descCard}>
-                <Text style={styles.descLabel}>Resolution</Text>
-                <Text style={styles.descText}>{detail.description}</Text>
-              </View>
-            ) : null}
+            </ScrollView>
+          </View>
 
-            {/* CTA */}
-            <View style={styles.ctaWrap}>
-              <View style={styles.ctaBtn}>
-                <Text style={styles.ctaText}>🔒  Connect Wallet to Trade</Text>
-              </View>
+          {/* ── BOTTOM ZONE: YES / NO BUTTONS ── */}
+          <View style={styles.bottomZone}>
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[styles.actionBtn, styles.actionBtnYes]}
+                onPress={() => openBetSlip('yes')}>
+                <Text style={styles.actionBtnLabel}>Yes</Text>
+                <Text style={styles.actionBtnPrice}>{yesPct !== null ? `${yesPct}¢` : '--'}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.actionBtn, styles.actionBtnNo]}
+                onPress={() => openBetSlip('no')}>
+                <Text style={[styles.actionBtnLabel, { color: semantic.sentiment.negative }]}>No</Text>
+                <Text style={[styles.actionBtnPrice, { color: semantic.sentiment.negative }]}>{noPct !== null ? `${noPct}¢` : '--'}</Text>
+              </Pressable>
             </View>
-          </>
-        ) : null}
-      </ScrollView>
+          </View>
+
+        </View>
+      ) : null}
+
+      {/* ── BET SLIP BOTTOM SHEET ── */}
+      <Modal
+        visible={betSlipVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBetSlipVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setBetSlipVisible(false)} />
+        <View style={styles.betSlip}>
+          <View style={styles.betSlipHandle} />
+          <View style={styles.betSlipHeader}>
+            <Text style={styles.betSlipTitle}>{detail?.question ?? ''}</Text>
+            <View style={[styles.sideBadge, betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+              <Text style={[styles.sideBadgeText, { color: betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                {betSlipLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.betSlipRow}>
+            <Text style={styles.betSlipMeta}>Entry price</Text>
+            <Text style={styles.betSlipMetaVal}>{Math.round(betSlipPrice * 100)}¢</Text>
+          </View>
+
+          {/* Amount input */}
+          <View style={styles.amountWrap}>
+            <Text style={styles.amountLabel}>Amount</Text>
+            <View style={styles.amountInputRow}>
+              <Text style={styles.amountDollar}>$</Text>
+              <TextInput
+                style={styles.amountInput}
+                keyboardType="numeric"
+                value={betSlipAmount.toString()}
+                onChangeText={(v) => {
+                  const n = parseFloat(v);
+                  if (!Number.isNaN(n)) setBetSlipAmount(n);
+                }}
+              />
+            </View>
+          </View>
+
+          <View style={styles.quickAmounts}>
+            {QUICK_AMOUNTS.map((amt) => (
+              <Pressable
+                key={amt}
+                onPress={() => setBetSlipAmount(amt)}
+                style={[styles.quickBtn, betSlipAmount === amt && styles.quickBtnActive]}>
+                <Text style={[styles.quickBtnText, betSlipAmount === amt && styles.quickBtnTextActive]}>
+                  ${amt}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.payoutRow}>
+            <Text style={styles.payoutLabel}>Est. Payout</Text>
+            <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
+          </View>
+
+          <Pressable
+            style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
+            onPress={() => setBetSlipVisible(false)}>
+            <Text style={styles.confirmBtnText}>
+              Confirm {betSlipLabel} — ${betSlipAmount}
+            </Text>
+          </Pressable>
+        </View>
+      </Modal>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </SafeAreaView>
@@ -326,147 +499,579 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.background.screen },
-  topBar: {
+
+  // ── Header ──
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: tokens.spacing.lg,
     paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,
-    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    flexShrink: 0,
   },
-  backButton: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs },
-  backText: { color: semantic.text.primary, fontSize: tokens.fontSize.sm, fontWeight: '600' },
-  polyBadge: {
-    backgroundColor: semantic.predict.badgeGeoBg,
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  polyBadgeText: {
-    color: semantic.text.accentDim,
+  headerTitle: {
+    flex: 1,
+    color: semantic.text.primary,
     fontSize: tokens.fontSize.xxs,
     fontFamily: 'monospace',
     letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
-  content: { padding: tokens.spacing.lg, paddingBottom: 128, gap: tokens.spacing.sm },
-  questionWrap: { gap: 4 },
-  title: { color: semantic.text.primary, fontSize: 17, lineHeight: 22, fontWeight: '700' },
-  endDate: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace' },
-  // sparkline
+  avatarRing: {
+    width: 32,
+    height: 32,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1.5,
+    borderColor: semantic.text.accentDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  avatarInner: {
+    width: 24,
+    height: 24,
+    borderRadius: tokens.radius.full,
+    backgroundColor: semantic.background.surfaceRaised,
+  },
+
+  // ── Body layout ──
+  body: { flex: 1 },
+
+  // ── Top zone ──
+  topZone: { flexShrink: 0, padding: tokens.spacing.md },
   sparkCard: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: tokens.radius.md,
-    padding: 12,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
   },
-  sparkTopRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 8 },
-  sparkPriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  sparkYes: { color: semantic.sentiment.positive, fontSize: 22, fontWeight: '700', fontFamily: 'monospace' },
-  updatedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  updatedDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: semantic.sentiment.positive },
-  updatedText: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace' },
-  intervalRow: { flexDirection: 'row', gap: 4, marginBottom: 10 },
+  sparkTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  bigPrice: {
+    fontSize: tokens.fontSize.lg,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    lineHeight: 28,
+  },
+  changeText: {
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  sparkRightCol: {
+    alignItems: 'flex-end',
+    gap: tokens.spacing.xs,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: tokens.radius.full,
+    backgroundColor: semantic.sentiment.positive,
+  },
+  liveText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  intervalRow: { flexDirection: 'row', gap: tokens.spacing.xs },
   intervalChip: {
-    paddingHorizontal: 8,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: tokens.radius.sm,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     backgroundColor: semantic.background.surfaceRaised,
   },
-  intervalChipActive: { backgroundColor: 'rgba(232,197,71,0.08)', borderColor: 'rgba(232,197,71,0.25)' },
-  intervalText: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 1 },
+  intervalChipActive: {
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderColor: 'rgba(232,197,71,0.15)',
+  },
+  intervalText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+  },
   intervalTextActive: { color: semantic.text.accent },
   chartArea: { height: 64 },
   chartSkeleton: {
     flex: 1,
-    borderRadius: 6,
+    borderRadius: tokens.radius.sm,
     backgroundColor: semantic.background.surfaceRaised,
   },
-  // odds bars
-  oddsSection: { gap: 10 },
-  oddsSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  oddsSectionTitle: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase' },
-  oddsPair: { gap: 8 },
-  oddsBarWrap: { gap: 5 },
-  oddsBarLabel: { flexDirection: 'row', justifyContent: 'space-between' },
-  oddsLabelYes: { color: semantic.sentiment.positive, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 1.5, fontWeight: '700' },
-  oddsLabelNo:  { color: semantic.sentiment.negative, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace', letterSpacing: 1.5, fontWeight: '700' },
-  oddsPrice: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, fontFamily: 'monospace' },
-  oddsTrack: { height: 32, backgroundColor: semantic.background.surfaceRaised, borderRadius: 6, overflow: 'hidden' },
-  oddsFillYes: {
-    height: '100%',
-    backgroundColor: 'rgba(52,199,123,0.15)',
-    borderRadius: 6,
-    justifyContent: 'center',
-    paddingLeft: 10,
-    minWidth: 40,
+
+  // ── Mid zone ──
+  midZone: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
   },
-  oddsFillNo: {
-    height: '100%',
-    backgroundColor: 'rgba(244,88,78,0.12)',
-    borderRadius: 6,
-    justifyContent: 'center',
-    paddingLeft: 10,
-    minWidth: 40,
+  tabBar: {
+    flexDirection: 'row',
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+    flexShrink: 0,
   },
-  oddsPctYes: { color: semantic.sentiment.positive, fontSize: 13, fontWeight: '700', fontFamily: 'monospace' },
-  oddsPctNo:  { color: semantic.sentiment.negative, fontSize: 13, fontWeight: '700', fontFamily: 'monospace' },
-  // stats
-  statsRow: { flexDirection: 'row', gap: 6 },
-  statBox: {
+  tabChip: {
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.xs,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tabChipActive: {
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderColor: 'rgba(232,197,71,0.15)',
+  },
+  tabChipText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  tabChipTextActive: { color: semantic.text.accent },
+  tabContent: { flex: 1 },
+  tabContentInner: { padding: tokens.spacing.md, gap: tokens.spacing.sm, paddingBottom: tokens.spacing.xl },
+
+  // ── Empty state ──
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.xl,
+    gap: tokens.spacing.sm,
+  },
+  emptyTitle: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  emptyBody: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    textAlign: 'center',
+  },
+
+  // ── Stats tab ──
+  tabSection: { gap: tokens.spacing.sm },
+  statsCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.md,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
+  },
+  cardLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  smartMoneyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+  },
+  smYesLabel: {
+    color: semantic.sentiment.positive,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    width: 24,
+  },
+  smNoLabel: {
+    color: semantic.sentiment.negative,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    width: 24,
+    textAlign: 'right',
+  },
+  smTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: 'rgba(244,88,78,0.2)',
+    borderRadius: tokens.radius.full,
+    overflow: 'hidden',
+  },
+  smFillYes: {
+    height: '100%',
+    backgroundColor: semantic.sentiment.positive,
+    borderRadius: tokens.radius.full,
+    opacity: 0.7,
+  },
+  smPctRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  smYesPct: {
+    color: semantic.sentiment.positive,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  smNoPct: {
+    color: semantic.sentiment.negative,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  metricRow: { flexDirection: 'row', gap: tokens.spacing.xs },
+  metricBox: {
     flex: 1,
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: tokens.radius.sm,
-    padding: 10,
+    padding: tokens.spacing.sm,
   },
-  statLabel: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', marginBottom: 4 },
-  statValue: { color: semantic.text.primary, fontSize: tokens.fontSize.sm, fontWeight: '700', fontFamily: 'monospace' },
-  // description
-  descCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.sm,
-    padding: 12,
-    gap: 8,
+  metricLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  descLabel: { color: semantic.text.faint, fontSize: tokens.fontSize.xxs, letterSpacing: 2, textTransform: 'uppercase', fontFamily: 'monospace' },
-  descText: { color: semantic.text.dim, fontSize: tokens.fontSize.sm, lineHeight: 18 },
-  // cta
-  ctaWrap: { paddingBottom: 4 },
-  ctaBtn: {
-    height: 44,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
+  metricValue: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
   },
-  ctaText: { color: semantic.text.faint, fontSize: tokens.fontSize.xs, fontFamily: 'monospace', letterSpacing: 1.5, textTransform: 'uppercase' },
-  // states
-  stateCard: {
+  activityRow: { flexDirection: 'row', gap: tokens.spacing.xl },
+  activityItem: { gap: 4 },
+  activityKey: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  activityVal: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+
+  // ── Rules tab ──
+  rulesText: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.sm,
+    lineHeight: 18,
+  },
+  rulesMeta: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    paddingTop: tokens.spacing.sm,
+  },
+  rulesMetaItem: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+
+  // ── Feed tab ──
+  feedCard: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: tokens.radius.md,
-    padding: tokens.spacing.lg,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.xs,
+  },
+  feedCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  feedSource: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  feedTime: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  feedText: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.sm,
+    lineHeight: 18,
+  },
+
+  // ── Bottom zone ──
+  bottomZone: {
+    flexShrink: 0,
+    padding: tokens.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    paddingBottom: tokens.spacing.sm,
+  },
+  actionRow: {
+    flexDirection: 'row',
     gap: tokens.spacing.sm,
   },
-  stateTitle: { color: semantic.text.primary, fontSize: tokens.fontSize.md, fontWeight: '700' },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  actionBtnYes: {
+    backgroundColor: 'rgba(52,199,123,0.15)',
+    borderColor: 'rgba(52,199,123,0.3)',
+  },
+  actionBtnNo: {
+    backgroundColor: 'rgba(244,88,78,0.12)',
+    borderColor: 'rgba(244,88,78,0.3)',
+  },
+  actionBtnLabel: {
+    color: semantic.sentiment.positive,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  actionBtnPrice: {
+    color: semantic.sentiment.positive,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+
+  // ── Bet slip ──
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  betSlip: {
+    backgroundColor: semantic.background.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: semantic.border.muted,
+    padding: tokens.spacing.lg,
+    gap: tokens.spacing.md,
+    paddingBottom: 40,
+  },
+  betSlipHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: tokens.radius.full,
+    backgroundColor: semantic.border.muted,
+    alignSelf: 'center',
+    marginBottom: tokens.spacing.xs,
+  },
+  betSlipHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  betSlipTitle: {
+    flex: 1,
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    lineHeight: 17,
+  },
+  sideBadge: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.xxs,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  sideBadgeYes: {
+    backgroundColor: 'rgba(52,199,123,0.12)',
+    borderColor: 'rgba(52,199,123,0.3)',
+  },
+  sideBadgeNo: {
+    backgroundColor: 'rgba(244,88,78,0.12)',
+    borderColor: 'rgba(244,88,78,0.3)',
+  },
+  sideBadgeText: {
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  betSlipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  betSlipMeta: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+  },
+  betSlipMetaVal: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  amountWrap: { gap: tokens.spacing.xs },
+  amountLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  amountInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: semantic.background.surfaceRaised,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.spacing.md,
+  },
+  amountDollar: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    marginRight: tokens.spacing.xs,
+  },
+  amountInput: {
+    flex: 1,
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    paddingVertical: tokens.spacing.sm,
+  },
+  quickAmounts: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+  },
+  quickBtn: {
+    flex: 1,
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+  },
+  quickBtnActive: {
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderColor: 'rgba(232,197,71,0.25)',
+  },
+  quickBtnText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+  },
+  quickBtnTextActive: { color: semantic.text.accent },
+  payoutRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: tokens.spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+  },
+  payoutLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  payoutValue: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  confirmBtn: {
+    height: 48,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnYes: { backgroundColor: semantic.sentiment.positive },
+  confirmBtnNo: { backgroundColor: semantic.sentiment.negative },
+  confirmBtnText: {
+    color: '#fff',
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+
+  // ── Loading / error states ──
+  stateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.sm,
+    padding: tokens.spacing.lg,
+  },
+  stateTitle: {
+    color: semantic.text.primary,
+    fontSize: tokens.fontSize.md,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
   stateText: { color: semantic.text.dim, fontSize: tokens.fontSize.md },
-  retryButton: {
+  retryBtn: {
     marginTop: tokens.spacing.xs,
     backgroundColor: semantic.text.accent,
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     borderRadius: tokens.radius.xs,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
   },
-  retryText: { color: semantic.background.screen, fontSize: tokens.fontSize.sm, fontFamily: 'monospace', textTransform: 'uppercase', fontWeight: '700' },
+  retryText: {
+    color: semantic.background.screen,
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
 });
