@@ -218,26 +218,47 @@
       text-transform: uppercase;
       color: var(--mid);
     }
-    .live-chip {
+    .wallet-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .wallet-pill:hover { border-color: var(--border2) }
+    .wallet-dot {
+      width: 6px; height: 6px;
+      background: var(--pos);
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(52,199,123,0.5);
+    }
+    .wallet-addr {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--hi);
+      letter-spacing: 0.5px;
+    }
+    .wallet-connect-pill {
       display: flex;
       align-items: center;
       gap: 5px;
-      background: rgba(52,199,123,0.08);
-      border: 1px solid rgba(52,199,123,0.18);
-      border-radius: 4px;
-      padding: 3px 7px;
+      background: transparent;
+      border: 1px solid var(--a);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
     }
-    .live-dot {
-      width: 5px; height: 5px;
-      background: var(--pos);
-      border-radius: 50%;
-      animation: dot-pulse 1.5s ease-in-out infinite;
-    }
-    .live-text {
+    .wallet-connect-text {
       font-family: var(--mono);
-      font-size: 8.5px;
-      color: var(--pos);
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--a);
       letter-spacing: 1px;
+      text-transform: uppercase;
     }
 
     /* ─── TRENDING STRIP ─── */
@@ -896,25 +917,29 @@
       padding: 2px 6px;
     }
 
-    .detail-scroll { flex: 1; overflow-y: auto; overflow-x: hidden }
+    .detail-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; padding: 10px 12px 0 }
     .detail-scroll::-webkit-scrollbar { display: none }
 
-    .detail-body { padding: 14px 16px }
-
+    .detail-header-sub {
+      padding: 10px 16px 12px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+    }
     .detail-question {
       font-family: var(--sans);
       font-size: 14px;
       font-weight: 600;
       color: var(--hi);
-      line-height: 1.45;
-      margin-bottom: 4px;
+      line-height: 1.4;
+      margin-bottom: 3px;
     }
     .detail-end {
       font-family: var(--mono);
       font-size: 8.5px;
       color: var(--mid);
-      margin-bottom: 14px;
     }
+
+    .detail-body { padding: 14px 16px }
 
     /* ─── SPARKLINE SECTION ─── */
     .spark-section {
@@ -1325,6 +1350,197 @@
     .tw-pct.c1 { color: var(--pos) }
     .tw-pct.cd { color: var(--a) }
     .tw-pct.c2 { color: var(--neg) }
+
+    /* ─── 3-ZONE LAYOUT ─── */
+    .detail-top-zone { flex-shrink: 0 }
+    .detail-mid-zone { flex: 1; min-height: 60px; display: flex; flex-direction: column }
+    .detail-bottom-zone { flex-shrink: 0; padding-bottom: 4px }
+
+    /* ─── DETAIL TABS ─── */
+    .dtab-bar {
+      display: flex; gap: 4px; padding: 8px 0 6px;
+      border-bottom: 1px solid var(--border0); flex-shrink: 0;
+    }
+    .dtab {
+      font-family: var(--mono); font-size: 8px; letter-spacing: 0.8px;
+      color: var(--mid); padding: 4px 10px; border-radius: 6px;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+      background: transparent; border: 1px solid transparent;
+    }
+    .dtab:hover { color: var(--hi) }
+    .dtab.active { color: var(--a); background: var(--a3); border-color: rgba(232,197,71,0.15) }
+    .dtab-content { flex: 1; overflow-y: auto; padding: 8px 0 }
+    .dtab-content::-webkit-scrollbar { display: none }
+    .dtab-panel { display: none }
+    .dtab-panel.active { display: block }
+
+    /* position tab */
+    .pos-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 16px; text-align: center; gap: 8px; min-height: 80px;
+    }
+    .pos-empty-icon { font-size: 20px; opacity: 0.3 }
+    .pos-empty-text { font-family: var(--mono); font-size: 9px; color: var(--lo); letter-spacing: 0.5px }
+    .pos-card {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .pos-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px }
+    .pos-card-side {
+      font-family: var(--mono); font-size: 8px; font-weight: 700; letter-spacing: 1px;
+      padding: 2px 7px; border-radius: 4px;
+    }
+    .pos-card-side.yes { color: var(--pos); background: rgba(52,199,123,0.12) }
+    .pos-card-side.no  { color: var(--neg); background: rgba(244,88,78,0.10) }
+    .pos-card-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--hi) }
+    .pos-card-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+    }
+    .pos-card-stat { display: flex; flex-direction: column; gap: 1px }
+    .pos-card-stat-label { font-family: var(--mono); font-size: 7px; color: var(--mid); letter-spacing: 0.5px }
+    .pos-card-stat-value { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--hi) }
+    .pos-card-stat-value.green { color: var(--pos) }
+    .pos-card-stat-value.red { color: var(--neg) }
+    .pos-card-cashout {
+      margin-top: 8px; width: 100%; height: 30px; border-radius: 7px; border: 1px solid var(--border1);
+      background: var(--bg3); font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: var(--hi); cursor: pointer; letter-spacing: 0.5px;
+    }
+    .pos-card-cashout:hover { border-color: var(--a); color: var(--a) }
+
+    /* stats tab */
+    .stat-signal {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .stat-signal-title {
+      font-family: var(--mono); font-size: 7.5px; letter-spacing: 1px;
+      color: var(--mid); margin-bottom: 8px; text-transform: uppercase;
+    }
+    .stat-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px }
+    .stat-bar-label { font-family: var(--mono); font-size: 9px; font-weight: 700; width: 28px; text-align: right }
+    .stat-bar-label.yes-l { color: var(--pos) }
+    .stat-bar-label.no-l { color: var(--neg) }
+    .stat-bar-track { flex: 1; height: 14px; background: var(--bg3); border-radius: 4px; overflow: hidden; position: relative; display: flex }
+    .stat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s }
+    .stat-bar-fill.yes-f { background: rgba(52,199,123,0.25) }
+    .stat-bar-fill.no-f { background: rgba(244,88,78,0.2) }
+    .stat-bar-pct { font-family: var(--mono); font-size: 8px; font-weight: 700; width: 30px }
+    .stat-bar-pct.yes-p { color: var(--pos) }
+    .stat-bar-pct.no-p { color: var(--neg) }
+    .stat-metric-row { display: flex; gap: 6px; margin-bottom: 8px }
+    .stat-metric {
+      flex: 1; background: var(--bg2); border: 1px solid var(--border1);
+      border-radius: 8px; padding: 8px; text-align: center;
+    }
+    .stat-metric-val { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--hi) }
+    .stat-metric-lbl { font-family: var(--mono); font-size: 7px; color: var(--mid); letter-spacing: 0.5px; margin-top: 2px }
+
+    /* rules tab */
+    .rules-box {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .rules-label { font-family: var(--mono); font-size: 7.5px; letter-spacing: 1px; color: var(--mid); text-transform: uppercase; margin-bottom: 6px }
+    .rules-text { font-family: var(--sans); font-size: 10px; color: var(--hi); line-height: 1.5 }
+    .rules-meta { font-family: var(--mono); font-size: 8px; color: var(--mid); margin-top: 6px }
+
+    /* feed tab */
+    .feed-card {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .feed-card-source { font-family: var(--mono); font-size: 7px; color: var(--a); letter-spacing: 0.5px; margin-bottom: 4px }
+    .feed-card-text { font-family: var(--sans); font-size: 10px; color: var(--hi); line-height: 1.5 }
+    .feed-card-time { font-family: var(--mono); font-size: 7px; color: var(--lo); margin-top: 5px }
+
+    /* ─── SELECTION ODDS ROWS ─── */
+    .exchange-section { padding: 10px 12px 0 }
+    .exchange-header-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 4px; padding: 0 2px;
+    }
+    .exchange-sel-label {
+      font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--mid);
+    }
+    .exchange-col-hints {
+      display: flex; gap: 44px;
+      font-family: var(--mono); font-size: 7px; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .exchange-col-hints .hint-yes { color: var(--pos) }
+    .exchange-col-hints .hint-no  { color: var(--neg) }
+    .sel-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 2px; border-bottom: 1px solid var(--border0);
+    }
+    .sel-row:last-child { border-bottom: none }
+    .sel-info { flex: 1; min-width: 0 }
+    .sel-name {
+      font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--hi);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sel-vol { font-family: var(--mono); font-size: 8px; color: var(--mid); margin-top: 1px }
+    .sel-btns { display: flex; gap: 4px; flex-shrink: 0 }
+    .sel-btn {
+      width: 52px; height: 34px; border-radius: 6px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1px; cursor: pointer; transition: opacity 0.12s, transform 0.1s; border: none;
+    }
+    .sel-btn:hover { opacity: 0.85 }
+    .sel-btn:active { transform: scale(0.96) }
+    .sel-btn.yes-btn { background: rgba(52,199,123,0.15) }
+    .sel-btn.no-btn  { background: rgba(244,88,78,0.12) }
+    .sel-btn-pct { font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1 }
+    .sel-btn.yes-btn .sel-btn-pct { color: var(--pos) }
+    .sel-btn.no-btn .sel-btn-pct  { color: var(--neg) }
+    .sel-btn-label { font-family: var(--mono); font-size: 6.5px; letter-spacing: 0.8px; text-transform: uppercase; line-height: 1 }
+    .sel-btn.yes-btn .sel-btn-label { color: rgba(52,199,123,0.6) }
+    .sel-btn.no-btn .sel-btn-label  { color: rgba(244,88,78,0.5) }
+
+    /* ─── BET SLIP MODAL ─── */
+    .betslip-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+      z-index: 50; display: none; align-items: flex-end;
+      border-radius: 40px; overflow: hidden;
+    }
+    .betslip-overlay.show { display: flex }
+    .betslip {
+      width: 100%; background: var(--bg1); border-top: 1px solid var(--border1);
+      border-radius: 16px 16px 0 0; padding: 14px 16px 20px;
+    }
+    .betslip-handle { width: 32px; height: 3px; background: var(--border1); border-radius: 3px; margin: 0 auto 12px }
+    .betslip-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
+    .betslip-title { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--hi) }
+    .betslip-side { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px }
+    .betslip-side.yes-side { color: var(--pos); background: rgba(52,199,123,0.12) }
+    .betslip-side.no-side  { color: var(--neg); background: rgba(244,88,78,0.10) }
+    .betslip-selection { font-family: var(--sans); font-size: 11px; color: var(--mid); margin-bottom: 14px }
+    .betslip-field { margin-bottom: 12px }
+    .betslip-field-label { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--mid); margin-bottom: 5px }
+    .betslip-input {
+      width: 100%; height: 36px; background: var(--bg3); border: 1px solid var(--border1);
+      border-radius: 8px; font-family: var(--mono); font-size: 14px; font-weight: 700;
+      color: var(--hi); padding: 0 12px; box-sizing: border-box; outline: none;
+    }
+    .betslip-input:focus { border-color: var(--a) }
+    .betslip-quick-amounts { display: flex; gap: 6px; margin-bottom: 14px }
+    .betslip-quick {
+      flex: 1; height: 26px; background: var(--bg3); border: 1px solid var(--border0);
+      border-radius: 6px; font-family: var(--mono); font-size: 9px; color: var(--mid);
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .betslip-quick:hover { border-color: var(--border1); color: var(--hi) }
+    .betslip-summary { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--border0); margin-bottom: 12px }
+    .betslip-summary-label { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--mid) }
+    .betslip-summary-value { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--pos) }
+    .betslip-confirm {
+      width: 100%; height: 40px; border-radius: 10px; border: none;
+      font-family: var(--sans); font-size: 13px; font-weight: 700; color: #0b0b09;
+      cursor: pointer; transition: opacity 0.12s;
+    }
+    .betslip-confirm:hover { opacity: 0.9 }
+    .betslip-confirm.yes-confirm { background: var(--pos) }
+    .betslip-confirm.no-confirm  { background: var(--neg) }
   </style>
 </head>
 <body>
@@ -1364,76 +1580,13 @@
             <div class="profile-avatar-inner">B</div>
           </div>
           <span class="predict-title" style="flex:1;text-align:center">Predict</span>
-          <div class="live-chip">
-            <div class="live-dot"></div>
-            <span class="live-text">LIVE</span>
+          <div class="wallet-pill">
+            <div class="wallet-dot"></div>
+            <span class="wallet-addr">7xKp···m3Qr</span>
           </div>
         </div>
 
         <!-- trending strip -->
-        <div class="trending-section">
-          <div class="trending-label">
-            <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-              <polyline points="17 6 23 6 23 12"></polyline>
-            </svg>
-            Trending
-          </div>
-          <div class="trending-scroll">
-
-            <!-- card 1 -->
-            <div class="trend-card hot">
-              <div class="trend-q">US forces enter Iran by April 30?</div>
-              <div class="trend-footer">
-                <span class="yes-pill">62%</span>
-                <span class="trend-vol">$14.3M</span>
-              </div>
-              <div class="trend-mini-bar"><div class="trend-mini-fill" style="width:62%"></div></div>
-            </div>
-
-            <!-- card 2 -->
-            <div class="trend-card">
-              <div class="trend-q">Iranian regime falls by April 30?</div>
-              <div class="trend-footer">
-                <span class="yes-pill low">31%</span>
-                <span class="trend-vol">$7.8M</span>
-              </div>
-              <div class="trend-mini-bar"><div class="trend-mini-fill low" style="width:31%"></div></div>
-            </div>
-
-            <!-- card 3 -->
-            <div class="trend-card">
-              <div class="trend-q">US–Iran ceasefire by April 15?</div>
-              <div class="trend-footer">
-                <span class="yes-pill low">44%</span>
-                <span class="trend-vol">$6.5M</span>
-              </div>
-              <div class="trend-mini-bar"><div class="trend-mini-fill low" style="width:44%"></div></div>
-            </div>
-
-            <!-- card 4 -->
-            <div class="trend-card">
-              <div class="trend-q">Will Trump visit China by April 30?</div>
-              <div class="trend-footer">
-                <span class="yes-pill">58%</span>
-                <span class="trend-vol">$2.9M</span>
-              </div>
-              <div class="trend-mini-bar"><div class="trend-mini-fill" style="width:58%"></div></div>
-            </div>
-
-            <!-- card 5 -->
-            <div class="trend-card">
-              <div class="trend-q">Netanyahu out by April 30?</div>
-              <div class="trend-footer">
-                <span class="yes-pill low">22%</span>
-                <span class="trend-vol">$3.4M</span>
-              </div>
-              <div class="trend-mini-bar"><div class="trend-mini-fill low" style="width:22%"></div></div>
-            </div>
-
-          </div>
-        </div>
-
         <!-- filter chips -->
         <div class="filter-row">
           <div class="chip active">All</div>
@@ -1654,18 +1807,17 @@
           <div class="back-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
-          <span class="detail-header-title">Market Detail</span>
-          <div class="poly-badge">Polymarket</div>
+          <span class="detail-header-title">US forces enter Iran by April 30?</span>
+          <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
+            <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
+          </div>
         </div>
 
         <!-- detail scroll -->
         <div class="detail-scroll">
-          <div class="detail-body">
 
-            <div class="detail-question">US forces enter Iran by April 30?</div>
-            <div class="detail-end">Resolves Apr 30, 2026 · $14.3M weekly volume</div>
-
-            <!-- sparkline card -->
+          <!-- TOP: info (eyes zone) -->
+          <div class="detail-top-zone">
             <div class="spark-section">
               <div class="spark-top">
                 <div class="spark-price-row">
@@ -1681,7 +1833,6 @@
                 <div class="range-chip active">1D</div>
                 <div class="range-chip">1W</div>
               </div>
-              <!-- SVG sparkline — 1D hourly data (simulated) -->
               <div class="spark-chart">
                 <svg viewBox="0 0 343 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                   <defs>
@@ -1690,78 +1841,142 @@
                       <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
                     </linearGradient>
                   </defs>
-                  <!-- area fill -->
                   <path d="M0 42 L14 40 L28 44 L43 41 L57 38 L71 36 L85 39 L100 35 L114 30 L128 32 L142 28 L157 25 L171 27 L185 22 L200 20 L214 23 L228 19 L242 21 L257 17 L271 14 L285 12 L300 10 L314 8 L328 9 L343 7 L343 64 L0 64 Z"
                     fill="url(#sg1)"/>
-                  <!-- line -->
                   <path d="M0 42 L14 40 L28 44 L43 41 L57 38 L71 36 L85 39 L100 35 L114 30 L128 32 L142 28 L157 25 L171 27 L185 22 L200 20 L214 23 L228 19 L242 21 L257 17 L271 14 L285 12 L300 10 L314 8 L328 9 L343 7"
                     stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-                  <!-- current price dot -->
                   <circle cx="343" cy="7" r="3" fill="#34c77b"/>
                 </svg>
               </div>
             </div>
-
-            <!-- YES/NO bars -->
-            <div class="odds-section">
-              <div class="odds-row">
-                <div class="odds-bar-wrap">
-                  <div class="odds-bar-label yes">
-                    <span>YES</span>
-                    <span>$0.62</span>
-                  </div>
-                  <div class="odds-bar-track">
-                    <div class="odds-bar-fill yes-bar" style="width:62%">
-                      <span class="odds-pct yes-c">62%</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="odds-bar-wrap">
-                  <div class="odds-bar-label no">
-                    <span>NO</span>
-                    <span>$0.38</span>
-                  </div>
-                  <div class="odds-bar-track">
-                    <div class="odds-bar-fill no-bar" style="width:38%">
-                      <span class="odds-pct no-c">38%</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- stats -->
-            <div class="stats-row">
-              <div class="stat-box">
-                <div class="stat-label">Vol (7d)</div>
-                <div class="stat-value">$14.3M</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label">Vol (Total)</div>
-                <div class="stat-value">$48.1M</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label">Closes</div>
-                <div class="stat-value">Apr 30</div>
-              </div>
-            </div>
-
-            <!-- description -->
-            <div class="desc-box">
-              <div class="desc-label">Resolution</div>
-              <div class="desc-text">Resolves YES if US ground, air, or naval forces conduct confirmed offensive operations inside Iranian territory before April 30, 2026 UTC. Strikes on proxies do not count. Resolution source: Reuters, AP.</div>
-            </div>
-
           </div>
 
-          <!-- CTA -->
-          <div class="trade-cta">
-            <div class="cta-btn">
-              <span class="cta-lock">🔒</span>
-              <span class="cta-btn-text">Connect Wallet to Trade</span>
+          <!-- MIDDLE: tabs -->
+          <div class="detail-mid-zone" id="mid2">
+            <div class="dtab-bar">
+              <div class="dtab active" onclick="switchTab('mid2','position')">Position</div>
+              <div class="dtab" onclick="switchTab('mid2','stats')">Stats</div>
+              <div class="dtab" onclick="switchTab('mid2','rules')">Rules</div>
+              <div class="dtab" onclick="switchTab('mid2','feed')">Feed</div>
+            </div>
+            <div class="dtab-content">
+              <!-- position (empty) -->
+              <div class="dtab-panel active" data-tab="position">
+                <div class="pos-empty">
+                  <div class="pos-empty-icon">&#9898;</div>
+                  <div class="pos-empty-text">No positions yet</div>
+                  <div class="pos-empty-text" style="color:var(--mid)">Trade below to open a position</div>
+                </div>
+              </div>
+              <!-- stats -->
+              <div class="dtab-panel" data-tab="stats">
+                <div class="stat-signal">
+                  <div class="stat-signal-title">Smart Money (Top 10 Wallets)</div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label yes-l">Yes</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill yes-f" style="width:72%"></div>
+                    </div>
+                    <div class="stat-bar-pct yes-p">72%</div>
+                  </div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label no-l">No</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill no-f" style="width:28%"></div>
+                    </div>
+                    <div class="stat-bar-pct no-p">28%</div>
+                  </div>
+                </div>
+                <div class="stat-metric-row">
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">3.2K</div>
+                    <div class="stat-metric-lbl">Traders</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$14.3M</div>
+                    <div class="stat-metric-lbl">Volume</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$1.2M</div>
+                    <div class="stat-metric-lbl">Liquidity</div>
+                  </div>
+                </div>
+                <div class="stat-signal">
+                  <div class="stat-signal-title">24h Activity</div>
+                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">482 trades · 68% bought Yes</div>
+                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">$10 wins $16.12 if Yes · $10 wins $26.31 if No</div>
+                </div>
+              </div>
+              <!-- rules -->
+              <div class="dtab-panel" data-tab="rules">
+                <div class="rules-box">
+                  <div class="rules-label">Resolution Criteria</div>
+                  <div class="rules-text">Resolves YES if US ground, air, or naval forces conduct confirmed offensive operations inside Iranian territory before April 30, 2026 UTC. Strikes on proxies do not count.</div>
+                  <div class="rules-meta">Source: Reuters, AP · Closes Apr 30, 2026</div>
+                </div>
+              </div>
+              <!-- feed -->
+              <div class="dtab-panel" data-tab="feed">
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">US carrier group USS Eisenhower repositioned to Strait of Hormuz. Market jumped 8% in 4 hours. Third naval deployment this quarter.</div>
+                  <div class="feed-card-time">2h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">Iranian foreign minister cancelled Vienna talks. Diplomatic channel closure historically correlates with 15-20% price moves in conflict markets.</div>
+                  <div class="feed-card-time">6h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">Whale Alert</div>
+                  <div class="feed-card-text">0x7a2f...8e1c bought 42K Yes shares @ $0.58 ($24.3K). This wallet is 4-for-4 on geopolitics markets this year.</div>
+                  <div class="feed-card-time">11h ago</div>
+                </div>
+              </div>
             </div>
           </div>
 
+          <!-- BOTTOM: thumb zone (all clickable) -->
+          <div class="detail-bottom-zone">
+            <div class="binary-btns" style="display:flex;gap:8px;padding:0 12px 8px">
+              <div class="sel-btn yes-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('US forces enter Iran by April 30?','yes','62¢')">
+                <span class="sel-btn-pct" style="font-size:14px">62¢</span>
+                <span class="sel-btn-label" style="font-size:7px">Yes</span>
+              </div>
+              <div class="sel-btn no-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('US forces enter Iran by April 30?','no','38¢')">
+                <span class="sel-btn-pct" style="font-size:14px">38¢</span>
+                <span class="sel-btn-label" style="font-size:7px">No</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- bet slip overlay (screen 2) -->
+        <div class="betslip-overlay" id="betslip2" onclick="closeBetSlip(event,'betslip2')">
+          <div class="betslip" onclick="event.stopPropagation()">
+            <div class="betslip-handle"></div>
+            <div class="betslip-header">
+              <div class="betslip-title" id="bs2-title">US forces enter Iran?</div>
+              <div class="betslip-side yes-side" id="bs2-side">YES</div>
+            </div>
+            <div class="betslip-selection" id="bs2-sub">Geopolitics · Binary Market</div>
+            <div class="betslip-field">
+              <div class="betslip-field-label">Amount (USDC)</div>
+              <input class="betslip-input" id="bs2-amount" type="text" value="50" oninput="updatePayout2()">
+            </div>
+            <div class="betslip-quick-amounts">
+              <div class="betslip-quick" onclick="setAmount2(10)">$10</div>
+              <div class="betslip-quick" onclick="setAmount2(25)">$25</div>
+              <div class="betslip-quick" onclick="setAmount2(50)">$50</div>
+              <div class="betslip-quick" onclick="setAmount2(100)">$100</div>
+            </div>
+            <div class="betslip-summary">
+              <span class="betslip-summary-label">Potential payout</span>
+              <span class="betslip-summary-value" id="bs2-payout">$80.64</span>
+            </div>
+            <div class="betslip-confirm yes-confirm" id="bs2-confirm" onclick="closeBetSlip(null,'betslip2')">Confirm Yes — $50</div>
+          </div>
         </div>
 
         <!-- nav bar -->
@@ -1825,140 +2040,265 @@
           <div class="back-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
-          <span class="detail-header-title">Match Detail</span>
-          <div class="poly-badge">Polymarket</div>
+          <span class="detail-header-title">Real Madrid vs Bayern Munich</span>
+          <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
+            <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
+          </div>
         </div>
 
         <!-- sport detail scroll -->
         <div class="detail-scroll">
 
-          <!-- match hero -->
-          <div class="match-hero">
-            <div class="match-league-row">
-              <div class="match-league-badge">UCL · Semi-final</div>
-              <div class="match-kick-off">Apr 7, 2026 · 21:00 CET</div>
-            </div>
-            <div class="match-teams-row">
-              <div class="match-team">
-                <div class="match-team-badge">⚪</div>
-                <div class="match-team-name">Real Madrid</div>
+          <!-- TOP: info (eyes zone) -->
+          <div class="detail-top-zone">
+            <!-- spark chart -->
+            <div class="spark-section">
+              <div class="spark-top">
+                <div class="spark-price-row">
+                  <span class="spark-yes">47%</span>
+                  <span class="spark-change">▲ +2.4%</span>
+                </div>
+                <div class="spark-updated">
+                  <div class="refresh-dot"></div>
+                  updated 12s ago
+                </div>
               </div>
-              <div class="match-vs">vs</div>
-              <div class="match-team">
-                <div class="match-team-badge">🔴</div>
-                <div class="match-team-name">Bayern Munich</div>
+              <div class="spark-range-row">
+                <div class="range-chip active">1D</div>
+                <div class="range-chip">1W</div>
               </div>
-            </div>
-            <div class="match-vol-row">
-              <span class="match-vol-label">Vol 7d</span>
-              <span class="match-vol-value">$4.1M</span>
-              <span style="color:var(--lo);font-size:8px;margin:0 4px">·</span>
-              <span class="match-vol-label">Updated</span>
-              <span class="match-vol-value" style="display:flex;align-items:center;gap:3px">
-                <span style="width:4px;height:4px;background:var(--pos);border-radius:50%;display:inline-block"></span>
-                12s ago
-              </span>
-            </div>
-          </div>
-
-          <!-- outcome tabs -->
-          <div class="outcome-tabs">
-            <div class="outcome-tab active">
-              <div class="outcome-tab-label">Real Madrid</div>
-              <div class="outcome-tab-pct">47%</div>
-            </div>
-            <div class="outcome-tab">
-              <div class="outcome-tab-label">Draw</div>
-              <div class="outcome-tab-pct">24%</div>
-            </div>
-            <div class="outcome-tab">
-              <div class="outcome-tab-label">Bayern</div>
-              <div class="outcome-tab-pct">29%</div>
-            </div>
-          </div>
-
-          <!-- sport sparkline -->
-          <div class="sport-spark">
-            <div class="sport-spark-label">
-              <span>Real Madrid win — price history</span>
-              <div style="display:flex;gap:4px">
-                <div class="range-chip active" style="padding:2px 6px;font-size:7px">1D</div>
-                <div class="range-chip" style="padding:2px 6px;font-size:7px">1W</div>
-              </div>
-            </div>
-            <div class="spark-section" style="padding:10px;margin-bottom:10px">
               <div class="spark-chart">
-                <svg viewBox="0 0 343 56" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <svg viewBox="0 0 343 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="#34c77b" stop-opacity="0.18"/>
-                      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+                      <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2"></stop>
+                      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"></stop>
                     </linearGradient>
                   </defs>
-                  <path d="M0 35 L17 33 L34 37 L51 34 L68 32 L85 34 L102 30 L120 28 L137 31 L154 26 L171 28 L188 24 L205 22 L222 25 L240 20 L257 18 L274 16 L291 19 L308 15 L325 13 L343 11 L343 56 L0 56 Z"
-                    fill="url(#sg2)"/>
-                  <path d="M0 35 L17 33 L34 37 L51 34 L68 32 L85 34 L102 30 L120 28 L137 31 L154 26 L171 28 L188 24 L205 22 L222 25 L240 20 L257 18 L274 16 L291 19 L308 15 L325 13 L343 11"
-                    stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-                  <circle cx="343" cy="11" r="3" fill="#34c77b"/>
+                  <path d="M0 48 L14 46 L28 50 L43 45 L57 42 L71 44 L85 40 L100 38 L114 41 L128 36 L142 33 L157 35 L171 30 L185 28 L200 31 L214 26 L228 24 L242 27 L257 22 L271 19 L285 17 L300 15 L314 13 L328 14 L343 11 L343 64 L0 64 Z" fill="url(#sg2)"></path>
+                  <path d="M0 48 L14 46 L28 50 L43 45 L57 42 L71 44 L85 40 L100 38 L114 41 L128 36 L142 33 L157 35 L171 30 L185 28 L200 31 L214 26 L228 24 L242 27 L257 22 L271 19 L285 17 L300 15 L314 13 L328 14 L343 11" stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"></path>
+                  <circle cx="343" cy="11" r="3" fill="#34c77b"></circle>
                 </svg>
               </div>
             </div>
+
           </div>
 
-          <!-- three-way bars -->
-          <div class="threeway-section">
-            <div class="threeway-label">Outcome Odds</div>
-            <div class="threeway-row">
-              <div class="tw-item">
-                <div class="tw-name">Madrid Win</div>
-                <div class="tw-track" style="height:52px">
-                  <div class="tw-fill team1" style="height:47%"></div>
-                  <div class="tw-pct c1">47%</div>
+          <!-- MIDDLE: tabs -->
+          <div class="detail-mid-zone" id="mid3">
+            <div class="dtab-bar">
+              <div class="dtab active" onclick="switchTab('mid3','position')">Position</div>
+              <div class="dtab" onclick="switchTab('mid3','stats')">Stats</div>
+              <div class="dtab" onclick="switchTab('mid3','rules')">Rules</div>
+              <div class="dtab" onclick="switchTab('mid3','feed')">Feed</div>
+            </div>
+            <div class="dtab-content">
+              <!-- position (with real position) -->
+              <div class="dtab-panel active" data-tab="position">
+                <div class="pos-card">
+                  <div class="pos-card-header">
+                    <div class="pos-card-label">Real Madrid</div>
+                    <div class="pos-card-side yes">YES</div>
+                  </div>
+                  <div class="pos-card-grid">
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Shares</div>
+                      <div class="pos-card-stat-value">80</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Avg Entry</div>
+                      <div class="pos-card-stat-value">41¢</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">P&L</div>
+                      <div class="pos-card-stat-value green">+$4.80</div>
+                    </div>
+                  </div>
+                  <div class="pos-card-grid" style="margin-top:6px">
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Cost</div>
+                      <div class="pos-card-stat-value">$32.80</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Current</div>
+                      <div class="pos-card-stat-value">47¢</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Value</div>
+                      <div class="pos-card-stat-value green">$37.60</div>
+                    </div>
+                  </div>
+                  <button class="pos-card-cashout">Cash Out — $37.60</button>
                 </div>
               </div>
-              <div class="tw-item">
-                <div class="tw-name">Draw</div>
-                <div class="tw-track" style="height:52px">
-                  <div class="tw-fill draw" style="height:24%"></div>
-                  <div class="tw-pct cd">24%</div>
+              <!-- stats -->
+              <div class="dtab-panel" data-tab="stats">
+                <div class="stat-metric-row">
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">1.8K</div>
+                    <div class="stat-metric-lbl">Traders</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$4.1M</div>
+                    <div class="stat-metric-lbl">Volume</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$820K</div>
+                    <div class="stat-metric-lbl">Liquidity</div>
+                  </div>
+                </div>
+                <div class="stat-signal">
+                  <div class="stat-signal-title">Outcome Concentration</div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label yes-l" style="width:50px;font-size:8px">Madrid</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill yes-f" style="width:52%"></div>
+                    </div>
+                    <div class="stat-bar-pct yes-p">52%</div>
+                  </div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label" style="width:50px;font-size:8px;color:var(--a)">Draw</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill" style="width:18%;background:rgba(232,197,71,0.2);border-radius:4px"></div>
+                    </div>
+                    <div class="stat-bar-pct" style="color:var(--a)">18%</div>
+                  </div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label no-l" style="width:50px;font-size:8px">Bayern</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill no-f" style="width:30%"></div>
+                    </div>
+                    <div class="stat-bar-pct no-p">30%</div>
+                  </div>
+                </div>
+                <div class="stat-signal">
+                  <div class="stat-signal-title">24h Activity</div>
+                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">312 trades · Madrid Yes most traded</div>
+                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">Kick-off: Apr 7, 21:00 CET</div>
                 </div>
               </div>
-              <div class="tw-item">
-                <div class="tw-name">Bayern Win</div>
-                <div class="tw-track" style="height:52px">
-                  <div class="tw-fill team2" style="height:29%"></div>
-                  <div class="tw-pct c2">29%</div>
+              <!-- rules -->
+              <div class="dtab-panel" data-tab="rules">
+                <div class="rules-box">
+                  <div class="rules-label">Resolution Criteria</div>
+                  <div class="rules-text">Each outcome resolves YES if the corresponding team wins (or if the match ends in a draw for the Draw market). Result based on 90 minutes + stoppage time. Extra time and penalties do not count.</div>
+                  <div class="rules-meta">Source: UEFA.com · Kick-off Apr 7, 2026 21:00 CET</div>
+                </div>
+              </div>
+              <!-- feed -->
+              <div class="dtab-panel" data-tab="feed">
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">Madrid unbeaten in 8 UCL matches since January. Vinicius Jr. confirmed fit after knee issue — market moved +3% on the news.</div>
+                  <div class="feed-card-time">1h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">Bayern missing Musiala (hamstring) and Sane (illness). Kompany expected to play defensive 4-5-1. Draw market saw 40% volume spike.</div>
+                  <div class="feed-card-time">4h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">Market Signal</div>
+                  <div class="feed-card-text">Madrid Yes price: 34¢ → 47¢ in 48h. Largest single buy: 15K shares @ 44¢ from a wallet with 71% UCL win rate.</div>
+                  <div class="feed-card-time">8h ago</div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- stats -->
-          <div style="padding: 0 16px 10px">
-            <div class="stats-row">
-              <div class="stat-box">
-                <div class="stat-label">Vol (7d)</div>
-                <div class="stat-value">$4.1M</div>
+          <!-- BOTTOM: thumb zone (all clickable) -->
+          <div class="detail-bottom-zone">
+            <!-- selection odds with Yes/No buttons -->
+            <div class="exchange-section">
+              <div class="exchange-header-row">
+                <div class="exchange-sel-label">3 Selections</div>
+                <div class="exchange-col-hints">
+                  <span class="hint-yes">Yes</span>
+                  <span class="hint-no">No</span>
+                </div>
               </div>
-              <div class="stat-box">
-                <div class="stat-label">Kick-off</div>
-                <div class="stat-value">Apr 7</div>
+
+              <div class="sel-row">
+                <div class="sel-info">
+                  <div class="sel-name">Real Madrid</div>
+                  <div class="sel-vol">$1.9M vol</div>
+                </div>
+                <div class="sel-btns">
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Real Madrid','yes','47¢')">
+                    <span class="sel-btn-pct">47¢</span>
+                    <span class="sel-btn-label">Yes</span>
+                  </div>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Real Madrid','no','53¢')">
+                    <span class="sel-btn-pct">53¢</span>
+                    <span class="sel-btn-label">No</span>
+                  </div>
+                </div>
               </div>
-              <div class="stat-box">
-                <div class="stat-label">Markets</div>
-                <div class="stat-value">3</div>
+
+              <div class="sel-row">
+                <div class="sel-info">
+                  <div class="sel-name">Draw</div>
+                  <div class="sel-vol">$820K vol</div>
+                </div>
+                <div class="sel-btns">
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Draw','yes','24¢')">
+                    <span class="sel-btn-pct">24¢</span>
+                    <span class="sel-btn-label">Yes</span>
+                  </div>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Draw','no','76¢')">
+                    <span class="sel-btn-pct">76¢</span>
+                    <span class="sel-btn-label">No</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sel-row">
+                <div class="sel-info">
+                  <div class="sel-name">Bayern Munich</div>
+                  <div class="sel-vol">$1.4M vol</div>
+                </div>
+                <div class="sel-btns">
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Bayern Munich','yes','29¢')">
+                    <span class="sel-btn-pct">29¢</span>
+                    <span class="sel-btn-label">Yes</span>
+                  </div>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Bayern Munich','no','71¢')">
+                    <span class="sel-btn-pct">71¢</span>
+                    <span class="sel-btn-label">No</span>
+                  </div>
+                </div>
               </div>
             </div>
+
           </div>
 
-          <!-- CTA -->
-          <div class="trade-cta" style="padding: 0 16px 16px">
-            <div class="cta-btn">
-              <span class="cta-lock">🔒</span>
-              <span class="cta-btn-text">Connect Wallet to Trade</span>
+        </div>
+
+        <!-- bet slip overlay -->
+        <div class="betslip-overlay" id="betslip3" onclick="closeBetSlip(event,'betslip3')">
+          <div class="betslip" onclick="event.stopPropagation()">
+            <div class="betslip-handle"></div>
+            <div class="betslip-header">
+              <div class="betslip-title" id="bs3-title">Real Madrid</div>
+              <div class="betslip-side yes-side" id="bs3-side">YES</div>
             </div>
+            <div class="betslip-selection" id="bs3-sub">CL Semi-Final · Match Odds</div>
+            <div class="betslip-field">
+              <div class="betslip-field-label">Amount (USDC)</div>
+              <input class="betslip-input" id="bs3-amount" type="text" value="50" oninput="updatePayout('bs3')">
+            </div>
+            <div class="betslip-quick-amounts">
+              <div class="betslip-quick" onclick="setAmount('bs3',10)">$10</div>
+              <div class="betslip-quick" onclick="setAmount('bs3',25)">$25</div>
+              <div class="betslip-quick" onclick="setAmount('bs3',50)">$50</div>
+              <div class="betslip-quick" onclick="setAmount('bs3',100)">$100</div>
+            </div>
+            <div class="betslip-summary">
+              <span class="betslip-summary-label">Potential payout</span>
+              <span class="betslip-summary-value" id="bs3-payout">$106.38</span>
+            </div>
+            <div class="betslip-confirm yes-confirm" id="bs3-confirm" onclick="closeBetSlip(null,'betslip3')">Confirm Yes — $50</div>
           </div>
-
         </div>
 
         <!-- nav bar -->
@@ -2254,7 +2594,7 @@
       <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
         <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 01 — List</div>
         <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
-          <li>· Header: avatar ring (left) → title → LIVE chip</li>
+          <li>· Header: avatar ring (left) → title → wallet pill (address or Connect)</li>
           <li>· Tap avatar → navigates to Profile screen (04)</li>
           <li>· Trending strip — horizontal scroll, top 10 by volume</li>
           <li>· Filter chips: All / Geopolitics / EPL / UCL</li>
@@ -2305,5 +2645,83 @@
     </div>
   </div>
 
+<script>
+function openBetSlip(btn, selection, side, price) {
+  var overlay = document.getElementById('betslip3');
+  var title = document.getElementById('bs3-title');
+  var sideEl = document.getElementById('bs3-side');
+  var confirm = document.getElementById('bs3-confirm');
+  var amountEl = document.getElementById('bs3-amount');
+  title.textContent = selection;
+  var cents = parseInt(price);
+  var priceNum = cents / 100;
+  sideEl.textContent = side.toUpperCase();
+  sideEl.className = 'betslip-side ' + (side === 'yes' ? 'yes-side' : 'no-side');
+  confirm.className = 'betslip-confirm ' + (side === 'yes' ? 'yes-confirm' : 'no-confirm');
+  overlay.dataset.price = priceNum;
+  overlay.dataset.side = side;
+  var amount = parseFloat(amountEl.value) || 50;
+  var payout = (amount / priceNum).toFixed(2);
+  document.getElementById('bs3-payout').textContent = '$' + payout;
+  confirm.textContent = 'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+  overlay.classList.add('show');
+}
+function closeBetSlip(e, id) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById(id).classList.remove('show');
+}
+function setAmount(prefix, val) {
+  document.getElementById(prefix + '-amount').value = val;
+  updatePayout(prefix);
+}
+function updatePayout(prefix) {
+  var overlay = document.getElementById('betslip3');
+  var amount = parseFloat(document.getElementById(prefix + '-amount').value) || 0;
+  var price = parseFloat(overlay.dataset.price) || 0.5;
+  var side = overlay.dataset.side || 'yes';
+  var payout = price > 0 ? (amount / price).toFixed(2) : '0.00';
+  document.getElementById(prefix + '-payout').textContent = '$' + payout;
+  document.getElementById(prefix + '-confirm').textContent =
+    'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+}
+function openBetSlip2(selection, side, price) {
+  var overlay = document.getElementById('betslip2');
+  document.getElementById('bs2-title').textContent = selection;
+  var cents = parseInt(price);
+  var priceNum = cents / 100;
+  var sideEl = document.getElementById('bs2-side');
+  sideEl.textContent = side.toUpperCase();
+  sideEl.className = 'betslip-side ' + (side === 'yes' ? 'yes-side' : 'no-side');
+  var confirm = document.getElementById('bs2-confirm');
+  confirm.className = 'betslip-confirm ' + (side === 'yes' ? 'yes-confirm' : 'no-confirm');
+  overlay.dataset.price = priceNum;
+  overlay.dataset.side = side;
+  var amount = parseFloat(document.getElementById('bs2-amount').value) || 50;
+  document.getElementById('bs2-payout').textContent = '$' + (amount / priceNum).toFixed(2);
+  confirm.textContent = 'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+  overlay.classList.add('show');
+}
+function setAmount2(val) {
+  document.getElementById('bs2-amount').value = val;
+  updatePayout2();
+}
+function updatePayout2() {
+  var overlay = document.getElementById('betslip2');
+  var amount = parseFloat(document.getElementById('bs2-amount').value) || 0;
+  var price = parseFloat(overlay.dataset.price) || 0.5;
+  var side = overlay.dataset.side || 'yes';
+  document.getElementById('bs2-payout').textContent = '$' + (price > 0 ? (amount / price).toFixed(2) : '0.00');
+  document.getElementById('bs2-confirm').textContent =
+    'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+}
+function switchTab(containerId, tabName) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var tabs = container.querySelectorAll('.dtab');
+  var panels = container.querySelectorAll('.dtab-panel');
+  tabs.forEach(function(t) { t.classList.toggle('active', t.textContent.toLowerCase() === tabName) });
+  panels.forEach(function(p) { p.classList.toggle('active', p.dataset.tab === tabName) });
+}
+</script>
 </body>
 </html>
