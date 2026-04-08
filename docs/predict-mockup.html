@@ -920,22 +920,26 @@
     .detail-scroll { flex: 1; overflow-y: auto; overflow-x: hidden }
     .detail-scroll::-webkit-scrollbar { display: none }
 
-    .detail-body { padding: 14px 16px }
-
+    .detail-header-sub {
+      padding: 10px 16px 12px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+    }
     .detail-question {
       font-family: var(--sans);
       font-size: 14px;
       font-weight: 600;
       color: var(--hi);
-      line-height: 1.45;
-      margin-bottom: 4px;
+      line-height: 1.4;
+      margin-bottom: 3px;
     }
     .detail-end {
       font-family: var(--mono);
       font-size: 8.5px;
       color: var(--mid);
-      margin-bottom: 14px;
     }
+
+    .detail-body { padding: 14px 16px }
 
     /* ─── SPARKLINE SECTION ─── */
     .spark-section {
@@ -1681,12 +1685,15 @@
           </div>
         </div>
 
+        <!-- market header -->
+        <div class="detail-header-sub">
+          <div class="detail-question">US forces enter Iran by April 30?</div>
+          <div class="detail-end">Resolves Apr 30, 2026 · $14.3M weekly volume</div>
+        </div>
+
         <!-- detail scroll -->
         <div class="detail-scroll">
           <div class="detail-body">
-
-            <div class="detail-question">US forces enter Iran by April 30?</div>
-            <div class="detail-end">Resolves Apr 30, 2026 · $14.3M weekly volume</div>
 
             <!-- sparkline card -->
             <div class="spark-section">
@@ -1854,26 +1861,17 @@
           </div>
         </div>
 
+        <!-- market header -->
+        <div class="detail-header-sub">
+          <div class="detail-question" style="font-size:13px;text-align:center">Real Madrid vs Bayern Munich</div>
+          <div class="detail-end" style="text-align:center">UCL · Semi-final · Apr 7, 2026 · 21:00 CET</div>
+        </div>
+
         <!-- sport detail scroll -->
         <div class="detail-scroll">
 
-          <!-- match hero -->
-          <div class="match-hero">
-            <div class="match-league-row">
-              <div class="match-league-badge">UCL · Semi-final</div>
-              <div class="match-kick-off">Apr 7, 2026 · 21:00 CET</div>
-            </div>
-            <div class="match-teams-row">
-              <div class="match-team">
-                <div class="match-team-badge">⚪</div>
-                <div class="match-team-name">Real Madrid</div>
-              </div>
-              <div class="match-vs">vs</div>
-              <div class="match-team">
-                <div class="match-team-badge">🔴</div>
-                <div class="match-team-name">Bayern Munich</div>
-              </div>
-            </div>
+          <!-- match stats row -->
+          <div class="match-hero" style="padding-top:10px">
             <div class="match-vol-row">
               <span class="match-vol-label">Vol 7d</span>
               <span class="match-vol-value">$4.1M</span>
