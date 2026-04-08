@@ -435,7 +435,7 @@ const tx = pipe(
 **Why not full migration now:**
 - `tx-parser` depends heavily on `ParsedTransactionWithMeta` — no Kit equivalent
 - `@coral-xyz/anchor` (if we add it) still requires v1
-- Mobile wallet adapter (`@solana/wallet-adapter-react`) still uses v1 types
+- Mobile wallet libraries are hardcoded to v1 types (see Mobile section below)
 
 **Phase 1 — New code uses Kit (now)**
 - `packages/api` RPC calls (e.g. `solanaRpc()` in holdings endpoint) → `createSolanaRpc()`
@@ -453,7 +453,128 @@ const tx = pipe(
 
 **Do not migrate:**
 - Any file that interacts with Anchor until Anchor v0.32+
-- Wallet adapter code until `@solana/wallet-adapter-react` supports Kit natively
+- Wallet adapter code until the libraries ship Kit-native variants (see below)
+
+---
+
+## Mobile: Detailed Blockers & Strategy
+
+### Current dependency chain
+
+```
+apps/hybrid-expo/
+├── @solana/kit ^6.7.0              ← installed but NOT imported anywhere
+├── @solana/web3.js ^1.98.4         ← actively used
+├── @solana/wallet-adapter-react    ← web wallet (Phantom) — hardcoded to v1
+├── @solana/wallet-adapter-phantom  ← web wallet adapter — hardcoded to v1
+└── @wallet-ui/react-native-web3js  ← native MWA (Solana Mobile) — hardcoded to v1
+```
+
+### File-by-file mobile usage
+
+| File | v1 Imports | What it does | Migration path |
+|------|-----------|--------------|----------------|
+| `WalletProvider.native.tsx` | `clusterApiUrl` | Get RPC URL string for MWA | Replace with plain string constant — trivial |
+| `WalletProvider.web.tsx` | `clusterApiUrl` | Get RPC URL string for web wallet | Replace with plain string constant — trivial |
+| `hooks/useWallet.native.ts` | (via `@wallet-ui`) | MWA returns v1 `PublicKey`, calls `.toBase58()` | **Blocked** — `@wallet-ui` returns v1 types |
+| `hooks/useWallet.web.ts` | (via `wallet-adapter`) | Web wallet returns v1 `PublicKey`, calls `.toBase58()` | **Blocked** — `wallet-adapter-react` returns v1 types |
+| `features/perps/DepositModal.tsx` | `PublicKey`, `Transaction` | Builds deposit tx, sends via wallet | **Blocked** — wallet `.sendTransaction()` expects v1 `Transaction` |
+| `features/perps/perps.api.ts` | `PublicKey`, `TransactionInstruction` | Builds Pacific perps instructions | Can use Kit internally + `@solana/compat` at boundary |
+
+### The core problem
+
+Both wallet libraries return v1 objects and expect v1 objects for signing:
+
+```
+User taps "Deposit"
+  → app builds a Transaction (v1 class)
+  → calls wallet.sendTransaction(transaction, connection)
+  → wallet signs and submits
+  → returns v1 signature
+```
+
+You **cannot** pass a Kit transaction to `sendTransaction()` — it expects a v1 `Transaction` or `VersionedTransaction`. The wallet adapter types are:
+
+```typescript
+// @solana/wallet-adapter-react — what sendTransaction expects
+sendTransaction(
+  transaction: Transaction | VersionedTransaction,  // v1 types!
+  connection: Connection,                            // v1 Connection!
+  options?: SendTransactionOptions,
+): Promise<TransactionSignature>;
+```
+
+### What you CAN do now (without waiting)
+
+**1. Replace `clusterApiUrl` with constants** (zero risk):
+```typescript
+// Before
+import { clusterApiUrl } from '@solana/web3.js';
+const endpoint = clusterApiUrl('mainnet-beta');
+
+// After — no web3.js import needed
+const endpoint = 'https://api.mainnet-beta.solana.com';
+// Or use your Helius RPC URL from env
+```
+
+**2. Use Kit for internal logic, compat at wallet boundary**:
+```typescript
+import { address } from '@solana/kit';
+import { fromLegacyPublicKey } from '@solana/compat';
+
+// Wallet gives you v1 PublicKey
+const legacyPubkey = wallet.publicKey;  // v1 PublicKey
+
+// Convert to Kit Address for your logic
+const kitAddress = fromLegacyPublicKey(legacyPubkey);
+
+// Do Kit stuff...
+
+// When you need to send: build v1 Transaction (wallet requires it)
+```
+
+**3. Build a thin bridge hook** for future-proofing:
+```typescript
+// hooks/useKitWallet.ts — wraps useWallet with Kit types
+import { useWallet } from './useWallet';
+import { address, type Address } from '@solana/kit';
+
+export function useKitWallet() {
+  const wallet = useWallet();
+  return {
+    ...wallet,
+    // Kit-typed address (null-safe)
+    kitAddress: wallet.address ? address(wallet.address) as Address : null,
+    // Keep raw wallet for signing (still v1)
+    rawWallet: wallet,
+  };
+}
+```
+
+### When full mobile migration unblocks
+
+| Blocker | Status | Watch |
+|---------|--------|-------|
+| `@solana/wallet-adapter-react` Kit support | No ETA | [GitHub](https://github.com/anza-xyz/wallet-adapter) |
+| `@wallet-ui/react-native-web3js` Kit variant | No ETA | [GitHub](https://github.com/nicholasoxford/wallet-ui) |
+| Phantom Connect SDK Kit support | No ETA | [Phantom docs](https://docs.phantom.com/) |
+| `@solana/compat` `toLegacyTransaction()` | Not available — compat only converts FROM v1 TO Kit | Would need manual v1 Transaction construction |
+
+### Recommended mobile approach
+
+**Short term**: Keep v1 for all wallet-facing code. Use Kit only for:
+- New utility functions that don't touch the wallet (address validation, RPC reads)
+- Backend-initiated transactions (no wallet signing needed)
+
+**Medium term**: When `@wallet-ui` or `wallet-adapter-react` ships Kit support:
+- Swap providers, update hooks
+- Migrate `DepositModal.tsx` and `perps.api.ts` to Kit transactions
+
+**Long term**: When both wallet libs support Kit natively, remove `@solana/web3.js` and `@solana/compat` entirely.
+
+### Seeker-specific note
+
+Our mobile launch targets the Solana Seeker phone (Android-first, MWA SDK). The Seeker ships with a built-in wallet that uses MWA protocol. `@wallet-ui/react-native-web3js` is the MWA adapter — it must stay on v1 until the library updates. This is the **primary blocker** for mobile Kit migration.
 
 ---
 
