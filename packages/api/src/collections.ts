@@ -29,8 +29,6 @@ export interface MarketCollection {
     slugPrefix: string | null
     /** Hardcoded market slugs (used when tag-based discovery isn't enough). */
     curatedSlugs?: string[]
-    /** Gamma series_id fallback (optional, for withDomeFallback). */
-    gammaSeriesId?: string
   }
 }
 
@@ -43,7 +41,6 @@ export const COLLECTIONS: MarketCollection[] = [
     discovery: {
       domeTag: 'epl',
       slugPrefix: 'epl',
-      gammaSeriesId: '10188',
     },
   },
   {
@@ -53,7 +50,6 @@ export const COLLECTIONS: MarketCollection[] = [
     discovery: {
       domeTag: 'ucl',
       slugPrefix: 'ucl',
-      gammaSeriesId: '10204',
     },
   },
   {

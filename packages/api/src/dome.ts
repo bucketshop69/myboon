@@ -15,12 +15,6 @@
 
 const DOME_BASE = 'https://api.domeapi.io/v1'
 
-// ---- availability ----
-
-export function isDomeAvailable(): boolean {
-  return !!process.env.DOME_API_KEY?.trim()
-}
-
 function domeHeaders(): Record<string, string> {
   const key = process.env.DOME_API_KEY
   if (!key) throw new Error('DOME_API_KEY not set')

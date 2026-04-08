@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "tsx --watch src/index.ts",
     "start": "tsx src/index.ts",
-    "smoke": "tsx src/smoke-test.ts"
+    "smoke": "tsx src/smoke-test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
@@ -15,6 +17,7 @@
   "devDependencies": {
     "@types/node": "^25.3.5",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.3"
   }
 }
