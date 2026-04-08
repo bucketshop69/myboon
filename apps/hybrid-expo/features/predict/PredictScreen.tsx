@@ -4,12 +4,10 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Tex
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
-import { fetchCuratedMarkets, fetchSportsMarkets, fetchTrendingMarkets } from '@/features/predict/predict.api';
-import type { GeopoliticsMarket, PredictFilter, SportMarket, TrendingMarket } from '@/features/predict/predict.types';
+import { fetchCollections, fetchCollectionMarkets, fetchTrendingMarkets } from '@/features/predict/predict.api';
+import type { Collection, GeopoliticsMarket, SportMarket, TrendingMarket } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
-
-const FILTERS: PredictFilter[] = ['All', 'Geopolitics', 'EPL', 'UCL'];
 const BINARY_ROW_HEIGHT = 40;
 const SPORT_ROW_HEIGHT = 34;
 
@@ -184,10 +182,9 @@ function SportMarketCard({ market, onPress, formatOdds }: { market: SportMarket;
 export default function PredictScreen() {
   const router = useRouter();
   const { format, setFormat, formatOdds } = useOddsFormat();
-  const [filter, setFilter] = useState<PredictFilter>('All');
-  const [geoMarkets, setGeoMarkets] = useState<GeopoliticsMarket[]>([]);
-  const [eplMarkets, setEplMarkets] = useState<SportMarket[]>([]);
-  const [uclMarkets, setUclMarkets] = useState<SportMarket[]>([]);
+  const [filter, setFilter] = useState('All');
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [marketsMap, setMarketsMap] = useState<Record<string, (GeopoliticsMarket | SportMarket)[]>>({});
   const [trendingMarkets, setTrendingMarkets] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -196,23 +193,30 @@ export default function PredictScreen() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const [geo, epl, ucl, trending] = await Promise.all([
-        fetchCuratedMarkets(),
-        fetchSportsMarkets('epl'),
-        fetchSportsMarkets('ucl'),
-        fetchTrendingMarkets(10).catch(() => [] as TrendingMarket[]),
+      // 1. Fetch available collections
+      const cols = await fetchCollections();
+      setCollections(cols);
+
+      // 2. Fetch markets for each collection + trending in parallel
+      const marketResults = await Promise.allSettled([
+        ...cols.map((col) => fetchCollectionMarkets(col.key).then((m) => ({ key: col.key, markets: m }))),
+        fetchTrendingMarkets(10).then((t) => ({ key: '__trending__', markets: t })),
       ]);
 
-      setGeoMarkets(geo);
-      setEplMarkets(epl);
-      setUclMarkets(ucl);
-      setTrendingMarkets(trending);
+      const newMap: Record<string, (GeopoliticsMarket | SportMarket)[]> = {};
+      for (const result of marketResults) {
+        if (result.status !== 'fulfilled') continue;
+        const { key, markets } = result.value;
+        if (key === '__trending__') {
+          setTrendingMarkets(markets as unknown as TrendingMarket[]);
+        } else {
+          newMap[key] = markets as (GeopoliticsMarket | SportMarket)[];
+        }
+      }
+      setMarketsMap(newMap);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load predict markets';
       setErrorMessage(message);
-      setGeoMarkets([]);
-      setEplMarkets([]);
-      setUclMarkets([]);
     } finally {
       setLoading(false);
     }
@@ -222,9 +226,17 @@ export default function PredictScreen() {
     void loadPredictData();
   }, []);
 
-  const sortedGeo = useMemo(() => [...geoMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [geoMarkets]);
-  const sortedEpl = useMemo(() => [...eplMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [eplMarkets]);
-  const sortedUcl = useMemo(() => [...uclMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [uclMarkets]);
+  // Sort markets by volume for each collection
+  const sortedMarketsMap = useMemo(() => {
+    const sorted: Record<string, (GeopoliticsMarket | SportMarket)[]> = {};
+    for (const [key, markets] of Object.entries(marketsMap)) {
+      sorted[key] = [...markets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+    }
+    return sorted;
+  }, [marketsMap]);
+
+  // Filter chips: "All" + each collection label
+  const filterOptions = useMemo(() => ['All', ...collections.map((c) => c.label)], [collections]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -266,7 +278,7 @@ export default function PredictScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterStrip}>
-            {FILTERS.map((value) => {
+            {filterOptions.map((value) => {
               const active = value === filter;
               return (
                 <Pressable
@@ -302,67 +314,49 @@ export default function PredictScreen() {
           </View>
         ) : null}
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'Geopolitics') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>Geopolitics · Active</Text>
-              <Text style={styles.sectionLabelRight}>{sortedGeo.length} markets</Text>
-            </View>
-            {sortedGeo.map((market, index) => (
-              <BinaryMarketCard
-                key={market.slug}
-                market={market}
-                featured={index === 0}
-                onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: market.slug } })}
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
+        {!loading && !errorMessage ? collections.map((col) => {
+          // Show this section if filter is 'All' or matches this collection's label
+          if (filter !== 'All' && filter !== col.label) return null;
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'EPL') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>EPL · Matchday</Text>
-              <Text style={styles.sectionLabelRight}>{sortedEpl.length} fixtures</Text>
-            </View>
-            {sortedEpl.map((market) => (
-              <SportMarketCard
-                key={market.slug}
-                market={market}
-                onPress={() =>
-                  router.push({
-                    pathname: '/predict-sport/[sport]/[slug]',
-                    params: { sport: market.sport, slug: market.slug },
-                  })
-                }
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
+          const markets = sortedMarketsMap[col.key] ?? [];
+          if (markets.length === 0) return null;
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'UCL') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>UCL · Fixtures</Text>
-              <Text style={styles.sectionLabelRight}>{sortedUcl.length} fixtures</Text>
+          const isBinary = col.type === 'binary';
+          const countLabel = isBinary ? `${markets.length} markets` : `${markets.length} fixtures`;
+
+          return (
+            <View key={col.key} style={styles.sectionWrap}>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>{col.label} · Active</Text>
+                <Text style={styles.sectionLabelRight}>{countLabel}</Text>
+              </View>
+              {isBinary
+                ? (markets as GeopoliticsMarket[]).map((market, index) => (
+                    <BinaryMarketCard
+                      key={market.slug}
+                      market={market}
+                      featured={index === 0}
+                      onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: market.slug } })}
+                      formatOdds={formatOdds}
+                    />
+                  ))
+                : (markets as SportMarket[]).map((market) => (
+                    <SportMarketCard
+                      key={market.slug}
+                      market={market}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/predict-sport/[sport]/[slug]',
+                          params: { sport: market.sport, slug: market.slug },
+                        })
+                      }
+                      formatOdds={formatOdds}
+                    />
+                  ))
+              }
             </View>
-            {sortedUcl.map((market) => (
-              <SportMarketCard
-                key={market.slug}
-                market={market}
-                onPress={() =>
-                  router.push({
-                    pathname: '/predict-sport/[sport]/[slug]',
-                    params: { sport: market.sport, slug: market.slug },
-                  })
-                }
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
+          );
+        }) : null}
       </ScrollView>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />

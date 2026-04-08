@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type {
+  Collection,
   GeopoliticsMarket,
   GeopoliticsMarketDetail,
   LivePrice,
@@ -80,7 +81,7 @@ function mapSportMarket(row: unknown): SportMarket | null {
 
   const slug = typeof market.slug === 'string' ? market.slug : null;
   const title = typeof market.title === 'string' ? market.title : null;
-  const sport = market.sport === 'epl' || market.sport === 'ucl' ? market.sport : null;
+  const sport = typeof market.sport === 'string' ? market.sport : null;
   if (!slug || !title || !sport) return null;
 
   const outcomesRaw = Array.isArray(market.outcomes) ? market.outcomes : [];
@@ -178,7 +179,7 @@ function mapSportMarketDetail(row: unknown): SportMarketDetail | null {
 
   const slug = typeof market.slug === 'string' ? market.slug : null;
   const title = typeof market.title === 'string' ? market.title : null;
-  const sport = market.sport === 'epl' || market.sport === 'ucl' ? market.sport : null;
+  const sport = typeof market.sport === 'string' ? market.sport : null;
   if (!slug || !title || !sport) return null;
 
   const outcomesRaw = Array.isArray(market.outcomes) ? market.outcomes : [];
@@ -209,6 +210,30 @@ async function getJson(path: string): Promise<unknown> {
     throw new Error(`Request failed (${response.status})`);
   }
   return response.json();
+}
+
+export async function fetchCollections(): Promise<Collection[]> {
+  const payload = await getJson('/predict/collections');
+  if (!Array.isArray(payload)) throw new Error('Invalid collections response');
+
+  return payload
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .map((c) => ({
+      key: String(c.key ?? ''),
+      label: String(c.label ?? ''),
+      type: (c.type === 'grouped' ? 'grouped' : 'binary') as 'grouped' | 'binary',
+    }))
+    .filter((c) => c.key && c.label);
+}
+
+export async function fetchCollectionMarkets(key: string): Promise<(GeopoliticsMarket | SportMarket)[]> {
+  const payload = await getJson(`/predict/collections/${encodeURIComponent(key)}`);
+  if (!Array.isArray(payload)) throw new Error('Invalid collection markets response');
+
+  // Try mapping as sport markets first; if that fails (no sport field), try binary
+  return payload
+    .map((row) => mapSportMarket(row) ?? mapGeopoliticsMarket(row))
+    .filter((m): m is SportMarket | GeopoliticsMarket => m !== null);
 }
 
 export async function fetchCuratedMarkets(): Promise<GeopoliticsMarket[]> {

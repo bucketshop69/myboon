@@ -3,10 +3,9 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
-import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
-import type { SupportedSport } from './curated.js'
+import { COLLECTIONS, getCollection, collectionKeys } from './collections.js'
+import type { MarketCollection } from './collections.js'
 import {
-  isDomeAvailable,
   domeGetMarketsBySlugs,
   domeGetMarketBySlug,
   domeGetMarketPrice,
@@ -19,6 +18,7 @@ import {
   domeMarketToClobTokenIds,
   domeEndTimeToIso,
   domeStatusToActive,
+  isPropMarket,
 } from './dome.js'
 
 // --- env validation ---
@@ -52,34 +52,10 @@ async function supabaseFetch(path: string): Promise<Response> {
 
 // --- polymarket helpers ---
 
-const GAMMA_BASE = 'https://gamma-api.polymarket.com'
 const CLOB_BASE = 'https://clob.polymarket.com'
-
-async function gammaFetch(path: string): Promise<Response> {
-  return fetch(`${GAMMA_BASE}/${path}`)
-}
 
 async function clobFetch(path: string, options?: RequestInit): Promise<Response> {
   return fetch(`${CLOB_BASE}/${path}`, options)
-}
-
-function parseStringArray(input: unknown): string[] {
-  if (Array.isArray(input)) {
-    return input.filter((value): value is string => typeof value === 'string')
-  }
-
-  if (typeof input === 'string') {
-    try {
-      const parsed = JSON.parse(input) as unknown
-      if (Array.isArray(parsed)) {
-        return parsed.filter((value): value is string => typeof value === 'string')
-      }
-    } catch {
-      return []
-    }
-  }
-
-  return []
 }
 
 function parseNullableNumber(input: unknown): number | null {
@@ -90,21 +66,22 @@ function parseNullableNumber(input: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-// --- dome fallback wrapper ---
+// --- in-memory cache ---
 
-async function withDomeFallback<T>(
-  label: string,
-  domeFn: () => Promise<T>,
-  gammaFn: () => Promise<T>,
-): Promise<T> {
-  if (!isDomeAvailable()) return gammaFn()
-  try {
-    return await domeFn()
-  } catch (err) {
-    console.warn(`[api] Dome failed for ${label}, falling back to Gamma:`, err instanceof Error ? err.message : err)
-    return gammaFn()
+const cache = new Map<string, { data: unknown; expires: number }>()
+
+async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key)
+  if (hit && hit.expires > Date.now()) {
+    return hit.data as T
   }
+  const data = await fn()
+  cache.set(key, { data, expires: Date.now() + ttlMs })
+  return data
 }
+
+const TTL_2M = 2 * 60 * 1000
+const TTL_1M = 60 * 1000
 
 // --- app ---
 
@@ -173,90 +150,46 @@ app.get('/narratives/:id', async (c) => {
 
 // --- predict routes ---
 
-const CURATED_GEO_SET = new Set<string>(CURATED_GEOPOLITICS_SLUGS)
+// ── Collection helpers ──
 
-// GET /predict/markets
-app.get('/predict/markets', async (c) => {
+/** Fetch binary (yes/no) markets by curated slugs. */
+async function fetchBinaryCollection(collection: MarketCollection) {
+  const slugs = collection.discovery.curatedSlugs ?? []
+  if (slugs.length === 0) return []
+
   const results = await Promise.allSettled(
-    CURATED_GEOPOLITICS_SLUGS.map(async (slug) => {
-      return withDomeFallback(
-        `markets/${slug}`,
-        async () => {
-          const domeMarkets = await domeGetMarketsBySlugs([slug])
-          const m = domeMarkets.get(slug)
-          if (!m) throw new Error(`Dome: no market found for slug ${slug}`)
+    slugs.map(async (slug) => {
+      const domeMarkets = await domeGetMarketsBySlugs([slug])
+      const m = domeMarkets.get(slug)
+      if (!m) throw new Error(`Dome: no market found for slug ${slug}`)
 
-          const clobTokenIds = domeMarketToClobTokenIds(m)
+      const clobTokenIds = domeMarketToClobTokenIds(m)
 
-          let yesPrice: number | null = null
-          let noPrice: number | null = null
+      let yesPrice: number | null = null
+      let noPrice: number | null = null
 
-          if (clobTokenIds.length >= 1) {
-            const [yesPriceResult, noPriceResult] = await Promise.allSettled([
-              domeGetMarketPrice(clobTokenIds[0]),
-              clobTokenIds[1] ? domeGetMarketPrice(clobTokenIds[1]) : Promise.resolve(null),
-            ])
-            if (yesPriceResult.status === 'fulfilled') yesPrice = yesPriceResult.value
-            if (noPriceResult.status === 'fulfilled') noPrice = noPriceResult.value
-          }
+      if (clobTokenIds.length >= 1) {
+        const [yesPriceResult, noPriceResult] = await Promise.allSettled([
+          domeGetMarketPrice(clobTokenIds[0]),
+          clobTokenIds[1] ? domeGetMarketPrice(clobTokenIds[1]) : Promise.resolve(null),
+        ])
+        if (yesPriceResult.status === 'fulfilled') yesPrice = yesPriceResult.value
+        if (noPriceResult.status === 'fulfilled') noPrice = noPriceResult.value
+      }
 
-          return {
-            slug,
-            question: m.title,
-            category: 'geopolitics',
-            conditionId: m.condition_id,
-            clobTokenIds,
-            yesPrice,
-            noPrice,
-            volume24h: m.volume_1_week ?? m.volume_total ?? null,
-            endDate: domeEndTimeToIso(m.end_time),
-            active: domeStatusToActive(m.status),
-            image: m.image ?? null,
-          }
-        },
-        async () => {
-          const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
-          if (!res.ok) throw new Error(`Gamma API ${res.status} for slug ${slug}`)
-
-          const data = await res.json() as unknown[]
-          if (!Array.isArray(data) || data.length === 0) throw new Error(`No market found for slug ${slug}`)
-
-          const market = data[0] as Record<string, unknown>
-          const clobTokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
-
-          let yesPrice: number | null = null
-          let noPrice: number | null = null
-
-          if (clobTokenIds.length >= 2) {
-            const [yesPriceRes, noPriceRes] = await Promise.allSettled([
-              clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[0])}&side=buy`),
-              clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[1])}&side=buy`),
-            ])
-            if (yesPriceRes.status === 'fulfilled' && yesPriceRes.value.ok) {
-              const body = await yesPriceRes.value.json() as Record<string, unknown>
-              yesPrice = parseNullableNumber(body.price)
-            }
-            if (noPriceRes.status === 'fulfilled' && noPriceRes.value.ok) {
-              const body = await noPriceRes.value.json() as Record<string, unknown>
-              noPrice = parseNullableNumber(body.price)
-            }
-          }
-
-          return {
-            slug,
-            question: market.question ?? market.title ?? null,
-            category: 'geopolitics',
-            conditionId: market.conditionId ?? market.condition_id ?? null,
-            clobTokenIds,
-            yesPrice,
-            noPrice,
-            volume24h: market.volume24hr ?? market.volume_24h ?? market.volume ?? null,
-            endDate: market.endDate ?? market.end_date ?? null,
-            active: market.active ?? null,
-            image: market.image ?? market.imageUrl ?? null,
-          }
-        },
-      )
+      return {
+        slug,
+        question: m.title,
+        category: collection.key,
+        conditionId: m.condition_id,
+        clobTokenIds,
+        yesPrice,
+        noPrice,
+        volume24h: m.volume_1_week ?? m.volume_total ?? null,
+        endDate: domeEndTimeToIso(m.end_time),
+        active: domeStatusToActive(m.status),
+        image: m.image ?? null,
+      }
     })
   )
 
@@ -266,11 +199,256 @@ app.get('/predict/markets', async (c) => {
     if (result.status === 'fulfilled') {
       markets.push(result.value)
     } else {
-      console.error(`[api] GET /predict/markets — skipping ${CURATED_GEOPOLITICS_SLUGS[i]}:`, result.reason)
+      console.error(`[api] fetchBinaryCollection(${collection.key}) — skipping ${slugs[i]}:`, result.reason)
     }
   }
+  return markets
+}
 
-  return c.json(markets)
+/** Fetch grouped (multi-outcome) markets by tag + slugPrefix. */
+async function fetchGroupedCollection(collection: MarketCollection) {
+  const { domeTag, slugPrefix } = collection.discovery
+
+  const allMarkets = await domeGetSportMarkets(domeTag)
+  const now = Math.floor(Date.now() / 1000)
+
+  // Filter by slug prefix if set
+  const filtered = slugPrefix
+    ? allMarkets.filter((m) => m.event_slug?.startsWith(slugPrefix))
+    : allMarkets
+
+  const matchGroups = domeGroupMatchOutcomes(filtered)
+    .filter((g) => !g.endTime || g.endTime > now)
+
+  // Fetch all YES token prices in one parallel batch
+  const allTokenIds = matchGroups.flatMap((g) =>
+    g.outcomes.map((m) => m.side_a?.id).filter(Boolean) as string[]
+  )
+  const priceResults = await Promise.allSettled(
+    allTokenIds.map((id) => domeGetMarketPrice(id))
+  )
+  const priceMap = new Map<string, number | null>()
+  allTokenIds.forEach((id, i) => {
+    const r = priceResults[i]
+    priceMap.set(id, r.status === 'fulfilled' ? r.value : null)
+  })
+
+  return matchGroups.map((g) => {
+    // For each outcome market, produce outcomes.
+    // Football: 3 markets (team A win, draw, team B win) → 3 outcomes
+    // Cricket:  1 binary market (side_a vs side_b) → 2 outcomes
+    const outcomes = g.outcomes.flatMap((m) => {
+      const yesPrice = priceMap.get(m.side_a?.id ?? '') ?? null
+      // If this is a binary match market (slug === event_slug), expand into 2 outcomes
+      if (m.market_slug === m.event_slug && m.side_b?.id) {
+        const noPrice = yesPrice !== null ? Math.round((1 - yesPrice) * 10000) / 10000 : null
+        return [
+          {
+            label: m.side_a?.label ?? 'Team A',
+            price: yesPrice,
+            conditionId: m.condition_id ?? null,
+            clobTokenIds: [m.side_a?.id ?? ''],
+          },
+          {
+            label: m.side_b?.label ?? 'Team B',
+            price: noPrice,
+            conditionId: m.condition_id ?? null,
+            clobTokenIds: [m.side_b?.id ?? ''],
+          },
+        ]
+      }
+      return [{
+        label: domeOutcomeLabel(m),
+        price: yesPrice,
+        conditionId: m.condition_id ?? null,
+        clobTokenIds: domeMarketToClobTokenIds(m),
+      }]
+    })
+
+    return {
+      slug: g.eventSlug,
+      title: deriveMatchTitle(g.outcomes),
+      sport: collection.key,
+      startDate: g.gameStartTime ?? null,
+      endDate: domeEndTimeToIso(g.endTime),
+      image: g.image ?? null,
+      active: true,
+      volume24h: g.volume1Week,
+      liquidity: null,
+      negRisk: true,
+      outcomes,
+    }
+  })
+}
+
+/** Fetch detail for a grouped (sport) event within a collection. */
+async function fetchGroupedDetail(collection: MarketCollection, slug: string) {
+  const allDomeMarkets = await domeGetMarketsByEventSlug(slug)
+  const domeMarkets = allDomeMarkets.filter((m) => !isPropMarket(m))
+  if (!domeMarkets.length) throw new Error('not found')
+
+  const priceResults = await Promise.allSettled(
+    domeMarkets.map((m) => domeGetMarketPrice(m.side_a?.id ?? ''))
+  )
+  const prices = priceResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
+
+  const outcomes = domeMarkets.flatMap((m, i) => {
+    const yesPrice = prices[i]
+
+    // Binary sport market (cricket): one market with side_a + side_b → expand to 2 outcomes
+    if (m.market_slug === m.event_slug && m.side_b?.id) {
+      const noPrice = yesPrice !== null ? Math.round((1 - yesPrice) * 10000) / 10000 : null
+      return [
+        {
+          label: m.side_a?.label ?? 'Team A',
+          question: m.title,
+          price: yesPrice,
+          conditionId: m.condition_id ?? null,
+          clobTokenIds: [m.side_a?.id ?? ''],
+          liquidity: null,
+          volume24h: m.volume_1_week ?? null,
+          bestBid: null,
+          bestAsk: null,
+          acceptingOrders: m.status === 'open',
+        },
+        {
+          label: m.side_b?.label ?? 'Team B',
+          question: m.title,
+          price: noPrice,
+          conditionId: m.condition_id ?? null,
+          clobTokenIds: [m.side_b?.id ?? ''],
+          liquidity: null,
+          volume24h: m.volume_1_week ?? null,
+          bestBid: null,
+          bestAsk: null,
+          acceptingOrders: m.status === 'open',
+        },
+      ]
+    }
+
+    return [{
+      label: domeOutcomeLabel(m),
+      question: m.title,
+      price: yesPrice,
+      conditionId: m.condition_id ?? null,
+      clobTokenIds: domeMarketToClobTokenIds(m),
+      liquidity: null,
+      volume24h: m.volume_1_week ?? null,
+      bestBid: null,
+      bestAsk: null,
+      acceptingOrders: m.status === 'open',
+    }]
+  })
+
+  const first = domeMarkets[0]
+  return {
+    slug,
+    title: deriveMatchTitle(domeMarkets),
+    description: first.description ?? null,
+    sport: collection.key,
+    startDate: first.game_start_time ?? null,
+    endDate: domeEndTimeToIso(first.end_time),
+    image: first.image ?? null,
+    active: first.status === 'open',
+    negRisk: true,
+    volume24h: domeMarkets.reduce((sum, m) => sum + (m.volume_1_week ?? 0), 0),
+    liquidity: null,
+    outcomes,
+  }
+}
+
+// ── Generic collection endpoints ──
+
+// GET /predict/collections — list available collections
+app.get('/predict/collections', (c) => {
+  return c.json(
+    COLLECTIONS.map((col) => ({
+      key: col.key,
+      label: col.label,
+      type: col.type,
+    }))
+  )
+})
+
+// GET /predict/collections/:key — markets for a collection
+app.get('/predict/collections/:key', async (c) => {
+  const key = c.req.param('key').toLowerCase()
+  const collection = getCollection(key)
+  if (!collection) {
+    return c.json({ error: `Unknown collection. Available: ${collectionKeys().join(', ')}` }, 400)
+  }
+
+  try {
+    const ttl = collection.type === 'binary' ? TTL_1M : TTL_2M
+    const markets = await cached(`collection:${key}`, ttl, () =>
+      collection.type === 'binary'
+        ? fetchBinaryCollection(collection)
+        : fetchGroupedCollection(collection)
+    )
+    return c.json(markets)
+  } catch (err) {
+    console.error(`[api] GET /predict/collections/${key}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// GET /predict/collections/:key/:slug — detail for one market/event
+app.get('/predict/collections/:key/:slug', async (c) => {
+  const key = c.req.param('key').toLowerCase()
+  const slug = c.req.param('slug')
+  const collection = getCollection(key)
+  if (!collection) {
+    return c.json({ error: `Unknown collection. Available: ${collectionKeys().join(', ')}` }, 400)
+  }
+
+  try {
+    if (collection.type === 'binary') {
+      const m = await domeGetMarketBySlug(slug)
+      if (!m) throw new Error('not found')
+      const clobTokenIds = domeMarketToClobTokenIds(m)
+      const [yesPrice, noPrice] = await Promise.all([
+        clobTokenIds[0] ? domeGetMarketPrice(clobTokenIds[0]) : Promise.resolve(null),
+        clobTokenIds[1] ? domeGetMarketPrice(clobTokenIds[1]) : Promise.resolve(null),
+      ])
+      return c.json({
+        slug: m.market_slug,
+        question: m.title,
+        description: m.description ?? null,
+        conditionId: m.condition_id,
+        clobTokenIds,
+        outcomePrices: JSON.stringify([String(yesPrice ?? 0), String(noPrice ?? 0)]),
+        endDate: domeEndTimeToIso(m.end_time),
+        active: domeStatusToActive(m.status),
+        volume24hr: m.volume_1_week ?? m.volume_total ?? null,
+        volumeNum: m.volume_total ?? null,
+        liquidityNum: null,
+        image: m.image ?? null,
+      })
+    } else {
+      const detail = await fetchGroupedDetail(collection, slug)
+      return c.json(detail)
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('not found') || msg.includes('no market')) {
+      return c.json({ error: 'Not found' }, 404)
+    }
+    console.error(`[api] GET /predict/collections/${key}/${slug}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ── Legacy aliases (keep existing mobile clients working) ──
+
+// GET /predict/markets → alias for geopolitics collection
+app.get('/predict/markets', async (c) => {
+  const collection = getCollection('geopolitics')!
+  try {
+    return c.json(await fetchBinaryCollection(collection))
+  } catch (err) {
+    console.error('[api] GET /predict/markets:', err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
 })
 
 // GET /predict/markets/:slug
@@ -280,49 +458,33 @@ app.get('/predict/markets/:slug', async (c) => {
   const slug = c.req.param('slug')
 
   try {
-    const data = await withDomeFallback(
-      `markets/detail/${slug}`,
-      async () => {
-        const m = await domeGetMarketBySlug(slug)
-        if (!m) throw new Error(`Dome: no market found for slug ${slug}`)
+    const m = await domeGetMarketBySlug(slug)
+    if (!m) throw new Error('not found')
 
-        const clobTokenIds = domeMarketToClobTokenIds(m)
+    const clobTokenIds = domeMarketToClobTokenIds(m)
 
-        // Fetch live prices so the detail screen has real odds
-        const [yesPrice, noPrice] = await Promise.all([
-          clobTokenIds[0] ? domeGetMarketPrice(clobTokenIds[0]) : Promise.resolve(null),
-          clobTokenIds[1] ? domeGetMarketPrice(clobTokenIds[1]) : Promise.resolve(null),
-        ])
+    const [yesPrice, noPrice] = await Promise.all([
+      clobTokenIds[0] ? domeGetMarketPrice(clobTokenIds[0]) : Promise.resolve(null),
+      clobTokenIds[1] ? domeGetMarketPrice(clobTokenIds[1]) : Promise.resolve(null),
+    ])
 
-        // Return in Gamma-compatible shape so mobile mappers work unchanged
-        return {
-          slug: m.market_slug,
-          question: m.title,
-          description: m.description ?? null,
-          conditionId: m.condition_id,
-          clobTokenIds,
-          outcomePrices: JSON.stringify([
-            String(yesPrice ?? 0),
-            String(noPrice ?? 0),
-          ]),
-          endDate: domeEndTimeToIso(m.end_time),
-          active: domeStatusToActive(m.status),
-          volume24hr: m.volume_1_week ?? m.volume_total ?? null,
-          volumeNum: m.volume_total ?? null,
-          liquidityNum: null,
-          image: m.image ?? null,
-        }
-      },
-      async () => {
-        const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
-        if (!res.ok) throw new Error(`Gamma API ${res.status}`)
-        const arr = await res.json() as unknown[]
-        if (!Array.isArray(arr) || arr.length === 0) throw new Error('not found')
-        return arr[0]
-      },
-    )
-
-    return c.json(data)
+    return c.json({
+      slug: m.market_slug,
+      question: m.title,
+      description: m.description ?? null,
+      conditionId: m.condition_id,
+      clobTokenIds,
+      outcomePrices: JSON.stringify([
+        String(yesPrice ?? 0),
+        String(noPrice ?? 0),
+      ]),
+      endDate: domeEndTimeToIso(m.end_time),
+      active: domeStatusToActive(m.status),
+      volume24hr: m.volume_1_week ?? m.volume_total ?? null,
+      volumeNum: m.volume_total ?? null,
+      liquidityNum: null,
+      image: m.image ?? null,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.includes('not found') || msg.includes('no market')) {
@@ -444,235 +606,38 @@ app.get('/predict/history/:tokenId', async (c) => {
   }
 })
 
-// GET /predict/sports/:sport
-// Dynamically fetches live games for a sport — no hardcoded slugs needed.
-// Supported: epl, ucl
-const SPORT_SERIES: Record<string, string> = {
-  epl: '10188',
-  ucl: '10204',
-}
-
+// GET /predict/sports/:sport — legacy alias → collections/:key
 app.get('/predict/sports/:sport', async (c) => {
-  const sport = c.req.param('sport').toLowerCase() as SupportedSport
-  const seriesId = SPORT_SERIES[sport]
-
-  if (!seriesId) {
-    return c.json({ error: `Unsupported sport. Supported: ${Object.keys(SPORT_SERIES).join(', ')}` }, 400)
-  }
-
-  // Shared mapper: normalises an event (from either Dome or Gamma) into the response shape
-  function mapEventToGame(e: Record<string, unknown>, _source: 'dome' | 'gamma') {
-    const markets = (e.markets ?? []) as Record<string, unknown>[]
-
-    const outcomes = markets.map((m) => {
-      const outcomePrices = parseStringArray(m.outcomePrices)
-      const clobTokenIds = parseStringArray(m.clobTokenIds)
-
-      return {
-        label: m.groupItemTitle ?? m.question ?? null,
-        price: parseNullableNumber(outcomePrices[0]),
-        conditionId: m.conditionId ?? m.condition_id ?? null,
-        clobTokenIds,
-      }
-    })
-
-    return {
-      slug: e.slug,
-      title: e.title,
-      sport,
-      startDate: e.startDate ?? null,
-      endDate: e.endDate ?? null,
-      image: e.image ?? null,
-      active: e.active ?? null,
-      volume24h: e.volume24hr ?? e.volume24h ?? null,
-      liquidity: e.liquidity ?? null,
-      negRisk: e.negRisk ?? false,
-      outcomes,
-      _source: source, // debug only — strip if noisy
-    }
+  const sport = c.req.param('sport').toLowerCase()
+  const collection = getCollection(sport)
+  if (!collection || collection.type !== 'grouped') {
+    const grouped = COLLECTIONS.filter((col) => col.type === 'grouped').map((col) => col.key)
+    return c.json({ error: `Unsupported sport. Supported: ${grouped.join(', ')}` }, 400)
   }
 
   try {
-    const games = await withDomeFallback(
-      `sports/list/${sport}`,
-      async () => {
-        // Dome: flat list of outcome markets → group by event_slug → fetch prices
-        const allMarkets = await domeGetSportMarkets(sport)
-        const now = Math.floor(Date.now() / 1000)
-        const matchGroups = domeGroupMatchOutcomes(allMarkets)
-          // Exclude matches that have already ended
-          .filter((g) => !g.endTime || g.endTime > now)
-
-        // Fetch all YES token prices in one parallel batch
-        const allTokenIds = matchGroups.flatMap((g) =>
-          g.outcomes.map((m) => m.side_a?.id).filter(Boolean) as string[]
-        )
-        const priceResults = await Promise.allSettled(
-          allTokenIds.map((id) => domeGetMarketPrice(id))
-        )
-        const priceMap = new Map<string, number | null>()
-        allTokenIds.forEach((id, i) => {
-          const r = priceResults[i]
-          priceMap.set(id, r.status === 'fulfilled' ? r.value : null)
-        })
-
-        return matchGroups.map((g) => {
-          const outcomes = g.outcomes.map((m) => ({
-            label: domeOutcomeLabel(m),
-            price: priceMap.get(m.side_a?.id ?? '') ?? null,
-            conditionId: m.condition_id ?? null,
-            clobTokenIds: domeMarketToClobTokenIds(m),
-          }))
-
-          return {
-            slug: g.eventSlug,
-            title: deriveMatchTitle(g.outcomes),
-            sport,
-            startDate: g.gameStartTime ?? null,
-            endDate: domeEndTimeToIso(g.endTime),
-            image: g.image ?? null,
-            active: true,
-            volume24h: g.volume1Week,
-            liquidity: null,
-            negRisk: true,
-            outcomes,
-          }
-        })
-      },
-      async () => {
-        const res = await gammaFetch(`events?series_id=${seriesId}&active=true&closed=false&limit=20`)
-        if (!res.ok) throw new Error(`Gamma API ${res.status} for sport ${sport}`)
-        const raw = await res.json()
-        if (!Array.isArray(raw)) throw new Error(`Gamma unexpected response for sport ${sport}`)
-        return (raw as Record<string, unknown>[])
-          .filter((e) => !String(e.slug ?? '').endsWith('-more-markets'))
-          .map((e) => mapEventToGame(e, 'gamma'))
-      },
-    )
-
-    return c.json(games)
+    return c.json(await fetchGroupedCollection(collection))
   } catch (err) {
-    console.error(`[api] Unexpected error in GET /predict/sports/${sport}:`, err)
+    console.error(`[api] GET /predict/sports/${sport}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
 
-// GET /predict/sports/:sport/:slug — full game detail with all outcomes
+// GET /predict/sports/:sport/:slug — legacy alias → collections/:key/:slug
 app.get('/predict/sports/:sport/:slug', async (c) => {
-  const sport = c.req.param('sport').toLowerCase() as SupportedSport
+  const sport = c.req.param('sport').toLowerCase()
   const slug = c.req.param('slug')
-  const seriesId = SPORT_SERIES[sport]
-
-  if (!seriesId) {
-    return c.json({ error: `Unsupported sport. Supported: ${Object.keys(SPORT_SERIES).join(', ')}` }, 400)
-  }
-
-  // Shared outcome mapper — same shape from Dome or Gamma events
-  function mapOutcome(m: Record<string, unknown>) {
-    const outcomePrices = parseStringArray(m.outcomePrices)
-    const clobTokenIds = parseStringArray(m.clobTokenIds)
-    return {
-      label: m.groupItemTitle ?? null,
-      question: m.question ?? null,
-      price: parseNullableNumber(outcomePrices[0]),
-      conditionId: m.conditionId ?? m.condition_id ?? null,
-      clobTokenIds,
-      liquidity: m.liquidityNum ?? null,
-      volume24h: m.volume24hr ?? null,
-      bestBid: m.bestBid ?? null,
-      bestAsk: m.bestAsk ?? null,
-      acceptingOrders: m.acceptingOrders ?? null,
-    }
+  const collection = getCollection(sport)
+  if (!collection || collection.type !== 'grouped') {
+    return c.json({ error: 'Not found' }, 404)
   }
 
   try {
-    const detail = await withDomeFallback(
-      `sports/detail/${sport}/${slug}`,
-      async () => {
-        // Dome: fetch all outcome markets for this event slug, then get prices
-        if (!slug.startsWith(`${sport}-`)) {
-          throw new Error(`Dome: slug ${slug} does not match sport ${sport}`)
-        }
-
-        const domeMarkets = await domeGetMarketsByEventSlug(slug)
-        if (!domeMarkets.length) throw new Error(`Dome: no markets found for event ${slug}`)
-
-        // Parallel price fetches for all YES tokens
-        const priceResults = await Promise.allSettled(
-          domeMarkets.map((m) => domeGetMarketPrice(m.side_a?.id ?? ''))
-        )
-        const prices = priceResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
-
-        const outcomes = domeMarkets.map((m, i) => ({
-          label: domeOutcomeLabel(m),
-          question: m.title,
-          price: prices[i],
-          conditionId: m.condition_id ?? null,
-          clobTokenIds: domeMarketToClobTokenIds(m),
-          liquidity: null,
-          volume24h: m.volume_1_week ?? null,
-          bestBid: null,
-          bestAsk: null,
-          acceptingOrders: m.status === 'open' ? true : false,
-        }))
-
-        const first = domeMarkets[0]
-        return {
-          slug,
-          title: deriveMatchTitle(domeMarkets),
-          description: first.description ?? null,
-          sport,
-          startDate: first.game_start_time ?? null,
-          endDate: domeEndTimeToIso(first.end_time),
-          image: first.image ?? null,
-          active: first.status === 'open',
-          negRisk: true,
-          volume24h: domeMarkets.reduce((sum, m) => sum + (m.volume_1_week ?? 0), 0),
-          liquidity: null,
-          outcomes,
-        }
-      },
-      async () => {
-        const res = await gammaFetch(`events?slug=${encodeURIComponent(slug)}`)
-        if (!res.ok) throw new Error(`Gamma API ${res.status} for slug ${slug}`)
-
-        const events = await res.json() as Record<string, unknown>[]
-        if (!Array.isArray(events) || events.length === 0) throw new Error('not found')
-
-        const e = events[0]
-        const eventSlug = String(e.slug ?? '')
-        const eventSeries = Array.isArray(e.series) ? e.series : []
-        const belongsToSeries = eventSeries.some((row) => {
-          if (!row || typeof row !== 'object') return false
-          const id = (row as Record<string, unknown>).id
-          return String(id) === seriesId
-        })
-
-        if (!eventSlug.startsWith(`${sport}-`) && !belongsToSeries) throw new Error('not found')
-
-        const markets = (e.markets ?? []) as Record<string, unknown>[]
-        return {
-          slug: e.slug,
-          title: e.title,
-          description: e.description ?? null,
-          sport,
-          startDate: e.startDate ?? null,
-          endDate: e.endDate ?? null,
-          image: e.image ?? null,
-          active: e.active ?? null,
-          negRisk: e.negRisk ?? false,
-          volume24h: e.volume24hr ?? null,
-          liquidity: e.liquidity ?? null,
-          outcomes: markets.map(mapOutcome),
-        }
-      },
-    )
-
-    return c.json(detail)
+    return c.json(await fetchGroupedDetail(collection, slug))
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.includes('not found')) return c.json({ error: 'Not found' }, 404)
-    console.error(`[api] Unexpected error in GET /predict/sports/${sport}/${slug}:`, err)
+    console.error(`[api] GET /predict/sports/${sport}/${slug}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
@@ -724,55 +689,43 @@ app.get('/predict/trending', async (c) => {
   const tag = (c.req.query('tag') ?? 'geopolitics').trim().toLowerCase()
 
   try {
-    const markets = await withDomeFallback(
-      `trending/${tag}`,
-      async () => {
-        const now = Math.floor(Date.now() / 1000)
-        const raw = await domeGetMarketsByTag(tag, limit * 3)
+    const markets = await cached(`trending:${tag}:${limit}`, TTL_2M, async () => {
+      const now = Math.floor(Date.now() / 1000)
+      const raw = await domeGetMarketsByTag(tag, limit * 3)
 
-        const filtered = raw
-          // Exclude sport outcome markets (game_start_time is set)
-          .filter((m) => !m.game_start_time)
-          // Exclude expired
-          .filter((m) => !m.end_time || m.end_time > now)
-          // Sort by weekly volume desc
-          .sort((a, b) => (b.volume_1_week ?? 0) - (a.volume_1_week ?? 0))
-          .slice(0, limit)
+      const filtered = raw
+        .filter((m) => !m.game_start_time)
+        .filter((m) => !m.end_time || m.end_time > now)
+        .sort((a, b) => (b.volume_1_week ?? 0) - (a.volume_1_week ?? 0))
+        .slice(0, limit)
 
-        // Fetch prices in parallel
-        const priceResults = await Promise.allSettled(
-          filtered.map((m) =>
-            Promise.all([
-              m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
-              m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
-            ])
-          )
+      const priceResults = await Promise.allSettled(
+        filtered.map((m) =>
+          Promise.all([
+            m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
+            m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
+          ])
         )
+      )
 
-        return filtered.map((m, i) => {
-          const pr = priceResults[i]
-          const [yesPrice, noPrice] = pr.status === 'fulfilled' ? pr.value : [null, null]
-          return {
-            slug: m.market_slug,
-            question: m.title,
-            category: tag,
-            conditionId: m.condition_id,
-            clobTokenIds: domeMarketToClobTokenIds(m),
-            yesPrice,
-            noPrice,
-            volume24h: m.volume_1_week ?? m.volume_total ?? null,
-            endDate: domeEndTimeToIso(m.end_time),
-            active: domeStatusToActive(m.status),
-            image: m.image ?? null,
-          }
-        })
-      },
-      // Gamma fallback: re-use curated list sorted by volume (no dynamic trending)
-      async () => {
-        console.warn(`[api] Dome unavailable for trending/${tag} — returning curated fallback`)
-        return []
-      },
-    )
+      return filtered.map((m, i) => {
+        const pr = priceResults[i]
+        const [yesPrice, noPrice] = pr.status === 'fulfilled' ? pr.value : [null, null]
+        return {
+          slug: m.market_slug,
+          question: m.title,
+          category: tag,
+          conditionId: m.condition_id,
+          clobTokenIds: domeMarketToClobTokenIds(m),
+          yesPrice,
+          noPrice,
+          volume24h: m.volume_1_week ?? m.volume_total ?? null,
+          endDate: domeEndTimeToIso(m.end_time),
+          active: domeStatusToActive(m.status),
+          image: m.image ?? null,
+        }
+      })
+    })
 
     return c.json(markets)
   } catch (err) {
@@ -788,48 +741,14 @@ app.get('/predict/markets/:slug/price', async (c) => {
   const slug = c.req.param('slug')
 
   try {
-    const prices = await withDomeFallback(
-      `markets/price/${slug}`,
-      async () => {
-        const m = await domeGetMarketBySlug(slug)
-        if (!m) throw new Error(`Dome: no market found for slug ${slug}`)
+    const m = await domeGetMarketBySlug(slug)
+    if (!m) throw new Error('not found')
 
-        const [yesPrice, noPrice] = await Promise.all([
-          m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
-          m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
-        ])
-        return { yesPrice, noPrice }
-      },
-      async () => {
-        // Fallback: fetch market from Gamma to get token IDs, then CLOB for prices
-        const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
-        if (!res.ok) throw new Error(`Gamma ${res.status}`)
-        const arr = await res.json() as unknown[]
-        if (!Array.isArray(arr) || arr.length === 0) throw new Error('not found')
-
-        const market = arr[0] as Record<string, unknown>
-        const clobTokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
-
-        let yesPrice: number | null = null
-        let noPrice: number | null = null
-
-        if (clobTokenIds.length >= 2) {
-          const [yRes, nRes] = await Promise.allSettled([
-            clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[0])}&side=buy`),
-            clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[1])}&side=buy`),
-          ])
-          if (yRes.status === 'fulfilled' && yRes.value.ok) {
-            const body = await yRes.value.json() as Record<string, unknown>
-            yesPrice = parseNullableNumber(body.price)
-          }
-          if (nRes.status === 'fulfilled' && nRes.value.ok) {
-            const body = await nRes.value.json() as Record<string, unknown>
-            noPrice = parseNullableNumber(body.price)
-          }
-        }
-        return { yesPrice, noPrice }
-      },
-    )
+    const [yesPrice, noPrice] = await Promise.all([
+      m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
+      m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
+    ])
+    const prices = { yesPrice, noPrice }
 
     return c.json({ slug, ...prices, fetchedAt: new Date().toISOString() })
   } catch (err) {
@@ -859,7 +778,8 @@ async function solanaRpc(method: string, params: unknown[]): Promise<unknown> {
 
 // GET /predict/portfolio/:address
 // Open Polymarket positions + P&L summary for a wallet address.
-// Positions: CLOB /positions. Current prices: Dome. Market metadata: Gamma (best-effort, may be geo-blocked).
+// Positions: CLOB /positions. Current prices: Dome.
+// Market metadata (slug/question): not available — tracked in #29.
 // Realised P&L from sell-side CLOB trades (approximate until E2E confirms trade shape).
 app.get('/predict/portfolio/:address', async (c) => {
   const address = c.req.param('address')
@@ -913,25 +833,8 @@ app.get('/predict/portfolio/:address', async (c) => {
       }
     }
 
-    // Best-effort market enrichment via Gamma (geo-blocked locally, works on VPS)
-    const gammaMap = new Map<string, { slug: string | null; question: string | null }>()
-    if (tokenIds.length > 0) {
-      try {
-        const params = tokenIds.map((id) => `clob_token_ids=${encodeURIComponent(id)}`).join('&')
-        const gRes = await gammaFetch(`markets?${params}&limit=${tokenIds.length}`)
-        if (gRes.ok) {
-          const gBody = await gRes.json() as unknown[]
-          for (const m of (Array.isArray(gBody) ? gBody : [])) {
-            const gm = m as Record<string, unknown>
-            const slug = typeof gm.market_slug === 'string' ? gm.market_slug : null
-            const question = typeof gm.question === 'string' ? gm.question : null
-            for (const tid of parseStringArray(gm.clob_token_ids)) {
-              gammaMap.set(tid, { slug, question })
-            }
-          }
-        }
-      } catch { /* geo-blocked locally — proceed without */ }
-    }
+    // TODO: market enrichment (slug/question from token IDs) — tracked in #29
+    // Dome has no token-ID lookup endpoint; positions show without market names for now.
 
     // Normalise positions
     const positions = openRaw.map((p) => {
@@ -949,11 +852,10 @@ app.get('/predict/portfolio/:address', async (c) => {
       // CLOB outcome field: "YES" / "NO" — fall back to YES
       const side: 'YES' | 'NO' =
         typeof p.outcome === 'string' && p.outcome.toUpperCase() === 'NO' ? 'NO' : 'YES'
-      const meta = tokenId != null ? gammaMap.get(tokenId) : undefined
       return {
         tokenId,
-        slug: meta?.slug ?? null,
-        question: meta?.question ?? null,
+        slug: null,     // TODO: #29 — Dome-compatible token-ID → slug mapping
+        question: null, // TODO: #29 — Dome-compatible token-ID → question mapping
         side,
         shares: Math.round(shares * 100) / 100,
         avgEntry: Math.round(avgEntry * 10000) / 10000,

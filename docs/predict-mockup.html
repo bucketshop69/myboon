@@ -218,26 +218,47 @@
       text-transform: uppercase;
       color: var(--mid);
     }
-    .live-chip {
+    .wallet-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .wallet-pill:hover { border-color: var(--border2) }
+    .wallet-dot {
+      width: 6px; height: 6px;
+      background: var(--pos);
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(52,199,123,0.5);
+    }
+    .wallet-addr {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--hi);
+      letter-spacing: 0.5px;
+    }
+    .wallet-connect-pill {
       display: flex;
       align-items: center;
       gap: 5px;
-      background: rgba(52,199,123,0.08);
-      border: 1px solid rgba(52,199,123,0.18);
-      border-radius: 4px;
-      padding: 3px 7px;
+      background: transparent;
+      border: 1px solid var(--a);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
     }
-    .live-dot {
-      width: 5px; height: 5px;
-      background: var(--pos);
-      border-radius: 50%;
-      animation: dot-pulse 1.5s ease-in-out infinite;
-    }
-    .live-text {
+    .wallet-connect-text {
       font-family: var(--mono);
-      font-size: 8.5px;
-      color: var(--pos);
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--a);
       letter-spacing: 1px;
+      text-transform: uppercase;
     }
 
     /* ─── TRENDING STRIP ─── */
@@ -1364,9 +1385,9 @@
             <div class="profile-avatar-inner">B</div>
           </div>
           <span class="predict-title" style="flex:1;text-align:center">Predict</span>
-          <div class="live-chip">
-            <div class="live-dot"></div>
-            <span class="live-text">LIVE</span>
+          <div class="wallet-pill">
+            <div class="wallet-dot"></div>
+            <span class="wallet-addr">7xKp···m3Qr</span>
           </div>
         </div>
 
@@ -1654,8 +1675,10 @@
           <div class="back-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
-          <span class="detail-header-title">Market Detail</span>
-          <div class="poly-badge">Polymarket</div>
+          <span class="detail-header-title">Geopolitics</span>
+          <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
+            <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
+          </div>
         </div>
 
         <!-- detail scroll -->
@@ -1825,8 +1848,10 @@
           <div class="back-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
-          <span class="detail-header-title">Match Detail</span>
-          <div class="poly-badge">Polymarket</div>
+          <span class="detail-header-title">Champions League</span>
+          <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
+            <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
+          </div>
         </div>
 
         <!-- sport detail scroll -->
@@ -2254,7 +2279,7 @@
       <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
         <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 01 — List</div>
         <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
-          <li>· Header: avatar ring (left) → title → LIVE chip</li>
+          <li>· Header: avatar ring (left) → title → wallet pill (address or Connect)</li>
           <li>· Tap avatar → navigates to Profile screen (04)</li>
           <li>· Trending strip — horizontal scroll, top 10 by volume</li>
           <li>· Filter chips: All / Geopolitics / EPL / UCL</li>

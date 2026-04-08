@@ -15,12 +15,6 @@
 
 const DOME_BASE = 'https://api.domeapi.io/v1'
 
-// ---- availability ----
-
-export function isDomeAvailable(): boolean {
-  return !!process.env.DOME_API_KEY?.trim()
-}
-
 function domeHeaders(): Record<string, string> {
   const key = process.env.DOME_API_KEY
   if (!key) throw new Error('DOME_API_KEY not set')
@@ -174,9 +168,10 @@ export function domeGroupMatchOutcomes(markets: DomeMarket[]): DomeMatchGroup[] 
     if (!es) continue
 
     // Only include proper match events: event_slug must end with a date (YYYY-MM-DD).
-    // This filters tournament-winner, -more-markets, -exact-score, -halftime-result,
-    // and all other prop/special markets in one check.
     if (!isMatchSlug(es)) continue
+
+    // Filter out prop/secondary markets (completed-match, toss-winner, etc.)
+    if (isPropMarket(m)) continue
 
     if (!groups.has(es)) {
       groups.set(es, {
@@ -195,14 +190,15 @@ export function domeGroupMatchOutcomes(markets: DomeMarket[]): DomeMatchGroup[] 
     if (!group.image && m.image) group.image = m.image
   }
 
-  // Only return matches with at least 2 outcomes (partially-created markets are noise)
-  return Array.from(groups.values()).filter((g) => g.outcomes.length >= 2)
+  // Return matches with at least 1 outcome market (cricket = 1 binary, football = 3)
+  return Array.from(groups.values()).filter((g) => g.outcomes.length >= 1)
 }
 
 /**
  * Derive a match title from the set of outcome markets for that match.
- * Prefers the draw market's title which contains "X vs. Y end in a draw".
- * Falls back to "Team A vs Team B" constructed from team win market titles.
+ * Handles multiple title formats:
+ *   Football: "Will X win on ...?" / "Will X vs. Y end in a draw?"
+ *   Cricket:  "Indian Premier League: Team A vs Team B"
  */
 export function deriveMatchTitle(outcomes: DomeMarket[]): string {
   // Draw market title: "Will X vs. Y end in a draw?" → "X vs. Y"
@@ -212,6 +208,14 @@ export function deriveMatchTitle(outcomes: DomeMarket[]): string {
     if (match) return match[1]
   }
 
+  // "League: Team A vs Team B" pattern (cricket, etc.)
+  // Use the main match market (slug === event_slug, no suffix beyond the date)
+  const mainMarket = outcomes.find((m) => m.market_slug === m.event_slug)
+  if (mainMarket) {
+    const colonMatch = mainMarket.title.match(/:\s*(.+)/)
+    if (colonMatch) return colonMatch[1].trim()
+  }
+
   // Fallback: extract team names from "Will X win on..." titles
   const teamNames = outcomes
     .filter((m) => !m.market_slug.endsWith('-draw'))
@@ -219,6 +223,13 @@ export function deriveMatchTitle(outcomes: DomeMarket[]): string {
     .filter(Boolean)
   if (teamNames.length >= 2) return `${teamNames[0]} vs ${teamNames[1]}`
   if (teamNames.length === 1) return teamNames[0]
+
+  // Last resort: try colon pattern on any market
+  for (const m of outcomes) {
+    const colonMatch = m.title.match(/:\s*(.+?)(?:\s*-\s*.+)?$/)
+    if (colonMatch) return colonMatch[1].trim()
+  }
+
   return outcomes[0]?.event_slug ?? 'Unknown Match'
 }
 
@@ -233,12 +244,37 @@ export function extractTeamName(title: string): string {
 
 /**
  * Extract outcome label for a sport outcome market.
- * Draw markets → "Draw", others → team name.
+ * Draw markets → "Draw", team win → team name from title or side_a label.
  */
 export function domeOutcomeLabel(m: DomeMarket): string {
   if (m.market_slug.endsWith('-draw')) return 'Draw'
+
+  // Try extracting from "Will X win on ...?" title first (football)
   const name = extractTeamName(m.title)
-  return name || m.market_slug
+  if (name) return name
+
+  // Fall back to side_a label — useful for cricket where label = team name
+  // Skip generic labels like "Yes" / "No"
+  const sideLabel = m.side_a?.label
+  if (sideLabel && sideLabel !== 'Yes' && sideLabel !== 'No') return sideLabel
+
+  return m.market_slug
+}
+
+/**
+ * Is this a prop/secondary market within an event?
+ * Prop markets have slugs like: {event-slug}-completed-match, {event-slug}-toss-winner, etc.
+ * The main match market either has slug === event_slug or is a team-win / draw market.
+ */
+export function isPropMarket(m: DomeMarket): boolean {
+  const slug = m.market_slug
+  if (slug.endsWith('-completed-match')) return true
+  if (slug.endsWith('-toss-winner')) return true
+  if (slug.includes('-most-sixes')) return true
+  if (slug.includes('-exact-score')) return true
+  if (slug.includes('-halftime-result')) return true
+  if (slug.includes('-more-markets')) return true
+  return false
 }
 
 // ---- binary market helpers ----
