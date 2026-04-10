@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
+    "@turnkey/sdk-server": "^5.3.0",
     "dotenv": "^16.0.0",
     "hono": "^4.6.0"
   },
