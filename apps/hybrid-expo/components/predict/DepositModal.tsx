@@ -36,11 +36,11 @@ interface DepositAddresses {
   [key: string]: string | undefined;
 }
 
-const CHAIN_META: Record<string, { label: string; icon: string; color: string; note: string }> = {
-  svm: { label: 'Solana', icon: 'currency-bitcoin', color: '#9945ff', note: 'Send USDC on Solana' },
-  evm: { label: 'Ethereum / Polygon / Base', icon: 'swap-horiz', color: '#627eea', note: 'Send USDC from any EVM chain' },
-  btc: { label: 'Bitcoin', icon: 'currency-bitcoin', color: '#f7931a', note: 'Send BTC' },
-  tron: { label: 'Tron', icon: 'swap-horiz', color: '#ff0013', note: 'Send USDT on Tron' },
+const CHAIN_META: Record<string, { label: string; color: string; note: string; min: string }> = {
+  svm: { label: 'Solana', color: '#9945ff', note: 'Send USDC on Solana', min: 'Min: $1 USDC' },
+  evm: { label: 'Ethereum / Polygon / Base', color: '#627eea', note: 'Send USDC from any EVM chain', min: 'Min: $1 USDC' },
+  btc: { label: 'Bitcoin', color: '#f7931a', note: 'Send BTC', min: 'Min: 0.0001 BTC' },
+  tron: { label: 'Tron', color: '#ff0013', note: 'Send USDT on Tron', min: 'Min: $1 USDT' },
 };
 
 function truncateAddress(addr: string): string {
@@ -60,13 +60,24 @@ export function DepositModal({ isOpen, onClose, polygonAddress }: DepositModalPr
     setLoading(true);
     setError(null);
 
+    console.log('[deposit] Fetching from:', `${API_BASE}/clob/deposit/${polygonAddress}`);
     fetch(`${API_BASE}/clob/deposit/${polygonAddress}`)
       .then((res) => {
+        console.log('[deposit] Response status:', res.status);
         if (!res.ok) throw new Error('Failed to fetch deposit addresses');
         return res.json();
       })
-      .then((data) => setAddresses(data))
-      .catch((err) => setError(err.message))
+      .then((data) => {
+        console.log('[deposit] Raw response:', JSON.stringify(data));
+        const addrs = data.address ?? data;
+        console.log('[deposit] Parsed addresses:', JSON.stringify(addrs));
+        console.log('[deposit] Keys:', Object.keys(addrs));
+        setAddresses(addrs);
+      })
+      .catch((err) => {
+        console.error('[deposit] Error:', err.message);
+        setError(err.message);
+      })
       .finally(() => setLoading(false));
   }, [isOpen, polygonAddress]);
 
@@ -93,7 +104,7 @@ export function DepositModal({ isOpen, onClose, polygonAddress }: DepositModalPr
           </View>
 
           <Text style={styles.subtitle}>
-            Send funds to any of these addresses. They auto-bridge to your Polymarket account.
+            Send funds to any address below.{'\n'}Auto-bridges to your Polymarket account.
           </Text>
 
           {/* Content */}
@@ -112,13 +123,13 @@ export function DepositModal({ isOpen, onClose, polygonAddress }: DepositModalPr
           )}
 
           {!loading && !error && chains.length > 0 && (
-            <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+            <View style={styles.list}>
               {chains.map(([chain, address]) => {
                 const meta = CHAIN_META[chain] ?? {
                   label: chain.toUpperCase(),
-                  icon: 'account-balance-wallet',
-                  color: semantic.text.accent,
+                  color: '#888',
                   note: `Send to ${chain}`,
+                  min: '',
                 };
                 const isCopied = copied === chain;
 
@@ -131,25 +142,28 @@ export function DepositModal({ isOpen, onClose, polygonAddress }: DepositModalPr
                     <View style={styles.chainHeader}>
                       <View style={[styles.chainDot, { backgroundColor: meta.color }]} />
                       <Text style={styles.chainLabel}>{meta.label}</Text>
-                      <View style={styles.copyChip}>
+                      <View style={[styles.copyChip, isCopied && styles.copyChipActive]}>
                         <MaterialIcons
                           name={isCopied ? 'check' : 'content-copy'}
                           size={10}
-                          color={isCopied ? tokens.colors.viridian : semantic.text.faint}
+                          color={isCopied ? '#fff' : tokens.colors.primary}
                         />
                         <Text style={[styles.copyText, isCopied && styles.copiedText]}>
-                          {isCopied ? 'Copied' : 'Copy'}
+                          {isCopied ? 'Copied!' : 'Tap to copy'}
                         </Text>
                       </View>
                     </View>
                     <Text style={styles.addressText} numberOfLines={1} ellipsizeMode="middle">
                       {address}
                     </Text>
-                    <Text style={styles.noteText}>{meta.note}</Text>
+                    <View style={styles.noteRow}>
+                      <Text style={styles.noteText}>{meta.note}</Text>
+                      {meta.min ? <Text style={styles.minText}>{meta.min}</Text> : null}
+                    </View>
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </View>
           )}
 
           {!loading && !error && chains.length === 0 && addresses && (
@@ -201,10 +215,11 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: 'monospace',
-    fontSize: 8.5,
-    color: semantic.text.faint,
-    lineHeight: 13,
+    fontSize: 9,
+    color: semantic.text.primary,
+    lineHeight: 14,
     marginBottom: 14,
+    opacity: 0.7,
   },
   loadingWrap: {
     paddingVertical: 30,
@@ -228,7 +243,7 @@ const styles = StyleSheet.create({
     color: tokens.colors.vermillion,
   },
   list: {
-    flex: 1,
+    gap: 6,
   },
   chainCard: {
     backgroundColor: semantic.background.lift,
@@ -260,19 +275,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: semantic.background.surface,
+    backgroundColor: 'rgba(232,197,71,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.25)',
     borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  copyChipActive: {
+    backgroundColor: tokens.colors.viridian,
+    borderColor: tokens.colors.viridian,
   },
   copyText: {
     fontFamily: 'monospace',
-    fontSize: 7,
+    fontSize: 7.5,
+    fontWeight: '700',
     letterSpacing: 0.5,
-    color: semantic.text.faint,
+    color: tokens.colors.primary,
   },
   copiedText: {
-    color: tokens.colors.viridian,
+    color: '#fff',
   },
   addressText: {
     fontFamily: 'monospace',
@@ -280,10 +302,22 @@ const styles = StyleSheet.create({
     color: semantic.text.accent,
     letterSpacing: 0.3,
   },
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   noteText: {
     fontFamily: 'monospace',
     fontSize: 7.5,
-    color: semantic.text.faint,
+    color: semantic.text.dim,
+  },
+  minText: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    fontWeight: '700',
+    color: tokens.colors.primary,
+    letterSpacing: 0.3,
   },
   emptyText: {
     fontFamily: 'monospace',
