@@ -323,12 +323,12 @@ export interface ClobBalance {
   allowance: number;
 }
 
-export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance> {
+export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance | null> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetch(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
   if (!response.ok) {
-    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to fetch balance');
+    // 401 = no active CLOB session (server restart / TTL expired) — not a crash
+    return null;
   }
   const data = await response.json() as Record<string, unknown>;
   return {

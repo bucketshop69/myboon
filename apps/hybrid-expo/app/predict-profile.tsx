@@ -57,19 +57,17 @@ export default function PredictProfileScreen() {
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
-    const results = await Promise.allSettled([
-      fetchPortfolio(poly.polygonAddress),
+    const [portfolioData, balanceData] = await Promise.all([
+      fetchPortfolio(poly.polygonAddress).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
     ]);
-    if (results[0].status === 'fulfilled') setPortfolio(results[0].value);
-    if (results[1].status === 'fulfilled') {
-      setCashBalance(results[1].value.balance);
+    if (portfolioData) setPortfolio(portfolioData);
+    if (balanceData) {
+      setCashBalance(balanceData.balance);
       setSessionExpired(false);
     } else {
-      // 401 = server session lost (restart, TTL expired)
       setCashBalance(null);
-      const msg = (results[1].reason as Error)?.message ?? '';
-      if (msg.includes('session')) setSessionExpired(true);
+      setSessionExpired(true);
     }
   }, [poly.polygonAddress]);
 
