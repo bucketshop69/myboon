@@ -69,8 +69,8 @@ function getClient(session: ClobSession): ClobClient {
     CHAIN_ID,
     session.wallet,
     session.creds,
-    1, // SignatureType: POLY_PROXY (deposits go through proxy wallet)
-    session.wallet.address, // funder = EOA that owns the proxy
+    0, // SignatureType: EOA
+    session.wallet.address,
     undefined, // geoBlockToken
     undefined, // useServerTime
     builderConfig,
