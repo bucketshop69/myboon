@@ -1,5 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
+import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, placeBet } from '@/features/predict/predict.api';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
@@ -110,7 +110,6 @@ function Sparkline({ points, width, height }: { points: PricePoint[]; width: num
   );
 }
 
-const QUICK_AMOUNTS = [10, 25, 50, 100];
 const TABS: { key: Tab; label: string }[] = [
   { key: 'position', label: 'Position' },
   { key: 'stats', label: 'Stats' },
@@ -141,6 +140,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderResult, setOrderResult] = useState<'success' | 'error' | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
+
+  // CLOB balance for bet slip
+  const [clobBalance, setClobBalance] = useState<number | null>(null);
 
   // Market positions for current user
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
@@ -218,19 +220,38 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     ? ((history[history.length - 1].p - history[0].p) / (history[0].p || 0.01)) * 100
     : null;
 
-  function openBetSlip(side: 'yes' | 'no') {
+  const openBetSlip = useCallback((side: 'yes' | 'no') => {
     const price = side === 'yes' ? (yesPrice ?? 0.5) : (noPrice ?? 0.5);
     setBetSlipSide(side);
     setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
     setBetSlipPrice(price);
-    setBetSlipAmount(50);
+    setBetSlipAmount(0);
     setOrderResult(null);
     setOrderError(null);
     setBetSlipVisible(true);
-  }
+
+    // Fetch latest balance
+    if (poly.polygonAddress) {
+      fetchClobBalance(poly.polygonAddress).then((b) => {
+        if (b) setClobBalance(b.balance);
+      });
+    }
+  }, [yesPrice, noPrice, poly.polygonAddress]);
 
   async function submitOrder() {
     if (!detail || !poly.polygonAddress) return;
+
+    if (betSlipAmount <= 0) {
+      setOrderResult('error');
+      setOrderError('Enter an amount');
+      return;
+    }
+
+    if (clobBalance !== null && betSlipAmount > clobBalance) {
+      setOrderResult('error');
+      setOrderError(`Insufficient balance ($${clobBalance.toFixed(2)} available)`);
+      return;
+    }
 
     // Yes = clobTokenIds[0], No = clobTokenIds[1]
     const tokenID = betSlipSide === 'yes' ? detail.clobTokenIds[0] : detail.clobTokenIds[1];
@@ -549,21 +570,40 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             </View>
           </View>
 
+          {/* Balance + Entry price row */}
           <View style={styles.betSlipRow}>
-            <Text style={styles.betSlipMeta}>Entry price</Text>
-            <Text style={styles.betSlipMetaVal}>{Math.round(betSlipPrice * 100)}¢</Text>
+            <View>
+              <Text style={styles.betSlipMetaLabel}>Balance</Text>
+              <Text style={styles.betSlipMetaValue}>
+                {clobBalance !== null ? `$${clobBalance.toFixed(2)}` : '--'}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.betSlipMetaLabel}>Entry price</Text>
+              <Text style={styles.betSlipMetaValue}>{Math.round(betSlipPrice * 100)}¢</Text>
+            </View>
           </View>
 
           {/* Amount input */}
           <View style={styles.amountWrap}>
-            <Text style={styles.amountLabel}>Amount</Text>
+            <View style={styles.amountLabelRow}>
+              <Text style={styles.amountLabel}>Amount</Text>
+              {clobBalance !== null && clobBalance > 0 && (
+                <Pressable onPress={() => setBetSlipAmount(Math.floor(clobBalance * 100) / 100)}>
+                  <Text style={styles.maxBtn}>MAX</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.amountInputRow}>
               <Text style={styles.amountDollar}>$</Text>
               <TextInput
                 style={styles.amountInput}
                 keyboardType="numeric"
-                value={betSlipAmount.toString()}
+                value={betSlipAmount > 0 ? betSlipAmount.toString() : ''}
+                placeholder="0.00"
+                placeholderTextColor={semantic.text.faint}
                 onChangeText={(v) => {
+                  if (v === '') { setBetSlipAmount(0); return; }
                   const n = parseFloat(v);
                   if (!Number.isNaN(n)) setBetSlipAmount(n);
                 }}
@@ -571,22 +611,20 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             </View>
           </View>
 
-          <View style={styles.quickAmounts}>
-            {QUICK_AMOUNTS.map((amt) => (
-              <Pressable
-                key={amt}
-                onPress={() => setBetSlipAmount(amt)}
-                style={[styles.quickBtn, betSlipAmount === amt && styles.quickBtnActive]}>
-                <Text style={[styles.quickBtnText, betSlipAmount === amt && styles.quickBtnTextActive]}>
-                  ${amt}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
+          {/* Payout row */}
           <View style={styles.payoutRow}>
-            <Text style={styles.payoutLabel}>Est. Payout</Text>
-            <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
+            <View>
+              <Text style={styles.betSlipMetaLabel}>Est. Payout</Text>
+              <Text style={[styles.betSlipMetaValue, { color: semantic.sentiment.positive }]}>
+                ${payout.toFixed(2)}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.betSlipMetaLabel}>Shares</Text>
+              <Text style={styles.betSlipMetaValue}>
+                {betSlipPrice > 0 ? (betSlipAmount / betSlipPrice).toFixed(2) : '0'}
+              </Text>
+            </View>
           </View>
 
           {/* Order result feedback */}
@@ -1140,27 +1178,41 @@ const styles = StyleSheet.create({
   betSlipRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  betSlipMeta: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
+  betSlipMetaLabel: {
+    color: semantic.text.dim,
+    fontSize: 8,
     fontFamily: 'monospace',
     letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
-  betSlipMetaVal: {
+  betSlipMetaValue: {
     color: semantic.text.primary,
     fontSize: tokens.fontSize.sm,
     fontFamily: 'monospace',
     fontWeight: '700',
   },
   amountWrap: { gap: tokens.spacing.xs },
+  amountLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   amountLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+    fontSize: 8,
     fontFamily: 'monospace',
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  maxBtn: {
+    color: tokens.colors.primary,
+    fontSize: 8,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   amountInputRow: {
     flexDirection: 'row',
@@ -1184,49 +1236,13 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     paddingVertical: tokens.spacing.sm,
   },
-  quickAmounts: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xs,
-  },
-  quickBtn: {
-    flex: 1,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surfaceRaised,
-    alignItems: 'center',
-  },
-  quickBtnActive: {
-    backgroundColor: 'rgba(232,197,71,0.12)',
-    borderColor: 'rgba(232,197,71,0.25)',
-  },
-  quickBtnText: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-  quickBtnTextActive: { color: semantic.text.accent },
   payoutRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingTop: tokens.spacing.xs,
     borderTopWidth: 1,
     borderTopColor: semantic.border.muted,
-  },
-  payoutLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  payoutValue: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.md,
-    fontFamily: 'monospace',
-    fontWeight: '700',
   },
   confirmBtn: {
     height: 48,
