@@ -51,6 +51,7 @@ export default function PredictProfileScreen() {
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const isEnabled = poly.isReady && poly.polygonAddress;
 
@@ -61,9 +62,15 @@ export default function PredictProfileScreen() {
       fetchClobBalance(poly.polygonAddress),
     ]);
     if (results[0].status === 'fulfilled') setPortfolio(results[0].value);
-    else console.error('[profile] Portfolio fetch failed:', results[0].reason);
-    if (results[1].status === 'fulfilled') setCashBalance(results[1].value.balance);
-    else console.error('[profile] Balance fetch failed:', results[1].reason);
+    if (results[1].status === 'fulfilled') {
+      setCashBalance(results[1].value.balance);
+      setSessionExpired(false);
+    } else {
+      // 401 = server session lost (restart, TTL expired)
+      setCashBalance(null);
+      const msg = (results[1].reason as Error)?.message ?? '';
+      if (msg.includes('session')) setSessionExpired(true);
+    }
   }, [poly.polygonAddress]);
 
   // Fetch portfolio when enabled
@@ -114,6 +121,22 @@ export default function PredictProfileScreen() {
       ],
     );
   }, [connected, poly]);
+
+  const handleReconnect = useCallback(async () => {
+    if (!connected) return;
+    setBusy(true);
+    try {
+      await poly.enable();
+      setSessionExpired(false);
+      // Re-fetch after re-auth
+      await loadPortfolio();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Reconnect failed';
+      Alert.alert('Error', msg);
+    } finally {
+      setBusy(false);
+    }
+  }, [connected, poly, loadPortfolio]);
 
   const handleDisable = useCallback(() => {
     Alert.alert(
@@ -226,6 +249,15 @@ export default function PredictProfileScreen() {
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={tokens.colors.primary} size="small" />
           </View>
+        )}
+
+        {sessionExpired && isEnabled && !portfolioLoading && (
+          <Pressable onPress={handleReconnect} disabled={busy} style={styles.reconnectBanner}>
+            <MaterialIcons name="refresh" size={14} color={tokens.colors.primary} />
+            <Text style={styles.reconnectText}>
+              {busy ? 'Reconnecting…' : 'Session expired — tap to reconnect'}
+            </Text>
+          </Pressable>
         )}
 
         {/* ── Enabled: real portfolio ── */}
@@ -527,6 +559,25 @@ const styles = StyleSheet.create({
   loadingWrap: {
     paddingVertical: 40,
     alignItems: 'center',
+  },
+  reconnectBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: tokens.spacing.lg,
+    marginTop: 10,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,194,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,194,255,0.20)',
+    borderRadius: 8,
+  },
+  reconnectText: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: tokens.colors.primary,
+    letterSpacing: 0.3,
   },
 
   // Equity card
