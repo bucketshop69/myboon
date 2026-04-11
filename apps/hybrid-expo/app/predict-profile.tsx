@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,7 +15,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchPortfolio } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance } from '@/features/predict/predict.api';
 import type { PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
@@ -47,9 +48,23 @@ export default function PredictProfileScreen() {
 
   // Portfolio data
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const isEnabled = poly.isReady && poly.polygonAddress;
+
+  const loadPortfolio = useCallback(async () => {
+    if (!poly.polygonAddress) return;
+    const results = await Promise.allSettled([
+      fetchPortfolio(poly.polygonAddress),
+      fetchClobBalance(poly.polygonAddress),
+    ]);
+    if (results[0].status === 'fulfilled') setPortfolio(results[0].value);
+    else console.error('[profile] Portfolio fetch failed:', results[0].reason);
+    if (results[1].status === 'fulfilled') setCashBalance(results[1].value.balance);
+    else console.error('[profile] Balance fetch failed:', results[1].reason);
+  }, [poly.polygonAddress]);
 
   // Fetch portfolio when enabled
   useEffect(() => {
@@ -58,11 +73,14 @@ export default function PredictProfileScreen() {
       return;
     }
     setPortfolioLoading(true);
-    fetchPortfolio(poly.polygonAddress)
-      .then(setPortfolio)
-      .catch((err) => console.error('[profile] Portfolio fetch failed:', err))
-      .finally(() => setPortfolioLoading(false));
-  }, [isEnabled, poly.polygonAddress]);
+    loadPortfolio().finally(() => setPortfolioLoading(false));
+  }, [isEnabled, poly.polygonAddress, loadPortfolio]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadPortfolio();
+    setRefreshing(false);
+  }, [loadPortfolio]);
 
   const handleOpenAccount = useCallback(() => {
     if (!connected) {
@@ -145,6 +163,16 @@ export default function PredictProfileScreen() {
         style={styles.scroll}
         contentContainerStyle={{ paddingBottom: tokens.spacing.md }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          isEnabled ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={tokens.colors.primary}
+              colors={[tokens.colors.primary]}
+            />
+          ) : undefined
+        }
       >
         {/* ── Identity ── */}
         <View style={styles.identity}>
@@ -213,12 +241,20 @@ export default function PredictProfileScreen() {
                   </Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemCenter]}>
+                  <Text style={styles.eqLabel}>Cash</Text>
+                  <Text style={styles.eqVal}>
+                    {cashBalance !== null ? `$${cashBalance.toFixed(2)}` : '--'}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.equityRow, { marginTop: 10 }]}>
+                <View style={styles.eqItem}>
                   <Text style={styles.eqLabel}>P&L</Text>
                   <Text style={[styles.eqVal, totalPnl >= 0 ? styles.posText : styles.negText]}>
                     {formatPnl(totalPnl)}
                   </Text>
                 </View>
-                <View style={[styles.eqItem, styles.eqItemRight]}>
+                <View style={[styles.eqItem, styles.eqItemCenter]}>
                   <Text style={styles.eqLabel}>Positions</Text>
                   <Text style={styles.eqVal}>{positions.length}</Text>
                 </View>

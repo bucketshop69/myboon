@@ -316,6 +316,27 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
   };
 }
 
+// --- CLOB Balance ---
+
+export interface ClobBalance {
+  balance: number;
+  allowance: number;
+}
+
+export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to fetch balance');
+  }
+  const data = await response.json() as Record<string, unknown>;
+  return {
+    balance: typeof data.balance === 'number' ? data.balance : 0,
+    allowance: typeof data.allowance === 'number' ? data.allowance : 0,
+  };
+}
+
 // --- Portfolio & Positions (Gamma data-api, proxied through VPS) ---
 
 export interface PortfolioPosition {

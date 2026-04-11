@@ -256,6 +256,40 @@ clobRoutes.get('/deposit/:polygonAddress', async (c) => {
 })
 
 /**
+ * GET /clob/balance/:polygonAddress
+ * Returns USDC balance + allowance from the CLOB.
+ * Requires active session.
+ */
+clobRoutes.get('/balance/:polygonAddress', async (c) => {
+  const polygonAddress = c.req.param('polygonAddress')
+  const session = sessions.get(polygonAddress.toLowerCase())
+
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  try {
+    const client = getClient(session)
+    const result = await client.getBalanceAllowance()
+    const rawBalance = parseFloat(result.balance) || 0
+    const rawAllowance = parseFloat(result.allowance) || 0
+    // CLOB may return micro-units (6 decimals) or human-readable — normalize
+    const balance = rawBalance > 1_000_000 ? rawBalance / 1e6 : rawBalance
+    const allowance = rawAllowance > 1_000_000 ? rawAllowance / 1e6 : rawAllowance
+
+    console.log(`[clob] Balance for ${polygonAddress}: raw=${result.balance} → ${balance} USDC`)
+    return c.json({
+      balance,
+      allowance,
+      raw: result,
+    })
+  } catch (err: any) {
+    console.error('[clob] Balance fetch failed:', err.message || err)
+    return c.json({ error: 'Failed to fetch balance', detail: err.message }, 500)
+  }
+})
+
+/**
  * DELETE /clob/session/:polygonAddress
  * Clears the in-memory session.
  */
