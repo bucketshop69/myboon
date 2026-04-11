@@ -3,7 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -136,6 +139,14 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
   // CLOB balance
   const [clobBalance, setClobBalance] = useState<number | null>(null);
+
+  // Track keyboard visibility
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   async function loadDetail() {
     setLoading(true);
@@ -523,8 +534,21 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         visible={betSlipVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setBetSlipVisible(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setBetSlipVisible(false)} />
+        onRequestClose={() => { Keyboard.dismiss(); setBetSlipVisible(false); }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => {
+            if (keyboardOpen) {
+              Keyboard.dismiss();
+            } else {
+              setBetSlipVisible(false);
+            }
+          }}
+        />
         <View style={styles.betSlip}>
           <View style={styles.betSlipHandle} />
           <View style={styles.betSlipHeader}>
@@ -645,6 +669,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
             </Pressable>
           )}
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
