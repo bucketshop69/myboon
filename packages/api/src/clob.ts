@@ -120,13 +120,19 @@ clobRoutes.post('/auth', async (c) => {
     const creds = await tempClient.createOrDeriveApiKey()
 
     // Store session
-    sessions.set(polygonAddress, {
-      wallet,
-      creds,
-      createdAt: Date.now(),
-    })
+    const session: ClobSession = { wallet, creds, createdAt: Date.now() }
+    sessions.set(polygonAddress, session)
 
     console.log(`[clob] Session created for ${polygonAddress}`)
+
+    // Set CLOB spending allowance (required for orders to fill)
+    try {
+      const client = getClient(session)
+      await client.updateBalanceAllowance({ asset_type: 'COLLATERAL' as any })
+      console.log(`[clob] Allowance set for ${polygonAddress}`)
+    } catch (allowErr: any) {
+      console.warn(`[clob] Allowance update failed (non-fatal): ${allowErr.message}`)
+    }
 
     return c.json({
       polygonAddress: wallet.address,
