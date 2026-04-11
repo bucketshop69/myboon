@@ -18,7 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchSportMarketDetail, fetchPriceHistory, fetchClobBalance, placeBet } from '@/features/predict/predict.api';
+import { fetchSportMarketDetail, fetchPriceHistory, fetchClobBalance, fetchOpenOrders, fetchMarketPositions, placeBet } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -140,6 +141,20 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // CLOB balance
   const [clobBalance, setClobBalance] = useState<number | null>(null);
 
+  // Open orders + filled positions for this market
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+
+  const loadOrdersAndPositions = useCallback(() => {
+    if (!poly.polygonAddress) return;
+    fetchOpenOrders(poly.polygonAddress).then(setOpenOrders).catch(() => setOpenOrders([]));
+    fetchMarketPositions(poly.polygonAddress, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
+  }, [poly.polygonAddress, slug]);
+
+  useEffect(() => {
+    if (poly.polygonAddress && detail) loadOrdersAndPositions();
+  }, [poly.polygonAddress, detail, loadOrdersAndPositions]);
+
   // Track keyboard visibility
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
@@ -253,6 +268,11 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
       if (result.success) {
         setOrderResult('success');
+        // Refresh orders, positions, balance
+        loadOrdersAndPositions();
+        if (poly.polygonAddress) {
+          fetchClobBalance(poly.polygonAddress).then((b) => { if (b) setClobBalance(b.balance); });
+        }
       } else {
         setOrderResult('error');
         setOrderError(result.error ?? 'Order failed');
@@ -386,10 +406,104 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
-                  <Text style={styles.emptyTitle}>No positions yet</Text>
-                  <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                <View style={{ gap: 12 }}>
+                  {/* Open Orders */}
+                  {openOrders.length > 0 && (
+                    <View>
+                      <Text style={styles.posSecTitle}>Open Orders</Text>
+                      {openOrders.map((o) => {
+                        const sizeNum = parseFloat(o.original_size) || 0;
+                        const matched = parseFloat(o.size_matched) || 0;
+                        const priceNum = parseFloat(o.price) || 0;
+                        const cost = sizeNum * priceNum;
+                        const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
+                        return (
+                          <View key={o.id} style={styles.orderCard}>
+                            <View style={styles.orderCardTop}>
+                              <View style={[styles.orderSideBadge, o.side === 'BUY' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+                                <Text style={[styles.orderSideBadgeText, { color: o.side === 'BUY' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                                  {o.side}
+                                </Text>
+                              </View>
+                              <Text style={styles.orderOutcome} numberOfLines={1}>{o.outcome || '--'}</Text>
+                              <Text style={styles.orderStatus}>{o.status}</Text>
+                            </View>
+                            <View style={styles.orderCardStats}>
+                              <View>
+                                <Text style={styles.orderStatLabel}>Price</Text>
+                                <Text style={styles.orderStatVal}>{Math.round(priceNum * 100)}¢</Text>
+                              </View>
+                              <View>
+                                <Text style={styles.orderStatLabel}>Shares</Text>
+                                <Text style={styles.orderStatVal}>{sizeNum.toFixed(2)}</Text>
+                              </View>
+                              <View>
+                                <Text style={styles.orderStatLabel}>Cost</Text>
+                                <Text style={styles.orderStatVal}>${cost.toFixed(2)}</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.orderStatLabel}>Filled</Text>
+                                <Text style={styles.orderStatVal}>{fillPct}%</Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Filled Positions */}
+                  {marketPositions.length > 0 && (
+                    <View>
+                      <Text style={styles.posSecTitle}>Positions</Text>
+                      {marketPositions.map((p, i) => {
+                        const pnl = p.cashPnl ?? 0;
+                        const isUp = pnl >= 0;
+                        return (
+                          <View key={`${p.conditionId}-${p.outcomeIndex}-${i}`} style={styles.orderCard}>
+                            <View style={styles.orderCardTop}>
+                              <View style={[styles.orderSideBadge, p.outcome === 'No' ? styles.sideBadgeNo : styles.sideBadgeYes]}>
+                                <Text style={[styles.orderSideBadgeText, { color: p.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
+                                  {p.outcome?.toUpperCase() ?? 'YES'}
+                                </Text>
+                              </View>
+                              <Text style={styles.orderOutcome} numberOfLines={1}>{p.title || p.slug || '—'}</Text>
+                              <Text style={[styles.orderPnl, isUp ? styles.pnlUp : styles.pnlDown]}>
+                                {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                              </Text>
+                            </View>
+                            <View style={styles.orderCardStats}>
+                              <View>
+                                <Text style={styles.orderStatLabel}>Shares</Text>
+                                <Text style={styles.orderStatVal}>{(p.size ?? 0).toFixed(2)}</Text>
+                              </View>
+                              <View>
+                                <Text style={styles.orderStatLabel}>Avg Entry</Text>
+                                <Text style={styles.orderStatVal}>{(p.avgPrice ?? 0).toFixed(2)}</Text>
+                              </View>
+                              <View>
+                                <Text style={styles.orderStatLabel}>Current</Text>
+                                <Text style={styles.orderStatVal}>{(p.curPrice ?? 0).toFixed(2)}</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.orderStatLabel}>Value</Text>
+                                <Text style={styles.orderStatVal}>${(p.currentValue ?? 0).toFixed(2)}</Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Empty state */}
+                  {openOrders.length === 0 && marketPositions.length === 0 && (
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                      <Text style={styles.emptyTitle}>No positions yet</Text>
+                      <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                    </View>
+                  )}
                 </View>
               ) : null}
 
@@ -879,6 +993,79 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     fontFamily: 'monospace',
     textAlign: 'center',
+  },
+
+  // ── Position tab ──
+  posSecTitle: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: semantic.text.dim,
+    marginBottom: 6,
+  },
+  orderCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 6,
+    gap: 8,
+  },
+  orderCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  orderSideBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  orderSideBadgeText: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  orderOutcome: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.primary,
+  },
+  orderStatus: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  orderPnl: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  pnlUp: { color: semantic.sentiment.positive },
+  pnlDown: { color: semantic.sentiment.negative },
+  orderCardStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  orderStatLabel: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    color: semantic.text.faint,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 1,
+  },
+  orderStatVal: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.primary,
+    fontWeight: '600',
   },
 
   // ── Stats tab ──

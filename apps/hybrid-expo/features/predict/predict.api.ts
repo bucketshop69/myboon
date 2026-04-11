@@ -316,6 +316,30 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
   };
 }
 
+// --- CLOB Open Orders ---
+
+export interface OpenOrder {
+  id: string;
+  status: string;
+  market: string;
+  asset_id: string;
+  side: string;
+  original_size: string;
+  size_matched: string;
+  price: string;
+  outcome: string;
+  created_at: number;
+  order_type: string;
+}
+
+export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder[]> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/positions/${encodeURIComponent(polygonAddress)}`);
+  if (!response.ok) return [];
+  const data = await response.json() as Record<string, unknown>;
+  return Array.isArray(data.orders) ? data.orders as OpenOrder[] : [];
+}
+
 // --- CLOB Balance ---
 
 export interface ClobBalance {

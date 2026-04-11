@@ -15,8 +15,8 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchPortfolio, fetchClobBalance } from '@/features/predict/predict.api';
-import type { PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders } from '@/features/predict/predict.api';
+import type { PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -49,6 +49,7 @@ export default function PredictProfileScreen() {
   // Portfolio data
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -57,11 +58,13 @@ export default function PredictProfileScreen() {
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
-    const [portfolioData, balanceData] = await Promise.all([
+    const [portfolioData, balanceData, ordersData] = await Promise.all([
       fetchPortfolio(poly.polygonAddress).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
+      fetchOpenOrders(poly.polygonAddress).catch(() => []),
     ]);
     if (portfolioData) setPortfolio(portfolioData);
+    setOpenOrders(ordersData);
     if (balanceData) {
       setCashBalance(balanceData.balance);
       setSessionExpired(false);
@@ -291,16 +294,64 @@ export default function PredictProfileScreen() {
               </View>
             </View>
 
+            {/* Open Orders */}
+            {openOrders.length > 0 && (
+              <View style={styles.positionsSection}>
+                <View style={styles.posHeader}>
+                  <Text style={styles.posTitle}>Open Orders</Text>
+                  <Text style={styles.posCount}>{openOrders.length} pending</Text>
+                </View>
+                {openOrders.map((o: OpenOrder) => {
+                  const sizeNum = parseFloat(o.original_size) || 0;
+                  const matched = parseFloat(o.size_matched) || 0;
+                  const priceNum = parseFloat(o.price) || 0;
+                  const cost = sizeNum * priceNum;
+                  const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
+                  return (
+                    <View key={o.id} style={styles.orderCard}>
+                      <View style={styles.orderCardTop}>
+                        <View style={[styles.sideBadge, o.side === 'BUY' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+                          <Text style={[styles.sideBadgeText, o.side === 'BUY' ? styles.posText : styles.negText]}>
+                            {o.side}
+                          </Text>
+                        </View>
+                        <Text style={styles.orderOutcome} numberOfLines={1}>{o.outcome || '--'}</Text>
+                        <Text style={styles.orderStatus}>{o.status}</Text>
+                      </View>
+                      <View style={styles.orderCardStats}>
+                        <View>
+                          <Text style={styles.orderStatLabel}>Price</Text>
+                          <Text style={styles.orderStatVal}>{Math.round(priceNum * 100)}¢</Text>
+                        </View>
+                        <View>
+                          <Text style={styles.orderStatLabel}>Shares</Text>
+                          <Text style={styles.orderStatVal}>{sizeNum.toFixed(2)}</Text>
+                        </View>
+                        <View>
+                          <Text style={styles.orderStatLabel}>Cost</Text>
+                          <Text style={styles.orderStatVal}>${cost.toFixed(2)}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.orderStatLabel}>Filled</Text>
+                          <Text style={styles.orderStatVal}>{fillPct}%</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
             {/* Open positions */}
             <View style={styles.positionsSection}>
               <View style={styles.posHeader}>
-                <Text style={styles.posTitle}>Open Positions</Text>
+                <Text style={styles.posTitle}>Positions</Text>
                 <Text style={styles.posCount}>{positions.length} active</Text>
               </View>
-              {positions.length === 0 && (
+              {positions.length === 0 && openOrders.length === 0 && (
                 <View style={styles.emptyCard}>
                   <MaterialIcons name="show-chart" size={24} color={semantic.text.faint} />
-                  <Text style={styles.emptyText}>No open positions</Text>
+                  <Text style={styles.emptyText}>No positions or orders</Text>
                 </View>
               )}
               {positions.map((p: PortfolioPosition, i: number) => {
@@ -673,6 +724,53 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 7.5,
     color: semantic.text.faint,
+  },
+
+  // Order cards
+  orderCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 5,
+    gap: 8,
+  },
+  orderCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  orderOutcome: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.primary,
+  },
+  orderStatus: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  orderCardStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  orderStatLabel: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    color: semantic.text.faint,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 1,
+  },
+  orderStatVal: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.primary,
+    fontWeight: '600',
   },
 
   emptyCard: {
