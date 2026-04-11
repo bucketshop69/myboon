@@ -270,7 +270,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
 
   try {
     const client = getClient(session)
-    const result = await client.getBalanceAllowance()
+    const result = await client.getBalanceAllowance({ asset_type: 'COLLATERAL' as any })
     const rawBalance = parseFloat(result.balance) || 0
     const rawAllowance = parseFloat(result.allowance) || 0
     // CLOB may return micro-units (6 decimals) or human-readable — normalize
