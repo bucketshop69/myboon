@@ -492,7 +492,7 @@ app.get('/predict/sports/:sport', async (c) => {
       liquidity: e.liquidity ?? null,
       negRisk: e.negRisk ?? false,
       outcomes,
-      _source: source, // debug only — strip if noisy
+      _source, // debug only — strip if noisy
     }
   }
 

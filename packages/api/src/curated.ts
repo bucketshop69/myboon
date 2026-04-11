@@ -4,18 +4,21 @@
 // Last refreshed: 2026-04-02
 // Source: Dome API, sorted by volume_1_week, filtered active (end_time > now)
 
-export const CURATED_GEOPOLITICS_SLUGS = [
-  'us-forces-enter-iran-by-april-30-899',
-  'will-the-iranian-regime-fall-by-april-30',
-  'us-x-iran-ceasefire-by-april-15-182-528-637',
-  'us-x-iran-ceasefire-by-april-7-278',
-  'us-forces-enter-iran-by-december-31-573-642-385-371-179-425-262',
-  'netanyahu-out-by-april-30',
-  'will-trump-visit-china-by-april-30',
-  'will-china-invade-taiwan-before-2027',
-] as const
+// Geopolitics slugs disabled — most expired. Will refresh when we add back.
+// export const CURATED_GEOPOLITICS_SLUGS = [
+//   'us-forces-enter-iran-by-april-30-899',
+//   'will-the-iranian-regime-fall-by-april-30',
+//   'us-x-iran-ceasefire-by-april-15-182-528-637',
+//   'us-x-iran-ceasefire-by-april-7-278',
+//   'us-forces-enter-iran-by-december-31-573-642-385-371-179-425-262',
+//   'netanyahu-out-by-april-30',
+//   'will-trump-visit-china-by-april-30',
+//   'will-china-invade-taiwan-before-2027',
+// ] as const
+export const CURATED_GEOPOLITICS_SLUGS: readonly string[] = []
 
-export const SUPPORTED_SPORTS = ['epl', 'ucl'] as const
+// UCL disabled for now — focusing on EPL for testing
+export const SUPPORTED_SPORTS = ['epl'] as const
 export type SupportedSport = (typeof SUPPORTED_SPORTS)[number]
 
 export const CURATED_SLUGS = {
