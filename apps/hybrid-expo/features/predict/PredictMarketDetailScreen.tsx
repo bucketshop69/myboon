@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
+import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
+import type { PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -141,6 +142,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [orderResult, setOrderResult] = useState<'success' | 'error' | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
 
+  // Market positions for current user
+  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
   async function loadMarket() {
@@ -190,6 +194,19 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   }, [slug]);
 
   useEffect(() => { void loadMarket(); }, [slug]);
+
+  // Fetch user's positions for this market
+  useEffect(() => {
+    if (!detail || !poly.polygonAddress) {
+      setMarketPositions([]);
+      return;
+    }
+    // Use conditionId from the detail's clobTokenIds — the conditionId is embedded in positions data
+    // For now, fetch all positions and filter client-side by slug
+    fetchMarketPositions(poly.polygonAddress, slug)
+      .then(setMarketPositions)
+      .catch(() => setMarketPositions([]));
+  }, [detail, poly.polygonAddress, slug]);
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice  = livePrice?.noPrice  ?? (detail?.outcomePrices[1] ?? null);
@@ -355,11 +372,52 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
-                  <Text style={styles.emptyTitle}>No positions yet</Text>
-                  <Text style={styles.emptyBody}>Trade below to open a position</Text>
-                </View>
+                marketPositions.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                    <Text style={styles.emptyTitle}>No positions yet</Text>
+                    <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                  </View>
+                ) : (
+                  <View style={styles.tabSection}>
+                    {marketPositions.map((pos, i) => {
+                      const pnl = pos.cashPnl ?? 0;
+                      const isPositive = pnl >= 0;
+                      return (
+                        <View key={`${pos.conditionId}-${i}`} style={styles.positionCard}>
+                          <View style={styles.positionHeader}>
+                            <View style={[styles.posSideBadge, pos.outcome === 'No' ? styles.posSideBadgeNo : styles.posSideBadgeYes]}>
+                              <Text style={[styles.posSideBadgeText, { color: pos.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
+                                {pos.outcome?.toUpperCase() ?? 'YES'}
+                              </Text>
+                            </View>
+                            <Text style={[styles.positionPnl, { color: isPositive ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                              {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                            </Text>
+                          </View>
+                          <View style={styles.positionStats}>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Shares</Text>
+                              <Text style={styles.posStatVal}>{pos.size?.toFixed(1) ?? '--'}</Text>
+                            </View>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Avg</Text>
+                              <Text style={styles.posStatVal}>{pos.avgPrice?.toFixed(2) ?? '--'}¢</Text>
+                            </View>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Current</Text>
+                              <Text style={styles.posStatVal}>{pos.curPrice?.toFixed(2) ?? '--'}¢</Text>
+                            </View>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Value</Text>
+                              <Text style={styles.posStatVal}>${pos.currentValue?.toFixed(2) ?? '--'}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )
               ) : null}
 
               {/* STATS TAB */}
@@ -766,6 +824,59 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     fontFamily: 'monospace',
     textAlign: 'center',
+  },
+
+  // ── Position card ──
+  positionCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.md,
+    padding: 12,
+    gap: 10,
+  },
+  positionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  posSideBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  posSideBadgeYes: { backgroundColor: 'rgba(52,199,123,0.12)' },
+  posSideBadgeNo: { backgroundColor: 'rgba(244,88,78,0.12)' },
+  posSideBadgeText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+  },
+  positionPnl: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.md,
+    fontWeight: '700',
+  },
+  positionStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  positionStat: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  posStatLabel: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  posStatVal: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    color: semantic.text.primary,
   },
 
   // ── Stats tab ──

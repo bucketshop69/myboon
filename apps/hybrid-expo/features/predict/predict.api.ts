@@ -316,6 +316,80 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
   };
 }
 
+// --- Portfolio & Positions (Gamma data-api, proxied through VPS) ---
+
+export interface PortfolioPosition {
+  proxyWallet: string;
+  asset: string;
+  conditionId: string;
+  size: number;
+  avgPrice: number;
+  currentValue: number;
+  cashPnl: number;
+  percentPnl: number;
+  curPrice: number;
+  title: string;
+  slug: string;
+  eventSlug: string;
+  outcome: string;
+  outcomeIndex: number;
+  icon: string | null;
+  endDate: string | null;
+}
+
+export interface PortfolioData {
+  address: string;
+  portfolioValue: number | null;
+  positions: PortfolioPosition[];
+  profile: {
+    name: string | null;
+    bio: string | null;
+    profileImage: string | null;
+    xUsername: string | null;
+  } | null;
+  summary: {
+    openPositions: number;
+    totalPnl: number;
+  };
+}
+
+export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioData> {
+  const payload = await getJson(`/predict/portfolio/${encodeURIComponent(polygonAddress)}`);
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid portfolio response');
+  const p = payload as Record<string, unknown>;
+  return {
+    address: typeof p.address === 'string' ? p.address : polygonAddress,
+    portfolioValue: toNumber(p.portfolioValue),
+    positions: Array.isArray(p.positions) ? (p.positions as PortfolioPosition[]) : [],
+    profile: p.profile as PortfolioData['profile'] ?? null,
+    summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0 },
+  };
+}
+
+export interface ActivityItem {
+  timestamp: number;
+  type: string;
+  side: string;
+  size: number;
+  usdcSize: number;
+  price: number;
+  title: string;
+  slug: string;
+  outcome: string;
+}
+
+export async function fetchActivity(polygonAddress: string): Promise<ActivityItem[]> {
+  const payload = await getJson(`/predict/activity/${encodeURIComponent(polygonAddress)}`);
+  if (!Array.isArray(payload)) return [];
+  return payload as ActivityItem[];
+}
+
+export async function fetchMarketPositions(polygonAddress: string, slug: string): Promise<PortfolioPosition[]> {
+  const payload = await getJson(`/predict/positions/${encodeURIComponent(polygonAddress)}/market/${encodeURIComponent(slug)}`);
+  if (!Array.isArray(payload)) return [];
+  return payload as PortfolioPosition[];
+}
+
 export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' = '1h'): Promise<PriceHistory> {
   const payload = await getJson(`/predict/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid history response');

@@ -941,25 +941,33 @@ app.get('/predict/activity/:address', async (c) => {
   }
 })
 
-// GET /predict/positions/:address/market/:conditionId
-// Positions for a specific market (by conditionId) via Gamma data-api.
-app.get('/predict/positions/:address/market/:conditionId', async (c) => {
+// GET /predict/positions/:address/market/:slug
+// Positions for a specific market via Gamma data-api.
+// Fetches all user positions and filters by slug (data-api doesn't support slug filter directly).
+app.get('/predict/positions/:address/market/:slug', async (c) => {
   const address = c.req.param('address')
-  const conditionId = c.req.param('conditionId')
-  if (!address?.trim() || !conditionId?.trim()) return c.json({ error: 'Bad request' }, 400)
+  const slug = c.req.param('slug')
+  if (!address?.trim() || !slug?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
     const res = await dataApiFetch(
-      `positions?user=${encodeURIComponent(address)}&conditionId=${encodeURIComponent(conditionId)}&sizeThreshold=0.1&limit=10`
+      `positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`
     )
     if (!res.ok) {
       console.error(`[api] data-api /positions error ${res.status}`)
       return c.json({ error: 'Failed to fetch positions' }, 502)
     }
     const body = await res.json() as unknown
-    return c.json(Array.isArray(body) ? body : [])
+    if (!Array.isArray(body)) return c.json([])
+
+    // Filter positions matching this market's slug or eventSlug
+    const filtered = body.filter((p: unknown) => {
+      const pos = p as Record<string, unknown>
+      return pos.slug === slug || pos.eventSlug === slug
+    })
+    return c.json(filtered)
   } catch (err) {
-    console.error(`[api] Unexpected error in GET /predict/positions/${address}/market/${conditionId}:`, err)
+    console.error(`[api] Unexpected error in GET /predict/positions/${address}/market/${slug}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

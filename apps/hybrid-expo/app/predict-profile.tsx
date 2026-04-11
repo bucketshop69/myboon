@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,8 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
+import { fetchPortfolio } from '@/features/predict/predict.api';
+import type { PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -22,43 +24,45 @@ function truncate(addr: string, start = 6, end = 4): string {
   return `${addr.slice(0, start)}···${addr.slice(-end)}`;
 }
 
-// ── Hardcoded mock data (matches predict-mockup.html Screen 4) ──
+function formatUsd(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '--';
+  const abs = Math.abs(value);
+  const prefix = value < 0 ? '-' : value > 0 ? '+' : '';
+  if (abs >= 1000) return `${prefix}$${(abs / 1000).toFixed(1)}K`;
+  return `${prefix}$${abs.toFixed(2)}`;
+}
 
-const MOCK_EQUITY = {
-  portfolio: '$1,840',
-  unrealised: '+$84.70',
-  cash: '$1,192',
-};
-
-const MOCK_HOLDINGS = [
-  { name: 'USDC (Solana)', color: '#9945ff', amount: '1,192.00', usd: '$1,192.00' },
-  { name: 'Open Positions', color: '#34c77b', amount: '4 markets', usd: '$648.00 cost' },
-  { name: 'SOL', color: '#e8c547', amount: '0.41', usd: '~$68.04' },
-];
-
-const MOCK_STATS = [
-  { label: 'Net PnL', value: '+$142', positive: true },
-  { label: 'Realised PnL', value: '+$57', positive: true },
-  { label: 'Win Rate', value: '63%', positive: true },
-  { label: 'Markets traded', value: '17', positive: null },
-  { label: 'Avg winner', value: '+$28', positive: true },
-  { label: 'Avg loser', value: '−$9', positive: false },
-];
-
-const MOCK_POSITIONS = [
-  { side: 'YES' as const, question: 'US forces enter Iran by Apr 30?', pnl: '+$48.40', entry: '0.41→0.62', up: true },
-  { side: 'NO' as const, question: 'China invades Taiwan before 2027?', pnl: '+$22.10', entry: '0.76→0.82', up: true },
-  { side: 'YES' as const, question: 'Real Madrid win vs Bayern Apr 7?', pnl: '+$24.10', entry: '0.38→0.47', up: true },
-  { side: 'NO' as const, question: 'US–Iran ceasefire by April 7?', pnl: '−$9.80', entry: '0.62→0.56', up: false },
-];
+function formatPnl(value: number): string {
+  const prefix = value >= 0 ? '+' : '';
+  return `${prefix}$${value.toFixed(2)}`;
+}
 
 export default function PredictProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { connected, address: solanaAddress, shortAddress } = useWallet();
+  const { connected, address: solanaAddress } = useWallet();
   const poly = usePolymarketWallet();
   const [busy, setBusy] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+
+  // Portfolio data
+  const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+
+  const isEnabled = poly.isReady && poly.polygonAddress;
+
+  // Fetch portfolio when enabled
+  useEffect(() => {
+    if (!isEnabled || !poly.polygonAddress) {
+      setPortfolio(null);
+      return;
+    }
+    setPortfolioLoading(true);
+    fetchPortfolio(poly.polygonAddress)
+      .then(setPortfolio)
+      .catch((err) => console.error('[profile] Portfolio fetch failed:', err))
+      .finally(() => setPortfolioLoading(false));
+  }, [isEnabled, poly.polygonAddress]);
 
   const handleOpenAccount = useCallback(() => {
     if (!connected) {
@@ -108,7 +112,9 @@ export default function PredictProfileScreen() {
     );
   }, [poly]);
 
-  const isEnabled = poly.isReady && poly.polygonAddress;
+  const positions = portfolio?.positions ?? [];
+  const portfolioValue = portfolio?.portfolioValue;
+  const totalPnl = portfolio?.summary.totalPnl ?? 0;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -144,11 +150,15 @@ export default function PredictProfileScreen() {
         <View style={styles.identity}>
           <View style={styles.avatarRing}>
             <View style={styles.avatarInner}>
-              <Text style={styles.avatarText}>B</Text>
+              <Text style={styles.avatarText}>
+                {(portfolio?.profile?.name ?? 'U').charAt(0).toUpperCase()}
+              </Text>
             </View>
           </View>
           <View style={styles.identityInfo}>
-            <Text style={styles.handle}>bucketshop69</Text>
+            <Text style={styles.handle}>
+              {portfolio?.profile?.name ?? (poly.polygonAddress ? truncate(poly.polygonAddress) : '—')}
+            </Text>
             <View style={styles.addrRow}>
               <Text style={styles.addrText}>
                 {solanaAddress ? truncate(solanaAddress) : '—'}
@@ -163,7 +173,6 @@ export default function PredictProfileScreen() {
             )}
           </View>
 
-          {/* Open Account / Status button — right side of identity banner */}
           {!isEnabled && !poly.isLoading && (
             <Pressable
               onPress={handleOpenAccount}
@@ -185,99 +194,83 @@ export default function PredictProfileScreen() {
           )}
         </View>
 
-        {poly.isLoading && (
+        {(poly.isLoading || portfolioLoading) && (
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={tokens.colors.primary} size="small" />
           </View>
         )}
 
-        {/* ── Enabled: full profile ── */}
-        {isEnabled && (
+        {/* ── Enabled: real portfolio ── */}
+        {isEnabled && !portfolioLoading && (
           <>
             {/* Equity card */}
             <View style={styles.equityCard}>
               <View style={styles.equityRow}>
                 <View style={styles.eqItem}>
                   <Text style={styles.eqLabel}>Portfolio</Text>
-                  <Text style={styles.eqVal}>{MOCK_EQUITY.portfolio}</Text>
-                </View>
-                <View style={[styles.eqItem, styles.eqItemCenter]}>
-                  <Text style={styles.eqLabel}>Unrealised</Text>
-                  <Text style={[styles.eqVal, styles.posText]}>{MOCK_EQUITY.unrealised}</Text>
-                </View>
-                <View style={[styles.eqItem, styles.eqItemRight]}>
-                  <Text style={styles.eqLabel}>Cash</Text>
-                  <Text style={styles.eqVal}>{MOCK_EQUITY.cash}</Text>
-                </View>
-              </View>
-
-              <Text style={styles.holdingsLabel}>Holdings</Text>
-              {MOCK_HOLDINGS.map((h) => (
-                <View key={h.name} style={styles.holdingRow}>
-                  <View style={styles.holdingName}>
-                    <View style={[styles.holdingDot, { backgroundColor: h.color }]} />
-                    <Text style={styles.holdingNameText}>{h.name}</Text>
-                  </View>
-                  <View style={styles.holdingValues}>
-                    <Text style={styles.holdingAmount}>{h.amount}</Text>
-                    <Text style={styles.holdingUsd}>{h.usd}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            {/* Stats grid */}
-            <View style={styles.statsGrid}>
-              {MOCK_STATS.map((s) => (
-                <View key={s.label} style={styles.statCard}>
-                  <Text style={styles.statLabel}>{s.label}</Text>
-                  <Text
-                    style={[
-                      styles.statVal,
-                      s.positive === true && styles.posText,
-                      s.positive === false && styles.negText,
-                    ]}
-                  >
-                    {s.value}
+                  <Text style={styles.eqVal}>
+                    {portfolioValue !== null ? formatUsd(portfolioValue) : '--'}
                   </Text>
                 </View>
-              ))}
+                <View style={[styles.eqItem, styles.eqItemCenter]}>
+                  <Text style={styles.eqLabel}>P&L</Text>
+                  <Text style={[styles.eqVal, totalPnl >= 0 ? styles.posText : styles.negText]}>
+                    {formatPnl(totalPnl)}
+                  </Text>
+                </View>
+                <View style={[styles.eqItem, styles.eqItemRight]}>
+                  <Text style={styles.eqLabel}>Positions</Text>
+                  <Text style={styles.eqVal}>{positions.length}</Text>
+                </View>
+              </View>
             </View>
 
             {/* Open positions */}
             <View style={styles.positionsSection}>
               <View style={styles.posHeader}>
                 <Text style={styles.posTitle}>Open Positions</Text>
-                <Text style={styles.posCount}>{MOCK_POSITIONS.length} active</Text>
+                <Text style={styles.posCount}>{positions.length} active</Text>
               </View>
-              {MOCK_POSITIONS.map((p, i) => (
-                <View key={i} style={styles.posRow}>
-                  <View
-                    style={[
-                      styles.sideBadge,
-                      p.side === 'YES' ? styles.sideBadgeYes : styles.sideBadgeNo,
-                    ]}
-                  >
-                    <Text
+              {positions.length === 0 && (
+                <View style={styles.emptyCard}>
+                  <MaterialIcons name="show-chart" size={24} color={semantic.text.faint} />
+                  <Text style={styles.emptyText}>No open positions</Text>
+                </View>
+              )}
+              {positions.map((p: PortfolioPosition, i: number) => {
+                const pnl = p.cashPnl ?? 0;
+                const isUp = pnl >= 0;
+                return (
+                  <View key={`${p.conditionId}-${p.outcomeIndex}-${i}`} style={styles.posRow}>
+                    <View
                       style={[
-                        styles.sideBadgeText,
-                        p.side === 'YES' ? styles.posText : styles.negText,
+                        styles.sideBadge,
+                        p.outcome === 'No' ? styles.sideBadgeNo : styles.sideBadgeYes,
                       ]}
                     >
-                      {p.side}
+                      <Text
+                        style={[
+                          styles.sideBadgeText,
+                          p.outcome === 'No' ? styles.negText : styles.posText,
+                        ]}
+                      >
+                        {p.outcome?.toUpperCase() ?? 'YES'}
+                      </Text>
+                    </View>
+                    <Text style={styles.posQuestion} numberOfLines={1}>
+                      {p.title || p.slug || '—'}
                     </Text>
+                    <View style={styles.posPnlWrap}>
+                      <Text style={[styles.posPnl, isUp ? styles.posText : styles.negText]}>
+                        {formatPnl(pnl)}
+                      </Text>
+                      <Text style={styles.posEntry}>
+                        {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={styles.posQuestion} numberOfLines={1}>
-                    {p.question}
-                  </Text>
-                  <View style={styles.posPnlWrap}>
-                    <Text style={[styles.posPnl, p.up ? styles.posText : styles.negText]}>
-                      {p.pnl}
-                    </Text>
-                    <Text style={styles.posEntry}>{p.entry}</Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
 
             {/* Addresses + disable */}
@@ -455,7 +448,7 @@ const styles = StyleSheet.create({
     color: tokens.colors.viridian,
   },
 
-  // Open Account button (in identity banner, right side)
+  // Open Account button
   openAccountBtn: {
     backgroundColor: tokens.colors.primary,
     paddingVertical: 6,
@@ -512,10 +505,6 @@ const styles = StyleSheet.create({
   },
   equityRow: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-    paddingBottom: 10,
-    marginBottom: 10,
   },
   eqItem: { flex: 1, gap: 3 },
   eqItemCenter: { alignItems: 'center' },
@@ -532,86 +521,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: semantic.text.primary,
-  },
-
-  holdingsLabel: {
-    fontFamily: 'monospace',
-    fontSize: 7,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-    marginBottom: 6,
-  },
-  holdingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-  },
-  holdingName: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  holdingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  holdingNameText: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    color: semantic.text.dim,
-  },
-  holdingValues: {
-    alignItems: 'flex-end',
-    gap: 1,
-  },
-  holdingAmount: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    fontWeight: '700',
-    color: semantic.text.primary,
-  },
-  holdingUsd: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    color: semantic.text.dim,
-  },
-
-  // Stats grid
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginHorizontal: tokens.spacing.lg,
-    marginTop: 12,
-  },
-  statCard: {
-    width: '48.5%' as any,
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 8,
-    padding: 11,
-    gap: 3,
-  },
-  statLabel: {
-    fontFamily: 'monospace',
-    fontSize: 7,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-  },
-  statVal: {
-    fontFamily: 'monospace',
-    fontSize: 18,
-    fontWeight: '700',
-    color: semantic.text.primary,
-    lineHeight: 20,
-    letterSpacing: -0.5,
   },
 
   // Positions
@@ -679,6 +588,22 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 7.5,
     color: semantic.text.faint,
+  },
+
+  emptyCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyText: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: semantic.text.faint,
+    letterSpacing: 0.5,
   },
 
   // Addresses section
