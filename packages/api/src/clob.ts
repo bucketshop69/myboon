@@ -69,8 +69,8 @@ function getClient(session: ClobSession): ClobClient {
     CHAIN_ID,
     session.wallet,
     session.creds,
-    0, // SignatureType: EOA
-    session.wallet.address,
+    1, // SignatureType: POLY_PROXY (deposits go through proxy wallet)
+    session.wallet.address, // funder = EOA that owns the proxy
     undefined, // geoBlockToken
     undefined, // useServerTime
     builderConfig,
@@ -125,13 +125,13 @@ clobRoutes.post('/auth', async (c) => {
 
     console.log(`[clob] Session created for ${polygonAddress}`)
 
-    // Set CLOB spending allowance (required for orders to fill)
+    // Tell CLOB server to refresh allowance cache
     try {
       const client = getClient(session)
       await client.updateBalanceAllowance({ asset_type: 'COLLATERAL' as any })
-      console.log(`[clob] Allowance set for ${polygonAddress}`)
-    } catch (allowErr: any) {
-      console.warn(`[clob] Allowance update failed (non-fatal): ${allowErr.message}`)
+      console.log(`[clob] Allowance refreshed for ${polygonAddress}`)
+    } catch (err: any) {
+      console.warn(`[clob] Allowance refresh failed (non-fatal): ${err.message}`)
     }
 
     return c.json({
