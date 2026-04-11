@@ -5,13 +5,13 @@ import {
   Image,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
@@ -241,8 +241,10 @@ export default function SwapScreen() {
   const impactPercent = quote ? Math.abs(quote.priceImpactPct) : 0;
   const impactColor = impactPercent <= 1 ? semantic.sentiment.positive : semantic.sentiment.negative;
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
 
       <View style={styles.tabsRow}>
@@ -413,7 +415,7 @@ export default function SwapScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

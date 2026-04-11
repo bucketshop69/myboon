@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
@@ -200,8 +201,10 @@ export default function PredictScreen() {
   const sortedEpl = useMemo(() => [...eplMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [eplMarkets]);
   const sortedUcl = useMemo(() => [...uclMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [uclMarkets]);
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* header */}
       <View style={styles.predictHeader}>
         <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
@@ -317,7 +320,7 @@ export default function PredictScreen() {
       </ScrollView>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-    </SafeAreaView>
+    </View>
   );
 }
 

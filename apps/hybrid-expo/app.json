@@ -48,6 +48,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3911eed9-3f36-4ad7-962e-892ea47d132b"
+      }
+    },
+    "owner": "bucketshop"
   }
 }

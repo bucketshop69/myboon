@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
+import { clobRoutes } from './clob.js'
 import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
@@ -112,6 +113,9 @@ const app = new Hono()
 
 app.use('*', cors())
 app.use('*', logger())
+
+// --- CLOB routes (Polymarket Builder) ---
+app.route('/clob', clobRoutes)
 
 // GET /health
 app.get('/health', (c) => {

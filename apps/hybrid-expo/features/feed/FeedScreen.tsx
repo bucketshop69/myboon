@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { FeedList } from '@/features/feed/components/FeedList';
@@ -49,8 +50,10 @@ export default function FeedScreen() {
     setSheetItem(null);
   }, []);
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
 
       {isLoading ? (
@@ -84,7 +87,7 @@ export default function FeedScreen() {
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
 
       <NarrativeSheet item={sheetItem} onClose={handleSheetClose} />
-    </SafeAreaView>
+    </View>
   );
 }
 

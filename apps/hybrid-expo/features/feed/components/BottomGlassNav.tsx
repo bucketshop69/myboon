@@ -1,6 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { usePathname, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomNavItem } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
 
@@ -12,6 +13,7 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const navWidth = Math.min(400, width * 0.9);
 
   function isActive(route: BottomNavItem['route']): boolean {
@@ -22,7 +24,7 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
   }
 
   return (
-    <View style={[styles.wrap, { width: navWidth }]}>
+    <View style={[styles.wrap, { width: navWidth, bottom: Math.max(insets.bottom, 8) }]}>
       {items.map((item) => {
         const active = isActive(item.route);
         return (
@@ -50,7 +52,7 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    bottom: tokens.spacing.xl,
+    bottom: 8,
     alignSelf: 'center',
     zIndex: 20,
     borderRadius: tokens.radius.md,

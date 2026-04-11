@@ -4,8 +4,9 @@ export function useWallet() {
   const { account, connect, disconnect, signMessage, signAndSendTransaction, connection } =
     useMobileWallet();
 
-  // account.address is a PublicKey — convert to base58 string for consistent API
-  const addressStr = account?.address?.toBase58() ?? null;
+  // account.address may be a PublicKey or a string depending on SDK version
+  const raw = account?.address;
+  const addressStr = raw ? (typeof raw === 'string' ? raw : raw.toBase58()) : null;
 
   return {
     connected: !!account,

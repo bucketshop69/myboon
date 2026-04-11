@@ -6,13 +6,13 @@ import {
   ActivityIndicator,
   PanResponder,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
@@ -125,8 +125,10 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const change24h = market?.change24h ?? 0;
   const isUp = change24h >= 0;
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
 
       {/* Detail header */}
@@ -265,7 +267,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
       )}
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-    </SafeAreaView>
+    </View>
   );
 }
 

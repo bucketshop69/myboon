@@ -1,155 +1,112 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTurnkey } from '@turnkey/react-native-wallet-kit';
+/**
+ * usePolymarketWallet — Derives a Polymarket-compatible Polygon wallet from a Solana signature.
+ *
+ * Architecture:
+ * - The EVM private key is NEVER stored on the device. It lives only on the server, in-memory.
+ * - The phone stores ONLY the polygon address (public info) in AsyncStorage so the UI
+ *   remembers the user is "enabled" across app restarts.
+ * - On enable: Phantom signs a message → signature sent to server → server derives EVM key,
+ *   creates CLOB session, returns polygon address.
+ * - On app reopen: phone reads stored address from AsyncStorage. If the server session expired,
+ *   the next CLOB operation will fail and the user re-signs with Phantom.
+ * - On disable: clears both local storage and server session.
+ */
+
+import { useCallback, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useWallet } from '@/hooks/useWallet';
 
-const STORAGE_KEY = 'polymarket_wallet';
+const DERIVE_MESSAGE = 'myboon:polymarket:enable';
+const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
 
-interface StoredWallet {
-  polygonAddress: string;
+function resolveApiBaseUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
+  return 'http://localhost:3000';
 }
+
+const API_BASE = resolveApiBaseUrl();
 
 export interface PolymarketWallet {
-  /** Polygon address derived from Turnkey embedded wallet */
   polygonAddress: string | null;
-  /** Whether the user is authenticated with Turnkey and wallet is ready */
   isReady: boolean;
-  /** Whether wallet loading is in progress */
   isLoading: boolean;
-  /** Turnkey auth state */
-  authState: string | undefined;
-  /** Start email OTP flow to create embedded Polygon wallet */
-  loginWithOtp: (params: { email: string }) => Promise<void>;
-  /** Verify the OTP code sent to email */
-  verifyOtp: (params: { otpCode: string }) => Promise<void>;
-  /** Clear local wallet link and log out of Turnkey */
-  disable: () => Promise<void>;
-  /** Sign a message using the embedded Polygon key */
-  signMessage: (message: string) => Promise<unknown>;
-  /** Sign a transaction using the embedded Polygon key */
-  signTransaction: (unsignedTx: string) => Promise<unknown>;
+  /** Sign with Solana wallet, send signature to server for CLOB auth */
+  enable: () => Promise<void>;
+  /** Clear session (server + local) */
+  disable: () => void;
 }
 
-/**
- * Manages the embedded Polygon wallet for Polymarket integration.
- * Completely separate from the MWA Solana wallet.
- *
- * Flow:
- * 1. User taps "Enable Predictions" → enters email
- * 2. Turnkey sends OTP to email
- * 3. User enters OTP → Turnkey creates sub-org + Ethereum wallet
- * 4. We read the Polygon (EVM) address from the wallet
- * 5. Address is cached in AsyncStorage
- */
 export function usePolymarketWallet(): PolymarketWallet {
-  const turnkey = useTurnkey();
-
-  const [stored, setStored] = useState<StoredWallet | null>(null);
+  const { connected, signMessage } = useWallet();
+  const [polygonAddress, setPolygonAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load cached address on mount
+  // Load stored polygon address on mount (public address only, not the key)
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
-        if (raw) setStored(JSON.parse(raw) as StoredWallet);
+      .then((stored) => {
+        if (stored) setPolygonAddress(stored);
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
   }, []);
 
-  // When Turnkey wallets load after auth, pick up the Ethereum address
-  useEffect(() => {
-    const wallets = turnkey.wallets ?? [];
-    if (stored || wallets.length === 0) return;
-
-    for (const w of wallets) {
-      const ethAccount = (w.accounts ?? []).find(
-        (a: { address: string }) => a.address.startsWith('0x'),
-      );
-      if (ethAccount) {
-        const data: StoredWallet = { polygonAddress: ethAccount.address };
-        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data)).catch(() => {});
-        setStored(data);
-        return;
-      }
+  const enable = useCallback(async () => {
+    if (!connected || !signMessage) {
+      throw new Error('Connect your Solana wallet first');
     }
-  }, [turnkey.wallets, stored]);
 
-  // Find the matching wallet account for signing
-  const walletAccount = useMemo(() => {
-    if (!stored) return null;
-    for (const w of turnkey.wallets ?? []) {
-      const account = (w.accounts ?? []).find(
-        (a: { address: string }) =>
-          a.address.toLowerCase() === stored.polygonAddress.toLowerCase(),
-      );
-      if (account) return account;
-    }
-    return null;
-  }, [turnkey.wallets, stored]);
+    setIsLoading(true);
+    try {
+      // Step 1: Sign deterministic message with Solana wallet (MWA prompt)
+      const messageBytes = new TextEncoder().encode(DERIVE_MESSAGE);
+      const signature = await signMessage(messageBytes);
 
-  const isReady = !!walletAccount;
+      // Step 2: Send hex-encoded signature to server for CLOB auth
+      const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
 
-  const loginWithOtp = useCallback(
-    async (params: { email: string }) => {
-      setIsLoading(true);
-      try {
-        await turnkey.loginWithOtp?.({ email: params.email });
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [turnkey.loginWithOtp],
-  );
-
-  const verifyOtp = useCallback(
-    async (params: { otpCode: string }) => {
-      setIsLoading(true);
-      try {
-        await turnkey.verifyOtp?.({ otpCode: params.otpCode });
-        // After successful OTP, Turnkey auto-creates sub-org + wallet
-        // The useEffect above will pick up the address from turnkey.wallets
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [turnkey.verifyOtp],
-  );
-
-  const disable = useCallback(async () => {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    setStored(null);
-    turnkey.logout?.();
-  }, [turnkey.logout]);
-
-  const signMessage = useCallback(
-    async (message: string): Promise<unknown> => {
-      if (!walletAccount) return null;
-      return turnkey.signMessage?.({ walletAccount, message });
-    },
-    [walletAccount, turnkey.signMessage],
-  );
-
-  const signTransaction = useCallback(
-    async (unsignedTx: string): Promise<unknown> => {
-      if (!walletAccount) return null;
-      return turnkey.signTransaction?.({
-        walletAccount,
-        unsignedTransaction: unsignedTx,
-        transactionType: 'TRANSACTION_TYPE_ETHEREUM',
+      const res = await fetch(`${API_BASE}/clob/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signature: sigHex }),
       });
-    },
-    [walletAccount, turnkey.signTransaction],
-  );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || 'CLOB auth failed');
+      }
+
+      const data = await res.json();
+      setPolygonAddress(data.polygonAddress);
+
+      // Persist polygon address locally (public info only, not the private key)
+      await AsyncStorage.setItem(STORAGE_KEY, data.polygonAddress);
+    } catch (err) {
+      console.error('[polymarket] Enable failed:', err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [connected, signMessage]);
+
+  const disable = useCallback(() => {
+    // Clear server session
+    if (polygonAddress) {
+      fetch(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
+    }
+    // Clear local storage
+    AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+    setPolygonAddress(null);
+  }, [polygonAddress]);
 
   return {
-    polygonAddress: stored?.polygonAddress ?? null,
-    isReady,
+    polygonAddress,
+    isReady: !!polygonAddress,
     isLoading,
-    authState: turnkey.authState,
-    loginWithOtp,
-    verifyOtp,
+    enable,
     disable,
-    signMessage,
-    signTransaction,
   };
 }
