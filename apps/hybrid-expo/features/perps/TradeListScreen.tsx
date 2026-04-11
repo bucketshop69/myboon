@@ -165,8 +165,6 @@ export function TradeListScreen() {
                 </Pressable>
               );
             })}
-            {/* Bottom padding so last row clears the nav */}
-            <View style={styles.tableFooterPad} />
           </ScrollView>
         </View>
       )}
@@ -368,9 +366,6 @@ const styles = StyleSheet.create({
   },
   tableBody: {
     paddingTop: 0,
-  },
-  tableFooterPad: {
-    height: 120,
   },
   tableRow: {
     flexDirection: 'row',

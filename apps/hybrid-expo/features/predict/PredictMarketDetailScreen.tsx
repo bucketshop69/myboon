@@ -15,8 +15,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory } from '@/features/predict/predict.api';
+import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
+import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
 
 interface PredictMarketDetailScreenProps {
@@ -118,6 +119,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
+  const poly = usePolymarketWallet();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -133,6 +135,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [betSlipLabel, setBetSlipLabel] = useState('');
   const [betSlipPrice, setBetSlipPrice] = useState(0.5);
   const [betSlipAmount, setBetSlipAmount] = useState(50);
+
+  // Order submission state
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderResult, setOrderResult] = useState<'success' | 'error' | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
@@ -200,7 +207,47 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
     setBetSlipPrice(price);
     setBetSlipAmount(50);
+    setOrderResult(null);
+    setOrderError(null);
     setBetSlipVisible(true);
+  }
+
+  async function submitOrder() {
+    if (!detail || !poly.polygonAddress) return;
+
+    // Yes = clobTokenIds[0], No = clobTokenIds[1]
+    const tokenID = betSlipSide === 'yes' ? detail.clobTokenIds[0] : detail.clobTokenIds[1];
+    if (!tokenID) {
+      setOrderResult('error');
+      setOrderError('Market token not available');
+      return;
+    }
+
+    setOrderLoading(true);
+    setOrderResult(null);
+    setOrderError(null);
+
+    try {
+      const result = await placeBet({
+        polygonAddress: poly.polygonAddress,
+        tokenID,
+        price: betSlipPrice,
+        amount: betSlipAmount,
+        side: 'BUY',
+      });
+
+      if (result.success) {
+        setOrderResult('success');
+      } else {
+        setOrderResult('error');
+        setOrderError(result.error ?? 'Order failed');
+      }
+    } catch (err) {
+      setOrderResult('error');
+      setOrderError(err instanceof Error ? err.message : 'Order failed');
+    } finally {
+      setOrderLoading(false);
+    }
   }
 
   const payout = betSlipPrice > 0 ? betSlipAmount / betSlipPrice : 0;
@@ -484,13 +531,54 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
           </View>
 
-          <Pressable
-            style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
-            onPress={() => setBetSlipVisible(false)}>
-            <Text style={styles.confirmBtnText}>
-              Confirm {betSlipLabel} — ${betSlipAmount}
-            </Text>
-          </Pressable>
+          {/* Order result feedback */}
+          {orderResult === 'success' ? (
+            <View style={styles.orderFeedback}>
+              <MaterialIcons name="check-circle" size={18} color={semantic.sentiment.positive} />
+              <Text style={[styles.orderFeedbackText, { color: semantic.sentiment.positive }]}>
+                Order placed
+              </Text>
+            </View>
+          ) : orderResult === 'error' ? (
+            <View style={styles.orderFeedback}>
+              <MaterialIcons name="error-outline" size={18} color={semantic.sentiment.negative} />
+              <Text style={[styles.orderFeedbackText, { color: semantic.sentiment.negative }]}>
+                {orderError ?? 'Order failed'}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Confirm / Auth button */}
+          {!poly.isReady ? (
+            <Pressable
+              style={[styles.confirmBtn, styles.confirmBtnAuth]}
+              onPress={() => { void poly.enable(); }}>
+              {poly.isLoading ? (
+                <ActivityIndicator size="small" color={semantic.text.primary} />
+              ) : (
+                <Text style={styles.confirmBtnText}>Open Account to Trade</Text>
+              )}
+            </Pressable>
+          ) : orderResult === 'success' ? (
+            <Pressable
+              style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
+              onPress={() => setBetSlipVisible(false)}>
+              <Text style={styles.confirmBtnText}>Done</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
+              disabled={orderLoading}
+              onPress={() => { void submitOrder(); }}>
+              {orderLoading ? (
+                <ActivityIndicator size="small" color={semantic.text.primary} />
+              ) : (
+                <Text style={styles.confirmBtnText}>
+                  Confirm {betSlipLabel} — ${betSlipAmount}
+                </Text>
+              )}
+            </Pressable>
+          )}
         </View>
       </Modal>
 
@@ -1037,6 +1125,11 @@ const styles = StyleSheet.create({
   },
   confirmBtnYes: { backgroundColor: semantic.sentiment.positive },
   confirmBtnNo: { backgroundColor: semantic.sentiment.negative },
+  confirmBtnAuth: {
+    backgroundColor: semantic.background.surfaceRaised,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
   confirmBtnText: {
     color: '#fff',
     fontSize: tokens.fontSize.sm,
@@ -1044,6 +1137,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  orderFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  orderFeedbackText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '600',
   },
 
   // ── Loading / error states ──

@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { usePathname, useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomNavItem } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
@@ -12,9 +12,7 @@ interface BottomGlassNavProps {
 export function BottomGlassNav({ items }: BottomGlassNavProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const navWidth = Math.min(400, width * 0.9);
 
   function isActive(route: BottomNavItem['route']): boolean {
     if (route === '/') {
@@ -24,7 +22,7 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
   }
 
   return (
-    <View style={[styles.wrap, { width: navWidth, bottom: Math.max(insets.bottom, 8) }]}>
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       {items.map((item) => {
         const active = isActive(item.route);
         return (
@@ -51,20 +49,15 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    position: 'absolute',
-    bottom: 8,
-    alignSelf: 'center',
-    zIndex: 20,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: semantic.border.nav,
-    backgroundColor: semantic.background.nav,
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    backgroundColor: semantic.background.screen,
     paddingHorizontal: tokens.spacing.xl,
-    paddingVertical: tokens.spacing.md,
+    paddingTop: tokens.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    ...tokens.shadow.nav,
+    justifyContent: 'space-around',
   },
   item: {
     alignItems: 'center',

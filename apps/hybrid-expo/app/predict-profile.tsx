@@ -137,7 +137,7 @@ export default function PredictProfileScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: tokens.spacing.md }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Identity ── */}

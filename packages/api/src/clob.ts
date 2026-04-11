@@ -150,7 +150,8 @@ clobRoutes.post('/order', async (c) => {
     polygonAddress?: string
     tokenID?: string
     price?: number
-    size?: number
+    amount?: number  // Dollar amount — server converts to share size
+    size?: number    // Legacy: share count (used if amount not provided)
     side?: 'BUY' | 'SELL'
   }
   try {
@@ -159,10 +160,20 @@ clobRoutes.post('/order', async (c) => {
     return c.json({ error: 'Bad request' }, 400)
   }
 
-  const { polygonAddress, tokenID, price, size, side } = body
+  const { polygonAddress, tokenID, price, amount, side } = body
 
-  if (!polygonAddress || !tokenID || price == null || size == null || !side) {
-    return c.json({ error: 'Missing required fields: polygonAddress, tokenID, price, size, side' }, 400)
+  if (!polygonAddress || !tokenID || price == null || !side) {
+    return c.json({ error: 'Missing required fields: polygonAddress, tokenID, price, side' }, 400)
+  }
+
+  if (price <= 0 || price >= 1) {
+    return c.json({ error: 'Price must be between 0 and 1 (exclusive)' }, 400)
+  }
+
+  // Convert dollar amount to share size: shares = dollars / price
+  const size = amount != null ? Math.floor((amount / price) * 100) / 100 : body.size
+  if (!size || size <= 0) {
+    return c.json({ error: 'Missing or invalid amount/size' }, 400)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
@@ -184,7 +195,7 @@ clobRoutes.post('/order', async (c) => {
     // Submit with Builder attribution
     const result = await client.postOrder(signedOrder)
 
-    console.log(`[clob] Order placed for ${polygonAddress}: ${side} ${size} @ ${price}`)
+    console.log(`[clob] Order placed for ${polygonAddress}: ${side} $${amount ?? size} @ ${price} (${size} shares)`)
     return c.json(result)
   } catch (err: any) {
     console.error('[clob] Order failed:', err.message || err)

@@ -148,6 +148,7 @@ function mapGeopoliticsMarketDetail(row: unknown): GeopoliticsMarketDetail | nul
     liquidity: toNumber(market.liquidityNum ?? market.liquidity),
     outcomes,
     outcomePrices,
+    clobTokenIds: toStringArray(market.clobTokenIds),
     image: typeof market.image === 'string' ? market.image : null,
   };
 }
@@ -277,6 +278,41 @@ export async function fetchMarketPrice(slug: string): Promise<LivePrice> {
     yesPrice: toNumber(p.yesPrice),
     noPrice: toNumber(p.noPrice),
     fetchedAt: typeof p.fetchedAt === 'string' ? p.fetchedAt : new Date().toISOString(),
+  };
+}
+
+export interface PlaceBetParams {
+  polygonAddress: string;
+  tokenID: string;
+  price: number;
+  amount: number;
+  side: 'BUY' | 'SELL';
+}
+
+export interface PlaceBetResult {
+  orderID?: string;
+  success: boolean;
+  error?: string;
+}
+
+export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = await response.json() as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Order failed';
+    return { success: false, error: detail };
+  }
+
+  return {
+    success: true,
+    orderID: typeof data.orderID === 'string' ? data.orderID : undefined,
   };
 }
 

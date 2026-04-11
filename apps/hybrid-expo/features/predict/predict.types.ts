@@ -75,6 +75,7 @@ export interface GeopoliticsMarketDetail {
   liquidity: number | null;
   outcomes: string[];
   outcomePrices: number[];
+  clobTokenIds: string[];
   image: string | null;
 }
 

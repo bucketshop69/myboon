@@ -57,26 +57,32 @@ export default function FeedScreen() {
       <FeedHeader />
 
       {isLoading ? (
-        <View style={styles.stateWrap}>
-          <ActivityIndicator size="small" color={semantic.text.accent} />
-          <Text style={styles.stateText}>Loading feed...</Text>
+        <View style={styles.bodyFill}>
+          <View style={styles.stateWrap}>
+            <ActivityIndicator size="small" color={semantic.text.accent} />
+            <Text style={styles.stateText}>Loading feed...</Text>
+          </View>
         </View>
       ) : null}
 
       {!isLoading && errorMessage ? (
-        <View style={styles.stateWrap}>
-          <Text style={styles.stateTitle}>Feed unavailable</Text>
-          <Text style={styles.stateText}>{errorMessage}</Text>
-          <Pressable onPress={() => void loadFeed()} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </Pressable>
+        <View style={styles.bodyFill}>
+          <View style={styles.stateWrap}>
+            <Text style={styles.stateTitle}>Feed unavailable</Text>
+            <Text style={styles.stateText}>{errorMessage}</Text>
+            <Pressable onPress={() => void loadFeed()} style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
       {!isLoading && !errorMessage && items.length === 0 ? (
-        <View style={styles.stateWrap}>
-          <Text style={styles.stateTitle}>No narratives yet</Text>
-          <Text style={styles.stateText}>Publisher has not emitted new feed items.</Text>
+        <View style={styles.bodyFill}>
+          <View style={styles.stateWrap}>
+            <Text style={styles.stateTitle}>No narratives yet</Text>
+            <Text style={styles.stateText}>Publisher has not emitted new feed items.</Text>
+          </View>
         </View>
       ) : null}
 
@@ -95,6 +101,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: semantic.background.screen,
+  },
+  bodyFill: {
+    flex: 1,
   },
   stateWrap: {
     marginHorizontal: tokens.spacing.lg,

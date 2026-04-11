@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
   ctaWrap: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 92,
+    paddingBottom: tokens.spacing.md,
   },
   ctaButton: {
     height: 52,

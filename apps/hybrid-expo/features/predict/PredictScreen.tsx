@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   feedContent: {
     paddingHorizontal: 14,
     paddingTop: tokens.spacing.sm,
-    paddingBottom: 128,
+    paddingBottom: tokens.spacing.md,
     gap: 6,
   },
   sectionWrap: {
