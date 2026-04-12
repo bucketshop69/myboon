@@ -228,7 +228,7 @@ export function TradeListScreen() {
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
       <DepositModal visible={depositOpen} onClose={() => setDepositOpen(false)} />
       <WithdrawModal visible={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
-    </SafeAreaView>
+    </View>
   );
 }
 
