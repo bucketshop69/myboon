@@ -1,4 +1,5 @@
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
@@ -9,8 +10,10 @@ interface SectionPlaceholderScreenProps {
 }
 
 export function SectionPlaceholderScreen({ title }: SectionPlaceholderScreenProps) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
       <View style={styles.body}>
         <View style={styles.card}>
@@ -19,7 +22,7 @@ export function SectionPlaceholderScreen({ title }: SectionPlaceholderScreenProp
         </View>
       </View>
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-    </SafeAreaView>
+    </View>
   );
 }
 

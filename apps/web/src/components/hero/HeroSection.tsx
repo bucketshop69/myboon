@@ -110,6 +110,20 @@ export default function HeroSection() {
         {/* Icon row */}
         <div className="flex items-center gap-6">
 
+          {/* Changelog */}
+          <a
+            href="/changelog"
+            className="group flex flex-col items-center gap-1"
+            title="Changelog"
+          >
+            <span className="material-symbols-outlined text-2xl text-on-surface-variant group-hover:text-primary transition-colors">
+              history
+            </span>
+            <span className="font-headline text-[8px] tracking-[0.15em] text-[#4a473a] group-hover:text-primary transition-colors">
+              CHANGELOG
+            </span>
+          </a>
+
           {/* Newsroom */}
           <a
             href="#newsroom"

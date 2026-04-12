@@ -4,12 +4,12 @@ import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
@@ -58,8 +58,10 @@ export function TradeListScreen() {
     router.push(`/trade/${encodeURIComponent(symbol)}`);
   }
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
 
       {/* Section header */}
@@ -163,14 +165,12 @@ export function TradeListScreen() {
                 </Pressable>
               );
             })}
-            {/* Bottom padding so last row clears the nav */}
-            <View style={styles.tableFooterPad} />
           </ScrollView>
         </View>
       )}
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -366,9 +366,6 @@ const styles = StyleSheet.create({
   },
   tableBody: {
     paddingTop: 0,
-  },
-  tableFooterPad: {
-    height: 120,
   },
   tableRow: {
     flexDirection: 'row',

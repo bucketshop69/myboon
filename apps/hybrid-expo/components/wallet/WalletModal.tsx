@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { semantic, tokens } from '@/theme';
 import { useWallet } from '@/hooks/useWallet';
 
@@ -12,6 +12,12 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
   const { connected, shortAddress, connect, disconnect } = useWallet();
 
   async function handleConnect() {
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      window.alert('Wallet connect is available on the mobile app.');
+      onClose();
+      return;
+    }
     await connect();
     onClose();
   }

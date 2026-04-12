@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { FeedList } from '@/features/feed/components/FeedList';
@@ -49,31 +50,39 @@ export default function FeedScreen() {
     setSheetItem(null);
   }, []);
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
 
       {isLoading ? (
-        <View style={styles.stateWrap}>
-          <ActivityIndicator size="small" color={semantic.text.accent} />
-          <Text style={styles.stateText}>Loading feed...</Text>
+        <View style={styles.bodyFill}>
+          <View style={styles.stateWrap}>
+            <ActivityIndicator size="small" color={semantic.text.accent} />
+            <Text style={styles.stateText}>Loading feed...</Text>
+          </View>
         </View>
       ) : null}
 
       {!isLoading && errorMessage ? (
-        <View style={styles.stateWrap}>
-          <Text style={styles.stateTitle}>Feed unavailable</Text>
-          <Text style={styles.stateText}>{errorMessage}</Text>
-          <Pressable onPress={() => void loadFeed()} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </Pressable>
+        <View style={styles.bodyFill}>
+          <View style={styles.stateWrap}>
+            <Text style={styles.stateTitle}>Feed unavailable</Text>
+            <Text style={styles.stateText}>{errorMessage}</Text>
+            <Pressable onPress={() => void loadFeed()} style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
       {!isLoading && !errorMessage && items.length === 0 ? (
-        <View style={styles.stateWrap}>
-          <Text style={styles.stateTitle}>No narratives yet</Text>
-          <Text style={styles.stateText}>Publisher has not emitted new feed items.</Text>
+        <View style={styles.bodyFill}>
+          <View style={styles.stateWrap}>
+            <Text style={styles.stateTitle}>No narratives yet</Text>
+            <Text style={styles.stateText}>Publisher has not emitted new feed items.</Text>
+          </View>
         </View>
       ) : null}
 
@@ -84,7 +93,7 @@ export default function FeedScreen() {
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
 
       <NarrativeSheet item={sheetItem} onClose={handleSheetClose} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -92,6 +101,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: semantic.background.screen,
+  },
+  bodyFill: {
+    flex: 1,
   },
   stateWrap: {
     marginHorizontal: tokens.spacing.lg,

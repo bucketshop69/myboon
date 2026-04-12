@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
+import { clobRoutes } from './clob.js'
 import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
@@ -53,10 +54,15 @@ async function supabaseFetch(path: string): Promise<Response> {
 // --- polymarket helpers ---
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com'
+const DATA_API_BASE = 'https://data-api.polymarket.com'
 const CLOB_BASE = 'https://clob.polymarket.com'
 
 async function gammaFetch(path: string): Promise<Response> {
   return fetch(`${GAMMA_BASE}/${path}`)
+}
+
+async function dataApiFetch(path: string): Promise<Response> {
+  return fetch(`${DATA_API_BASE}/${path}`)
 }
 
 async function clobFetch(path: string, options?: RequestInit): Promise<Response> {
@@ -112,6 +118,9 @@ const app = new Hono()
 
 app.use('*', cors())
 app.use('*', logger())
+
+// --- CLOB routes (Polymarket Builder) ---
+app.route('/clob', clobRoutes)
 
 // GET /health
 app.get('/health', (c) => {
@@ -488,7 +497,7 @@ app.get('/predict/sports/:sport', async (c) => {
       liquidity: e.liquidity ?? null,
       negRisk: e.negRisk ?? false,
       outcomes,
-      _source: source, // debug only — strip if noisy
+      _source, // debug only — strip if noisy
     }
   }
 
@@ -840,176 +849,68 @@ app.get('/predict/markets/:slug/price', async (c) => {
   }
 })
 
-// --- solana rpc helper ---
-
-const SOLANA_RPC = process.env.SOLANA_RPC_URL ?? 'https://api.mainnet-beta.solana.com'
-const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-
-async function solanaRpc(method: string, params: unknown[]): Promise<unknown> {
-  const res = await fetch(SOLANA_RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  })
-  if (!res.ok) throw new Error(`Solana RPC ${method} failed: ${res.status}`)
-  const body = await res.json() as { result?: unknown; error?: unknown }
-  if (body.error) throw new Error(`Solana RPC ${method} error: ${JSON.stringify(body.error)}`)
-  return body.result
-}
-
 // GET /predict/portfolio/:address
-// Open Polymarket positions + P&L summary for a wallet address.
-// Positions: CLOB /positions. Current prices: Dome. Market metadata: Gamma (best-effort, may be geo-blocked).
-// Realised P&L from sell-side CLOB trades (approximate until E2E confirms trade shape).
+// Portfolio value + open positions + activity via Gamma data-api.
+// All Gamma — no CLOB auth needed, just the polygon proxy wallet address.
 app.get('/predict/portfolio/:address', async (c) => {
   const address = c.req.param('address')
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    // Fetch positions and trades in parallel
-    const [posResult, tradeResult] = await Promise.allSettled([
-      clobFetch(`positions?user_address=${encodeURIComponent(address)}`),
-      clobFetch(`data/trades?maker_address=${encodeURIComponent(address)}&limit=500`),
+    // Fetch value, positions, and profile in parallel
+    const [valueRes, posRes, profileRes] = await Promise.allSettled([
+      dataApiFetch(`value?user=${encodeURIComponent(address)}`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`),
+      gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
-    // Parse positions — CLOB returns a flat array
-    let rawPositions: Record<string, unknown>[] = []
-    if (posResult.status === 'fulfilled' && posResult.value.ok) {
-      const body = await posResult.value.json() as unknown
-      rawPositions = Array.isArray(body) ? (body as Record<string, unknown>[]) : []
-    } else {
-      console.warn('[api] CLOB /positions failed:', posResult.status === 'rejected' ? posResult.reason : posResult.value.status)
-    }
-
-    // Parse trades — CLOB wraps in { data: [...] }
-    let rawTrades: Record<string, unknown>[] = []
-    if (tradeResult.status === 'fulfilled' && tradeResult.value.ok) {
-      const body = await tradeResult.value.json() as unknown
-      const inner = (body != null && typeof body === 'object')
-        ? ((body as Record<string, unknown>).data ?? body)
-        : body
-      rawTrades = Array.isArray(inner) ? (inner as Record<string, unknown>[]) : []
-    }
-
-    // Filter to open positions (size > dust)
-    const openRaw = rawPositions.filter((p) => {
-      const size = parseNullableNumber(p.size ?? p.shares ?? p.amount)
-      return size !== null && size > 0.01
-    })
-
-    // Collect token IDs
-    const tokenIds = openRaw
-      .map((p) => (typeof p.asset_id === 'string' ? p.asset_id : null))
-      .filter((id): id is string => id !== null)
-
-    // Fetch current prices via Dome in parallel
-    const priceMap = new Map<string, number | null>()
-    if (tokenIds.length > 0) {
-      const results = await Promise.allSettled(
-        tokenIds.map((id) => domeGetMarketPrice(id).then((price) => ({ id, price })))
-      )
-      for (const r of results) {
-        if (r.status === 'fulfilled') priceMap.set(r.value.id, r.value.price)
+    // Parse portfolio value
+    let portfolioValue: number | null = null
+    if (valueRes.status === 'fulfilled' && valueRes.value.ok) {
+      const body = await valueRes.value.json() as unknown
+      // data-api /value returns [{ user, value }] or { value }
+      if (Array.isArray(body) && body.length > 0) {
+        portfolioValue = parseNullableNumber((body[0] as Record<string, unknown>).value)
+      } else if (body && typeof body === 'object') {
+        portfolioValue = parseNullableNumber((body as Record<string, unknown>).value)
       }
     }
 
-    // Best-effort market enrichment via Gamma (geo-blocked locally, works on VPS)
-    const gammaMap = new Map<string, { slug: string | null; question: string | null }>()
-    if (tokenIds.length > 0) {
-      try {
-        const params = tokenIds.map((id) => `clob_token_ids=${encodeURIComponent(id)}`).join('&')
-        const gRes = await gammaFetch(`markets?${params}&limit=${tokenIds.length}`)
-        if (gRes.ok) {
-          const gBody = await gRes.json() as unknown[]
-          for (const m of (Array.isArray(gBody) ? gBody : [])) {
-            const gm = m as Record<string, unknown>
-            const slug = typeof gm.market_slug === 'string' ? gm.market_slug : null
-            const question = typeof gm.question === 'string' ? gm.question : null
-            for (const tid of parseStringArray(gm.clob_token_ids)) {
-              gammaMap.set(tid, { slug, question })
-            }
-          }
-        }
-      } catch { /* geo-blocked locally — proceed without */ }
+    // Parse positions
+    let positions: unknown[] = []
+    if (posRes.status === 'fulfilled' && posRes.value.ok) {
+      const body = await posRes.value.json() as unknown
+      positions = Array.isArray(body) ? body : []
     }
 
-    // Normalise positions
-    const positions = openRaw.map((p) => {
-      const tokenId = typeof p.asset_id === 'string' ? p.asset_id : null
-      const shares = parseNullableNumber(p.size ?? p.shares ?? p.amount) ?? 0
-      const avgEntry = parseNullableNumber(p.average_price ?? p.avg_price) ?? 0
-      const currentPrice = tokenId != null ? (priceMap.get(tokenId) ?? null) : null
-      // cash_balance from CLOB is the cost basis; fall back to shares * avgEntry
-      const costBasis = parseNullableNumber(p.cash_balance) ?? shares * avgEntry
-      const currentValue = currentPrice !== null ? shares * currentPrice : null
-      const unrealisedPnl = currentValue !== null ? currentValue - costBasis : null
-      const unrealisedPct = (unrealisedPnl !== null && costBasis > 0)
-        ? Math.round((unrealisedPnl / costBasis) * 1000) / 10
-        : null
-      // CLOB outcome field: "YES" / "NO" — fall back to YES
-      const side: 'YES' | 'NO' =
-        typeof p.outcome === 'string' && p.outcome.toUpperCase() === 'NO' ? 'NO' : 'YES'
-      const meta = tokenId != null ? gammaMap.get(tokenId) : undefined
-      return {
-        tokenId,
-        slug: meta?.slug ?? null,
-        question: meta?.question ?? null,
-        side,
-        shares: Math.round(shares * 100) / 100,
-        avgEntry: Math.round(avgEntry * 10000) / 10000,
-        currentPrice: currentPrice !== null ? Math.round(currentPrice * 10000) / 10000 : null,
-        costBasis: Math.round(costBasis * 100) / 100,
-        currentValue: currentValue !== null ? Math.round(currentValue * 100) / 100 : null,
-        unrealisedPnl: unrealisedPnl !== null ? Math.round(unrealisedPnl * 100) / 100 : null,
-        unrealisedPct,
-      }
-    })
-
-    // Stats from trade history
-    // marketsTraded: distinct token IDs seen in trade history
-    const tradedTokens = new Set<string>()
-    let wins = 0
-    let losses = 0
-    let realisedPnl = 0
-
-    for (const t of rawTrades) {
-      const tokenId = typeof t.asset_id === 'string' ? t.asset_id
-        : typeof t.market === 'string' ? t.market : null
-      if (tokenId) tradedTokens.add(tokenId)
-
-      // Only count SELL trades for realised stats
-      const side = typeof t.side === 'string' ? t.side.toLowerCase() : ''
-      if (side !== 'sell') continue
-      const price = parseNullableNumber(t.price)
-      const size = parseNullableNumber(t.size ?? t.maker_amount)
-      if (price !== null && size !== null) {
-        // Rough: profit if price > 0.5 (can't know exact cost without matching buys)
-        // TODO: improve to buy/sell pair matching after E2E confirms trade shape
-        if (price > 0.5) wins++
-        else losses++
-        // Realised = (sell_price - assumed_avg_cost_0.5) * size — rough placeholder
-        realisedPnl += (price - 0.5) * size
-      }
+    // Parse profile
+    let profile: Record<string, unknown> | null = null
+    if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+      profile = await profileRes.value.json() as Record<string, unknown>
     }
 
-    const totalResolved = wins + losses
-    const winRate = totalResolved > 0 ? Math.round((wins / totalResolved) * 1000) / 10 : null
-    const totalCostBasis = positions.reduce((s, p) => s + p.costBasis, 0)
-    const totalCurrentValue = positions.reduce((s, p) => s + (p.currentValue ?? p.costBasis), 0)
-    const unrealisedPnlTotal = totalCurrentValue - totalCostBasis
+    // Compute summary from positions
+    let totalPnl = 0
+    let openCount = 0
+    for (const p of positions) {
+      const pos = p as Record<string, unknown>
+      totalPnl += parseNullableNumber(pos.cashPnl) ?? 0
+      openCount++
+    }
 
     return c.json({
       address,
+      portfolioValue: portfolioValue !== null ? Math.round(portfolioValue * 100) / 100 : null,
       positions,
+      profile: profile ? {
+        name: profile.name ?? profile.pseudonym ?? null,
+        bio: profile.bio ?? null,
+        profileImage: profile.profileImage ?? null,
+        xUsername: profile.xUsername ?? null,
+      } : null,
       summary: {
-        totalValue: Math.round(totalCurrentValue * 100) / 100,
-        totalCostBasis: Math.round(totalCostBasis * 100) / 100,
-        unrealisedPnl: Math.round(unrealisedPnlTotal * 100) / 100,
-        realisedPnl: Math.round(realisedPnl * 100) / 100,
-        netPnl: Math.round((unrealisedPnlTotal + realisedPnl) * 100) / 100,
-        openPositions: positions.length,
-        marketsTraded: tradedTokens.size,
-        winRate,
+        openPositions: openCount,
+        totalPnl: Math.round(totalPnl * 100) / 100,
       },
     })
   } catch (err) {
@@ -1018,32 +919,55 @@ app.get('/predict/portfolio/:address', async (c) => {
   }
 })
 
-// GET /predict/holdings/:address
-// USDC balance on Solana for a given address. That's it — Polymarket is USDC-native.
-app.get('/predict/holdings/:address', async (c) => {
+// GET /predict/activity/:address
+// Recent trade activity via Gamma data-api.
+app.get('/predict/activity/:address', async (c) => {
   const address = c.req.param('address')
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    const result = await solanaRpc('getTokenAccountsByOwner', [
-      address,
-      { mint: USDC_MINT },
-      { encoding: 'jsonParsed' },
-    ])
-
-    type TokenAcct = { account?: { data?: { parsed?: { info?: { tokenAmount?: { uiAmount?: number } } } } } }
-    type TokenResult = { value?: TokenAcct[] }
-    let usdc = 0
-    for (const acct of ((result as TokenResult)?.value ?? [])) {
-      usdc += acct?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0
+    const res = await dataApiFetch(
+      `activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`
+    )
+    if (!res.ok) {
+      console.error(`[api] data-api /activity error ${res.status}`)
+      return c.json({ error: 'Failed to fetch activity' }, 502)
     }
-
-    return c.json({
-      address,
-      usdc: Math.round(usdc * 100) / 100,
-    })
+    const body = await res.json() as unknown
+    return c.json(Array.isArray(body) ? body : [])
   } catch (err) {
-    console.error(`[api] Unexpected error in GET /predict/holdings/${address}:`, err)
+    console.error(`[api] Unexpected error in GET /predict/activity/${address}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// GET /predict/positions/:address/market/:slug
+// Positions for a specific market via Gamma data-api.
+// Fetches all user positions and filters by slug (data-api doesn't support slug filter directly).
+app.get('/predict/positions/:address/market/:slug', async (c) => {
+  const address = c.req.param('address')
+  const slug = c.req.param('slug')
+  if (!address?.trim() || !slug?.trim()) return c.json({ error: 'Bad request' }, 400)
+
+  try {
+    const res = await dataApiFetch(
+      `positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`
+    )
+    if (!res.ok) {
+      console.error(`[api] data-api /positions error ${res.status}`)
+      return c.json({ error: 'Failed to fetch positions' }, 502)
+    }
+    const body = await res.json() as unknown
+    if (!Array.isArray(body)) return c.json([])
+
+    // Filter positions matching this market's slug or eventSlug
+    const filtered = body.filter((p: unknown) => {
+      const pos = p as Record<string, unknown>
+      return pos.slug === slug || pos.eventSlug === slug
+    })
+    return c.json(filtered)
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/positions/${address}/market/${slug}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

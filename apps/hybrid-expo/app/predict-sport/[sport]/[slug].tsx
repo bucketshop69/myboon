@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { SafeAreaView, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { PredictSportDetailScreen } from '@/features/predict/PredictSportDetailScreen';
 import type { PredictSport } from '@/features/predict/predict.types';
 import { semantic, tokens } from '@/theme';
@@ -13,9 +13,9 @@ export default function PredictSportDetailRoute() {
 
   if (!slug || !SPORTS.includes(sport as PredictSport)) {
     return (
-      <SafeAreaView style={styles.screen}>
+      <View style={styles.screen}>
         <Text style={styles.text}>Invalid sport market route</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 

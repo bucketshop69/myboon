@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { SafeAreaView, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { PredictMarketDetailScreen } from '@/features/predict/PredictMarketDetailScreen';
 import { semantic, tokens } from '@/theme';
 
@@ -9,9 +9,9 @@ export default function PredictMarketDetailRoute() {
 
   if (!slug) {
     return (
-      <SafeAreaView style={styles.screen}>
+      <View style={styles.screen}>
         <Text style={styles.text}>Invalid market slug</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 

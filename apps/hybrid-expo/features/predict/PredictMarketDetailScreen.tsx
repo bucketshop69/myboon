@@ -1,22 +1,24 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory } from '@/features/predict/predict.api';
+import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, placeBet } from '@/features/predict/predict.api';
+import type { PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
+import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
 
 interface PredictMarketDetailScreenProps {
@@ -108,7 +110,6 @@ function Sparkline({ points, width, height }: { points: PricePoint[]; width: num
   );
 }
 
-const QUICK_AMOUNTS = [10, 25, 50, 100];
 const TABS: { key: Tab; label: string }[] = [
   { key: 'position', label: 'Position' },
   { key: 'stats', label: 'Stats' },
@@ -118,6 +119,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
+  const poly = usePolymarketWallet();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -133,6 +135,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [betSlipLabel, setBetSlipLabel] = useState('');
   const [betSlipPrice, setBetSlipPrice] = useState(0.5);
   const [betSlipAmount, setBetSlipAmount] = useState(50);
+
+  // Order submission state
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderResult, setOrderResult] = useState<'success' | 'error' | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
+
+  // CLOB balance for bet slip
+  const [clobBalance, setClobBalance] = useState<number | null>(null);
+
+  // Market positions for current user
+  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
 
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
@@ -184,6 +197,19 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   useEffect(() => { void loadMarket(); }, [slug]);
 
+  // Fetch user's positions for this market
+  useEffect(() => {
+    if (!detail || !poly.polygonAddress) {
+      setMarketPositions([]);
+      return;
+    }
+    // Use conditionId from the detail's clobTokenIds — the conditionId is embedded in positions data
+    // For now, fetch all positions and filter client-side by slug
+    fetchMarketPositions(poly.polygonAddress, slug)
+      .then(setMarketPositions)
+      .catch(() => setMarketPositions([]));
+  }, [detail, poly.polygonAddress, slug]);
+
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice  = livePrice?.noPrice  ?? (detail?.outcomePrices[1] ?? null);
   const yesPct   = yesPrice !== null ? Math.round(yesPrice * 100) : null;
@@ -194,19 +220,80 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     ? ((history[history.length - 1].p - history[0].p) / (history[0].p || 0.01)) * 100
     : null;
 
-  function openBetSlip(side: 'yes' | 'no') {
+  const openBetSlip = useCallback((side: 'yes' | 'no') => {
     const price = side === 'yes' ? (yesPrice ?? 0.5) : (noPrice ?? 0.5);
     setBetSlipSide(side);
     setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
     setBetSlipPrice(price);
-    setBetSlipAmount(50);
+    setBetSlipAmount(0);
+    setOrderResult(null);
+    setOrderError(null);
     setBetSlipVisible(true);
+
+    // Fetch latest balance
+    if (poly.polygonAddress) {
+      fetchClobBalance(poly.polygonAddress).then((b) => {
+        if (b) setClobBalance(b.balance);
+      });
+    }
+  }, [yesPrice, noPrice, poly.polygonAddress]);
+
+  async function submitOrder() {
+    if (!detail || !poly.polygonAddress) return;
+
+    if (betSlipAmount <= 0) {
+      setOrderResult('error');
+      setOrderError('Enter an amount');
+      return;
+    }
+
+    if (clobBalance !== null && betSlipAmount > clobBalance) {
+      setOrderResult('error');
+      setOrderError(`Insufficient balance ($${clobBalance.toFixed(2)} available)`);
+      return;
+    }
+
+    // Yes = clobTokenIds[0], No = clobTokenIds[1]
+    const tokenID = betSlipSide === 'yes' ? detail.clobTokenIds[0] : detail.clobTokenIds[1];
+    if (!tokenID) {
+      setOrderResult('error');
+      setOrderError('Market token not available');
+      return;
+    }
+
+    setOrderLoading(true);
+    setOrderResult(null);
+    setOrderError(null);
+
+    try {
+      const result = await placeBet({
+        polygonAddress: poly.polygonAddress,
+        tokenID,
+        price: betSlipPrice,
+        amount: betSlipAmount,
+        side: 'BUY',
+      });
+
+      if (result.success) {
+        setOrderResult('success');
+      } else {
+        setOrderResult('error');
+        setOrderError(result.error ?? 'Order failed');
+      }
+    } catch (err) {
+      setOrderResult('error');
+      setOrderError(err instanceof Error ? err.message : 'Order failed');
+    } finally {
+      setOrderLoading(false);
+    }
   }
 
   const payout = betSlipPrice > 0 ? betSlipAmount / betSlipPrice : 0;
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* ── HEADER BAR ── */}
       <View style={styles.headerBar}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -306,11 +393,52 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
-                  <Text style={styles.emptyTitle}>No positions yet</Text>
-                  <Text style={styles.emptyBody}>Trade below to open a position</Text>
-                </View>
+                marketPositions.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                    <Text style={styles.emptyTitle}>No positions yet</Text>
+                    <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                  </View>
+                ) : (
+                  <View style={styles.tabSection}>
+                    {marketPositions.map((pos, i) => {
+                      const pnl = pos.cashPnl ?? 0;
+                      const isPositive = pnl >= 0;
+                      return (
+                        <View key={`${pos.conditionId}-${i}`} style={styles.positionCard}>
+                          <View style={styles.positionHeader}>
+                            <View style={[styles.posSideBadge, pos.outcome === 'No' ? styles.posSideBadgeNo : styles.posSideBadgeYes]}>
+                              <Text style={[styles.posSideBadgeText, { color: pos.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
+                                {pos.outcome?.toUpperCase() ?? 'YES'}
+                              </Text>
+                            </View>
+                            <Text style={[styles.positionPnl, { color: isPositive ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                              {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                            </Text>
+                          </View>
+                          <View style={styles.positionStats}>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Shares</Text>
+                              <Text style={styles.posStatVal}>{pos.size?.toFixed(1) ?? '--'}</Text>
+                            </View>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Avg</Text>
+                              <Text style={styles.posStatVal}>{pos.avgPrice?.toFixed(2) ?? '--'}¢</Text>
+                            </View>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Current</Text>
+                              <Text style={styles.posStatVal}>{pos.curPrice?.toFixed(2) ?? '--'}¢</Text>
+                            </View>
+                            <View style={styles.positionStat}>
+                              <Text style={styles.posStatLabel}>Value</Text>
+                              <Text style={styles.posStatVal}>${pos.currentValue?.toFixed(2) ?? '--'}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )
               ) : null}
 
               {/* STATS TAB */}
@@ -442,21 +570,40 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             </View>
           </View>
 
+          {/* Balance + Entry price row */}
           <View style={styles.betSlipRow}>
-            <Text style={styles.betSlipMeta}>Entry price</Text>
-            <Text style={styles.betSlipMetaVal}>{Math.round(betSlipPrice * 100)}¢</Text>
+            <View>
+              <Text style={styles.betSlipMetaLabel}>Balance</Text>
+              <Text style={styles.betSlipMetaValue}>
+                {clobBalance !== null ? `$${clobBalance.toFixed(2)}` : '--'}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.betSlipMetaLabel}>Entry price</Text>
+              <Text style={styles.betSlipMetaValue}>{Math.round(betSlipPrice * 100)}¢</Text>
+            </View>
           </View>
 
           {/* Amount input */}
           <View style={styles.amountWrap}>
-            <Text style={styles.amountLabel}>Amount</Text>
+            <View style={styles.amountLabelRow}>
+              <Text style={styles.amountLabel}>Amount</Text>
+              {clobBalance !== null && clobBalance > 0 && (
+                <Pressable onPress={() => setBetSlipAmount(Math.floor(clobBalance * 100) / 100)}>
+                  <Text style={styles.maxBtn}>MAX</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.amountInputRow}>
               <Text style={styles.amountDollar}>$</Text>
               <TextInput
                 style={styles.amountInput}
                 keyboardType="numeric"
-                value={betSlipAmount.toString()}
+                value={betSlipAmount > 0 ? betSlipAmount.toString() : ''}
+                placeholder="0.00"
+                placeholderTextColor={semantic.text.faint}
                 onChangeText={(v) => {
+                  if (v === '') { setBetSlipAmount(0); return; }
                   const n = parseFloat(v);
                   if (!Number.isNaN(n)) setBetSlipAmount(n);
                 }}
@@ -464,36 +611,75 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             </View>
           </View>
 
-          <View style={styles.quickAmounts}>
-            {QUICK_AMOUNTS.map((amt) => (
-              <Pressable
-                key={amt}
-                onPress={() => setBetSlipAmount(amt)}
-                style={[styles.quickBtn, betSlipAmount === amt && styles.quickBtnActive]}>
-                <Text style={[styles.quickBtnText, betSlipAmount === amt && styles.quickBtnTextActive]}>
-                  ${amt}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
+          {/* Payout row */}
           <View style={styles.payoutRow}>
-            <Text style={styles.payoutLabel}>Est. Payout</Text>
-            <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
+            <View>
+              <Text style={styles.betSlipMetaLabel}>Est. Payout</Text>
+              <Text style={[styles.betSlipMetaValue, { color: semantic.sentiment.positive }]}>
+                ${payout.toFixed(2)}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.betSlipMetaLabel}>Shares</Text>
+              <Text style={styles.betSlipMetaValue}>
+                {betSlipPrice > 0 ? (betSlipAmount / betSlipPrice).toFixed(2) : '0'}
+              </Text>
+            </View>
           </View>
 
-          <Pressable
-            style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
-            onPress={() => setBetSlipVisible(false)}>
-            <Text style={styles.confirmBtnText}>
-              Confirm {betSlipLabel} — ${betSlipAmount}
-            </Text>
-          </Pressable>
+          {/* Order result feedback */}
+          {orderResult === 'success' ? (
+            <View style={styles.orderFeedback}>
+              <MaterialIcons name="check-circle" size={18} color={semantic.sentiment.positive} />
+              <Text style={[styles.orderFeedbackText, { color: semantic.sentiment.positive }]}>
+                Order placed
+              </Text>
+            </View>
+          ) : orderResult === 'error' ? (
+            <View style={styles.orderFeedback}>
+              <MaterialIcons name="error-outline" size={18} color={semantic.sentiment.negative} />
+              <Text style={[styles.orderFeedbackText, { color: semantic.sentiment.negative }]}>
+                {orderError ?? 'Order failed'}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Confirm / Auth button */}
+          {!poly.isReady ? (
+            <Pressable
+              style={[styles.confirmBtn, styles.confirmBtnAuth]}
+              onPress={() => { void poly.enable(); }}>
+              {poly.isLoading ? (
+                <ActivityIndicator size="small" color={semantic.text.primary} />
+              ) : (
+                <Text style={styles.confirmBtnText}>Open Account to Trade</Text>
+              )}
+            </Pressable>
+          ) : orderResult === 'success' ? (
+            <Pressable
+              style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
+              onPress={() => setBetSlipVisible(false)}>
+              <Text style={styles.confirmBtnText}>Done</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
+              disabled={orderLoading}
+              onPress={() => { void submitOrder(); }}>
+              {orderLoading ? (
+                <ActivityIndicator size="small" color={semantic.text.primary} />
+              ) : (
+                <Text style={styles.confirmBtnText}>
+                  Confirm {betSlipLabel} — ${betSlipAmount}
+                </Text>
+              )}
+            </Pressable>
+          )}
         </View>
       </Modal>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -676,6 +862,59 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     fontFamily: 'monospace',
     textAlign: 'center',
+  },
+
+  // ── Position card ──
+  positionCard: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.md,
+    padding: 12,
+    gap: 10,
+  },
+  positionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  posSideBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  posSideBadgeYes: { backgroundColor: 'rgba(52,199,123,0.12)' },
+  posSideBadgeNo: { backgroundColor: 'rgba(244,88,78,0.12)' },
+  posSideBadgeText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+  },
+  positionPnl: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.md,
+    fontWeight: '700',
+  },
+  positionStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  positionStat: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  posStatLabel: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  posStatVal: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    color: semantic.text.primary,
   },
 
   // ── Stats tab ──
@@ -939,27 +1178,41 @@ const styles = StyleSheet.create({
   betSlipRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  betSlipMeta: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
+  betSlipMetaLabel: {
+    color: semantic.text.dim,
+    fontSize: 8,
     fontFamily: 'monospace',
     letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
-  betSlipMetaVal: {
+  betSlipMetaValue: {
     color: semantic.text.primary,
     fontSize: tokens.fontSize.sm,
     fontFamily: 'monospace',
     fontWeight: '700',
   },
   amountWrap: { gap: tokens.spacing.xs },
+  amountLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   amountLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+    fontSize: 8,
     fontFamily: 'monospace',
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  maxBtn: {
+    color: tokens.colors.primary,
+    fontSize: 8,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   amountInputRow: {
     flexDirection: 'row',
@@ -983,49 +1236,13 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     paddingVertical: tokens.spacing.sm,
   },
-  quickAmounts: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xs,
-  },
-  quickBtn: {
-    flex: 1,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surfaceRaised,
-    alignItems: 'center',
-  },
-  quickBtnActive: {
-    backgroundColor: 'rgba(232,197,71,0.12)',
-    borderColor: 'rgba(232,197,71,0.25)',
-  },
-  quickBtnText: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-  quickBtnTextActive: { color: semantic.text.accent },
   payoutRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingTop: tokens.spacing.xs,
     borderTopWidth: 1,
     borderTopColor: semantic.border.muted,
-  },
-  payoutLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  payoutValue: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.md,
-    fontFamily: 'monospace',
-    fontWeight: '700',
   },
   confirmBtn: {
     height: 48,
@@ -1035,6 +1252,11 @@ const styles = StyleSheet.create({
   },
   confirmBtnYes: { backgroundColor: semantic.sentiment.positive },
   confirmBtnNo: { backgroundColor: semantic.sentiment.negative },
+  confirmBtnAuth: {
+    backgroundColor: semantic.background.surfaceRaised,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
   confirmBtnText: {
     color: '#fff',
     fontSize: tokens.fontSize.sm,
@@ -1042,6 +1264,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  orderFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  orderFeedbackText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '600',
   },
 
   // ── Loading / error states ──

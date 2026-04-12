@@ -148,6 +148,7 @@ function mapGeopoliticsMarketDetail(row: unknown): GeopoliticsMarketDetail | nul
     liquidity: toNumber(market.liquidityNum ?? market.liquidity),
     outcomes,
     outcomePrices,
+    clobTokenIds: toStringArray(market.clobTokenIds),
     image: typeof market.image === 'string' ? market.image : null,
   };
 }
@@ -278,6 +279,160 @@ export async function fetchMarketPrice(slug: string): Promise<LivePrice> {
     noPrice: toNumber(p.noPrice),
     fetchedAt: typeof p.fetchedAt === 'string' ? p.fetchedAt : new Date().toISOString(),
   };
+}
+
+export interface PlaceBetParams {
+  polygonAddress: string;
+  tokenID: string;
+  price: number;
+  amount: number;
+  side: 'BUY' | 'SELL';
+}
+
+export interface PlaceBetResult {
+  orderID?: string;
+  success: boolean;
+  error?: string;
+}
+
+export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = await response.json() as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Order failed';
+    return { success: false, error: detail };
+  }
+
+  return {
+    success: true,
+    orderID: typeof data.orderID === 'string' ? data.orderID : undefined,
+  };
+}
+
+// --- CLOB Open Orders ---
+
+export interface OpenOrder {
+  id: string;
+  status: string;
+  market: string;
+  asset_id: string;
+  side: string;
+  original_size: string;
+  size_matched: string;
+  price: string;
+  outcome: string;
+  created_at: number;
+  order_type: string;
+}
+
+export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder[]> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/positions/${encodeURIComponent(polygonAddress)}`);
+  if (!response.ok) return [];
+  const data = await response.json() as Record<string, unknown>;
+  return Array.isArray(data.orders) ? data.orders as OpenOrder[] : [];
+}
+
+// --- CLOB Balance ---
+
+export interface ClobBalance {
+  balance: number;
+  allowance: number;
+}
+
+export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance | null> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
+  if (!response.ok) {
+    // 401 = no active CLOB session (server restart / TTL expired) — not a crash
+    return null;
+  }
+  const data = await response.json() as Record<string, unknown>;
+  return {
+    balance: typeof data.balance === 'number' ? data.balance : 0,
+    allowance: typeof data.allowance === 'number' ? data.allowance : 0,
+  };
+}
+
+// --- Portfolio & Positions (Gamma data-api, proxied through VPS) ---
+
+export interface PortfolioPosition {
+  proxyWallet: string;
+  asset: string;
+  conditionId: string;
+  size: number;
+  avgPrice: number;
+  currentValue: number;
+  cashPnl: number;
+  percentPnl: number;
+  curPrice: number;
+  title: string;
+  slug: string;
+  eventSlug: string;
+  outcome: string;
+  outcomeIndex: number;
+  icon: string | null;
+  endDate: string | null;
+}
+
+export interface PortfolioData {
+  address: string;
+  portfolioValue: number | null;
+  positions: PortfolioPosition[];
+  profile: {
+    name: string | null;
+    bio: string | null;
+    profileImage: string | null;
+    xUsername: string | null;
+  } | null;
+  summary: {
+    openPositions: number;
+    totalPnl: number;
+  };
+}
+
+export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioData> {
+  const payload = await getJson(`/predict/portfolio/${encodeURIComponent(polygonAddress)}`);
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid portfolio response');
+  const p = payload as Record<string, unknown>;
+  return {
+    address: typeof p.address === 'string' ? p.address : polygonAddress,
+    portfolioValue: toNumber(p.portfolioValue),
+    positions: Array.isArray(p.positions) ? (p.positions as PortfolioPosition[]) : [],
+    profile: p.profile as PortfolioData['profile'] ?? null,
+    summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0 },
+  };
+}
+
+export interface ActivityItem {
+  timestamp: number;
+  type: string;
+  side: string;
+  size: number;
+  usdcSize: number;
+  price: number;
+  title: string;
+  slug: string;
+  outcome: string;
+}
+
+export async function fetchActivity(polygonAddress: string): Promise<ActivityItem[]> {
+  const payload = await getJson(`/predict/activity/${encodeURIComponent(polygonAddress)}`);
+  if (!Array.isArray(payload)) return [];
+  return payload as ActivityItem[];
+}
+
+export async function fetchMarketPositions(polygonAddress: string, slug: string): Promise<PortfolioPosition[]> {
+  const payload = await getJson(`/predict/positions/${encodeURIComponent(polygonAddress)}/market/${encodeURIComponent(slug)}`);
+  if (!Array.isArray(payload)) return [];
+  return payload as PortfolioPosition[];
 }
 
 export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' = '1h'): Promise<PriceHistory> {

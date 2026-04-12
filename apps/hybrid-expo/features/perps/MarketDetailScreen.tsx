@@ -6,13 +6,13 @@ import {
   ActivityIndicator,
   PanResponder,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
@@ -125,8 +125,10 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   const change24h = market?.change24h ?? 0;
   const isUp = change24h >= 0;
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       <FeedHeader />
 
       {/* Detail header */}
@@ -165,93 +167,95 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
         </View>
       ) : (
         <>
-          {/* Hero zone */}
-          <View style={styles.heroZone}>
-            {/* Timeframe row + price */}
-            <View style={styles.heroTop}>
-              <View style={styles.timeframeRow}>
-                {TIMEFRAMES.map((tf) => (
-                  <Pressable
-                    key={tf}
-                    style={[styles.tfBtn, tf === timeframe && styles.tfBtnActive]}
-                    onPress={() => setTimeframe(tf)}>
-                    <Text style={[styles.tfText, tf === timeframe && styles.tfTextActive]}>
-                      {tf}
-                    </Text>
-                  </Pressable>
-                ))}
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            {/* Hero zone */}
+            <View style={styles.heroZone}>
+              {/* Timeframe row + price */}
+              <View style={styles.heroTop}>
+                <View style={styles.timeframeRow}>
+                  {TIMEFRAMES.map((tf) => (
+                    <Pressable
+                      key={tf}
+                      style={[styles.tfBtn, tf === timeframe && styles.tfBtnActive]}
+                      onPress={() => setTimeframe(tf)}>
+                      <Text style={[styles.tfText, tf === timeframe && styles.tfTextActive]}>
+                        {tf}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.priceCol}>
+                  <Text style={styles.heroPrice}>{formatPrice(displayPrice)}</Text>
+                  <Text style={[styles.heroChange, isUp ? styles.textPos : styles.textNeg]}>
+                    {isUp ? '▲' : '▼'} {formatChange(change24h)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.priceCol}>
-                <Text style={styles.heroPrice}>{formatPrice(displayPrice)}</Text>
-                <Text style={[styles.heroChange, isUp ? styles.textPos : styles.textNeg]}>
-                  {isUp ? '▲' : '▼'} {formatChange(change24h)}
-                </Text>
+
+              {/* Chart placeholder — react-native-svg not installed, Phase 1 */}
+              <View style={styles.chartPlaceholder}>
+                <Text style={styles.chartPlaceholderText}>Chart · coming in next release</Text>
+              </View>
+
+              {/* Stats strip */}
+              <View style={styles.heroStats}>
+                <View style={styles.hstat}>
+                  <Text style={styles.hstatLabel}>Mark</Text>
+                  <Text style={styles.hstatVal}>{formatPrice(displayPrice)}</Text>
+                </View>
+                <View style={styles.hstat}>
+                  <Text style={styles.hstatLabel}>Fund/8h</Text>
+                  <Text style={[styles.hstatVal, displayFunding >= 0 ? styles.textPos : styles.textNeg]}>
+                    {formatFunding(displayFunding)}
+                  </Text>
+                </View>
+                <View style={styles.hstat}>
+                  <Text style={styles.hstatLabel}>OI</Text>
+                  <Text style={styles.hstatVal}>
+                    {formatUsdCompact(market?.openInterest ?? 0)}
+                  </Text>
+                </View>
+                <View style={styles.hstat}>
+                  <Text style={styles.hstatLabel}>Max Lev</Text>
+                  <Text style={styles.hstatVal}>{market?.maxLeverage ?? '--'}×</Text>
+                </View>
               </View>
             </View>
 
-            {/* Chart placeholder — react-native-svg not installed, Phase 1 */}
-            <View style={styles.chartPlaceholder}>
-              <Text style={styles.chartPlaceholderText}>Chart · coming in next release</Text>
+            {/* Tab bar */}
+            <View style={styles.tabBar}>
+              {(['market', 'profile'] as Tab[]).map((tab) => (
+                <Pressable
+                  key={tab}
+                  style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+                  onPress={() => setActiveTab(tab)}>
+                  <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
+                    {tab === 'market' ? 'Market' : 'Profile'}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
 
-            {/* Stats strip */}
-            <View style={styles.heroStats}>
-              <View style={styles.hstat}>
-                <Text style={styles.hstatLabel}>Mark</Text>
-                <Text style={styles.hstatVal}>{formatPrice(displayPrice)}</Text>
-              </View>
-              <View style={styles.hstat}>
-                <Text style={styles.hstatLabel}>Fund/8h</Text>
-                <Text style={[styles.hstatVal, displayFunding >= 0 ? styles.textPos : styles.textNeg]}>
-                  {formatFunding(displayFunding)}
-                </Text>
-              </View>
-              <View style={styles.hstat}>
-                <Text style={styles.hstatLabel}>OI</Text>
-                <Text style={styles.hstatVal}>
-                  {formatUsdCompact(market?.openInterest ?? 0)}
-                </Text>
-              </View>
-              <View style={styles.hstat}>
-                <Text style={styles.hstatLabel}>Max Lev</Text>
-                <Text style={styles.hstatVal}>{market?.maxLeverage ?? '--'}×</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Tab bar */}
-          <View style={styles.tabBar}>
-            {(['market', 'profile'] as Tab[]).map((tab) => (
-              <Pressable
-                key={tab}
-                style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-                onPress={() => setActiveTab(tab)}>
-                <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
-                  {tab === 'market' ? 'Market' : 'Profile'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Tab content */}
-          {activeTab === 'market' ? (
-            <MarketTab
-              market={market}
-              side={side}
-              leverage={leverage}
-              displayPrice={displayPrice}
-              size={size}
-              onSizeChange={setSize}
-              onLeverageChange={setLeverage}
-            />
-          ) : (
-            <ProfileTab
-              connected={connected}
-              account={account}
-              positions={positions}
-              loading={loadingProfile}
-            />
-          )}
+            {/* Tab content */}
+            {activeTab === 'market' ? (
+              <MarketTab
+                market={market}
+                side={side}
+                leverage={leverage}
+                displayPrice={displayPrice}
+                size={size}
+                onSizeChange={setSize}
+                onLeverageChange={setLeverage}
+              />
+            ) : (
+              <ProfileTab
+                connected={connected}
+                account={account}
+                positions={positions}
+                loading={loadingProfile}
+              />
+            )}
+          </ScrollView>
 
           {/* Action dock — Long/Short pinned at thumb zone above nav */}
           <ActionDock
@@ -265,7 +269,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
       )}
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -813,7 +817,7 @@ const styles = StyleSheet.create({
   tabScrollContent: {
     padding: tokens.spacing.lg,
     gap: tokens.spacing.sm,
-    paddingBottom: 130,
+    paddingBottom: tokens.spacing.md,
   },
 
   // Order inputs

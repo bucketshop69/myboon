@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useWallet } from '@/hooks/useWallet';
+import { semantic, tokens } from '@/theme';
 
 interface WalletDetailsModalProps {
   isOpen: boolean;
@@ -7,30 +9,41 @@ interface WalletDetailsModalProps {
 }
 
 export function WalletDetailsModal({ isOpen, onClose }: WalletDetailsModalProps) {
-  // TODO: Implement wallet details and actions
+  const { address, shortAddress, disconnect } = useWallet();
+
+  function handleDisconnect() {
+    Alert.alert('Disconnect Wallet?', 'You can reconnect anytime.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Disconnect',
+        style: 'destructive',
+        onPress: async () => {
+          await disconnect();
+          onClose();
+        },
+      },
+    ]);
+  }
+
   return (
-    <Modal visible={isOpen} transparent={true} onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Wallet Details</Text>
-          
-          {/* Placeholder for wallet details */}
-          <View style={styles.detailItem}>
-            <Text style={styles.label}>Address:</Text>
-            <Text style={styles.value}>TODO: Display wallet address</Text>
+    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <Text style={styles.title}>Wallet</Text>
+
+          <View style={styles.addressBox}>
+            <Text style={styles.addressLabel}>Address</Text>
+            <Text style={styles.addressFull} numberOfLines={1} ellipsizeMode="middle">
+              {address ?? '—'}
+            </Text>
           </View>
-          
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionButtonText}>Transfer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionButtonText}>Swap</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>Close</Text>
+
+          <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
+            <Text style={styles.disconnectBtnText}>Disconnect</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <Text style={styles.closeBtnText}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -39,60 +52,74 @@ export function WalletDetailsModal({ isOpen, onClose }: WalletDetailsModalProps)
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: semantic.background.surface,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderColor: semantic.border.muted,
+    padding: tokens.spacing.xl,
+    paddingBottom: 40,
+    gap: tokens.spacing.md,
+  },
+  title: {
+    fontSize: tokens.fontSize.md,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    color: semantic.text.primary,
+    letterSpacing: tokens.letterSpacing.mono,
+    textAlign: 'center',
+    marginBottom: tokens.spacing.xs,
+  },
+  addressBox: {
+    backgroundColor: semantic.background.lift,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
+    gap: 4,
+  },
+  addressLabel: {
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  addressFull: {
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.accent,
+    fontFamily: 'monospace',
+  },
+  disconnectBtn: {
+    backgroundColor: 'transparent',
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.colors.vermillion,
+    paddingVertical: tokens.spacing.lg,
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: '#1f1f1f',
-    borderRadius: 12,
-    padding: 20,
-    minWidth: 300,
+  disconnectBtnText: {
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    color: tokens.colors.vermillion,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-    color: '#ffffff',
+  closeBtn: {
+    paddingVertical: tokens.spacing.md,
+    alignItems: 'center',
   },
-  detailItem: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    color: '#aaa',
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 16,
-    color: '#fff',
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  actionButton: {
-    flex: 1,
-    marginHorizontal: 4,
-    padding: 12,
-    backgroundColor: '#333',
-    borderRadius: 8,
-  },
-  actionButtonText: {
-    textAlign: 'center',
-    color: '#fff',
-  },
-  closeButton: {
-    padding: 12,
-    backgroundColor: '#555',
-    borderRadius: 8,
-  },
-  closeButtonText: {
-    textAlign: 'center',
-    color: '#fff',
+  closeBtnText: {
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.dim,
+    fontFamily: 'monospace',
   },
 });

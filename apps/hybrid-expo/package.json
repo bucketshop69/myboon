@@ -11,7 +11,7 @@
     "android:dapp-store": "eas build --platform android --profile dapp-store",
     "android:aab": "eas build --platform android --profile production",
     "android:list-builds": "eas build:list --platform android",
-    "ios": "expo start --ios",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
   },

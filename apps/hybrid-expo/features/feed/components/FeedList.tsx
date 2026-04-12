@@ -25,7 +25,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: tokens.spacing.lg,
     paddingTop: tokens.spacing.md,
-    paddingBottom: 134,
+    paddingBottom: tokens.spacing.md,
   },
   separator: {
     height: tokens.spacing.md,
