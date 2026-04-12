@@ -78,6 +78,15 @@ function getBuilderConfig(): BuilderConfig | undefined {
 
 const builderConfig = getBuilderConfig()
 
+// --- Relayer API key auth (from env) ---
+
+const RELAYER_API_KEY = process.env.RELAYER_API_KEY
+const RELAYER_API_KEY_ADDRESS = process.env.RELAYER_API_KEY_ADDRESS
+
+if (!RELAYER_API_KEY || !RELAYER_API_KEY_ADDRESS) {
+  console.warn('[clob] RELAYER_API_KEY / RELAYER_API_KEY_ADDRESS not set — Safe deploy & approvals will fail')
+}
+
 // --- In-memory session store ---
 // Key: safe address (lowercase), Value: { wallet, creds, safeAddress, createdAt }
 
@@ -120,13 +129,33 @@ function getClient(session: ClobSession): ClobClient {
 }
 
 function getRelayClient(wallet: Wallet): RelayClient {
-  return new RelayClient(
+  // Create without BuilderConfig — we use RELAYER_API_KEY auth instead of Builder HMAC
+  const relay = new RelayClient(
     RELAYER_URL,
     CHAIN_ID,
     wallet,
-    builderConfig,
+    undefined,
     RelayerTxType.SAFE,
   )
+
+  // Monkey-patch httpClient to inject RELAYER_API_KEY headers on every request.
+  // The SDK's sendAuthedRequest normally uses Builder HMAC headers (which return 401 from VPS).
+  // The relayer also accepts RELAYER_API_KEY / RELAYER_API_KEY_ADDRESS headers as auth.
+  if (RELAYER_API_KEY && RELAYER_API_KEY_ADDRESS) {
+    const originalSend = relay.httpClient.send.bind(relay.httpClient)
+    relay.httpClient.send = async (endpoint: string, method: string, options?: any) => {
+      return originalSend(endpoint, method, {
+        ...options,
+        headers: {
+          ...options?.headers,
+          'RELAYER_API_KEY': RELAYER_API_KEY,
+          'RELAYER_API_KEY_ADDRESS': RELAYER_API_KEY_ADDRESS,
+        },
+      })
+    }
+  }
+
+  return relay
 }
 
 /**
