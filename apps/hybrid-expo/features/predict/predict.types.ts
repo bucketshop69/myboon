@@ -1,5 +1,12 @@
-export type PredictSport = 'epl' | 'ucl';
-export type PredictFilter = 'All' | 'Geopolitics' | 'EPL' | 'UCL';
+export type PredictSport = string;
+export type PredictFilter = string;
+
+/** A market collection from the API (sport league, topic, etc.) */
+export interface Collection {
+  key: string;
+  label: string;
+  type: 'grouped' | 'binary';
+}
 
 export interface TrendingMarket {
   slug: string;

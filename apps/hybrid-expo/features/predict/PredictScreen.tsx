@@ -3,14 +3,11 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
-import { fetchCuratedMarkets, fetchSportsMarkets } from '@/features/predict/predict.api';
-import type { GeopoliticsMarket, PredictFilter, SportMarket } from '@/features/predict/predict.types';
+import { fetchCollections, fetchCollectionMarkets, fetchTrendingMarkets } from '@/features/predict/predict.api';
+import type { Collection, GeopoliticsMarket, SportMarket, TrendingMarket } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
-
-const FILTERS: PredictFilter[] = ['All', 'Geopolitics', 'EPL', 'UCL'];
 const BINARY_ROW_HEIGHT = 40;
 const SPORT_ROW_HEIGHT = 34;
 
@@ -47,6 +44,30 @@ function formatKickoff(isoDate: string | null): string {
   const day = date.getDate();
   const clock = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${month} ${day} · ${clock}`;
+}
+
+function TrendingCard({ market, onPress, formatOdds }: { market: TrendingMarket; onPress: () => void; formatOdds: (p: number | null) => string }) {
+  const yes = market.yesPrice !== null ? Math.round(market.yesPrice * 100) : null;
+  const isHigh = yes !== null && yes >= 50;
+  const volText = market.volume24h !== null ? formatUsdCompact(market.volume24h) : '--';
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.trendCard, pressed && styles.cardPressed]}>
+      <Text style={styles.trendQuestion} numberOfLines={2}>{market.question}</Text>
+      <View style={styles.trendFooter}>
+        <View style={[styles.trendPill, isHigh ? styles.trendPillYes : styles.trendPillNo]}>
+          <Text style={[styles.trendPillText, isHigh ? styles.trendPillTextYes : styles.trendPillTextNo]}>
+            {formatOdds(market.yesPrice)}
+          </Text>
+        </View>
+        <Text style={styles.trendVol}>{volText}</Text>
+      </View>
+      {/* mini progress bar */}
+      <View style={styles.trendBar}>
+        <View style={[styles.trendBarFill, { width: `${yes ?? 50}%` }, isHigh ? styles.trendBarFillYes : styles.trendBarFillNo]} />
+      </View>
+    </Pressable>
+  );
 }
 
 function BinaryMarketCard({ market, featured, onPress, formatOdds }: { market: GeopoliticsMarket; featured: boolean; onPress: () => void; formatOdds: (p: number | null) => string }) {
@@ -161,10 +182,10 @@ function SportMarketCard({ market, onPress, formatOdds }: { market: SportMarket;
 export default function PredictScreen() {
   const router = useRouter();
   const { format, setFormat, formatOdds } = useOddsFormat();
-  const [filter, setFilter] = useState<PredictFilter>('All');
-  const [geoMarkets, setGeoMarkets] = useState<GeopoliticsMarket[]>([]);
-  const [eplMarkets, setEplMarkets] = useState<SportMarket[]>([]);
-  const [uclMarkets, setUclMarkets] = useState<SportMarket[]>([]);
+  const [filter, setFilter] = useState('All');
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [marketsMap, setMarketsMap] = useState<Record<string, (GeopoliticsMarket | SportMarket)[]>>({});
+  const [trendingMarkets, setTrendingMarkets] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -172,21 +193,30 @@ export default function PredictScreen() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const [geo, epl, ucl] = await Promise.all([
-        fetchCuratedMarkets(),
-        fetchSportsMarkets('epl'),
-        fetchSportsMarkets('ucl'),
+      // 1. Fetch available collections
+      const cols = await fetchCollections();
+      setCollections(cols);
+
+      // 2. Fetch markets for each collection + trending in parallel
+      const marketResults = await Promise.allSettled([
+        ...cols.map((col) => fetchCollectionMarkets(col.key).then((m) => ({ key: col.key, markets: m }))),
+        fetchTrendingMarkets(10).then((t) => ({ key: '__trending__', markets: t })),
       ]);
 
-      setGeoMarkets(geo);
-      setEplMarkets(epl);
-      setUclMarkets(ucl);
+      const newMap: Record<string, (GeopoliticsMarket | SportMarket)[]> = {};
+      for (const result of marketResults) {
+        if (result.status !== 'fulfilled') continue;
+        const { key, markets } = result.value;
+        if (key === '__trending__') {
+          setTrendingMarkets(markets as unknown as TrendingMarket[]);
+        } else {
+          newMap[key] = markets as (GeopoliticsMarket | SportMarket)[];
+        }
+      }
+      setMarketsMap(newMap);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load predict markets';
       setErrorMessage(message);
-      setGeoMarkets([]);
-      setEplMarkets([]);
-      setUclMarkets([]);
     } finally {
       setLoading(false);
     }
@@ -196,9 +226,17 @@ export default function PredictScreen() {
     void loadPredictData();
   }, []);
 
-  const sortedGeo = useMemo(() => [...geoMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [geoMarkets]);
-  const sortedEpl = useMemo(() => [...eplMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [eplMarkets]);
-  const sortedUcl = useMemo(() => [...uclMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [uclMarkets]);
+  // Sort markets by volume for each collection
+  const sortedMarketsMap = useMemo(() => {
+    const sorted: Record<string, (GeopoliticsMarket | SportMarket)[]> = {};
+    for (const [key, markets] of Object.entries(marketsMap)) {
+      sorted[key] = [...markets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+    }
+    return sorted;
+  }, [marketsMap]);
+
+  // Filter chips: "All" + each collection label
+  const filterOptions = useMemo(() => ['All', ...collections.map((c) => c.label)], [collections]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -208,8 +246,31 @@ export default function PredictScreen() {
           <View style={styles.avatarInner}><Text style={styles.avatarText}>B</Text></View>
         </Pressable>
         <Text style={styles.predictTitle}>Predict</Text>
-        <WalletHeaderButton />
+        <View style={styles.liveChip}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
       </View>
+
+      {/* trending strip */}
+      {trendingMarkets.length > 0 ? (
+        <View style={styles.trendSection}>
+          <Text style={styles.trendLabel}>↗ Trending</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.trendScroll}>
+            {trendingMarkets.map((m) => (
+              <TrendingCard
+                key={m.slug}
+                market={m}
+                onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: m.slug } })}
+                formatOdds={formatOdds}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <View style={styles.filterStripShell}>
         <View style={styles.filterRow}>
@@ -217,7 +278,7 @@ export default function PredictScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterStrip}>
-            {FILTERS.map((value) => {
+            {filterOptions.map((value) => {
               const active = value === filter;
               return (
                 <Pressable
@@ -253,67 +314,49 @@ export default function PredictScreen() {
           </View>
         ) : null}
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'Geopolitics') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>Geopolitics · Active</Text>
-              <Text style={styles.sectionLabelRight}>{sortedGeo.length} markets</Text>
-            </View>
-            {sortedGeo.map((market, index) => (
-              <BinaryMarketCard
-                key={market.slug}
-                market={market}
-                featured={index === 0}
-                onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: market.slug } })}
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
+        {!loading && !errorMessage ? collections.map((col) => {
+          // Show this section if filter is 'All' or matches this collection's label
+          if (filter !== 'All' && filter !== col.label) return null;
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'EPL') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>EPL · Matchday</Text>
-              <Text style={styles.sectionLabelRight}>{sortedEpl.length} fixtures</Text>
-            </View>
-            {sortedEpl.map((market) => (
-              <SportMarketCard
-                key={market.slug}
-                market={market}
-                onPress={() =>
-                  router.push({
-                    pathname: '/predict-sport/[sport]/[slug]',
-                    params: { sport: market.sport, slug: market.slug },
-                  })
-                }
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
+          const markets = sortedMarketsMap[col.key] ?? [];
+          if (markets.length === 0) return null;
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'UCL') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>UCL · Fixtures</Text>
-              <Text style={styles.sectionLabelRight}>{sortedUcl.length} fixtures</Text>
+          const isBinary = col.type === 'binary';
+          const countLabel = isBinary ? `${markets.length} markets` : `${markets.length} fixtures`;
+
+          return (
+            <View key={col.key} style={styles.sectionWrap}>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>{col.label} · Active</Text>
+                <Text style={styles.sectionLabelRight}>{countLabel}</Text>
+              </View>
+              {isBinary
+                ? (markets as GeopoliticsMarket[]).map((market, index) => (
+                    <BinaryMarketCard
+                      key={market.slug}
+                      market={market}
+                      featured={index === 0}
+                      onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: market.slug } })}
+                      formatOdds={formatOdds}
+                    />
+                  ))
+                : (markets as SportMarket[]).map((market) => (
+                    <SportMarketCard
+                      key={market.slug}
+                      market={market}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/predict-sport/[sport]/[slug]',
+                          params: { sport: market.sport, slug: market.slug },
+                        })
+                      }
+                      formatOdds={formatOdds}
+                    />
+                  ))
+              }
             </View>
-            {sortedUcl.map((market) => (
-              <SportMarketCard
-                key={market.slug}
-                market={market}
-                onPress={() =>
-                  router.push({
-                    pathname: '/predict-sport/[sport]/[slug]',
-                    params: { sport: market.sport, slug: market.slug },
-                  })
-                }
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
+          );
+        }) : null}
       </ScrollView>
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
@@ -367,6 +410,99 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontFamily: 'monospace',
   },
+  liveChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(52,199,123,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,123,0.18)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  liveDot: {
+    width: 5, height: 5,
+    borderRadius: 3,
+    backgroundColor: semantic.sentiment.positive,
+  },
+  liveText: {
+    color: semantic.sentiment.positive,
+    fontSize: 8,
+    letterSpacing: 1,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+  // ─── trending strip ───
+  trendSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+    paddingTop: 10,
+  },
+  trendLabel: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontFamily: 'monospace',
+    paddingHorizontal: tokens.spacing.lg,
+    marginBottom: 8,
+  },
+  trendScroll: {
+    gap: 8,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingBottom: 12,
+  },
+  trendCard: {
+    width: 144,
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: tokens.radius.sm,
+    padding: 10,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  trendQuestion: {
+    color: semantic.text.primary,
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 8,
+    minHeight: 28,
+  },
+  trendFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trendPill: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  trendPillYes: { backgroundColor: 'rgba(52,199,123,0.15)' },
+  trendPillNo:  { backgroundColor: 'rgba(244,88,78,0.12)' },
+  trendPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  trendPillTextYes: { color: semantic.sentiment.positive },
+  trendPillTextNo:  { color: semantic.sentiment.negative },
+  trendVol: {
+    color: semantic.text.faint,
+    fontSize: 8,
+    fontFamily: 'monospace',
+  },
+  trendBar: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: 2,
+    backgroundColor: semantic.border.muted,
+  },
+  trendBarFill: { height: 2, borderRadius: 1 },
+  trendBarFillYes: { backgroundColor: semantic.sentiment.positive },
+  trendBarFillNo:  { backgroundColor: semantic.sentiment.negative },
   // ─── filter strip ───
   filterStripShell: {
     borderBottomWidth: 1,

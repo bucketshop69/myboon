@@ -5,7 +5,8 @@ import type { LivePriceUpdate } from '@/features/perps/perps.types';
 // The shared PacificWebSocket class uses isomorphic-ws (Node.js ws package)
 // which doesn't work in RN's JS runtime. This hook bypasses that entirely.
 
-const PACIFIC_WS_URL = 'wss://ws.pacifica.fi/ws';
+import { PACIFIC_WS } from '@/features/perps/pacific.config';
+const PACIFIC_WS_URL = PACIFIC_WS;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 export function usePerpsLivePrice(symbol: string): LivePriceUpdate | null {
