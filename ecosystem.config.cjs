@@ -22,8 +22,7 @@ module.exports = {
     {
       name: 'myboon-api',
       script: 'src/index.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: './node_modules/.bin/tsx',
       cwd: `${ROOT}/packages/api`,
       watch: false,
       autorestart: true,
@@ -34,8 +33,7 @@ module.exports = {
     {
       name: 'myboon-collectors',
       script: 'src/index.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: './node_modules/.bin/tsx',
       cwd: `${ROOT}/packages/collectors`,
       watch: false,
       autorestart: true,
@@ -47,8 +45,7 @@ module.exports = {
       name: 'myboon-analyst',
       // Self-schedules via setInterval every 15min — PM2 just keeps it alive
       script: 'src/narrative-analyst.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: './node_modules/.bin/tsx',
       cwd: `${ROOT}/packages/brain`,
       watch: false,
       autorestart: true,
@@ -60,8 +57,7 @@ module.exports = {
       name: 'myboon-publisher',
       // Self-schedules via setInterval every 30min — PM2 just keeps it alive
       script: 'src/publisher.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: './node_modules/.bin/tsx',
       cwd: `${ROOT}/packages/brain`,
       watch: false,
       autorestart: true,
@@ -72,8 +68,7 @@ module.exports = {
     {
       name: 'myboon-nansen-collector',
       script: 'src/nansen/index.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: './node_modules/.bin/tsx',
       cwd: `${ROOT}/packages/collectors`,
       watch: false,
       autorestart: true,

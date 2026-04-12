@@ -56,7 +56,6 @@ export interface PerpsMarket {
   symbol: string;
   maxLeverage: number;
   tickSize: string;
-  lotSize: string;
   minOrderSize: string;
   // Live price data
   markPrice: number;
