@@ -73,21 +73,38 @@ const relayerHeaders: Record<string, string> = {
 }
 
 /**
- * Submit transactions to the Polymarket Relayer (gasless).
+ * Submit a single transaction to the Polymarket Relayer (gasless).
  * Uses RELAYER_API_KEY auth — relayer handles signing and pays gas.
+ */
+async function submitToRelayer(
+  tx: { to: string; data: string; value: string },
+  from: string,
+  description: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const res = await fetch(`${RELAYER_URL}/submit`, {
+    method: 'POST',
+    headers: relayerHeaders,
+    body: JSON.stringify({ from, to: tx.to, data: tx.data, value: tx.value, description }),
+  })
+  const body = await res.text()
+  console.log(`[clob] Relayer /submit ${res.status}: ${body.slice(0, 300)}`)
+  return { ok: res.ok, status: res.status, body }
+}
+
+/**
+ * Submit multiple transactions to the Relayer sequentially.
  */
 async function executeViaRelayer(
   txns: { to: string; data: string; value: string }[],
+  from: string,
   description: string,
-): Promise<{ ok: boolean; status: number; body: string }> {
-  const res = await fetch(`${RELAYER_URL}/execute`, {
-    method: 'POST',
-    headers: relayerHeaders,
-    body: JSON.stringify({ transactions: txns, description }),
-  })
-  const body = await res.text()
-  console.log(`[clob] Relayer /execute ${res.status}: ${body.slice(0, 300)}`)
-  return { ok: res.ok, status: res.status, body }
+): Promise<{ ok: boolean; failed: number }> {
+  let failed = 0
+  for (const tx of txns) {
+    const result = await submitToRelayer(tx, from, description)
+    if (!result.ok) failed++
+  }
+  return { ok: failed === 0, failed }
 }
 
 // --- In-memory session store ---
@@ -203,12 +220,12 @@ clobRoutes.post('/auth', async (c) => {
     // 2. Run approvals via raw Relayer API (gasless)
     console.log(`[clob] Running approvals for ${eoaAddress}...`)
     const approvalTxs = buildApprovalTxs()
-    const relayResult = await executeViaRelayer(approvalTxs, `Approve USDC.e + CTF for ${eoaAddress}`)
+    const relayResult = await executeViaRelayer(approvalTxs, eoaAddress, `Approve USDC.e + CTF for ${eoaAddress}`)
 
     if (!relayResult.ok) {
-      console.warn(`[clob] Approvals may have failed (${relayResult.status}) — trading might not work`)
+      console.warn(`[clob] ${relayResult.failed}/${approvalTxs.length} approvals failed — trading might not work`)
     } else {
-      console.log(`[clob] Approvals submitted for ${eoaAddress}`)
+      console.log(`[clob] All ${approvalTxs.length} approvals submitted for ${eoaAddress}`)
     }
 
     // 3. Create CLOB API credentials (L1 auth — EIP-712 signature from EOA)
