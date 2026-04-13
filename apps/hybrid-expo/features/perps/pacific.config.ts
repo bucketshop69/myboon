@@ -44,3 +44,5 @@ export const PACIFIC_VAULT =
     : '72R843XwZxqWhsJceARQQTTbYtWy6Zw9et2YV4FpRHTa';
 
 export const PACIFIC_MIN_DEPOSIT = 10;
+
+export const PACIFIC_BUILDER_CODE = process.env.EXPO_PUBLIC_PACIFIC_BUILDER_CODE || '';
