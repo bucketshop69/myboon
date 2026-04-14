@@ -221,18 +221,6 @@ export function ProfileView({ onBack }: ProfileViewProps) {
           <MaterialIcons name="arrow-back" size={14} color={semantic.text.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>
-        {hasPacificAccount && (
-          <View style={styles.headerActions}>
-            <Pressable onPress={() => setDepositOpen(true)} style={styles.headerActionBtn}>
-              <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.viridian} />
-              <Text style={styles.headerActionText}>Deposit</Text>
-            </Pressable>
-            <Pressable onPress={() => setWithdrawOpen(true)} style={styles.headerActionBtn}>
-              <MaterialIcons name="arrow-upward" size={12} color={tokens.colors.primary} />
-              <Text style={[styles.headerActionText, { color: tokens.colors.primary }]}>Withdraw</Text>
-            </Pressable>
-          </View>
-        )}
         <Pressable style={[styles.headerBtn, styles.headerBtnGhost]}>
           <MaterialIcons name="settings" size={16} color={semantic.text.dim} />
         </Pressable>
@@ -344,6 +332,22 @@ export function ProfileView({ onBack }: ProfileViewProps) {
               </View>
             </View>
 
+            {/* Full-width Deposit / Withdraw buttons */}
+            <View style={styles.depositWithdrawRow}>
+              <Pressable
+                style={[styles.depositWithdrawBtn, styles.depositBtn]}
+                onPress={() => setDepositOpen(true)}>
+                <MaterialIcons name="arrow-downward" size={16} color={tokens.colors.viridian} />
+                <Text style={[styles.depositWithdrawText, { color: tokens.colors.viridian }]}>Deposit</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.depositWithdrawBtn, styles.withdrawBtn]}
+                onPress={() => setWithdrawOpen(true)}>
+                <MaterialIcons name="arrow-upward" size={16} color={tokens.colors.primary} />
+                <Text style={[styles.depositWithdrawText, { color: tokens.colors.primary }]}>Withdraw</Text>
+              </Pressable>
+            </View>
+
             {/* ── Tabs: Positions | Orders ── */}
             <View style={styles.tabBar}>
               <Pressable
@@ -389,7 +393,6 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                 ) : (
                   positions.map((pos) => {
                     const isUp = pos.unrealizedPnl >= 0;
-                    const isMenuOpen = menuPosition?.symbol === pos.symbol;
                     const tpsl = tpslBySymbol[pos.symbol];
                     return (
                       <View key={pos.symbol} style={styles.posCard}>
@@ -423,38 +426,26 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                               {isUp ? '+' : ''}{pos.unrealizedPnl.toFixed(2)} ({pos.unrealizedPnlPct.toFixed(1)}%)
                             </Text>
                           </View>
-                          <Pressable
-                            style={styles.menuDots}
-                            onPress={() => setMenuPosition(isMenuOpen ? null : pos)}
-                            hitSlop={8}
-                          >
-                            <MaterialIcons name="more-vert" size={18} color={semantic.text.dim} />
-                          </Pressable>
                         </View>
 
-                        {/* Inline action menu */}
-                        {isMenuOpen && (
-                          <View style={styles.actionMenu}>
-                            <Pressable
-                              style={styles.actionMenuItem}
-                              onPress={() => openTPSLModal(pos)}
-                            >
-                              <MaterialIcons name="flag" size={14} color={tokens.colors.primary} />
-                              <Text style={styles.actionMenuText}>Set TP / SL</Text>
-                            </Pressable>
-                            <View style={styles.actionMenuDivider} />
-                            <Pressable
-                              style={styles.actionMenuItem}
-                              onPress={() => handleClosePosition(pos)}
-                              disabled={actionLoading}
-                            >
-                              <MaterialIcons name="close" size={14} color={tokens.colors.vermillion} />
-                              <Text style={[styles.actionMenuText, { color: tokens.colors.vermillion }]}>
-                                {actionLoading ? 'Closing…' : 'Close Position'}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        )}
+                        {/* Inline action buttons */}
+                        <View style={styles.posActionRow}>
+                          <Pressable
+                            style={styles.posActionBtn}
+                            onPress={() => openTPSLModal(pos)}>
+                            <MaterialIcons name="flag" size={12} color={tokens.colors.primary} />
+                            <Text style={styles.posActionText}>TP/SL</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.posActionBtn, styles.posActionBtnClose]}
+                            onPress={() => handleClosePosition(pos)}
+                            disabled={actionLoading}>
+                            <MaterialIcons name="close" size={12} color={tokens.colors.vermillion} />
+                            <Text style={[styles.posActionText, { color: tokens.colors.vermillion }]}>
+                              {actionLoading ? 'Closing…' : 'Close'}
+                            </Text>
+                          </Pressable>
+                        </View>
                       </View>
                     );
                   })
@@ -1156,4 +1147,65 @@ const styles = StyleSheet.create({
 
   textPos: { color: tokens.colors.viridian },
   textNeg: { color: tokens.colors.vermillion },
+
+  // Full-width deposit/withdraw row
+  depositWithdrawRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  depositBtn: {
+    borderColor: 'rgba(74,140,111,0.3)',
+    backgroundColor: 'rgba(74,140,111,0.08)',
+  },
+  withdrawBtn: {
+    borderColor: 'rgba(199,183,112,0.3)',
+    backgroundColor: 'rgba(199,183,112,0.08)',
+  },
+  depositWithdrawBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: tokens.radius.md,
+    paddingVertical: 12,
+  },
+  depositWithdrawText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+
+  // Inline position action buttons (replacing 3-dot menu)
+  posActionRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: tokens.spacing.md,
+    paddingBottom: tokens.spacing.sm,
+  },
+  posActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 7,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(199,183,112,0.25)',
+    backgroundColor: 'rgba(199,183,112,0.06)',
+  },
+  posActionBtnClose: {
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.06)',
+  },
+  posActionText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: tokens.colors.primary,
+  },
 });

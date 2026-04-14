@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trade — Robinhood-Inspired Redesign</title>
+  <title>Trade — Mockup v3</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -25,9 +25,10 @@
       --pos2: rgba(52,199,123,0.12);
       --neg: #f4584e;
       --neg2: rgba(244,88,78,0.10);
-      --hi: #ede8d5;
-      --mid: #6b6850;
-      --lo: #35342a;
+      --hi:  #ede8d5;
+      --mid: #9b9580;
+      --lo:  #5c5a50;
+      --xlo: #3d3b33;
       --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
       --sans: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
     }
@@ -40,10 +41,11 @@
       align-items: center;
       padding: 32px 20px 80px;
       font-family: var(--sans);
-      gap: 40px;
+      gap: 48px;
     }
 
-    h2 {
+    /* ── Section labels ── */
+    .section-label {
       color: var(--mid);
       font-family: var(--mono);
       font-size: 11px;
@@ -51,7 +53,7 @@
       text-transform: uppercase;
       text-align: center;
     }
-    h2 span {
+    .section-label span {
       display: block;
       font-size: 9px;
       letter-spacing: 2px;
@@ -59,9 +61,25 @@
       margin-top: 4px;
     }
 
+    .change-note {
+      background: rgba(232,197,71,0.08);
+      border: 1px solid rgba(232,197,71,0.18);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--a);
+      letter-spacing: 0.5px;
+      line-height: 1.6;
+      max-width: 400px;
+      text-align: left;
+    }
+    .change-note strong { color: var(--a); }
+
+    /* ── Phone frame ── */
     .phone {
       width: 375px;
-      min-height: 720px;
+      height: 812px;
       background: var(--bg1);
       border-radius: 40px;
       border: 2px solid var(--border1);
@@ -69,6 +87,10 @@
       display: flex;
       flex-direction: column;
       position: relative;
+    }
+    .phone.tall {
+      height: auto;
+      min-height: 812px;
     }
 
     .status-bar {
@@ -78,17 +100,19 @@
       align-items: flex-end;
       justify-content: space-between;
       padding-bottom: 6px;
+      flex-shrink: 0;
     }
     .status-bar .time { font-family: var(--mono); font-size: 12px; color: var(--hi); font-weight: 600; }
     .status-bar .icons { display: flex; gap: 4px; color: var(--hi); font-size: 11px; }
 
-    /* Header */
+    /* ── Header ── */
     .header {
       display: flex;
       align-items: center;
       padding: 10px 16px;
       border-bottom: 1px solid var(--border1);
       gap: 8px;
+      flex-shrink: 0;
     }
     .avatar {
       width: 28px; height: 28px; border-radius: 50%;
@@ -115,10 +139,11 @@
       border-radius: 6px; padding: 4px 8px; cursor: pointer;
     }
 
-    /* Detail header */
+    /* ── Detail header ── */
     .detail-header {
       display: flex; align-items: center;
       padding: 10px 16px; border-bottom: 1px solid var(--border1);
+      flex-shrink: 0;
     }
     .back-btn {
       display: flex; align-items: center; gap: 4px;
@@ -130,102 +155,129 @@
       font-family: var(--mono); font-size: 15px;
       font-weight: 700; color: var(--hi); letter-spacing: 0.5px;
     }
-    .detail-spacer { flex: 1; }
 
-    /* Table */
+    /* ── Table ── */
     .table-header {
       display: flex; padding: 8px 16px;
       border-bottom: 1px solid var(--border1);
+      flex-shrink: 0;
     }
     .th { font-family: var(--mono); font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--lo); }
     .th-left { flex: 1; }
     .th-right { text-align: right; }
     .th-price { width: 80px; }
-    .th-change { width: 58px; color: rgba(232,197,71,0.4); }
+    .th-change { width: 58px; color: rgba(232,197,71,0.5); }
     .th-oi { width: 60px; }
+
+    .table-body {
+      flex: 1;
+      overflow-y: auto;
+    }
 
     .table-row {
       display: flex; align-items: center;
-      padding: 9px 16px; border-bottom: 1px solid rgba(48,47,32,0.5);
+      padding: 8px 16px; border-bottom: 1px solid rgba(48,47,32,0.35);
       cursor: pointer;
     }
     .table-row:hover { background: rgba(232,197,71,0.03); }
+    .table-row.compact { padding: 6px 16px; }
     .sym-col { flex: 1; }
     .row-sym { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--hi); }
-    .row-sub { font-family: var(--mono); font-size: 9px; color: var(--lo); letter-spacing: 0.8px; margin-top: 2px; }
+    .row-sym.sm { font-size: 12px; }
+    .row-sub { font-family: var(--mono); font-size: 9px; color: var(--lo); letter-spacing: 0.8px; margin-top: 1px; }
     .row-cell { font-family: var(--mono); text-align: right; }
     .row-price { font-size: 11px; font-weight: 600; color: var(--hi); width: 80px; }
     .row-change { font-size: 11px; font-weight: 600; width: 58px; }
     .row-oi { font-size: 9px; color: var(--mid); width: 60px; }
 
-    /* ═══════════════════════════════════════════
-       ROBINHOOD-INSPIRED MARKET DETAIL
-       ═══════════════════════════════════════════ */
-
-    /* Price hero — big centered price like Robinhood */
-    .rh-price-hero {
-      padding: 16px 16px 8px;
+    /* ═══════════════════════════════════════
+       CATEGORY PILLS — for 50+ markets
+       ═══════════════════════════════════════ */
+    .cat-row {
+      display: flex;
+      gap: 6px;
+      padding: 8px 16px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border0);
     }
-    .rh-price-big {
+    .cat-pill {
       font-family: var(--mono);
-      font-size: 32px;
-      font-weight: 700;
-      color: var(--hi);
-      line-height: 1.1;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.8px;
+      color: var(--lo);
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 4px 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.15s;
     }
-    .rh-change-row {
+    .cat-pill:hover { color: var(--mid); }
+    .cat-pill.active {
+      color: var(--a);
+      background: var(--a4);
+      border-color: rgba(232,197,71,0.25);
+    }
+
+    /* ═══════════════════════════════════════
+       BOTTOM SEARCH BAR — thumb zone
+       ═══════════════════════════════════════ */
+    .bottom-search {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-top: 4px;
+      padding: 8px 16px;
+      gap: 8px;
+      border-top: 1px solid var(--border1);
+      background: var(--bg2);
+      flex-shrink: 0;
     }
-    .rh-change {
-      font-family: var(--mono);
+    .search-icon {
       font-size: 14px;
-      font-weight: 600;
+      color: var(--lo);
     }
-    .rh-change-abs {
+    .search-input {
+      flex: 1;
       font-family: var(--mono);
       font-size: 12px;
       color: var(--mid);
+      background: none;
+      border: none;
+      outline: none;
+      letter-spacing: 0.5px;
     }
-    .rh-timeframe {
+    .search-count {
       font-family: var(--mono);
-      font-size: 10px;
+      font-size: 9px;
       color: var(--lo);
       letter-spacing: 0.5px;
     }
 
-    /* SVG chart */
+    /* ── Chart ── */
     .rh-chart {
       width: 100%;
-      height: 180px;
+      height: 140px;
       padding: 0 8px;
       position: relative;
       cursor: crosshair;
+      flex-shrink: 0;
     }
-    .rh-chart svg {
-      width: 100%;
-      height: 100%;
-    }
+    .rh-chart svg { width: 100%; height: 100%; }
 
-    /* Timeframe pills */
     .rh-tf-row {
       display: flex;
       justify-content: center;
       gap: 4px;
-      padding: 8px 16px;
+      padding: 6px 16px;
+      flex-shrink: 0;
     }
     .rh-tf-pill {
       font-family: var(--mono);
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
       color: var(--lo);
-      padding: 4px 12px;
-      border-radius: 14px;
-      cursor: pointer;
-      transition: all 0.15s;
+      padding: 4px 12px; border-radius: 14px;
+      cursor: pointer; transition: all 0.15s;
     }
     .rh-tf-pill:hover { color: var(--mid); }
     .rh-tf-pill.active {
@@ -233,64 +285,68 @@
       background: rgba(52,199,123,0.10);
     }
 
-    /* Stats strip — compact horizontal */
     .rh-stats {
       display: flex;
-      padding: 10px 16px;
+      padding: 8px 16px;
       gap: 0;
       border-top: 1px solid var(--border0);
       border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
     }
     .rh-stat {
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 2px;
     }
     .rh-stat-label {
       font-family: var(--mono);
-      font-size: 8px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--lo);
+      font-size: 8px; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--lo);
     }
     .rh-stat-val {
       font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 11px; font-weight: 600;
       color: var(--hi);
     }
 
-    /* ── Simple order UI ── */
+    /* ── Live dot ── */
+    .live-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--pos);
+      margin-right: 4px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,199,123,0.4); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(52,199,123,0); }
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ═══════════════════════════════════════
+       ORDER SECTION
+       ═══════════════════════════════════════ */
     .rh-order {
-      padding: 16px;
+      padding: 10px 16px 0;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
-    /* Side toggle — Long / Short */
     .rh-side-toggle {
       display: flex;
       background: var(--bg3);
       border-radius: 10px;
-      padding: 3px;
-      gap: 3px;
+      padding: 3px; gap: 3px;
     }
     .rh-side-btn {
-      flex: 1;
-      padding: 8px 0;
+      flex: 1; padding: 8px 0;
       text-align: center;
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.15s;
-      color: var(--mid);
+      font-family: var(--mono); font-size: 12px; font-weight: 700;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      border-radius: 8px; cursor: pointer;
+      transition: all 0.15s; color: var(--mid);
     }
     .rh-side-btn.long-active {
       background: rgba(52,199,123,0.15);
@@ -303,98 +359,82 @@
       border: 1px solid rgba(244,88,78,0.22);
     }
 
-    /* Amount input — big centered */
+    /* Leverage removed — uses market default */
+
+    /* ── Amount section ── */
     .rh-amount-section {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
-      padding: 8px 0;
+      gap: 4px;
+      padding: 2px 0;
     }
     .rh-amount-label {
       font-family: var(--mono);
-      font-size: 9px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--lo);
+      font-size: 9px; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--lo);
+    }
+    .rh-amount-toggle {
+      font-family: var(--mono);
+      font-size: 8px; letter-spacing: 0.5px;
+      color: var(--a); cursor: pointer;
     }
     .rh-amount-input {
       display: flex;
-      align-items: baseline;
-      gap: 2px;
+      align-items: baseline; gap: 2px;
     }
     .rh-dollar {
       font-family: var(--mono);
-      font-size: 22px;
-      font-weight: 700;
+      font-size: 20px; font-weight: 700;
       color: var(--mid);
     }
     .rh-amount-val {
       font-family: var(--mono);
-      font-size: 40px;
-      font-weight: 700;
-      color: var(--hi);
-      line-height: 1;
+      font-size: 36px; font-weight: 700;
+      color: var(--hi); line-height: 1;
     }
     .rh-amount-cursor {
-      width: 2px;
-      height: 36px;
+      width: 2px; height: 32px;
       background: var(--a);
       animation: blink 1s step-end infinite;
       margin-left: 2px;
     }
-    @keyframes blink { 50% { opacity: 0; } }
-
-    /* Preset amount pills */
-    .rh-presets {
-      display: flex;
-      justify-content: center;
-      gap: 6px;
-    }
-    .rh-preset {
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--mid);
-      background: var(--bg4);
-      border: 1px solid var(--border1);
-      border-radius: 16px;
-      padding: 5px 14px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .rh-preset:hover {
-      border-color: var(--border2);
-      color: var(--hi);
-    }
-    .rh-preset.active {
-      border-color: rgba(232,197,71,0.3);
-      color: var(--a);
-      background: var(--a4);
-    }
-
-    /* Amount toggle hint */
-    .rh-amount-toggle {
-      font-family: var(--mono);
-      font-size: 8px;
-      letter-spacing: 0.5px;
-      color: var(--a);
-      cursor: pointer;
-    }
-    /* Secondary amount (native equivalent) */
     .rh-amount-secondary {
       font-family: var(--mono);
       font-size: 11px;
       color: var(--mid);
       letter-spacing: 0.5px;
     }
-    /* Available balance + MAX row */
+
+    .quick-amounts {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+    }
+    .quick-pill {
+      font-family: var(--mono);
+      font-size: 11px; font-weight: 600;
+      color: var(--mid);
+      background: var(--bg4);
+      border: 1px solid var(--border1);
+      border-radius: 16px;
+      padding: 5px 14px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .quick-pill:hover {
+      border-color: var(--border2); color: var(--hi);
+    }
+    .quick-pill.active {
+      border-color: rgba(232,197,71,0.3);
+      color: var(--a);
+      background: var(--a4);
+    }
+
     .rh-max-row {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      margin-top: 2px;
     }
     .rh-avail-text {
       font-family: var(--mono);
@@ -404,76 +444,211 @@
     }
     .rh-max-btn {
       font-family: var(--mono);
-      font-size: 9px;
-      font-weight: 700;
+      font-size: 9px; font-weight: 700;
       color: var(--a);
-      letter-spacing: 1px;
-      cursor: pointer;
-    }
-    /* Size sub-value (native) in summary */
-    .rh-sum-sub {
-      font-family: var(--mono);
-      font-size: 9px;
-      color: var(--mid);
-      letter-spacing: 0.3px;
+      letter-spacing: 1px; cursor: pointer;
     }
 
-    /* Order summary — collapsed preview */
-    .rh-summary {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 12px;
-      background: var(--bg3);
-      border-radius: 8px;
-      border: 1px solid var(--border0);
-    }
-    .rh-sum-item {
+    /* ═══════════════════════════════════════
+       TP / SL INLINE — collapsible
+       ═══════════════════════════════════════ */
+    .tpsl-section {
       display: flex;
       flex-direction: column;
-      gap: 1px;
+      gap: 6px;
     }
-    .rh-sum-label {
+    .tpsl-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .tpsl-toggle-label {
       font-family: var(--mono);
-      font-size: 8px;
+      font-size: 9px; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--lo);
+    }
+    .tpsl-toggle-chevron {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--lo);
+      transition: transform 0.15s;
+    }
+    .tpsl-toggle-chevron.open {
+      transform: rotate(180deg);
+    }
+    .tpsl-fields {
+      display: flex;
+      gap: 8px;
+    }
+    .tpsl-field {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .tpsl-field-label {
+      font-family: var(--mono);
+      font-size: 8px; font-weight: 700;
       letter-spacing: 1px;
       text-transform: uppercase;
-      color: var(--lo);
     }
-    .rh-sum-val {
+    .tpsl-field-label.tp { color: var(--pos); }
+    .tpsl-field-label.sl { color: var(--neg); }
+    .tpsl-input {
       font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 12px; font-weight: 600;
       color: var(--hi);
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 6px;
+      padding: 7px 10px;
+      width: 100%;
     }
+    .tpsl-input::placeholder { color: var(--lo); }
+    .tpsl-input.tp:focus { border-color: rgba(52,199,123,0.35); }
+    .tpsl-input.sl:focus { border-color: rgba(244,88,78,0.35); }
+    .tpsl-hint {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+      letter-spacing: 0.3px;
+    }
+    .tpsl-hint.tp { color: rgba(52,199,123,0.5); }
+    .tpsl-hint.sl { color: rgba(244,88,78,0.5); }
 
-    /* Review / Submit button */
+    /* ── Submit button ── */
     .rh-submit {
       padding: 14px 0;
       text-align: center;
       border-radius: 10px;
       font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: all 0.15s;
+      font-size: 13px; font-weight: 700;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      cursor: pointer; transition: all 0.15s;
     }
-    .rh-submit.long {
-      background: var(--pos);
-      color: #fff;
-    }
-    .rh-submit.long:hover {
-      background: #2db86e;
+    .rh-submit.long { background: var(--pos); color: #fff; }
+    .rh-submit.long:hover { background: #2db86e; }
+    .rh-submit.short { background: var(--neg); color: #fff; }
+    .rh-submit .submit-liq {
+      display: block;
+      font-size: 9px; font-weight: 600;
+      letter-spacing: 0.8px;
+      opacity: 0.75;
+      margin-top: 2px;
+      text-transform: none;
     }
 
-    /* Bottom nav */
+    /* ═══════════════════════════════════════
+       MY POSITIONS — inline below submit
+       ═══════════════════════════════════════ */
+    .positions-section {
+      margin-top: 4px;
+      border-top: 1px solid var(--border0);
+      padding-top: 8px;
+    }
+    .positions-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .positions-title {
+      font-family: var(--mono);
+      font-size: 9px; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--lo);
+    }
+    .positions-count {
+      font-family: var(--mono);
+      font-size: 9px; font-weight: 700;
+      color: var(--mid);
+      background: var(--bg4);
+      border-radius: 8px;
+      padding: 1px 6px;
+    }
+    .pos-card {
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+    }
+    .pos-card-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pos-side-badge {
+      font-family: var(--mono);
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 0.8px; text-transform: uppercase;
+      padding: 2px 5px; border-radius: 3px;
+    }
+    .pos-side-badge.long {
+      color: var(--pos);
+      background: rgba(52,199,123,0.12);
+    }
+    .pos-side-badge.short {
+      color: var(--neg);
+      background: rgba(244,88,78,0.10);
+    }
+    .pos-sym {
+      font-family: var(--mono);
+      font-size: 12px; font-weight: 700;
+      color: var(--hi);
+    }
+    .pos-size {
+      font-family: var(--mono);
+      font-size: 10px; color: var(--mid);
+    }
+    .pos-spacer { flex: 1; }
+    .pos-pnl {
+      font-family: var(--mono);
+      font-size: 11px; font-weight: 700;
+    }
+    .pos-card-bottom {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 5px;
+    }
+    .pos-meta {
+      font-family: var(--mono);
+      font-size: 9px; color: var(--lo);
+      letter-spacing: 0.3px;
+    }
+    .pos-meta-val { color: var(--mid); }
+    .pos-actions {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .pos-action-btn {
+      font-family: var(--mono);
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 0.8px; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 4px;
+      cursor: pointer;
+    }
+    .pos-action-btn.tpsl {
+      color: var(--a);
+      background: var(--a4);
+      border: 1px solid rgba(232,197,71,0.18);
+    }
+    .pos-action-btn.close {
+      color: var(--neg);
+      background: var(--neg2);
+      border: 1px solid rgba(244,88,78,0.22);
+    }
+
+    /* ── Bottom nav ── */
     .bottom-nav {
       display: flex;
       justify-content: space-around;
       padding: 10px 0 20px;
       border-top: 1px solid var(--border1);
       background: rgba(10,10,8,0.97);
+      flex-shrink: 0;
     }
     .nav-item {
       display: flex; flex-direction: column;
@@ -489,10 +664,21 @@
     .text-pos { color: var(--pos); }
     .text-neg { color: var(--neg); }
 
-    /* ─── Comparison label ─── */
+    /* ── Layout helpers ── */
+    .label-badge {
+      font-family: var(--mono);
+      font-size: 9px; letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--bg0);
+      padding: 3px 10px; border-radius: 4px;
+      display: inline-block;
+    }
+    .label-badge.green { background: var(--pos); }
+    .label-badge.gold { background: var(--a); }
+    .label-badge.red { background: var(--neg); }
+
     .screen-pair {
-      display: flex;
-      gap: 24px;
+      display: flex; gap: 24px;
       align-items: flex-start;
       flex-wrap: wrap;
       justify-content: center;
@@ -503,24 +689,198 @@
       align-items: center;
       gap: 12px;
     }
-    .label-badge {
-      font-family: var(--mono);
-      font-size: 9px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--bg0);
-      background: var(--a);
-      padding: 3px 10px;
-      border-radius: 4px;
+
+    /* ═══════════════════════════════════════
+       PROFILE SCREEN STYLES
+       ═══════════════════════════════════════ */
+    .profile-identity {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 16px 12px;
     }
-    .label-badge.green {
+    .profile-avatar {
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 1.5px solid var(--a);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-avatar-inner {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--bg4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: var(--hi);
+    }
+    .profile-info { flex: 1; }
+    .profile-addr {
+      font-family: var(--mono); font-size: 13px; font-weight: 700;
+      color: var(--hi); letter-spacing: 0.5px;
+    }
+    .profile-connected {
+      display: flex; align-items: center; gap: 4px; margin-top: 3px;
+    }
+    .profile-connected-dot {
+      width: 6px; height: 6px; border-radius: 50%;
       background: var(--pos);
+    }
+    .profile-connected-text {
+      font-family: var(--mono); font-size: 9px;
+      color: var(--pos); letter-spacing: 0.5px;
+    }
+    .profile-pacifica-badge {
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: var(--pos); background: rgba(52,199,123,0.12);
+      border: 1px solid rgba(52,199,123,0.25);
+      border-radius: 6px; padding: 4px 8px;
+      letter-spacing: 0.8px;
+    }
+
+    /* Equity card */
+    .equity-card {
+      display: flex;
+      margin: 0 16px;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 12px;
+      gap: 0;
+    }
+    .eq-item {
+      flex: 1;
+      display: flex; flex-direction: column;
+      gap: 3px;
+    }
+    .eq-item.center { align-items: center; }
+    .eq-item.right { align-items: flex-end; }
+    .eq-label {
+      font-family: var(--mono); font-size: 8px;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--lo);
+    }
+    .eq-val {
+      font-family: var(--mono); font-size: 14px; font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* Fund actions */
+    .fund-actions {
+      display: flex;
+      gap: 8px;
+      margin: 10px 16px 0;
+    }
+    .fund-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-family: var(--mono); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.8px;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 10px 0;
+      cursor: pointer;
+    }
+    .fund-btn .fund-icon { font-size: 12px; }
+    .fund-btn.deposit { color: var(--pos); }
+    .fund-btn.withdraw { color: var(--a); }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      margin: 12px 16px 0;
+      border-bottom: 1px solid var(--border1);
+    }
+    .tab {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 0;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+    }
+    .tab.active { border-bottom-color: var(--hi); }
+    .tab-text {
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--lo);
+    }
+    .tab.active .tab-text { color: var(--hi); }
+    .tab-badge {
+      font-family: var(--mono); font-size: 8px; font-weight: 700;
+      background: var(--bg4);
+      color: var(--lo);
+      border-radius: 8px;
+      padding: 1px 5px;
+    }
+    .tab.active .tab-badge {
+      background: var(--hi);
+      color: var(--bg1);
+    }
+
+    /* Position cards in profile */
+    .profile-pos-card {
+      margin: 0 16px;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+    .profile-pos-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .profile-pos-mid {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .profile-pos-tpsl {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border0);
+    }
+    .profile-tpsl-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .profile-tpsl-label {
+      font-family: var(--mono); font-size: 8px; font-weight: 700;
+      letter-spacing: 0.8px;
+    }
+    .profile-tpsl-val {
+      font-family: var(--mono); font-size: 10px; font-weight: 600;
+    }
+    .profile-pos-actions {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
     }
   </style>
 </head>
 <body>
 
-  <h2>Screen 1 — Trade List<span>Same for both variants · no changes needed</span></h2>
+  <!-- ═══════════════════════════════════════════════════════
+       SCREEN 1 — TRADE LIST (50+ markets)
+       ═══════════════════════════════════════════════════════ -->
+
+  <div class="section-label">Screen 1 — Trade List · 50+ Markets<span>Category pills + bottom search bar · thumb reachable</span></div>
+
+  <div class="change-note" style="margin-bottom:8px;">
+    <strong>Changes:</strong><br>
+    1. Category pills: All / Hot / Memes / L1 / DeFi / AI — horizontal scroll<br>
+    2. Compact rows — smaller padding to show more markets<br>
+    3. Bottom search bar in thumb zone — shows market count<br>
+    4. Table body scrolls, header + categories + search are fixed
+  </div>
 
   <div class="phone">
     <div class="status-bar">
@@ -530,51 +890,117 @@
     <div class="header">
       <div class="avatar"><div class="avatar-inner">&#x1F464;</div></div>
       <div class="header-title">Trade</div>
-      <div class="wallet-btn">Connect</div>
+      <div class="wallet-btn">7xK3..9mQ2</div>
     </div>
+
+    <!-- Category filter pills -->
+    <div class="cat-row">
+      <span class="cat-pill active">All</span>
+      <span class="cat-pill" style="color:var(--neg);">&#x1F525; Hot</span>
+      <span class="cat-pill">Memes</span>
+      <span class="cat-pill">L1</span>
+      <span class="cat-pill">DeFi</span>
+      <span class="cat-pill">AI</span>
+      <span class="cat-pill">L2</span>
+      <span class="cat-pill">RWA</span>
+    </div>
+
     <div class="table-header">
       <span class="th th-left">Market</span>
       <span class="th th-right th-price">Price</span>
       <span class="th th-right th-change">24h &#x25BE;</span>
       <span class="th th-right th-oi">OI</span>
     </div>
-    <div class="table-row">
-      <div class="sym-col"><div class="row-sym">BTC</div><div class="row-sub">PERP &middot; 10&times;</div></div>
-      <div class="row-cell row-price">$83,421</div>
-      <div class="row-cell row-change text-pos">+2.14%</div>
-      <div class="row-cell row-oi">$42.1M</div>
+
+    <!-- Scrollable table body -->
+    <div class="table-body">
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">BTC</div><div class="row-sub">PERP &middot; 50&times;</div></div>
+        <div class="row-cell row-price">$83,421</div>
+        <div class="row-cell row-change text-pos">+2.14%</div>
+        <div class="row-cell row-oi">$42.1M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">ETH</div><div class="row-sub">PERP &middot; 50&times;</div></div>
+        <div class="row-cell row-price">$1,592</div>
+        <div class="row-cell row-change text-neg">-1.23%</div>
+        <div class="row-cell row-oi">$18.7M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">SOL</div><div class="row-sub">PERP &middot; 20&times;</div></div>
+        <div class="row-cell row-price">$128.45</div>
+        <div class="row-cell row-change text-pos">+5.82%</div>
+        <div class="row-cell row-oi">$8.3M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">DOGE</div><div class="row-sub">PERP &middot; 20&times;</div></div>
+        <div class="row-cell row-price">$0.1624</div>
+        <div class="row-cell row-change text-neg">-0.41%</div>
+        <div class="row-cell row-oi">$2.1M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">WIF</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$0.4812</div>
+        <div class="row-cell row-change text-pos">+8.31%</div>
+        <div class="row-cell row-oi">$1.4M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">BONK</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$0.000012</div>
+        <div class="row-cell row-change text-neg">-3.55%</div>
+        <div class="row-cell row-oi">$890K</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">PEPE</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$0.000008</div>
+        <div class="row-cell row-change text-pos">+12.4%</div>
+        <div class="row-cell row-oi">$3.2M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">SUI</div><div class="row-sub">PERP &middot; 20&times;</div></div>
+        <div class="row-cell row-price">$1.28</div>
+        <div class="row-cell row-change text-pos">+3.91%</div>
+        <div class="row-cell row-oi">$4.1M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">ONDO</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$1.42</div>
+        <div class="row-cell row-change text-neg">-2.17%</div>
+        <div class="row-cell row-oi">$1.8M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">RENDER</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$4.81</div>
+        <div class="row-cell row-change text-pos">+6.22%</div>
+        <div class="row-cell row-oi">$2.5M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">JUP</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$0.721</div>
+        <div class="row-cell row-change text-neg">-1.05%</div>
+        <div class="row-cell row-oi">$1.1M</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">ARB</div><div class="row-sub">PERP &middot; 20&times;</div></div>
+        <div class="row-cell row-price">$0.382</div>
+        <div class="row-cell row-change text-neg">-4.20%</div>
+        <div class="row-cell row-oi">$960K</div>
+      </div>
+      <div class="table-row compact">
+        <div class="sym-col"><div class="row-sym sm">TIA</div><div class="row-sub">PERP &middot; 10&times;</div></div>
+        <div class="row-cell row-price">$3.14</div>
+        <div class="row-cell row-change text-pos">+1.67%</div>
+        <div class="row-cell row-oi">$780K</div>
+      </div>
     </div>
-    <div class="table-row">
-      <div class="sym-col"><div class="row-sym">ETH</div><div class="row-sub">PERP &middot; 10&times;</div></div>
-      <div class="row-cell row-price">$1,592</div>
-      <div class="row-cell row-change text-neg">-1.23%</div>
-      <div class="row-cell row-oi">$18.7M</div>
+
+    <!-- Bottom search — in thumb zone -->
+    <div class="bottom-search">
+      <span class="search-icon">&#x1F50D;</span>
+      <span class="search-input">Search markets...</span>
+      <span class="search-count">54 markets</span>
     </div>
-    <div class="table-row">
-      <div class="sym-col"><div class="row-sym">SOL</div><div class="row-sub">PERP &middot; 10&times;</div></div>
-      <div class="row-cell row-price">$128.45</div>
-      <div class="row-cell row-change text-pos">+5.82%</div>
-      <div class="row-cell row-oi">$8.3M</div>
-    </div>
-    <div class="table-row">
-      <div class="sym-col"><div class="row-sym">DOGE</div><div class="row-sub">PERP &middot; 10&times;</div></div>
-      <div class="row-cell row-price">$0.1624</div>
-      <div class="row-cell row-change text-neg">-0.41%</div>
-      <div class="row-cell row-oi">$2.1M</div>
-    </div>
-    <div class="table-row">
-      <div class="sym-col"><div class="row-sym">WIF</div><div class="row-sub">PERP &middot; 10&times;</div></div>
-      <div class="row-cell row-price">$0.4812</div>
-      <div class="row-cell row-change text-pos">+8.31%</div>
-      <div class="row-cell row-oi">$1.4M</div>
-    </div>
-    <div class="table-row">
-      <div class="sym-col"><div class="row-sym">BONK</div><div class="row-sub">PERP &middot; 10&times;</div></div>
-      <div class="row-cell row-price">$0.000012</div>
-      <div class="row-cell row-change text-neg">-3.55%</div>
-      <div class="row-cell row-oi">$890K</div>
-    </div>
-    <div style="flex:1"></div>
+
     <div class="bottom-nav">
       <div class="nav-item"><span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Feed</span></div>
       <div class="nav-item"><span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Predict</span></div>
@@ -583,139 +1009,569 @@
     </div>
   </div>
 
-  <h2>Screen 2 — Market Detail<span>Robinhood-inspired &middot; chart + simple order flow</span></h2>
 
-  <div class="screen-pair">
+  <!-- ═══════════════════════════════════════════════════════
+       SCREEN 2 — MARKET DETAIL (full order form)
+       Leverage slider + TP/SL + inline positions
+       ═══════════════════════════════════════════════════════ -->
 
-    <!-- ========== ROBINHOOD VARIANT ========== -->
-    <div class="screen-col">
-      <span class="label-badge green">New Design</span>
-      <div class="phone">
-        <div class="status-bar">
-          <span class="time">9:41</span>
-          <span class="icons">5G &#x25AE;&#x25AE;&#x25AE; &#x1F50B;</span>
+  <div class="section-label">Screen 2 — Market Detail · Full Order Form<span>Slider leverage · TP/SL fields · positions below submit</span></div>
+
+  <div class="change-note" style="margin-bottom:8px;">
+    <strong>Changes from v2:</strong><br>
+    1. Leverage: draggable slider with value display (not fixed pills)<br>
+    2. TP/SL: inline collapsible fields right in the order form<br>
+    3. Positions: shown below submit button — manage without leaving<br>
+    4. Phone is taller (scrollable) — order form is rich but everything visible
+  </div>
+
+  <div class="phone tall">
+    <div class="status-bar">
+      <span class="time">9:41</span>
+      <span class="icons">5G &#x25AE;&#x25AE;&#x25AE; &#x1F50B;</span>
+    </div>
+
+    <!-- Header -->
+    <div class="detail-header" style="align-items: center;">
+      <div class="back-btn">
+        <span class="back-arrow">&#x2039;</span>
+        <span class="detail-sym">BTC</span>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+        <div style="display:flex; align-items:center; gap:4px;">
+          <span class="live-dot"></span>
+          <span style="font-family:var(--mono); font-size:20px; font-weight:700; color:var(--hi);">$83,421</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:4px; margin-top:2px;">
+          <span style="font-family:var(--mono); font-size:11px; font-weight:600;" class="text-pos">+$1,752.30</span>
+          <span style="font-family:var(--mono); font-size:10px;" class="text-pos">(+2.14%)</span>
+        </div>
+      </div>
+      <div class="wallet-btn">7xK3..9mQ2</div>
+    </div>
+
+    <!-- Chart -->
+    <div class="rh-chart">
+      <svg viewBox="0 0 343 120" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="cg2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(52,199,123,0.25)" />
+            <stop offset="100%" stop-color="rgba(52,199,123,0)" />
+          </linearGradient>
+        </defs>
+        <path d="M0,95 C20,90 35,86 50,82 C65,78 80,84 100,74 C120,64 130,69 150,58 C170,47 180,54 200,42 C220,30 230,38 250,28 C270,18 280,24 300,16 C310,11 325,18 343,10 L343,120 L0,120 Z" fill="url(#cg2)" />
+        <path d="M0,95 C20,90 35,86 50,82 C65,78 80,84 100,74 C120,64 130,69 150,58 C170,47 180,54 200,42 C220,30 230,38 250,28 C270,18 280,24 300,16 C310,11 325,18 343,10" fill="none" stroke="var(--pos)" stroke-width="2" />
+        <!-- Entry line -->
+        <line x1="0" y1="74" x2="343" y2="74" stroke="rgba(232,197,71,0.3)" stroke-width="1" stroke-dasharray="4,4" />
+        <text x="8" y="70" fill="var(--a)" font-family="var(--mono)" font-size="8" opacity="0.7">Entry $81,200</text>
+        <circle cx="343" cy="10" r="4" fill="var(--pos)" />
+        <circle cx="343" cy="10" r="7" fill="rgba(52,199,123,0.3)" />
+      </svg>
+    </div>
+
+    <div class="rh-tf-row">
+      <span class="rh-tf-pill">1H</span>
+      <span class="rh-tf-pill active">1D</span>
+      <span class="rh-tf-pill">1W</span>
+      <span class="rh-tf-pill">1M</span>
+      <span class="rh-tf-pill">ALL</span>
+    </div>
+
+    <div class="rh-stats">
+      <div class="rh-stat">
+        <span class="rh-stat-label">Mark</span>
+        <span class="rh-stat-val">$83,421</span>
+      </div>
+      <div class="rh-stat">
+        <span class="rh-stat-label">Fund/8h</span>
+        <span class="rh-stat-val text-pos">+0.0012%</span>
+      </div>
+      <div class="rh-stat">
+        <span class="rh-stat-label">OI</span>
+        <span class="rh-stat-val">$42.1M</span>
+      </div>
+      <div class="rh-stat">
+        <span class="rh-stat-label">24h Vol</span>
+        <span class="rh-stat-val">$38.2M</span>
+      </div>
+    </div>
+
+    <!-- ═══ ORDER FORM ═══ -->
+    <div class="rh-order">
+
+      <!-- Side toggle -->
+      <div class="rh-side-toggle">
+        <div class="rh-side-btn long-active">Long</div>
+        <div class="rh-side-btn">Short</div>
+      </div>
+
+
+      <!-- Amount input -->
+      <div class="rh-amount-section">
+        <span class="rh-amount-label">Amount (USDC) <span class="rh-amount-toggle">tap to switch</span></span>
+        <div class="rh-amount-input">
+          <span class="rh-dollar">$</span>
+          <span class="rh-amount-val">500</span>
+          <div class="rh-amount-cursor"></div>
+        </div>
+        <span class="rh-amount-secondary">&asymp; 0.0060 BTC</span>
+      </div>
+
+      <!-- Quick amounts -->
+      <div class="quick-amounts">
+        <span class="quick-pill">25%</span>
+        <span class="quick-pill active">50%</span>
+        <span class="quick-pill">75%</span>
+        <span class="quick-pill">MAX</span>
+      </div>
+
+      <div class="rh-max-row">
+        <span class="rh-avail-text">$100 avail &times; 10x = $1,000 buying power</span>
+      </div>
+
+      <!-- TP / SL INLINE FIELDS -->
+      <div class="tpsl-section">
+        <div class="tpsl-toggle">
+          <span class="tpsl-toggle-label">Take Profit / Stop Loss</span>
+          <span class="tpsl-toggle-chevron open">&#x25B4;</span>
+        </div>
+        <div class="tpsl-fields">
+          <div class="tpsl-field">
+            <span class="tpsl-field-label tp">TP Price</span>
+            <input type="text" class="tpsl-input tp" value="$92,000" readonly />
+            <span class="tpsl-hint tp">+$8,579 (+10.3%)</span>
+          </div>
+          <div class="tpsl-field">
+            <span class="tpsl-field-label sl">SL Price</span>
+            <input type="text" class="tpsl-input sl" value="$79,000" readonly />
+            <span class="tpsl-hint sl">-$4,421 (-5.3%)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="rh-submit long">
+        Open Long &mdash; $500
+        <span class="submit-liq">Liq. ~$75,079 &middot; Fee $0.10 &middot; TP $92K / SL $79K</span>
+      </div>
+
+      <!-- ═══ MY POSITIONS — below submit ═══ -->
+      <div class="positions-section">
+        <div class="positions-header">
+          <span class="positions-title">My Positions</span>
+          <span class="positions-count">2</span>
         </div>
 
-        <!-- Header with price in center -->
-        <div class="detail-header" style="padding: 10px 16px; align-items: center;">
-          <div class="back-btn">
-            <span class="back-arrow">&#x2039;</span>
-            <span class="detail-sym">BTC</span>
+        <!-- Position 1: BTC Long -->
+        <div class="pos-card">
+          <div class="pos-card-top">
+            <span class="pos-side-badge long">Long</span>
+            <span class="pos-sym">BTC</span>
+            <span class="pos-size">0.006 &middot; $500</span>
+            <span class="pos-spacer"></span>
+            <span class="pos-pnl text-pos">+$27.40 (+5.5%)</span>
           </div>
-          <div style="flex:1; display:flex; flex-direction:column; align-items:center;">
-            <div class="rh-price-big" style="font-size:20px;">$83,421</div>
-            <div class="rh-change-row" style="margin-top:2px; gap:4px;">
-              <span class="rh-change text-pos" style="font-size:11px;">+$1,752.30</span>
-              <span class="rh-change text-pos" style="font-size:10px;">(+2.14%)</span>
+          <div class="pos-card-bottom">
+            <span class="pos-meta">Entry <span class="pos-meta-val">$81,200</span></span>
+            <span class="pos-meta">Liq <span class="pos-meta-val" style="color:var(--neg);">$73,080</span></span>
+            <span class="pos-meta">Lev <span class="pos-meta-val">10x</span></span>
+            <div class="pos-actions">
+              <span class="pos-action-btn tpsl">TP/SL</span>
+              <span class="pos-action-btn close">Close</span>
             </div>
           </div>
-          <div class="wallet-btn">7xK3..9mQ2</div>
-        </div>
-
-        <!-- SVG line chart -->
-        <div class="rh-chart">
-          <svg viewBox="0 0 343 160" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="rgba(52,199,123,0.25)" />
-                <stop offset="100%" stop-color="rgba(52,199,123,0)" />
-              </linearGradient>
-            </defs>
-            <!-- Gradient fill -->
-            <path d="M0,120 C20,115 35,110 50,105 C65,100 80,108 100,95 C120,82 130,88 150,75 C170,62 180,70 200,55 C220,40 230,50 250,38 C270,26 280,32 300,22 C310,17 325,25 343,15 L343,160 L0,160 Z"
-                  fill="url(#chartGrad)" />
-            <!-- Line -->
-            <path d="M0,120 C20,115 35,110 50,105 C65,100 80,108 100,95 C120,82 130,88 150,75 C170,62 180,70 200,55 C220,40 230,50 250,38 C270,26 280,32 300,22 C310,17 325,25 343,15"
-                  fill="none" stroke="var(--pos)" stroke-width="2" />
-            <!-- Current price dot -->
-            <circle cx="343" cy="15" r="4" fill="var(--pos)" />
-            <circle cx="343" cy="15" r="7" fill="rgba(52,199,123,0.3)" />
-          </svg>
-        </div>
-
-        <!-- Timeframe pills -->
-        <div class="rh-tf-row">
-          <span class="rh-tf-pill">1H</span>
-          <span class="rh-tf-pill active">1D</span>
-          <span class="rh-tf-pill">1W</span>
-          <span class="rh-tf-pill">1M</span>
-          <span class="rh-tf-pill">ALL</span>
-        </div>
-
-        <!-- Stats strip -->
-        <div class="rh-stats">
-          <div class="rh-stat">
-            <span class="rh-stat-label">Mark</span>
-            <span class="rh-stat-val">$83,421</span>
-          </div>
-          <div class="rh-stat">
-            <span class="rh-stat-label">Fund/8h</span>
-            <span class="rh-stat-val text-pos">+0.0012%</span>
-          </div>
-          <div class="rh-stat">
-            <span class="rh-stat-label">OI</span>
-            <span class="rh-stat-val">$42.1M</span>
-          </div>
-          <div class="rh-stat">
-            <span class="rh-stat-label">24h Vol</span>
-            <span class="rh-stat-val">$38.2M</span>
+          <!-- TP/SL attached to this position -->
+          <div class="profile-pos-tpsl">
+            <div class="profile-tpsl-item">
+              <span class="profile-tpsl-label text-pos">TP</span>
+              <span class="profile-tpsl-val text-pos">$89,320</span>
+            </div>
+            <div class="profile-tpsl-item">
+              <span class="profile-tpsl-label text-neg">SL</span>
+              <span class="profile-tpsl-val text-neg">$77,000</span>
+            </div>
           </div>
         </div>
 
-        <!-- Simple order UI -->
-        <div class="rh-order">
-          <!-- Side toggle -->
-          <div class="rh-side-toggle">
-            <div class="rh-side-btn long-active">Long</div>
-            <div class="rh-side-btn">Short</div>
+        <!-- Position 2: ETH Short -->
+        <div class="pos-card">
+          <div class="pos-card-top">
+            <span class="pos-side-badge short">Short</span>
+            <span class="pos-sym">ETH</span>
+            <span class="pos-size">0.628 &middot; $1,000</span>
+            <span class="pos-spacer"></span>
+            <span class="pos-pnl text-neg">-$12.80 (-1.3%)</span>
           </div>
-
-          <!-- Big centered amount with USD/native toggle -->
-          <div class="rh-amount-section">
-            <span class="rh-amount-label">Amount (USDC) <span class="rh-amount-toggle">tap to switch</span></span>
-            <div class="rh-amount-input">
-              <span class="rh-dollar">$</span>
-              <span class="rh-amount-val">250</span>
-              <div class="rh-amount-cursor"></div>
-            </div>
-            <span class="rh-amount-secondary">&asymp; 0.0030 BTC</span>
-            <div class="rh-max-row">
-              <span class="rh-avail-text">$400 &times; 10x = $4,000</span>
-              <span class="rh-max-btn">MAX</span>
+          <div class="pos-card-bottom">
+            <span class="pos-meta">Entry <span class="pos-meta-val">$1,580</span></span>
+            <span class="pos-meta">Liq <span class="pos-meta-val" style="color:var(--neg);">$1,738</span></span>
+            <span class="pos-meta">Lev <span class="pos-meta-val">5x</span></span>
+            <div class="pos-actions">
+              <span class="pos-action-btn tpsl">TP/SL</span>
+              <span class="pos-action-btn close">Close</span>
             </div>
           </div>
-
-          <!-- Compact order summary -->
-          <div class="rh-summary">
-            <div class="rh-sum-item">
-              <span class="rh-sum-label">Size</span>
-              <span class="rh-sum-val">$250</span>
-              <span class="rh-sum-sub">0.0030 BTC</span>
-            </div>
-            <div class="rh-sum-item" style="text-align:center">
-              <span class="rh-sum-label">Est. Fee</span>
-              <span class="rh-sum-val">$0.05</span>
-            </div>
-            <div class="rh-sum-item" style="text-align:right">
-              <span class="rh-sum-label">Liq. Price</span>
-              <span class="rh-sum-val text-neg">~$83,287</span>
-            </div>
-          </div>
-
-          <!-- Submit -->
-          <div class="rh-submit long">Open Long &mdash; $250</div>
         </div>
+      </div>
 
-        <!-- Bottom nav -->
-        <div class="bottom-nav">
-          <div class="nav-item"><span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Feed</span></div>
-          <div class="nav-item"><span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Predict</span></div>
-          <div class="nav-item active"><span class="nav-icon">&#x26A1;</span><span class="nav-label">Trade</span></div>
-          <div class="nav-item"><span class="nav-icon">&#x1F504;</span><span class="nav-label">Swap</span></div>
+      <div style="height:16px;"></div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item"><span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Feed</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Predict</span></div>
+      <div class="nav-item active"><span class="nav-icon">&#x26A1;</span><span class="nav-label">Trade</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F504;</span><span class="nav-label">Swap</span></div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       SCREEN 3 — MARKET DETAIL · SHORT SIDE
+       ═══════════════════════════════════════════════════════ -->
+
+  <div class="section-label">Screen 3 — Short Side · ETH<span>Red theming · TP/SL collapsed · no existing position</span></div>
+
+  <div class="phone tall">
+    <div class="status-bar">
+      <span class="time">9:41</span>
+      <span class="icons">5G &#x25AE;&#x25AE;&#x25AE; &#x1F50B;</span>
+    </div>
+
+    <div class="detail-header" style="align-items: center;">
+      <div class="back-btn">
+        <span class="back-arrow">&#x2039;</span>
+        <span class="detail-sym">ETH</span>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+        <div style="display:flex; align-items:center; gap:4px;">
+          <span class="live-dot" style="background:var(--neg);"></span>
+          <span style="font-family:var(--mono); font-size:20px; font-weight:700; color:var(--hi);">$1,592</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:4px; margin-top:2px;">
+          <span style="font-family:var(--mono); font-size:11px; font-weight:600;" class="text-neg">-$19.80</span>
+          <span style="font-family:var(--mono); font-size:10px;" class="text-neg">(-1.23%)</span>
+        </div>
+      </div>
+      <div class="wallet-btn">7xK3..9mQ2</div>
+    </div>
+
+    <div class="rh-chart">
+      <svg viewBox="0 0 343 120" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="cg3" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(244,88,78,0.20)" />
+            <stop offset="100%" stop-color="rgba(244,88,78,0)" />
+          </linearGradient>
+        </defs>
+        <path d="M0,25 C20,28 35,35 50,38 C65,41 80,36 100,48 C120,60 130,55 150,65 C170,75 180,68 200,80 C220,92 230,85 250,95 C270,105 280,98 300,108 C310,112 325,106 343,110 L343,120 L0,120 Z" fill="url(#cg3)" />
+        <path d="M0,25 C20,28 35,35 50,38 C65,41 80,36 100,48 C120,60 130,55 150,65 C170,75 180,68 200,80 C220,92 230,85 250,95 C270,105 280,98 300,108 C310,112 325,106 343,110" fill="none" stroke="var(--neg)" stroke-width="2" />
+        <circle cx="343" cy="110" r="4" fill="var(--neg)" />
+        <circle cx="343" cy="110" r="7" fill="rgba(244,88,78,0.3)" />
+      </svg>
+    </div>
+
+    <div class="rh-tf-row">
+      <span class="rh-tf-pill">1H</span>
+      <span class="rh-tf-pill" style="color:var(--neg); background:rgba(244,88,78,0.10);">1D</span>
+      <span class="rh-tf-pill">1W</span>
+      <span class="rh-tf-pill">1M</span>
+      <span class="rh-tf-pill">ALL</span>
+    </div>
+
+    <div class="rh-stats">
+      <div class="rh-stat"><span class="rh-stat-label">Mark</span><span class="rh-stat-val">$1,592</span></div>
+      <div class="rh-stat"><span class="rh-stat-label">Fund/8h</span><span class="rh-stat-val text-neg">-0.0035%</span></div>
+      <div class="rh-stat"><span class="rh-stat-label">OI</span><span class="rh-stat-val">$18.7M</span></div>
+      <div class="rh-stat"><span class="rh-stat-label">24h Vol</span><span class="rh-stat-val">$12.4M</span></div>
+    </div>
+
+    <div class="rh-order">
+      <div class="rh-side-toggle">
+        <div class="rh-side-btn">Long</div>
+        <div class="rh-side-btn short-active">Short</div>
+      </div>
+
+
+      <div class="rh-amount-section">
+        <span class="rh-amount-label">Amount (USDC) <span class="rh-amount-toggle">tap to switch</span></span>
+        <div class="rh-amount-input">
+          <span class="rh-dollar">$</span>
+          <span class="rh-amount-val">1,000</span>
+          <div class="rh-amount-cursor"></div>
+        </div>
+        <span class="rh-amount-secondary">&asymp; 0.628 ETH</span>
+      </div>
+
+      <div class="quick-amounts">
+        <span class="quick-pill">25%</span>
+        <span class="quick-pill">50%</span>
+        <span class="quick-pill">75%</span>
+        <span class="quick-pill active">MAX</span>
+      </div>
+
+      <div class="rh-max-row">
+        <span class="rh-avail-text">$50 avail &times; 20x = $1,000 buying power</span>
+      </div>
+
+      <!-- TP/SL collapsed -->
+      <div class="tpsl-section">
+        <div class="tpsl-toggle">
+          <span class="tpsl-toggle-label">Take Profit / Stop Loss</span>
+          <span class="tpsl-toggle-chevron">&#x25BE;</span>
+        </div>
+        <!-- fields hidden when collapsed -->
+      </div>
+
+      <div class="rh-submit short">
+        Open Short &mdash; $1,000
+        <span class="submit-liq">Liq. ~$1,672 &middot; Fee $0.20</span>
+      </div>
+
+      <!-- No positions — empty state -->
+      <div class="positions-section">
+        <div class="positions-header">
+          <span class="positions-title">My Positions</span>
+          <span class="positions-count">0</span>
+        </div>
+        <div style="text-align:center; padding:16px 0;">
+          <span style="font-family:var(--mono); font-size:10px; color:var(--lo);">No open positions</span>
         </div>
       </div>
     </div>
 
+    <div class="bottom-nav">
+      <div class="nav-item"><span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Feed</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Predict</span></div>
+      <div class="nav-item active"><span class="nav-icon">&#x26A1;</span><span class="nav-label">Trade</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F504;</span><span class="nav-label">Swap</span></div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       SCREEN 4 — PROFILE
+       ═══════════════════════════════════════════════════════ -->
+
+  <div class="section-label">Screen 4 — Profile<span>Identity · Equity · Deposit/Withdraw · Positions + Orders tabs</span></div>
+
+  <div class="change-note" style="margin-bottom:8px;">
+    <strong>Profile updates:</strong><br>
+    1. Deposit/Withdraw elevated to prominent action buttons<br>
+    2. Equity card: 3-col (Equity / Margin / Available)<br>
+    3. Positions tab: shows TP/SL inline, Close + TP/SL actions visible without dots menu<br>
+    4. Orders tab: type badges (TP green, SL red), cancel button<br>
+    5. Color fixes applied throughout
+  </div>
+
+  <div class="phone tall">
+    <div class="status-bar">
+      <span class="time">9:41</span>
+      <span class="icons">5G &#x25AE;&#x25AE;&#x25AE; &#x1F50B;</span>
+    </div>
+
+    <!-- Profile header -->
+    <div class="header">
+      <div class="back-btn">
+        <span class="back-arrow">&#x2039;</span>
+      </div>
+      <div class="header-title">Profile</div>
+      <div style="width:28px; height:28px; border-radius:14px; background:var(--bg4); border:1px solid var(--border1); display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--mid); cursor:pointer;">&#x2699;</div>
+    </div>
+
+    <!-- Identity section -->
+    <div class="profile-identity">
+      <div class="profile-avatar">
+        <div class="profile-avatar-inner">&#x1F464;</div>
+      </div>
+      <div class="profile-info">
+        <div class="profile-addr">7xK3b2···9mQ2</div>
+        <div class="profile-connected">
+          <div class="profile-connected-dot"></div>
+          <span class="profile-connected-text">Connected</span>
+        </div>
+      </div>
+      <div class="profile-pacifica-badge">Pacifica</div>
+    </div>
+
+    <!-- Equity card -->
+    <div class="equity-card">
+      <div class="eq-item">
+        <span class="eq-label">Equity</span>
+        <span class="eq-val">$1,247.30</span>
+      </div>
+      <div class="eq-item center">
+        <span class="eq-label">Margin Used</span>
+        <span class="eq-val">$847.30</span>
+      </div>
+      <div class="eq-item right">
+        <span class="eq-label">Available</span>
+        <span class="eq-val">$400.00</span>
+      </div>
+    </div>
+
+    <!-- Deposit / Withdraw -->
+    <div class="fund-actions">
+      <div class="fund-btn deposit">
+        <span class="fund-icon">&#x2193;</span>
+        Deposit
+      </div>
+      <div class="fund-btn withdraw">
+        <span class="fund-icon">&#x2191;</span>
+        Withdraw
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <div class="tab active">
+        <span class="tab-text">Positions</span>
+        <span class="tab-badge">2</span>
+      </div>
+      <div class="tab">
+        <span class="tab-text">Orders</span>
+        <span class="tab-badge">3</span>
+      </div>
+    </div>
+
+    <!-- Position 1 -->
+    <div class="profile-pos-card">
+      <div class="profile-pos-top">
+        <span class="pos-side-badge long">Long</span>
+        <span class="pos-sym">BTC</span>
+        <span class="pos-size">0.006 &middot; $500</span>
+        <span class="pos-spacer"></span>
+        <span class="pos-pnl text-pos">+$27.40</span>
+      </div>
+      <div class="profile-pos-mid">
+        <span class="pos-meta">Entry <span class="pos-meta-val">$81,200</span></span>
+        <span class="pos-meta">Liq <span class="pos-meta-val" style="color:var(--neg);">$73,080</span></span>
+        <span class="pos-meta">Lev <span class="pos-meta-val">10x</span></span>
+        <span style="font-family:var(--mono); font-size:10px; font-weight:700;" class="text-pos">+5.5%</span>
+        <div class="pos-actions">
+          <span class="pos-action-btn tpsl">TP/SL</span>
+          <span class="pos-action-btn close">Close</span>
+        </div>
+      </div>
+      <div class="profile-pos-tpsl">
+        <div class="profile-tpsl-item">
+          <span class="profile-tpsl-label text-pos">TP</span>
+          <span class="profile-tpsl-val text-pos">$89,320</span>
+        </div>
+        <div class="profile-tpsl-item">
+          <span class="profile-tpsl-label text-neg">SL</span>
+          <span class="profile-tpsl-val text-neg">$77,000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Position 2 -->
+    <div class="profile-pos-card">
+      <div class="profile-pos-top">
+        <span class="pos-side-badge short">Short</span>
+        <span class="pos-sym">ETH</span>
+        <span class="pos-size">0.628 &middot; $1,000</span>
+        <span class="pos-spacer"></span>
+        <span class="pos-pnl text-neg">-$12.80</span>
+      </div>
+      <div class="profile-pos-mid">
+        <span class="pos-meta">Entry <span class="pos-meta-val">$1,580</span></span>
+        <span class="pos-meta">Liq <span class="pos-meta-val" style="color:var(--neg);">$1,738</span></span>
+        <span class="pos-meta">Lev <span class="pos-meta-val">5x</span></span>
+        <span style="font-family:var(--mono); font-size:10px; font-weight:700;" class="text-neg">-1.3%</span>
+        <div class="pos-actions">
+          <span class="pos-action-btn tpsl">TP/SL</span>
+          <span class="pos-action-btn close">Close</span>
+        </div>
+      </div>
+      <!-- No TP/SL set yet — no bottom row shown -->
+    </div>
+
+    <!-- Spacer for scroll -->
+    <div style="flex:1; min-height:40px;"></div>
+
+    <div class="bottom-nav">
+      <div class="nav-item"><span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Feed</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Predict</span></div>
+      <div class="nav-item active"><span class="nav-icon">&#x26A1;</span><span class="nav-label">Trade</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F504;</span><span class="nav-label">Swap</span></div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       SCREEN 5 — WALLET NOT CONNECTED
+       ═══════════════════════════════════════════════════════ -->
+
+  <div class="section-label">Screen 5 — Disconnected Wallet<span>Chart visible · clean CTA instead of disabled form</span></div>
+
+  <div class="phone">
+    <div class="status-bar">
+      <span class="time">9:41</span>
+      <span class="icons">5G &#x25AE;&#x25AE;&#x25AE; &#x1F50B;</span>
+    </div>
+
+    <div class="detail-header" style="align-items: center;">
+      <div class="back-btn">
+        <span class="back-arrow">&#x2039;</span>
+        <span class="detail-sym">BTC</span>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+        <div style="display:flex; align-items:center; gap:4px;">
+          <span class="live-dot"></span>
+          <span style="font-family:var(--mono); font-size:20px; font-weight:700; color:var(--hi);">$83,421</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:4px; margin-top:2px;">
+          <span style="font-family:var(--mono); font-size:11px; font-weight:600;" class="text-pos">+$1,752.30</span>
+          <span style="font-family:var(--mono); font-size:10px;" class="text-pos">(+2.14%)</span>
+        </div>
+      </div>
+      <div class="wallet-btn">Connect</div>
+    </div>
+
+    <div class="rh-chart">
+      <svg viewBox="0 0 343 120" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="cg5" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(52,199,123,0.25)" />
+            <stop offset="100%" stop-color="rgba(52,199,123,0)" />
+          </linearGradient>
+        </defs>
+        <path d="M0,95 C20,90 35,86 50,82 C65,78 80,84 100,74 C120,64 130,69 150,58 C170,47 180,54 200,42 C220,30 230,38 250,28 C270,18 280,24 300,16 C310,11 325,18 343,10 L343,120 L0,120 Z" fill="url(#cg5)" />
+        <path d="M0,95 C20,90 35,86 50,82 C65,78 80,84 100,74 C120,64 130,69 150,58 C170,47 180,54 200,42 C220,30 230,38 250,28 C270,18 280,24 300,16 C310,11 325,18 343,10" fill="none" stroke="var(--pos)" stroke-width="2" />
+        <circle cx="343" cy="10" r="4" fill="var(--pos)" />
+        <circle cx="343" cy="10" r="7" fill="rgba(52,199,123,0.3)" />
+      </svg>
+    </div>
+
+    <div class="rh-tf-row">
+      <span class="rh-tf-pill">1H</span>
+      <span class="rh-tf-pill active">1D</span>
+      <span class="rh-tf-pill">1W</span>
+      <span class="rh-tf-pill">1M</span>
+      <span class="rh-tf-pill">ALL</span>
+    </div>
+
+    <div class="rh-stats">
+      <div class="rh-stat"><span class="rh-stat-label">Mark</span><span class="rh-stat-val">$83,421</span></div>
+      <div class="rh-stat"><span class="rh-stat-label">Fund/8h</span><span class="rh-stat-val text-pos">+0.0012%</span></div>
+      <div class="rh-stat"><span class="rh-stat-label">OI</span><span class="rh-stat-val">$42.1M</span></div>
+      <div class="rh-stat"><span class="rh-stat-label">24h Vol</span><span class="rh-stat-val">$38.2M</span></div>
+    </div>
+
+    <!-- Clean CTA -->
+    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px 16px;">
+      <div style="font-size:32px; opacity:0.4;">&#x1F512;</div>
+      <span style="font-family:var(--mono); font-size:12px; color:var(--mid); letter-spacing:0.5px; text-align:center;">Connect your wallet to trade BTC perpetuals</span>
+      <div style="font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#fff; background:var(--a); border-radius:10px; padding:14px 48px; cursor:pointer;">Connect Wallet</div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item"><span class="nav-icon">&#x1F4E1;</span><span class="nav-label">Feed</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F4CA;</span><span class="nav-label">Predict</span></div>
+      <div class="nav-item active"><span class="nav-icon">&#x26A1;</span><span class="nav-label">Trade</span></div>
+      <div class="nav-item"><span class="nav-icon">&#x1F504;</span><span class="nav-label">Swap</span></div>
+    </div>
   </div>
 
 </body>

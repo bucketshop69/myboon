@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,12 +26,21 @@ import { semantic, tokens } from '@/theme';
 
 type TradeView = 'markets' | 'profile';
 
+const CATEGORIES = ['All', 'Hot', 'Memes', 'L1', 'DeFi', 'AI', 'L2', 'RWA'] as const;
+
 export function TradeListScreen() {
   const router = useRouter();
   const [markets, setMarkets] = useState<PerpsMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [view, setView] = useState<TradeView>('markets');
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [searchText, setSearchText] = useState('');
+
+  const filteredMarkets = markets.filter((m) => {
+    if (!searchText.trim()) return true;
+    return m.symbol.toLowerCase().includes(searchText.trim().toLowerCase());
+  });
   async function loadMarkets() {
     setLoading(true);
     setErrorMessage(null);
@@ -87,6 +97,25 @@ export function TradeListScreen() {
             </View>
           ) : (
             <View style={styles.tableContainer}>
+              {/* Category filter pills */}
+              <View style={styles.pillsRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pillsContent}>
+                  {CATEGORIES.map((cat) => (
+                    <Pressable
+                      key={cat}
+                      style={[styles.pill, activeCategory === cat && styles.pillActive]}
+                      onPress={() => setActiveCategory(cat)}>
+                      <Text style={[styles.pillText, activeCategory === cat && styles.pillTextActive]}>
+                        {cat}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
               <View style={styles.tableHeader}>
                 <Text style={[styles.th, styles.thLeft]}>Market</Text>
                 <Text style={[styles.th, styles.thRight]}>Price</Text>
@@ -96,7 +125,7 @@ export function TradeListScreen() {
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.tableBody}>
-                {markets.map((market) => {
+                {filteredMarkets.map((market) => {
                   const isUp = market.change24h >= 0;
                   return (
                     <Pressable
@@ -121,6 +150,31 @@ export function TradeListScreen() {
                   );
                 })}
               </ScrollView>
+
+              {/* Bottom search bar */}
+              <View style={styles.searchBar}>
+                <MaterialIcons name="search" size={16} color={semantic.text.dim} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  placeholder="Search markets..."
+                  placeholderTextColor={semantic.text.faint}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                {searchText.length > 0 && (
+                  <Pressable
+                    onPress={() => setSearchText('')}
+                    hitSlop={8}
+                    style={styles.searchClear}>
+                    <MaterialIcons name="close" size={14} color={semantic.text.dim} />
+                  </Pressable>
+                )}
+                <Text style={styles.marketCount}>
+                  {filteredMarkets.length}/{markets.length}
+                </Text>
+              </View>
             </View>
           )}
         </>
@@ -248,7 +302,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm + 2,
+    paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(48,47,32,0.5)',
   },
@@ -299,5 +353,71 @@ const styles = StyleSheet.create({
   },
   textNeg: {
     color: tokens.colors.vermillion,
+  },
+
+  // Category filter pills
+  pillsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+  },
+  pillsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  pillActive: {
+    backgroundColor: 'rgba(199,183,112,0.12)',
+  },
+  pillText: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.dim,
+  },
+  pillTextActive: {
+    color: tokens.colors.primary,
+  },
+  pillTextActive: {
+    color: tokens.colors.primary,
+  },
+
+  // Bottom search bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.primary,
+    padding: 0,
+  },
+  searchClear: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  marketCount: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+    letterSpacing: 0.5,
   },
 });
