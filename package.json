@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "dev:web": "pnpm --filter web dev",
+    "dev:video": "pnpm --filter @myboon/video dev",
     "dev:mcp": "pnpm --filter mcp dev",
     "build": "pnpm -r build",
     "test": "echo \"Error: no test specified\" && exit 1",

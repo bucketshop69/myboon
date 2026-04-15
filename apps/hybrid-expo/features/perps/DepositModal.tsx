@@ -19,8 +19,7 @@ function showAlert(title: string, msg: string) {
     Alert.alert(title, msg);
   }
 }
-import { useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { useWallet } from '@/hooks/useWallet';
 import { fetchPerpsAccount, buildDepositInstruction } from '@/features/perps/perps.api';
 import { SOLANA_RPC, USDC_MINT, USDC_DECIMALS, USDC_LABEL, PACIFIC_MIN_DEPOSIT } from '@/features/perps/pacific.config';
@@ -56,8 +55,8 @@ async function fetchTokenBalance(owner: string): Promise<number> {
 }
 
 export function DepositModal({ visible, onClose }: DepositModalProps) {
-  const { connected, address, connect, signTransaction } = useWallet();
-  const { connection } = useConnection();
+  const { connected, address, connect, signAndSendTransaction } = useWallet();
+  const connection = new Connection(SOLANA_RPC);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [pacificBalance, setPacificBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -114,8 +113,7 @@ export function DepositModal({ visible, onClose }: DepositModalProps) {
         lastValidBlockHeight,
       }).add(ix);
       console.log('[Deposit] signing tx, feePayer:', depositor.toBase58(), 'amount:', depositAmount);
-      const signed = await signTransaction(tx);
-      const sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+      const sig = await signAndSendTransaction(tx);
       console.log('[Deposit] sent, sig:', sig);
       setTxSignature(sig);
 

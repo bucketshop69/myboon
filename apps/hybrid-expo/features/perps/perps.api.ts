@@ -1,13 +1,18 @@
 import type {
+  Candle,
   PerpsAccount,
   PerpsMarket,
+  PerpsOrder,
   PerpsPosition,
   RawAccountInfo,
+  RawCandle,
   RawMarketInfo,
+  RawOrder,
   RawPosition,
   RawPriceInfo,
 } from '@/features/perps/perps.types';
 
+import bs58 from 'bs58';
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
 import {
   PACIFIC_REST,
@@ -44,7 +49,7 @@ function buildSigningMessage(
   type: string,
   payload: Record<string, unknown>,
   timestamp: number,
-  expiryWindow: number = 5000,
+  expiryWindow: number = 60000,
 ): string {
   const header = {
     timestamp,
@@ -55,15 +60,6 @@ function buildSigningMessage(
   return JSON.stringify(sortJsonKeys(header));
 }
 
-const BS58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-function bs58Encode(bytes: Uint8Array): string {
-  let num = BigInt(0);
-  for (const byte of bytes) num = num * 256n + BigInt(byte);
-  let encoded = '';
-  while (num > 0n) { encoded = BS58_CHARS[Number(num % 58n)] + encoded; num = num / 58n; }
-  for (const byte of bytes) { if (byte === 0) encoded = '1' + encoded; else break; }
-  return encoded;
-}
 
 /** Sign and POST to Pacific authenticated endpoint */
 async function pacificSignedPost(
@@ -72,7 +68,7 @@ async function pacificSignedPost(
   payload: Record<string, unknown>,
   account: string,
   signMessage: SignMessageFn,
-  expiryWindow: number = 5000,
+  expiryWindow: number = 30000,
 ): Promise<any> {
   const timestamp = Date.now();
   const message = buildSigningMessage(type, payload, timestamp, expiryWindow);
@@ -80,8 +76,8 @@ async function pacificSignedPost(
   const signatureBytes = await signMessage(messageBytes);
   console.log('[Pacific] signMessage returned', signatureBytes.length, 'bytes');
 
-  // bs58 encode the signature
-  const encoded = bs58Encode(signatureBytes);
+  // bs58 encode the signature (same as lpcli)
+  const encoded = bs58.encode(signatureBytes);
 
   const body = {
     account,
@@ -90,6 +86,12 @@ async function pacificSignedPost(
     expiry_window: expiryWindow,
     ...payload,
   };
+
+  // Debug: log hex of sig + pubkey for offline verification
+  const sigHex = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const pubHex = Array.from(new PublicKey(account).toBytes()).map(b => b.toString(16).padStart(2, '0')).join('');
+  console.log('[Pacific] sig hex:', sigHex);
+  console.log('[Pacific] pub hex:', pubHex);
 
   console.log('[Pacific] POST', path, 'type:', type);
   console.log('[Pacific] message to sign:', message);
@@ -103,14 +105,19 @@ async function pacificSignedPost(
 
   if (res.status === 429) throw new Error('Rate limit — try again shortly');
   const text = await res.text();
+  console.log('[Pacific] Response (HTTP', res.status, '):', text.slice(0, 500));
   let json: any;
   try {
     json = JSON.parse(text);
-  } catch {
-    throw new Error(text || `HTTP ${res.status}`);
+  } catch (parseErr) {
+    console.error('[Pacific] JSON parse failed:', parseErr, 'raw:', text.slice(0, 200));
+    throw new Error(`Bad response from Pacific (HTTP ${res.status}): ${text.slice(0, 100)}`);
   }
   if (!res.ok || json.success === false) {
-    throw new Error(json.error ?? text ?? `HTTP ${res.status}`);
+    console.error('[Pacific] API error:', json.error ?? json.message ?? text);
+    const err = new Error(json.error ?? json.message ?? text ?? `HTTP ${res.status}`);
+    (err as any).code = json.code ?? res.status;
+    throw err;
   }
   return json;
 }
@@ -148,6 +155,7 @@ export async function fetchPerpsMarkets(): Promise<PerpsMarket[]> {
         symbol: m.symbol,
         maxLeverage: m.max_leverage,
         tickSize: m.tick_size,
+        lotSize: m.lot_size,
         minOrderSize: m.min_order_size,
         markPrice: mark,
         oraclePrice: safeNum(p.oracle),
@@ -192,6 +200,266 @@ export async function fetchPerpsAccount(address: string): Promise<PerpsAccount> 
     totalMarginUsed: safeNum(acc.total_margin_used),
     positionsCount: acc.positions_count,
   };
+}
+
+// ─── Open orders ───────────────────────────────────────────────────────────
+
+export async function fetchOpenOrders(address: string): Promise<PerpsOrder[]> {
+  const raw = await pacificGet<RawOrder[]>(`/orders?account=${encodeURIComponent(address)}`);
+  return raw.map((o): PerpsOrder => ({
+    orderId: o.order_id,
+    symbol: o.symbol,
+    side: o.side,
+    price: safeNum(o.price),
+    stopPrice: o.stop_price ? safeNum(o.stop_price) : null,
+    orderType: o.order_type,
+    reduceOnly: o.reduce_only,
+    createdAt: o.created_at,
+  }));
+}
+
+export async function cancelOrder(
+  orderId: number,
+  symbol: string,
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<void> {
+  await pacificSignedPost('/orders/cancel', 'cancel_order', { symbol, order_id: orderId }, account, signMessage);
+}
+
+/** Cancel a stop order (TP/SL) via the dedicated stop cancel endpoint */
+export async function cancelStopOrder(
+  orderId: number,
+  symbol: string,
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<void> {
+  await pacificSignedPost('/orders/stop/cancel', 'cancel_stop_order', { symbol, order_id: orderId }, account, signMessage);
+}
+
+/**
+ * Remove a TP or SL by re-calling /positions/tpsl.
+ * Sends null for the field to clear, preserves the other.
+ */
+export async function removeTPSL(
+  symbol: string,
+  side: 'bid' | 'ask',
+  remove: 'tp' | 'sl' | 'both',
+  account: string,
+  signMessage: SignMessageFn,
+  currentOrders: PerpsOrder[],
+): Promise<void> {
+  const payload: Record<string, unknown> = { symbol, side };
+
+  // Send stop_price "0" to clear a field, preserve the other
+  if (remove === 'tp' || remove === 'both') {
+    payload.take_profit = { stop_price: '0', limit_price: '0', client_order_id: crypto.randomUUID() };
+  } else {
+    const tp = currentOrders.find(o => o.symbol === symbol && o.orderType === 'take_profit_limit');
+    if (tp?.stopPrice) {
+      payload.take_profit = {
+        stop_price: tp.stopPrice.toString(),
+        limit_price: tp.stopPrice.toString(),
+        client_order_id: crypto.randomUUID(),
+      };
+    }
+  }
+
+  if (remove === 'sl' || remove === 'both') {
+    payload.stop_loss = { stop_price: '0', limit_price: '0', client_order_id: crypto.randomUUID() };
+  } else {
+    const sl = currentOrders.find(o => o.symbol === symbol && o.orderType === 'stop_loss_limit');
+    if (sl?.stopPrice) {
+      payload.stop_loss = {
+        stop_price: sl.stopPrice.toString(),
+        limit_price: sl.stopPrice.toString(),
+        client_order_id: crypto.randomUUID(),
+      };
+    }
+  }
+
+  await pacificSignedPost('/positions/tpsl', 'set_position_tpsl', payload, account, signMessage);
+}
+
+// ─── Candle / kline data ────────────────────────────────────────────────────
+
+export type CandleInterval = '1m' | '3m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '8h' | '12h' | '1d';
+
+/** Duration in ms for each interval — used to compute start_time */
+const INTERVAL_MS: Record<CandleInterval, number> = {
+  '1m': 60_000, '3m': 180_000, '5m': 300_000, '15m': 900_000,
+  '30m': 1_800_000, '1h': 3_600_000, '2h': 7_200_000, '4h': 14_400_000,
+  '8h': 28_800_000, '12h': 43_200_000, '1d': 86_400_000,
+};
+
+export async function fetchCandles(
+  symbol: string,
+  interval: CandleInterval,
+  count: number = 100,
+): Promise<Candle[]> {
+  const endTime = Date.now();
+  const startTime = endTime - INTERVAL_MS[interval] * count;
+  const params = new URLSearchParams({
+    symbol,
+    interval,
+    start_time: String(startTime),
+    end_time: String(endTime),
+  });
+  const raw = await pacificGet<RawCandle[]>(`/kline?${params}`);
+  return raw.map((c) => ({
+    time: c.t,
+    open: safeNum(c.o),
+    close: safeNum(c.c),
+    high: safeNum(c.h),
+    low: safeNum(c.l),
+    volume: safeNum(c.v),
+  }));
+}
+
+// ─── Trade execution (signed API calls) ─────────────────────────────────────
+
+export async function placeOrder(
+  params: {
+    symbol: string;
+    side: 'bid' | 'ask';
+    /** Amount in USDC (UI value). Converted to asset units internally. */
+    amountUsdc: number;
+    slippage: string;
+    builderCode?: string;
+  },
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<number> {
+  // Fetch market info to get mark price and lot_size for conversion
+  const [markets, prices] = await Promise.all([
+    pacificGet<RawMarketInfo[]>('/info'),
+    pacificGet<RawPriceInfo[]>('/info/prices'),
+  ]);
+  const market = markets.find((m) => m.symbol === params.symbol);
+  const price = prices.find((p) => p.symbol === params.symbol);
+  if (!market || !price) throw new Error(`Market ${params.symbol} not found`);
+
+  const markPrice = safeNum(price.mark);
+  if (markPrice <= 0) throw new Error('Invalid mark price');
+
+  // Convert USDC to asset units: $50 at SOL=$150 → 0.333 SOL
+  const rawAmount = params.amountUsdc / markPrice;
+
+  // Round down to lot_size (same as lpcli's roundToLotSize)
+  const lotSize = parseFloat(market.lot_size);
+  const amount = lotSize > 0
+    ? Math.floor(rawAmount / lotSize) * lotSize
+    : rawAmount;
+
+  if (amount <= 0) {
+    throw new Error(`Amount too small — minimum lot size is ${market.lot_size} ${params.symbol}`);
+  }
+
+  const payload: Record<string, unknown> = {
+    symbol: params.symbol,
+    side: params.side,
+    amount: amount.toString(),
+    slippage_percent: params.slippage,
+    reduce_only: false,
+    client_order_id: crypto.randomUUID(),
+  };
+  if (params.builderCode) {
+    payload.builder_code = params.builderCode;
+  }
+  const res = await pacificSignedPost(
+    '/orders/create_market',
+    'create_market_order',
+    payload,
+    account,
+    signMessage,
+  );
+  return res.data?.order_id ?? res.order_id;
+}
+
+export async function closePosition(
+  symbol: string,
+  side: 'bid' | 'ask',
+  amount: number,
+  account: string,
+  signMessage: SignMessageFn,
+  builderCode?: string,
+): Promise<number> {
+  // Fetch market info to format amount to lot_size precision (server may normalise)
+  const markets = await pacificGet<RawMarketInfo[]>('/info');
+  const market = markets.find((m) => m.symbol === symbol);
+  if (!market) throw new Error(`Market ${symbol} not found`);
+
+  const lotSize = parseFloat(market.lot_size);
+  const rounded = lotSize > 0
+    ? Math.floor(amount / lotSize) * lotSize
+    : amount;
+
+  // Format with lot_size decimal precision so "25" becomes "25.0" if lot_size is "0.1"
+  const decimals = market.lot_size.includes('.')
+    ? market.lot_size.split('.')[1].length
+    : 0;
+  const amountStr = rounded.toFixed(decimals);
+
+  const payload: Record<string, unknown> = {
+    symbol,
+    side,
+    amount: amountStr,
+    slippage_percent: '1',
+    reduce_only: true,
+    client_order_id: crypto.randomUUID(),
+  };
+  if (builderCode) {
+    payload.builder_code = builderCode;
+  }
+  const res = await pacificSignedPost(
+    '/orders/create_market',
+    'create_market_order',
+    payload,
+    account,
+    signMessage,
+  );
+  return res.data?.order_id ?? res.order_id;
+}
+
+// ─── TP/SL on existing position ─────────────────────────────────────────────
+
+export async function setTPSL(
+  params: {
+    symbol: string;
+    side: 'bid' | 'ask';
+    takeProfit?: { stopPrice: string; limitPrice: string };
+    stopLoss?: { stopPrice: string; limitPrice: string };
+    builderCode?: string;
+  },
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    symbol: params.symbol,
+    side: params.side,
+  };
+
+  if (params.takeProfit) {
+    payload.take_profit = {
+      stop_price: params.takeProfit.stopPrice,
+      limit_price: params.takeProfit.limitPrice,
+      client_order_id: crypto.randomUUID(),
+    };
+  }
+
+  if (params.stopLoss) {
+    payload.stop_loss = {
+      stop_price: params.stopLoss.stopPrice,
+      limit_price: params.stopLoss.limitPrice,
+      client_order_id: crypto.randomUUID(),
+    };
+  }
+
+  if (params.builderCode) {
+    payload.builder_code = params.builderCode;
+  }
+
+  await pacificSignedPost('/positions/tpsl', 'set_position_tpsl', payload, account, signMessage);
 }
 
 // ─── Withdrawal (signed API call) ───────────────────────────────────────────

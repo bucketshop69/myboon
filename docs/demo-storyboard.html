@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pnl.fun — Hackathon Demo Storyboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #080806;
+      --bg1: #0f0f0c;
+      --bg2: #1a1a15;
+      --bg3: #21211a;
+      --border: rgba(255,255,255,0.08);
+      --hi: #ede8d5;
+      --mid: #9b9580;
+      --lo: #5c5a50;
+      --a: #e8c547;
+      --pos: #34c77b;
+      --neg: #f4584e;
+      --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    }
+    body {
+      background: var(--bg);
+      color: var(--hi);
+      font-family: var(--sans);
+      padding: 40px 24px 120px;
+      max-width: 900px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    h1 {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+    }
+    h1 span { color: var(--a); }
+    .subtitle {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--lo);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 40px;
+    }
+
+    /* Overview card */
+    .overview {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 40px;
+    }
+    .overview h2 {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--a);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .overview-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .overview-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .overview-val {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* Scene card */
+    .scene {
+      background: var(--bg1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .scene-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+    }
+    .scene-num {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--a);
+      min-width: 36px;
+    }
+    .scene-title {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--hi);
+      flex: 1;
+    }
+    .scene-time {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--bg);
+      background: var(--a);
+      border-radius: 4px;
+      padding: 2px 8px;
+      letter-spacing: 0.5px;
+    }
+    .scene-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* What to show / say / why */
+    .scene-row {
+      display: flex;
+      gap: 16px;
+    }
+    .scene-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .scene-col-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .scene-col-label.show { color: var(--pos); }
+    .scene-col-label.say { color: var(--a); }
+    .scene-col-label.why { color: var(--neg); }
+    .scene-col-label.tech { color: #6e9eff; }
+
+    .scene-text {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--mid);
+      line-height: 1.7;
+    }
+    .scene-text strong { color: var(--hi); font-weight: 600; }
+    .scene-text em { color: var(--a); font-style: normal; }
+
+    /* Screen reference chip */
+    .screen-ref {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: var(--pos);
+      background: rgba(52,199,123,0.10);
+      border: 1px solid rgba(52,199,123,0.20);
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+
+    /* Bullet list */
+    .scene-text ul {
+      margin: 4px 0 0 16px;
+    }
+    .scene-text li {
+      margin-bottom: 4px;
+    }
+
+    /* Transition bar */
+    .transition {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0;
+      margin-bottom: 24px;
+    }
+    .transition-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .transition-text {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--lo);
+      white-space: nowrap;
+    }
+
+    /* Total time */
+    .total {
+      text-align: center;
+      padding: 24px;
+      border: 2px solid var(--a);
+      border-radius: 12px;
+      margin-top: 32px;
+    }
+    .total-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .total-val {
+      font-family: var(--mono);
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--a);
+      margin-top: 4px;
+    }
+    .total-note {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--mid);
+      margin-top: 8px;
+    }
+
+    /* Remotion notes */
+    .remotion-note {
+      background: rgba(110,158,255,0.08);
+      border: 1px solid rgba(110,158,255,0.20);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: #6e9eff;
+      line-height: 1.6;
+      letter-spacing: 0.3px;
+    }
+    .remotion-note strong { color: #93b5ff; }
+
+    /* Flow diagram */
+    .flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      flex-wrap: wrap;
+    }
+    .flow-node {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--hi);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      text-align: center;
+    }
+    .flow-node.accent {
+      border-color: rgba(232,197,71,0.3);
+      color: var(--a);
+    }
+    .flow-arrow {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--lo);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>pnl.<span>fun</span> — Demo Storyboard</h1>
+  <div class="subtitle">Pacifica Hackathon 2026 &middot; Video Plan &middot; Target: 2-3 min</div>
+
+  <!-- ═══ OVERVIEW ═══ -->
+  <div class="overview">
+    <h2>Demo Overview</h2>
+    <div class="overview-grid">
+      <div class="overview-item">
+        <span class="overview-label">Target Length</span>
+        <span class="overview-val">2:00 - 2:30</span>
+      </div>
+      <div class="overview-item">
+        <span class="overview-label">Hackathon Track</span>
+        <span class="overview-val">Analytics & Data + Trading Apps</span>
+      </div>
+      <div class="overview-item">
+        <span class="overview-label">Core Message</span>
+        <span class="overview-val">AI reads the market. You trade the narrative.</span>
+      </div>
+      <div class="overview-item">
+        <span class="overview-label">Format</span>
+        <span class="overview-val">Animated screens + live app footage</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="remotion-note">
+    <strong>Remotion plan:</strong> Scenes 1-2 and 7 are pure Remotion (animated text/graphics). Scenes 3-6 are screen recordings of the live app overlaid in a phone frame with animated callout annotations. The Remotion project at <code>apps/video/</code> composites everything.
+  </div>
+
+  <!-- ═══ SCENE 1: HOOK ═══ -->
+  <div style="height:24px;"></div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">01</span>
+      <span class="scene-title">The Hook</span>
+      <span class="scene-time">0:00 - 0:12</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            Dark screen. Text types in one line at a time:
+            <ul>
+              <li><strong>"200 markets. 50 narratives. 3 that matter right now."</strong></li>
+              <li>Brief pause</li>
+              <li><strong>"What if your trading app could read the market for you?"</strong></li>
+            </ul>
+            Then the <em>pnl.fun</em> logo fades in. Tagline below: <em>Narrative Intelligence for Perpetuals</em>
+          </div>
+        </div>
+        <div class="scene-col">
+          <span class="scene-col-label say">Voiceover / Text</span>
+          <div class="scene-text">
+            No voiceover &mdash; let the text breathe. Background: subtle ambient pulse or a low drone. Optional: faint price chart lines drawing behind the text.
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Use <code>&lt;Sequence&gt;</code> for each line with staggered <code>from</code>. <code>interpolate()</code> for opacity + translateY. Logo uses scale spring. This is the existing <code>Intro</code> component in <code>Main.tsx</code> &mdash; update the copy.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE 2: THE PROBLEM ═══ -->
+  <div class="transition">
+    <div class="transition-line"></div>
+    <span class="transition-text">cut to</span>
+    <div class="transition-line"></div>
+  </div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">02</span>
+      <span class="scene-title">The Problem</span>
+      <span class="scene-time">0:12 - 0:25</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            Split screen or fast-cut montage:
+            <ul>
+              <li>Left: scrolling Twitter/X timeline &mdash; noise, hype, FUD</li>
+              <li>Right: 50+ Polymarket markets &mdash; overwhelming grid</li>
+              <li>Center: a trader staring at too many charts</li>
+            </ul>
+            Text overlay fades in: <strong>"The signal is buried in the noise."</strong>
+          </div>
+        </div>
+        <div class="scene-col">
+          <span class="scene-col-label why">Why This Scene</span>
+          <div class="scene-text">
+            Establishes the pain point judges relate to. Every crypto trader has felt this. Sets up the "aha" when we show the solution. <em>Keep it fast &mdash; don't dwell.</em>
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Use static screenshots of X timeline and Polymarket, animate with slow scroll/pan. Overlay text with fade-in. No live footage needed &mdash; all composited in Remotion.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE 3: THE FEED ═══ -->
+  <div class="transition">
+    <div class="transition-line"></div>
+    <span class="transition-text">wipe to phone frame</span>
+    <div class="transition-line"></div>
+  </div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">03</span>
+      <span class="scene-title">The Feed &mdash; "AI Reads the Market"</span>
+      <span class="scene-time">0:25 - 0:55</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            <span class="screen-ref">FEED TAB</span> Live app in phone frame.
+            <ul>
+              <li>Show the Feed scrolling &mdash; narrative cards with scores, categories</li>
+              <li>Tap a card to open the <strong>Narrative Sheet</strong> &mdash; full breakdown with signals, market links</li>
+              <li>Highlight: <em>"Score: 9/10 &middot; 14 signals &middot; Crypto"</em></li>
+            </ul>
+          </div>
+        </div>
+        <div class="scene-col">
+          <span class="scene-col-label say">Key Points</span>
+          <div class="scene-text">
+            Text overlays (or voiceover):
+            <ul>
+              <li><strong>"Multi-agent AI reads 200+ signals every 15 minutes"</strong></li>
+              <li><strong>"Clusters them into narratives. Scores them. Publishes the best."</strong></li>
+              <li><strong>"You don't scroll feeds. You read intelligence."</strong></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label tech">Architecture Flash</span>
+          <div class="scene-text">
+            Quick animated diagram (3-4 seconds) showing the pipeline:
+          </div>
+          <div class="flow">
+            <div class="flow-node">Polymarket</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node">Signals DB</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node accent">Analyst AI</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node accent">Publisher AI</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node">Feed</div>
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Screen record the real app Feed tab. Overlay in a phone mockup frame. Add callout bubbles with <code>&lt;Sequence&gt;</code> timing. The architecture diagram is a separate Remotion component with staggered node fade-ins.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE 4: PREDICT ═══ -->
+  <div class="transition">
+    <div class="transition-line"></div>
+    <span class="transition-text">swipe to predict tab</span>
+    <div class="transition-line"></div>
+  </div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">04</span>
+      <span class="scene-title">Predict &mdash; "Act on the Narrative"</span>
+      <span class="scene-time">0:55 - 1:15</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            <span class="screen-ref">PREDICT TAB</span> Live app.
+            <ul>
+              <li>Show Polymarket list &mdash; odds, categories, sport events</li>
+              <li>Tap a market &mdash; detail view with odds chart</li>
+              <li>Show the <strong>connection</strong>: "This market was surfaced by the Feed's narrative"</li>
+            </ul>
+          </div>
+        </div>
+        <div class="scene-col">
+          <span class="scene-col-label say">Key Points</span>
+          <div class="scene-text">
+            <ul>
+              <li><strong>"The Feed tells you what's happening. Predict lets you bet on it."</strong></li>
+              <li><strong>"Polymarket integration via builder code"</strong></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Screen record. Quick &mdash; 20 seconds max. The point is to show the full loop, not deep-dive Polymarket.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE 5: TRADE — THE MONEY SHOT ═══ -->
+  <div class="transition">
+    <div class="transition-line"></div>
+    <span class="transition-text">swipe to trade tab &middot; the money shot</span>
+    <div class="transition-line"></div>
+  </div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">05</span>
+      <span class="scene-title">Trade &mdash; "Pacifica Perps, Robinhood UX"</span>
+      <span class="scene-time">1:15 - 1:55</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            This is the <strong>longest scene</strong> and the Pacifica showcase. Walk through every screen:
+            <ul>
+              <li><span class="screen-ref">TRADE LIST</span> 50+ markets, category pills, search bar &mdash; quick scroll</li>
+              <li>Tap <strong>BTC</strong> &mdash; transition to detail</li>
+              <li><span class="screen-ref">MARKET DETAIL</span> Live price with pulsing dot, chart with scrubbing, stats strip</li>
+              <li>Show the <strong>order flow</strong>: Long/Short toggle, amount input, quick pills (50%), TP/SL section</li>
+              <li>Tap <strong>"Open Long &mdash; $500"</strong> &mdash; show the submit detail line: <em>Liq. ~$75K &middot; Fee $0.10 &middot; TP $92K / SL $79K</em></li>
+              <li>Scroll down to <strong>My Positions</strong> &mdash; show the live BTC position with PnL, entry, liq, Close button</li>
+              <li>Quick cut: <span class="screen-ref">PROFILE</span> equity card, deposit/withdraw, all positions</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label say">Key Points</span>
+          <div class="scene-text">
+            Text overlays (one at a time, timed with actions):
+            <ul>
+              <li><strong>"Built on Pacifica's perpetuals infrastructure"</strong></li>
+              <li><strong>"Robinhood-grade UX. No order book. No complexity."</strong></li>
+              <li><strong>"Search, filter, trade — 3 taps from narrative to position"</strong></li>
+              <li><strong>"Real-time WebSocket prices. Live position tracking."</strong></li>
+              <li><strong>"TP/SL, close position — all inline, no page navigation"</strong></li>
+            </ul>
+          </div>
+        </div>
+        <div class="scene-col">
+          <span class="scene-col-label why">Why This Matters</span>
+          <div class="scene-text">
+            This is where the judges see Pacifica in action. <em>Every feature we show is powered by Pacifica's API.</em> Spend time here. Show it's real, not a mockup. If possible: <strong>do a live testnet trade</strong> during recording.
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Screen record the real app with a scripted flow. Record multiple takes. Overlay callout annotations as Remotion components. Phone frame + subtle zoom-ins on key UI elements (submit button detail, position PnL). This scene can be 35-40 seconds — it's the centerpiece.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE 6: THE FULL LOOP ═══ -->
+  <div class="transition">
+    <div class="transition-line"></div>
+    <span class="transition-text">pull back to full picture</span>
+    <div class="transition-line"></div>
+  </div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">06</span>
+      <span class="scene-title">The Loop &mdash; "From Signal to Position"</span>
+      <span class="scene-time">1:55 - 2:10</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            Animated full-loop diagram showing the complete product story:
+          </div>
+          <div class="flow">
+            <div class="flow-node">Signals</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node accent">AI Brain</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node">Feed</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node">Predict</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node accent">Trade (Pacifica)</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-node">Profit</div>
+          </div>
+          <div class="scene-text" style="margin-top:12px;">
+            Below the diagram, three stats animate in:
+            <ul>
+              <li><strong>200+</strong> signals ingested per cycle</li>
+              <li><strong>3 AI agents</strong> — Analyst, Publisher, Broadcaster</li>
+              <li><strong>50+</strong> perps markets live via Pacifica</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Pure animation. Nodes fly in left-to-right with spring physics. Stats counter up from 0. Dark background, gold accent lines connecting the nodes.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE 7: CLOSE ═══ -->
+  <div class="transition">
+    <div class="transition-line"></div>
+    <span class="transition-text">fade to close</span>
+    <div class="transition-line"></div>
+  </div>
+
+  <div class="scene">
+    <div class="scene-header">
+      <span class="scene-num">07</span>
+      <span class="scene-title">Close &mdash; The Punchline</span>
+      <span class="scene-time">2:10 - 2:25</span>
+    </div>
+    <div class="scene-body">
+      <div class="scene-row">
+        <div class="scene-col">
+          <span class="scene-col-label show">On Screen</span>
+          <div class="scene-text">
+            Dark screen. Large text:
+            <ul>
+              <li><strong>"Ship narratives, not noise."</strong></li>
+              <li>pnl.fun logo</li>
+              <li><em>Built on Pacifica &middot; Solana &middot; Polymarket</em></li>
+              <li>GitHub link / team info</li>
+            </ul>
+          </div>
+        </div>
+        <div class="scene-col">
+          <span class="scene-col-label why">Closing Strategy</span>
+          <div class="scene-text">
+            End on the brand, not a feature. The tagline should be the thing judges remember. Keep it clean — no call to action, no "please vote for us." Confidence sells.
+          </div>
+        </div>
+      </div>
+      <div class="remotion-note">
+        <strong>Remotion:</strong> Reuse the existing <code>Outro</code> component. Update copy. Fade out to black over 2 seconds.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TOTAL ═══ -->
+  <div class="total">
+    <div class="total-label">Total Runtime</div>
+    <div class="total-val">~2:25</div>
+    <div class="total-note">7 scenes &middot; 4 live app screens &middot; 3 animated segments</div>
+  </div>
+
+  <!-- ═══ PRODUCTION CHECKLIST ═══ -->
+  <div style="height:40px;"></div>
+  <div class="overview">
+    <h2>Production Checklist</h2>
+    <div class="scene-text" style="color:var(--mid);">
+      <ul style="margin-left:16px; line-height:2.2;">
+        <li><strong>Screen recordings needed:</strong> Feed tab scroll + narrative sheet open, Predict tab list + detail, Trade list + search + BTC detail full flow, Profile with positions</li>
+        <li><strong>Remotion animated scenes:</strong> Hook (scene 1), Problem montage (scene 2), Architecture diagram (scene 3 insert), Full loop diagram (scene 6), Close (scene 7)</li>
+        <li><strong>Assets to prepare:</strong> X timeline screenshot, Polymarket grid screenshot, pnl.fun logo (vector), phone frame overlay</li>
+        <li><strong>Audio:</strong> Ambient electronic track — low energy, no vocals. Optional: sound effects on scene transitions</li>
+        <li><strong>Testnet prep:</strong> Fund a wallet with testnet USDC, open a BTC long position, set TP/SL — so the live recording shows a real position with PnL</li>
+        <li><strong>Recording resolution:</strong> 1920x1080 for Remotion render. Screen recordings at native phone resolution, scaled in post</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══ SCENE-BY-SCENE FLOW ═══ -->
+  <div class="overview" style="margin-top:24px;">
+    <h2>User Journey Through the Demo</h2>
+    <div class="scene-text" style="color:var(--mid);">
+      The demo follows one continuous story — a trader's journey from "overwhelmed by noise" to "informed position with TP/SL set":
+      <br><br>
+      <strong>1.</strong> Too much noise (problem)<br>
+      <strong>2.</strong> AI distills it into narratives (Feed)<br>
+      <strong>3.</strong> Narratives link to prediction markets (Predict)<br>
+      <strong>4.</strong> One tap to trade the thesis on perps (Trade via Pacifica)<br>
+      <strong>5.</strong> Full position management inline (TP/SL, close, portfolio)<br>
+      <strong>6.</strong> Show the architecture that makes it real (tech credibility)<br>
+      <strong>7.</strong> Land the brand
+      <br><br>
+      <em>The story is: intelligence in, position out. pnl.fun is the bridge.</em>
+    </div>
+  </div>
+
+</body>
+</html>

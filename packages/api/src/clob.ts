@@ -1,22 +1,20 @@
 /**
  * Server-side CLOB session management and order routing.
  *
- * Flow (Safe wallet — gasless via Builder Relayer):
+ * Flow (raw EOA — gasless approvals via Relayer API key):
  * 1. Phone derives EVM key from Solana wallet signature (Phantom MWA)
  * 2. Phone sends the raw Solana signature to POST /clob/auth
- * 3. Server derives EVM key → deploys Safe wallet (gasless) → runs approvals (gasless)
+ * 3. Server derives EVM key → runs approvals via raw Relayer API (gasless)
  *    → creates CLOB API credentials → stores session
- * 4. Phone places orders via POST /clob/order — server signs & submits with Builder attribution
+ * 4. Phone places orders via POST /clob/order — server signs & submits
  *
- * User funds live in the Safe wallet. The Builder Relayer pays all gas.
- * The EOA key is only used for signing — it never holds funds.
+ * Approvals are gasless — the Relayer API pays gas via RELAYER_API_KEY auth.
+ * No Safe wallet needed. The EOA holds funds and signs orders directly.
  */
 
 import { Hono } from 'hono'
 import { Wallet, utils, providers } from 'ethers'
 import { ClobClient } from '@polymarket/clob-client'
-import { BuilderConfig } from '@polymarket/builder-signing-sdk'
-import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
 import { encodeFunctionData, maxUint256 } from 'viem'
 import type { ApiKeyCreds } from '@polymarket/clob-client'
 
@@ -59,32 +57,63 @@ const ERC1155_SET_APPROVAL_ABI = [
   },
 ] as const
 
-// --- Builder config (from env) ---
+// --- Relayer API key auth (from env) ---
 
-function getBuilderConfig(): BuilderConfig | undefined {
-  const key = process.env.POLYMARKET_BUILDER_API_KEY
-  const secret = process.env.POLYMARKET_BUILDER_SECRET
-  const passphrase = process.env.POLYMARKET_BUILDER_PASSPHRASE
+const RELAYER_API_KEY = process.env.RELAYER_API_KEY
+const RELAYER_API_KEY_ADDRESS = process.env.RELAYER_API_KEY_ADDRESS
 
-  if (!key || !secret || !passphrase) {
-    console.warn('[clob] Builder keys not configured — orders will not have attribution')
-    return undefined
-  }
-
-  return new BuilderConfig({
-    localBuilderCreds: { key, secret, passphrase },
-  })
+if (!RELAYER_API_KEY || !RELAYER_API_KEY_ADDRESS) {
+  console.warn('[clob] RELAYER_API_KEY / RELAYER_API_KEY_ADDRESS not set — gasless approvals will fail')
 }
 
-const builderConfig = getBuilderConfig()
+const relayerHeaders: Record<string, string> = {
+  'Content-Type': 'application/json',
+  ...(RELAYER_API_KEY && { 'RELAYER_API_KEY': RELAYER_API_KEY }),
+  ...(RELAYER_API_KEY_ADDRESS && { 'RELAYER_API_KEY_ADDRESS': RELAYER_API_KEY_ADDRESS }),
+}
+
+/**
+ * Submit a single transaction to the Polymarket Relayer (gasless).
+ * Uses RELAYER_API_KEY auth — relayer handles signing and pays gas.
+ */
+async function submitToRelayer(
+  tx: { to: string; data: string; value: string },
+  from: string,
+  description: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const res = await fetch(`${RELAYER_URL}/submit`, {
+    method: 'POST',
+    headers: relayerHeaders,
+    body: JSON.stringify({ from, to: tx.to, data: tx.data, value: tx.value, description }),
+  })
+  const body = await res.text()
+  console.log(`[clob] Relayer /submit ${res.status}: ${body.slice(0, 300)}`)
+  return { ok: res.ok, status: res.status, body }
+}
+
+/**
+ * Submit multiple transactions to the Relayer sequentially.
+ */
+async function executeViaRelayer(
+  txns: { to: string; data: string; value: string }[],
+  from: string,
+  description: string,
+): Promise<{ ok: boolean; failed: number }> {
+  let failed = 0
+  for (const tx of txns) {
+    const result = await submitToRelayer(tx, from, description)
+    if (!result.ok) failed++
+  }
+  return { ok: failed === 0, failed }
+}
 
 // --- In-memory session store ---
-// Key: safe address (lowercase), Value: { wallet, creds, safeAddress, createdAt }
+// Key: EOA address (lowercase), Value: { wallet, creds, createdAt }
 
 interface ClobSession {
   wallet: Wallet
   creds: ApiKeyCreds
-  safeAddress: string
+  eoaAddress: string
   createdAt: number
 }
 
@@ -111,21 +140,7 @@ function getClient(session: ClobSession): ClobClient {
     CHAIN_ID,
     session.wallet,
     session.creds,
-    2, // SignatureType: GNOSIS_SAFE — funds are in the Safe, EOA just signs
-    session.safeAddress,
-    undefined, // geoBlockToken
-    undefined, // useServerTime
-    builderConfig,
-  )
-}
-
-function getRelayClient(wallet: Wallet): RelayClient {
-  return new RelayClient(
-    RELAYER_URL,
-    CHAIN_ID,
-    wallet,
-    builderConfig,
-    RelayerTxType.SAFE,
+    0, // SignatureType: EOA — wallet signs directly, no Safe
   )
 }
 
@@ -173,8 +188,8 @@ export const clobRoutes = new Hono()
  * POST /clob/auth
  * Body: { signature: string } — hex-encoded 64-byte Solana signature
  *
- * Server derives EVM key from signature, deploys a Safe wallet (gasless),
- * runs approvals (gasless), creates CLOB API credentials, returns the Safe address.
+ * Server derives EVM key from signature, runs approvals via raw Relayer API (gasless),
+ * creates CLOB API credentials, returns the EOA address.
  */
 clobRoutes.post('/auth', async (c) => {
   let body: { signature?: string }
@@ -202,66 +217,34 @@ clobRoutes.post('/auth', async (c) => {
 
     console.log(`[clob] EOA derived: ${eoaAddress}`)
 
-    // 2. Deploy Safe wallet via Builder Relayer (gasless)
-    const relay = getRelayClient(wallet)
-    let safeAddress: string
+    // 2. Run approvals via raw Relayer API (gasless)
+    console.log(`[clob] Running approvals for ${eoaAddress}...`)
+    const approvalTxs = buildApprovalTxs()
+    const relayResult = await executeViaRelayer(approvalTxs, eoaAddress, `Approve USDC.e + CTF for ${eoaAddress}`)
 
-    // Check if Safe is already deployed for this EOA (returning user)
-    const relayPayload = await relay.getRelayPayload(eoaAddress, 'SAFE')
-    const expectedSafe = relayPayload.address
-    const alreadyDeployed = await relay.getDeployed(expectedSafe)
-
-    if (alreadyDeployed) {
-      safeAddress = expectedSafe
-      console.log(`[clob] Safe already deployed: ${safeAddress}`)
+    if (!relayResult.ok) {
+      console.warn(`[clob] ${relayResult.failed}/${approvalTxs.length} approvals failed — trading might not work`)
     } else {
-      console.log(`[clob] Deploying Safe for ${eoaAddress}...`)
-      const deployResponse = await relay.deploy()
-      const deployResult = await deployResponse.wait()
-      if (!deployResult) {
-        return c.json({ error: 'Safe deployment failed' }, 500)
-      }
-      safeAddress = deployResult.proxyAddress || expectedSafe
-      console.log(`[clob] Safe deployed: ${safeAddress}`)
-
-      // 3. Run all approvals in one batch (gasless)
-      console.log(`[clob] Running approvals for ${safeAddress}...`)
-      const approvalTxs = buildApprovalTxs()
-      const approvalResponse = await relay.execute(approvalTxs, 'Approve USDC.e + CTF for trading')
-      const approvalResult = await approvalResponse.wait()
-      if (!approvalResult) {
-        console.warn(`[clob] Approvals may have failed — trading might not work`)
-      } else {
-        console.log(`[clob] Approvals confirmed: ${approvalResult.transactionHash}`)
-      }
+      console.log(`[clob] All ${approvalTxs.length} approvals submitted for ${eoaAddress}`)
     }
 
-    // 4. Create CLOB API credentials (L1 auth — EIP-712 signature from EOA)
+    // 3. Create CLOB API credentials (L1 auth — EIP-712 signature from EOA)
     const tempClient = new ClobClient(CLOB_HOST, CHAIN_ID, wallet)
     const creds = await tempClient.createOrDeriveApiKey()
 
-    // 5. Store session keyed by Safe address
+    // 4. Store session keyed by EOA address
     const session: ClobSession = {
       wallet,
       creds,
-      safeAddress: safeAddress.toLowerCase(),
+      eoaAddress: eoaAddress.toLowerCase(),
       createdAt: Date.now(),
     }
-    sessions.set(safeAddress.toLowerCase(), session)
+    sessions.set(eoaAddress.toLowerCase(), session)
 
-    console.log(`[clob] Session created — EOA: ${eoaAddress}, Safe: ${safeAddress}`)
-
-    // Refresh CLOB allowance cache
-    try {
-      const client = getClient(session)
-      await client.updateBalanceAllowance({ asset_type: 'COLLATERAL' as any })
-    } catch (err: any) {
-      console.warn(`[clob] Allowance refresh failed (non-fatal): ${err.message}`)
-    }
+    console.log(`[clob] Session created — EOA: ${eoaAddress}`)
 
     return c.json({
-      polygonAddress: safeAddress, // The Safe address — this is where funds live
-      eoaAddress: eoaAddress,      // The signing key address — for debugging only
+      polygonAddress: eoaAddress, // The EOA address — this is where funds live
       ok: true,
     })
   } catch (err: any) {
@@ -274,8 +257,8 @@ clobRoutes.post('/auth', async (c) => {
  * POST /clob/order
  * Body: { polygonAddress, tokenID, price, amount, side }
  *
- * polygonAddress is the Safe address (returned from /clob/auth).
- * Server signs the order with the user's EOA key and submits with Builder attribution.
+ * polygonAddress is the EOA address (returned from /clob/auth).
+ * Server signs the order with the EOA key and submits to the CLOB.
  */
 clobRoutes.post('/order', async (c) => {
   let body: {
@@ -316,7 +299,7 @@ clobRoutes.post('/order', async (c) => {
   try {
     const client = getClient(session)
 
-    // Build and sign the order (EOA signs, but funder=Safe)
+    // Build and sign the order (EOA signs directly)
     const signedOrder = await client.createOrder({
       tokenID,
       price,
@@ -324,7 +307,6 @@ clobRoutes.post('/order', async (c) => {
       side: side === 'BUY' ? 0 : 1,
     })
 
-    // Submit with Builder attribution
     const result = await client.postOrder(signedOrder)
 
     console.log(`[clob] Order placed for ${polygonAddress}: ${side} $${amount ?? size} @ ${price} (${size} shares)`)
@@ -337,7 +319,7 @@ clobRoutes.post('/order', async (c) => {
 
 /**
  * GET /clob/positions/:polygonAddress
- * Returns open orders for the user. polygonAddress = Safe address.
+ * Returns open orders for the user. polygonAddress = EOA address.
  */
 clobRoutes.get('/positions/:polygonAddress', async (c) => {
   const polygonAddress = c.req.param('polygonAddress')
@@ -360,7 +342,7 @@ clobRoutes.get('/positions/:polygonAddress', async (c) => {
 /**
  * GET /clob/deposit/:polygonAddress
  * Fetches deposit addresses from Polymarket Bridge API.
- * polygonAddress should be the Safe address — that's where funds need to land.
+ * polygonAddress should be the EOA address — that's where funds need to land.
  */
 clobRoutes.get('/deposit/:polygonAddress', async (c) => {
   const polygonAddress = c.req.param('polygonAddress')
@@ -390,7 +372,7 @@ clobRoutes.get('/deposit/:polygonAddress', async (c) => {
 /**
  * GET /clob/balance/:polygonAddress
  * Returns USDC balance + allowance from the CLOB.
- * polygonAddress = Safe address.
+ * polygonAddress = EOA address.
  */
 clobRoutes.get('/balance/:polygonAddress', async (c) => {
   const polygonAddress = c.req.param('polygonAddress')
@@ -420,6 +402,79 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
     return c.json({ error: 'Failed to fetch balance', detail: err.message }, 500)
   }
 })
+
+// ============================================================================
+// Read-only CLOB proxy — no auth needed, bypasses geo-restriction
+// ============================================================================
+
+/**
+ * GET /clob/book?token_id=<id>
+ * Proxy to CLOB order book endpoint.
+ */
+clobRoutes.get('/book', async (c) => {
+  const tokenId = c.req.query('token_id')
+  if (!tokenId) return c.json({ error: 'Missing token_id query param' }, 400)
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/book?token_id=${encodeURIComponent(tokenId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB book proxy failed', detail: err.message }, 502)
+  }
+})
+
+/**
+ * GET /clob/midpoint?token_id=<id>
+ * Proxy to CLOB midpoint endpoint.
+ */
+clobRoutes.get('/midpoint', async (c) => {
+  const tokenId = c.req.query('token_id')
+  if (!tokenId) return c.json({ error: 'Missing token_id query param' }, 400)
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/midpoint?token_id=${encodeURIComponent(tokenId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB midpoint proxy failed', detail: err.message }, 502)
+  }
+})
+
+/**
+ * GET /clob/last-trade-price?token_id=<id>
+ * Proxy to CLOB last trade price endpoint.
+ */
+clobRoutes.get('/last-trade-price', async (c) => {
+  const tokenId = c.req.query('token_id')
+  if (!tokenId) return c.json({ error: 'Missing token_id query param' }, 400)
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/last-trade-price?token_id=${encodeURIComponent(tokenId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB last-trade-price proxy failed', detail: err.message }, 502)
+  }
+})
+
+/**
+ * GET /clob/markets/:conditionId
+ * Proxy to CLOB market info endpoint.
+ */
+clobRoutes.get('/markets/:conditionId', async (c) => {
+  const conditionId = c.req.param('conditionId')
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/markets/${encodeURIComponent(conditionId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB market info proxy failed', detail: err.message }, 502)
+  }
+})
+
+// ============================================================================
 
 /**
  * DELETE /clob/session/:polygonAddress
