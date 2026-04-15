@@ -403,6 +403,79 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   }
 })
 
+// ============================================================================
+// Read-only CLOB proxy — no auth needed, bypasses geo-restriction
+// ============================================================================
+
+/**
+ * GET /clob/book?token_id=<id>
+ * Proxy to CLOB order book endpoint.
+ */
+clobRoutes.get('/book', async (c) => {
+  const tokenId = c.req.query('token_id')
+  if (!tokenId) return c.json({ error: 'Missing token_id query param' }, 400)
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/book?token_id=${encodeURIComponent(tokenId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB book proxy failed', detail: err.message }, 502)
+  }
+})
+
+/**
+ * GET /clob/midpoint?token_id=<id>
+ * Proxy to CLOB midpoint endpoint.
+ */
+clobRoutes.get('/midpoint', async (c) => {
+  const tokenId = c.req.query('token_id')
+  if (!tokenId) return c.json({ error: 'Missing token_id query param' }, 400)
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/midpoint?token_id=${encodeURIComponent(tokenId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB midpoint proxy failed', detail: err.message }, 502)
+  }
+})
+
+/**
+ * GET /clob/last-trade-price?token_id=<id>
+ * Proxy to CLOB last trade price endpoint.
+ */
+clobRoutes.get('/last-trade-price', async (c) => {
+  const tokenId = c.req.query('token_id')
+  if (!tokenId) return c.json({ error: 'Missing token_id query param' }, 400)
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/last-trade-price?token_id=${encodeURIComponent(tokenId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB last-trade-price proxy failed', detail: err.message }, 502)
+  }
+})
+
+/**
+ * GET /clob/markets/:conditionId
+ * Proxy to CLOB market info endpoint.
+ */
+clobRoutes.get('/markets/:conditionId', async (c) => {
+  const conditionId = c.req.param('conditionId')
+
+  try {
+    const res = await fetch(`${CLOB_HOST}/markets/${encodeURIComponent(conditionId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : res.status)
+  } catch (err: any) {
+    return c.json({ error: 'CLOB market info proxy failed', detail: err.message }, 502)
+  }
+})
+
+// ============================================================================
+
 /**
  * DELETE /clob/session/:polygonAddress
  * Clears the in-memory session.
