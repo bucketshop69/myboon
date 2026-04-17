@@ -19,6 +19,7 @@ import { useWallet } from '@/hooks/useWallet';
 
 const DERIVE_MESSAGE = 'myboon:polymarket:enable';
 const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
+const SAFE_STORAGE_KEY = 'polymarket_safe_address'; // Safe wallet address (where USDC lives)
 
 function resolveApiBaseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
@@ -31,6 +32,8 @@ const API_BASE = resolveApiBaseUrl();
 
 export interface PolymarketWallet {
   polygonAddress: string | null;
+  /** Safe wallet address — where USDC lives, used for deposits */
+  safeAddress: string | null;
   isReady: boolean;
   isLoading: boolean;
   /** Sign with Solana wallet, send signature to server for CLOB auth */
@@ -42,13 +45,18 @@ export interface PolymarketWallet {
 export function usePolymarketWallet(): PolymarketWallet {
   const { connected, signMessage } = useWallet();
   const [polygonAddress, setPolygonAddress] = useState<string | null>(null);
+  const [safeAddress, setSafeAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load stored polygon address on mount (public address only, not the key)
+  // Load stored addresses on mount (public info only)
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((stored) => {
-        if (stored) setPolygonAddress(stored);
+    Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY),
+      AsyncStorage.getItem(SAFE_STORAGE_KEY),
+    ])
+      .then(([storedEoa, storedSafe]) => {
+        if (storedEoa) setPolygonAddress(storedEoa);
+        if (storedSafe) setSafeAddress(storedSafe);
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
@@ -81,9 +89,13 @@ export function usePolymarketWallet(): PolymarketWallet {
 
       const data = await res.json();
       setPolygonAddress(data.polygonAddress);
+      setSafeAddress(data.safeAddress ?? null);
 
-      // Persist polygon address locally (public info only, not the private key)
+      // Persist addresses locally (public info only, not the private key)
       await AsyncStorage.setItem(STORAGE_KEY, data.polygonAddress);
+      if (data.safeAddress) {
+        await AsyncStorage.setItem(SAFE_STORAGE_KEY, data.safeAddress);
+      }
     } catch (err) {
       console.error('[polymarket] Enable failed:', err);
       throw err;
@@ -99,11 +111,14 @@ export function usePolymarketWallet(): PolymarketWallet {
     }
     // Clear local storage
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+    AsyncStorage.removeItem(SAFE_STORAGE_KEY).catch(() => {});
     setPolygonAddress(null);
+    setSafeAddress(null);
   }, [polygonAddress]);
 
   return {
     polygonAddress,
+    safeAddress,
     isReady: !!polygonAddress,
     isLoading,
     enable,
