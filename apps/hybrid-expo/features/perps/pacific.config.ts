@@ -45,4 +45,4 @@ export const PACIFIC_VAULT =
 
 export const PACIFIC_MIN_DEPOSIT = 10;
 
-export const PACIFIC_BUILDER_CODE = process.env.EXPO_PUBLIC_PACIFIC_BUILDER_CODE || '';
+export const PACIFIC_BUILDER_CODE = process.env.EXPO_PUBLIC_PACIFIC_BUILDER_CODE || 'MYB00N';

@@ -160,7 +160,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
     setClosingSymbol(pos.symbol);
     try {
       const closeSide = pos.side === 'long' ? 'ask' : 'bid';
-      await closePosition(pos.symbol, closeSide, pos.size, address, signMessage);
+      await closePosition(pos.symbol, closeSide, pos.size, address, signMessage, PACIFIC_BUILDER_CODE || undefined);
       Alert.alert('Position Closed', `${pos.symbol} ${pos.side.toUpperCase()} closed`);
       loadPositions();
     } catch (err: any) {
@@ -187,7 +187,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
         Alert.alert('Enter a Price', 'Set at least a TP or SL price.');
         return;
       }
-      await setTPSL({ symbol: tpslModalPos.symbol, side, takeProfit: tp, stopLoss: sl }, address, signMessage);
+      await setTPSL({ symbol: tpslModalPos.symbol, side, takeProfit: tp, stopLoss: sl, builderCode: PACIFIC_BUILDER_CODE || undefined }, address, signMessage);
       Alert.alert('TP/SL Set', `${tpslModalPos.symbol} TP/SL updated`);
       setTpslModalPos(null);
       setTpslModalTp('');
