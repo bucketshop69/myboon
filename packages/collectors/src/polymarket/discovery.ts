@@ -7,9 +7,84 @@ import pinnedSlugs from './pinned.json'
 
 const client = new PolymarketClient()
 
+const DOME_BASE_URL = 'https://api.domeapi.io/v1'
 const VOLUME_SURGE_THRESHOLD = 0.20
 const CLOSING_WINDOW_MS = 48 * 60 * 60 * 1000 // 48 hours
 const CLOSING_SIGNAL_COOLDOWN_MS = 6 * 60 * 60 * 1000 // 6 hours
+
+function domeHeaders(): Record<string, string> {
+  const key = process.env.DOME_API_KEY
+  if (!key) throw new Error('DOME_API_KEY not set')
+  return {
+    Authorization: `Bearer ${key}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+interface DomeMarket {
+  market_slug: string
+  title: string
+  condition_id: string
+  status: string
+  end_time: number | null
+  volume_total: number
+  side_a: { id: string; label: string }
+  side_b: { id: string; label: string }
+}
+
+/**
+ * Fetch pinned markets via Dome API.
+ * Tries event_slug first (multi-outcome), falls back to market_slug (single-outcome).
+ */
+async function fetchPinnedViaDome(slugs: string[]): Promise<Market[]> {
+  const now = new Date()
+  const results: Market[] = []
+
+  for (const slug of slugs) {
+    try {
+      // Try as event slug first (multi-outcome markets)
+      let res = await fetch(
+        `${DOME_BASE_URL}/polymarket/markets?event_slug=${encodeURIComponent(slug)}&limit=50`,
+        { headers: domeHeaders() }
+      )
+      let data = res.ok ? await res.json() : { markets: [] }
+      let domeMarkets: DomeMarket[] = data.markets ?? []
+
+      // If no event results, try as market slug (single-outcome)
+      if (domeMarkets.length === 0) {
+        res = await fetch(
+          `${DOME_BASE_URL}/polymarket/markets?market_slug=${encodeURIComponent(slug)}&limit=1`,
+          { headers: domeHeaders() }
+        )
+        data = res.ok ? await res.json() : { markets: [] }
+        domeMarkets = data.markets ?? []
+      }
+
+      for (const dm of domeMarkets) {
+        // Skip expired
+        if (dm.end_time) {
+          const endDate = new Date(dm.end_time * 1000)
+          if (endDate < now) continue
+        }
+
+        if (!dm.side_a?.id) continue
+
+        results.push({
+          title: dm.title,
+          id: dm.condition_id,
+          slug: dm.market_slug,
+          tokenIds: [dm.side_a.id, dm.side_b?.id ?? ''],
+          endDate: dm.end_time ? new Date(dm.end_time * 1000).toISOString() : undefined,
+          volume: dm.volume_total ?? 0,
+        })
+      }
+    } catch (err) {
+      console.error(`[discovery] Failed to fetch pinned slug ${slug} via Dome:`, err)
+    }
+  }
+
+  return results
+}
 
 export async function runDiscovery(): Promise<void> {
   console.log('[discovery] Running market discovery...')
@@ -22,19 +97,9 @@ export async function runDiscovery(): Promise<void> {
     return
   }
 
-  // Fetch pinned markets and merge, skipping expired ones
+  // Fetch pinned markets via Dome API (supports both event slugs and market slugs)
   const now = new Date()
-  const pinnedMarkets: Market[] = []
-  for (const slug of pinnedSlugs) {
-    try {
-      const market = await client.getMarketBySlug(slug)
-      if (!market) continue
-      if (market.endDate && new Date(market.endDate) < now) continue
-      pinnedMarkets.push(market)
-    } catch (err) {
-      console.error(`[discovery] Failed to fetch pinned market ${slug}:`, err)
-    }
-  }
+  const pinnedMarkets = await fetchPinnedViaDome(pinnedSlugs)
 
   // Merge: top markets first, then pinned markets not already present
   const seenIds = new Set(topMarkets.map((m) => m.id))
