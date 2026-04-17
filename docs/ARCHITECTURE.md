@@ -35,11 +35,20 @@ Polymarket collectors    →     signals table      →        Brain agents
   - discovery (2h REST)        narratives table   →        Feed API
   - stream (WebSocket)         (processed flag)   →        X posts
   - user tracker (5min)
+  - match watcher (5min)
 
-Pacific collectors       →     signals table      →        Brain agents
-  (planned #051)           (FUNDING_SPIKE,
-  - discovery (2h REST)     ODDS_SHIFT, VOLUME_SURGE)
-  - stream (WebSocket)
+Pacific collector        →     signals table      →        Brain agents (crypto_god)
+  - discovery (2h REST)     (FUNDING_SPIKE,
+                             CROWDED_TRADE, POSITIONING)
+
+Nansen collector         →     signals table      →        Brain agents (fomo_master)
+  - PM bettor activity
+  - PM event trending
+
+BTC terminal (local)     →     local JSON snapshots →      Manual X posts (daily)
+  - Polymarket odds (Dome)
+  - Hyperliquid funding/OI
+  - Pacific funding/OI
 
 On-chain stream (future) →     signals table
   - 90 wallet registry
@@ -106,6 +115,8 @@ Layer 3 — Influencers (runs every 2-4h)
 
 - Layer 3b (sports_broadcaster) ✅ — **sports content pipeline** (issue #050). Runs hourly via PM2 cron. Loads `sports-calendar.json` (UCL/EPL fixtures). Phase detection per match: `preview` (T-26h to T-2h), `live` (T to T+6h), `post_match` (T+6h to T+12h). Registers calendar slugs in `polymarket_tracked` T-24h before kickoff via Dome API. Deduplicates via `x_posts.slug + agent_type = 'sports_broadcaster_{phase}'`. LangGraph `sportsBroadcasterGraph` (`write → broadcast → resolve → save`): writer has distinct voice per phase; broadcaster hard-rejects hype, enforces odds presence + tension lead (max 2 retries on soft_reject). Odds fetched via Dome API (`api.domeapi.io/v1`) — geo-unrestricted, batch per match. Match-aware collector (`match-watcher.ts`) polls `data-api.polymarket.com/activity` every 5min for all calendar slugs within watch window, writes `WHALE_BET` signals with `source: 'match-watcher'`. Sports signals filtered from `fomo_master` and `narrative-analyst` to prevent duplicate coverage. Phase 3 (post-match close-out) deferred to backlog #002.
 
+- Layer 3b (crypto_god) ✅ — **Pacific perps broadcast floor**. Runs every 30min (offset from fomo_master). Reads Pacific signals (`FUNDING_SPIKE`, `CROWDED_TRADE`, `POSITIONING`). LangGraph graph with archetypes: `WIPEOUT`, `CROWDED`, `POSITIONING`, `GENERAL`. Writes to `x_posts` with `agent_type='crypto_god'`.
+
 - Layer 3b (fomo_master) ✅ — **specialized broadcast floor** (issues #047, #048). Runs hourly via PM2 cron. Reads `WHALE_BET` signals (weight ≥ 8, last 4h) directly — no narrative layer. LangGraph `fomo-master-graph`: `rank → write → broadcast → resolve` loop. Runner does all deterministic enrichment before graph: slug clustering (one representative per market), Nansen bettor profile (cached 24h), live Polymarket odds (no cache), market_history (7d signal aggregate). Ranker picks 1-3 best stories using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Writer classifies each signal by archetype (CONTRARIAN / CLUSTER / AUTHORITY / FRESH_WALLET / GENERAL — first match wins on live_odds, cluster_context, nansen_profile) then writes 4-5 line observational posts: build tension through facts, end with implication. `slug` attached deterministically from `signal.metadata.slug` in writeNode (never from LLM). `chief_broadcaster` reviews all drafts in one batch — 3-way decision: approved / soft_reject (max 2 retries) / hard_reject. Duplicate detection uses angle fingerprint `{slug}:{archetype}` — same market with different archetype is a fresh story. Only `status='posted'` records count toward frequency limits. Approved drafts save as `status='draft'`. Polymarket profile URL appended in code, never by LLM. `why_skipped` written back to `signals.skip_reasoning` after each run.
 
 **Next (pipeline track):**
@@ -134,7 +145,7 @@ packages/
   shared/           Shared SDK — PolymarketClient, PacificClient (REST+WebSocket), types
   tx-parser/        Solana tx parsing — Jupiter, Meteora, SOL transfers
   brain/            All LLM agents — classifier, research, analyst (live), publisher (live)
-  collectors/       Data ingestion scripts — Polymarket (live), Pacific (planned), X/Kalshi (planned)
+  collectors/       Data ingestion scripts — Polymarket (live), Pacific (live), Nansen (live), BTC terminal (local), X/Kalshi (planned)
   entity-memory/    In-memory entity store (pre-persistence MVP)
 ```
 
@@ -160,12 +171,30 @@ packages/
 
 ### Polymarket Collector (`packages/collectors/src/polymarket/`)
 
-- `discovery.ts` — fetches top 20 markets by volume every 2h, merges with `pinned.json`, filters expired
+- `discovery.ts` — fetches top 20 markets by volume every 2h via Gamma, merges with `pinned.json` (fetched via Dome API — supports both event slugs and single-market slugs), filters expired
 - `stream.ts` — WebSocket `/ws/market`, emits `ODDS_SHIFT` on >5% price move
 - `user-tracker.ts` — polls 18 tracked whale addresses every 5min, emits `WHALE_BET` (min $500, weight scaled by amount, filters `updown` noise markets)
 - `match-watcher.ts` — polls `data-api.polymarket.com/activity` every 5min for all sports calendar slugs within T-24h to T+12h window. Writes `WHALE_BET` signals with `source: 'match-watcher'`. Complements `user-tracker` — covers any wallet, not just the tracked whitelist.
-- `pinned.json` — hand-picked market slugs (Iran conflict cluster, etc.)
+- `pinned.json` — hand-picked market slugs (crypto, macro, geopolitics, sports)
 - `tracked-users.json` — 18 whale wallet addresses
+
+### Pacific Collector (`packages/collectors/src/pacific/`)
+
+- `discovery.ts` — fetches all Pacific perps markets every 2h, emits `FUNDING_SPIKE`, `CROWDED_TRADE`, `POSITIONING` signals based on funding rate and OI thresholds
+
+### Nansen Collector (`packages/collectors/src/nansen/`)
+
+- Runs as separate PM2 process (`myboon-nansen-collector`)
+- Polls Nansen MCP for prediction market bettor activity and event trending data
+- Writes `PM_BETTOR_ACTIVITY` and `PM_EVENT_TRENDING` signals
+
+### BTC Terminal (`packages/collectors/src/btc-terminal/`)
+
+- **Not on VPS** — runs locally on demand for daily X content
+- Pulls from 3 sources in parallel: Polymarket odds (Dome API), Hyperliquid (funding, OI, price), Pacific (funding, OI)
+- Saves daily snapshots to `snapshots/YYYY-MM-DD.json` for day-over-day delta comparison
+- Outputs conversational post format for manual X posting
+- Run: `cd packages/collectors && npx tsx src/btc-terminal/index.ts`
 
 ### How signals reach the `signals` table
 
@@ -302,3 +331,5 @@ Execution policy:
 | Publisher brain before influencer | Single pipeline must work before adding consensus/redundancy |
 | Pacific SDK in `packages/shared` (#052) | Reusable across collectors, API layer, and mobile app; TypeScript types + REST + WebSocket in one module |
 | Dome API over Gamma for sports odds (#050) | Gamma API is geo-restricted (blocks US VPS). Dome (`api.domeapi.io/v1`) proxies Polymarket data without restriction — same odds, no geo block. Used for market registration and live odds in sports-broadcaster. |
+| Dome API for pinned market discovery | Gamma `?slug=` only works for single-outcome markets. Multi-outcome events (BTC price targets, WTI, FIFA) need Dome `?event_slug=` to resolve all sub-markets. Discovery now tries event_slug first, falls back to market_slug. |
+| BTC terminal as local script (not VPS) | Daily content series — user runs manually, eyeballs output, posts to X by hand. No brain agent; raw data + conversational format. Snapshots stored locally for delta tracking. |
