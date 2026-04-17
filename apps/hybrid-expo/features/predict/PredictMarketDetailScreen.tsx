@@ -205,10 +205,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
     // Use conditionId from the detail's clobTokenIds — the conditionId is embedded in positions data
     // For now, fetch all positions and filter client-side by slug
-    fetchMarketPositions(poly.polygonAddress, slug)
+    const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
+    fetchMarketPositions(gammaAddr, slug)
       .then(setMarketPositions)
       .catch(() => setMarketPositions([]));
-  }, [detail, poly.polygonAddress, slug]);
+  }, [detail, poly.polygonAddress, poly.safeAddress, slug]);
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice  = livePrice?.noPrice  ?? (detail?.outcomePrices[1] ?? null);

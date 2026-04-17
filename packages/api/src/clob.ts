@@ -381,6 +381,116 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   }
 })
 
+/**
+ * POST /clob/withdraw
+ * Body: { polygonAddress, amount, solanaAddress }
+ *
+ * Withdraws USDC from Polymarket Safe to user's Solana wallet.
+ * 1. Calls Polymarket Bridge API for withdraw/bridge deposit addresses
+ * 2. Builds USDC.e transfer tx from Safe → bridge EVM address
+ * 3. Relays via builder (gasless)
+ * 4. Bridge delivers USDC to Solana wallet
+ */
+clobRoutes.post('/withdraw', async (c) => {
+  let body: { polygonAddress?: string; amount?: number; solanaAddress?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const { polygonAddress, amount, solanaAddress } = body
+  if (!polygonAddress || !amount || !solanaAddress) {
+    return c.json({ error: 'Missing required fields: polygonAddress, amount, solanaAddress' }, 400)
+  }
+
+  if (amount <= 0) {
+    return c.json({ error: 'Amount must be positive' }, 400)
+  }
+
+  if (!builderConfig) {
+    return c.json({ error: 'Builder not configured' }, 500)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  try {
+    // 1. Get bridge deposit addresses from Polymarket Bridge API
+    const SOLANA_CHAIN_ID = '1151111081099710'
+    const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+
+    const bridgeRes = await fetch('https://bridge.polymarket.com/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address: session.safeAddress,
+        toChainId: SOLANA_CHAIN_ID,
+        toTokenAddress: SOLANA_USDC_MINT,
+        recipientAddr: solanaAddress,
+      }),
+    })
+
+    if (!bridgeRes.ok) {
+      const text = await bridgeRes.text()
+      console.error(`[clob] Bridge withdraw API error ${bridgeRes.status}: ${text}`)
+      return c.json({ error: 'Bridge API error', detail: text }, 502)
+    }
+
+    const bridgeData = await bridgeRes.json() as Record<string, any>
+    console.log(`[clob] Bridge withdraw response:`, JSON.stringify(bridgeData))
+
+    // Bridge returns deposit address(es) — we need the EVM one to send USDC.e to
+    const bridgeEvmAddress = bridgeData.address?.evm || bridgeData.depositAddress || bridgeData.address
+    if (!bridgeEvmAddress || typeof bridgeEvmAddress !== 'string') {
+      console.error('[clob] No EVM bridge address in response:', bridgeData)
+      return c.json({ error: 'No bridge deposit address returned' }, 502)
+    }
+
+    // 2. Build USDC.e transfer tx from Safe → bridge address
+    // Amount is in USDC (6 decimals)
+    const amountRaw = BigInt(Math.floor(amount * 1e6))
+
+    const transferData = encodeFunctionData({
+      abi: [{
+        name: 'transfer', type: 'function',
+        inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
+        outputs: [{ type: 'bool' }],
+      }] as const,
+      functionName: 'transfer',
+      args: [bridgeEvmAddress as `0x${string}`, amountRaw],
+    })
+
+    const transferTx = {
+      to: CONTRACTS.USDC_E,
+      data: transferData,
+      value: '0',
+    }
+
+    // 3. Execute via builder relayer (gasless)
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, builderConfig, RelayerTxType.SAFE)
+    const execRes = await relay.execute([transferTx], `Withdraw ${amount} USDC to Solana ${solanaAddress.slice(0, 8)}...`)
+    const execResult = await execRes.wait()
+
+    const txHash = execResult?.transactionHash ?? null
+    console.log(`[clob] Withdraw ${amount} USDC from Safe ${session.safeAddress} → bridge ${bridgeEvmAddress} → Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
+
+    return c.json({
+      ok: true,
+      amount,
+      safeAddress: session.safeAddress,
+      bridgeAddress: bridgeEvmAddress,
+      solanaAddress,
+      txHash,
+    })
+  } catch (err: any) {
+    console.error('[clob] Withdraw failed:', err.message || err)
+    return c.json({ error: 'Withdraw failed', detail: err.message }, 500)
+  }
+})
+
 // ============================================================================
 // Read-only CLOB proxy — no auth needed, bypasses geo-restriction
 // ============================================================================

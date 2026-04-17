@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
+import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders } from '@/features/predict/predict.api';
 import type { PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
@@ -45,6 +46,7 @@ export default function PredictProfileScreen() {
   const poly = usePolymarketWallet();
   const [busy, setBusy] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   // Portfolio data
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
@@ -58,8 +60,11 @@ export default function PredictProfileScreen() {
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
+    // Gamma data-api tracks by Safe address (where funds/positions live)
+    // CLOB operations use EOA (polygonAddress) for session auth
+    const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
     const [portfolioData, balanceData, ordersData] = await Promise.all([
-      fetchPortfolio(poly.polygonAddress).catch(() => null),
+      fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
     ]);
@@ -72,7 +77,7 @@ export default function PredictProfileScreen() {
       setCashBalance(null);
       setSessionExpired(true);
     }
-  }, [poly.polygonAddress]);
+  }, [poly.polygonAddress, poly.safeAddress]);
 
   // Fetch portfolio when enabled
   useEffect(() => {
@@ -172,7 +177,7 @@ export default function PredictProfileScreen() {
               <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.viridian} />
               <Text style={styles.headerActionText}>Deposit</Text>
             </Pressable>
-            <Pressable style={styles.headerActionBtn}>
+            <Pressable onPress={() => setWithdrawOpen(true)} style={styles.headerActionBtn}>
               <MaterialIcons name="arrow-upward" size={12} color={tokens.colors.primary} />
               <Text style={[styles.headerActionText, { color: tokens.colors.primary }]}>Withdraw</Text>
             </Pressable>
@@ -401,8 +406,14 @@ export default function PredictProfileScreen() {
               )}
               {poly.polygonAddress && (
                 <View style={styles.addressRow}>
-                  <Text style={styles.chainLabel}>POLY</Text>
+                  <Text style={styles.chainLabel}>EOA</Text>
                   <Text style={styles.addressMono}>{truncate(poly.polygonAddress)}</Text>
+                </View>
+              )}
+              {poly.safeAddress && (
+                <View style={styles.addressRow}>
+                  <Text style={styles.chainLabel}>SAFE</Text>
+                  <Text style={styles.addressMono}>{truncate(poly.safeAddress)}</Text>
                 </View>
               )}
               <Pressable onPress={handleDisable} style={styles.disableBtn}>
@@ -420,6 +431,17 @@ export default function PredictProfileScreen() {
           isOpen={depositOpen}
           onClose={() => setDepositOpen(false)}
           polygonAddress={poly.polygonAddress}
+        />
+      )}
+
+      {poly.polygonAddress && solanaAddress && (
+        <WithdrawModal
+          isOpen={withdrawOpen}
+          onClose={() => setWithdrawOpen(false)}
+          polygonAddress={poly.polygonAddress}
+          solanaAddress={solanaAddress}
+          cashBalance={cashBalance}
+          onSuccess={loadPortfolio}
         />
       )}
     </View>

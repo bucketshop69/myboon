@@ -435,6 +435,43 @@ export async function fetchMarketPositions(polygonAddress: string, slug: string)
   return payload as PortfolioPosition[];
 }
 
+// --- Withdraw ---
+
+export interface WithdrawParams {
+  polygonAddress: string;
+  amount: number;
+  solanaAddress: string;
+}
+
+export interface WithdrawResult {
+  ok: boolean;
+  amount?: number;
+  txHash?: string | null;
+  error?: string;
+}
+
+export async function withdrawFromPolymarket(params: WithdrawParams): Promise<WithdrawResult> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}/clob/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = await response.json() as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Withdraw failed';
+    return { ok: false, error: detail };
+  }
+
+  return {
+    ok: true,
+    amount: typeof data.amount === 'number' ? data.amount : undefined,
+    txHash: typeof data.txHash === 'string' ? data.txHash : null,
+  };
+}
+
 export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' = '1h'): Promise<PriceHistory> {
   const payload = await getJson(`/predict/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid history response');

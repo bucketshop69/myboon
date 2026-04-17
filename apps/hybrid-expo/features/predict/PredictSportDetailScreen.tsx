@@ -147,9 +147,10 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
   const loadOrdersAndPositions = useCallback(() => {
     if (!poly.polygonAddress) return;
+    const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
     fetchOpenOrders(poly.polygonAddress).then(setOpenOrders).catch(() => setOpenOrders([]));
-    fetchMarketPositions(poly.polygonAddress, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
-  }, [poly.polygonAddress, slug]);
+    fetchMarketPositions(gammaAddr, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
+  }, [poly.polygonAddress, poly.safeAddress, slug]);
 
   useEffect(() => {
     if (poly.polygonAddress && detail) loadOrdersAndPositions();
