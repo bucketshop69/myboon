@@ -42,6 +42,10 @@ const SAFE_FACTORY = '0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b'
 const CONTRACTS = {
   // Collateral: pUSD replaces USDC.e in V2
   PUSD: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB',
+  // USDC.e (bridged USDC on Polygon) — input for wrapping to pUSD
+  USDC_E: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+  // CollateralOnramp — wraps USDC.e → pUSD
+  COLLATERAL_ONRAMP: '0x93070a847efEf7F70739046A929D47a521F5B8ee',
   // V1 exchanges (still needed for relayer approvals during transition)
   CTF_EXCHANGE_V1: '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E',
   NEG_RISK_CTF_EXCHANGE_V1: '0xC5d563A36AE78145C45a50134d48A1215220f80a',
@@ -451,6 +455,93 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   } catch (err: any) {
     console.error('[clob] Balance fetch failed:', err.message || err)
     return c.json({ error: 'Failed to fetch balance', detail: err.message }, 500)
+  }
+})
+
+/**
+ * POST /clob/wrap
+ * Body: { polygonAddress }
+ *
+ * Wraps all USDC.e in the Safe into pUSD (V2 collateral) via CollateralOnramp.
+ * Gasless — relayer pays gas. Two batched txs: approve + wrap.
+ */
+clobRoutes.post('/wrap', async (c) => {
+  let body: { polygonAddress?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const { polygonAddress } = body
+  if (!polygonAddress) {
+    return c.json({ error: 'Missing polygonAddress' }, 400)
+  }
+
+  if (!relayerBuilderConfig) {
+    return c.json({ error: 'Builder not configured' }, 500)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  try {
+    // 1. Check USDC.e balance on-chain
+    const usdceContract = CONTRACTS.USDC_E as `0x${string}`
+    const safeAddr = session.safeAddress as `0x${string}`
+    const onramp = CONTRACTS.COLLATERAL_ONRAMP as `0x${string}`
+
+    const balanceData = encodeFunctionData({
+      abi: [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] }] as const,
+      functionName: 'balanceOf',
+      args: [safeAddr],
+    })
+
+    const balanceRes = await polygonProvider.call({ to: usdceContract, data: balanceData })
+    const usdceBalance = BigInt(balanceRes)
+
+    if (usdceBalance === 0n) {
+      return c.json({ error: 'No USDC.e to wrap', balance: '0' }, 400)
+    }
+
+    console.log(`[clob] Wrapping ${Number(usdceBalance) / 1e6} USDC.e → pUSD for Safe ${session.safeAddress}`)
+
+    // 2. Build approve + wrap txs
+    const approveTx = {
+      to: usdceContract,
+      data: encodeFunctionData({
+        abi: ERC20_APPROVE_ABI,
+        functionName: 'approve',
+        args: [onramp, usdceBalance],
+      }),
+      value: '0',
+    }
+
+    const wrapTx = {
+      to: onramp,
+      data: encodeFunctionData({
+        abi: [{ name: 'wrap', type: 'function', inputs: [{ name: '_asset', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amount', type: 'uint256' }], outputs: [] }] as const,
+        functionName: 'wrap',
+        args: [usdceContract, safeAddr, usdceBalance],
+      }),
+      value: '0',
+    }
+
+    // 3. Execute gaslessly via relayer
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
+    const execRes = await relay.execute([approveTx, wrapTx], `Wrap ${Number(usdceBalance) / 1e6} USDC.e → pUSD`)
+    const execResult = await execRes.wait()
+
+    const txHash = execResult?.transactionHash ?? null
+    const amountWrapped = Number(usdceBalance) / 1e6
+    console.log(`[clob] Wrapped ${amountWrapped} USDC.e → pUSD${txHash ? ` tx=${txHash}` : ''}`)
+
+    return c.json({ ok: true, amountWrapped, txHash })
+  } catch (err: any) {
+    console.error('[clob] Wrap failed:', err.message || err)
+    return c.json({ error: 'Wrap failed', detail: err.message }, 500)
   }
 })
 
