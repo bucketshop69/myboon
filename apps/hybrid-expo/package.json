@@ -13,7 +13,8 @@
     "android:list-builds": "eas build:list --platform android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "rm -rf node_modules/@wallet-ui/react-native-web3js/node_modules/@react-native-async-storage node_modules/@solana-mobile/wallet-adapter-mobile/node_modules/@react-native-async-storage 2>/dev/null || true"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
