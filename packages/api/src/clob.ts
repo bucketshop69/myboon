@@ -46,6 +46,8 @@ const CONTRACTS = {
   USDC_E: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
   // CollateralOnramp — wraps USDC.e → pUSD
   COLLATERAL_ONRAMP: '0x93070a847efEf7F70739046A929D47a521F5B8ee',
+  // CollateralOfframp — unwraps pUSD → USDC.e
+  COLLATERAL_OFFRAMP: '0x2957922Eb93258b93368531d39fAcCA3B4dC5854',
   // V1 exchanges (still needed for relayer approvals during transition)
   CTF_EXCHANGE_V1: '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E',
   NEG_RISK_CTF_EXCHANGE_V1: '0xC5d563A36AE78145C45a50134d48A1215220f80a',
@@ -88,6 +90,58 @@ const relayerBuilderConfig = (builderKey && builderSecret && builderPassphrase)
 
 // V2 CLOB orders use public builderCode (no HMAC)
 const clobBuilderConfig: ClobBuilderConfig = { builderCode: BUILDER_CODE }
+
+// --- USDC.e balance check + auto-wrap helper ---
+
+async function getUsdceBalance(safeAddress: string): Promise<bigint> {
+  const balanceData = encodeFunctionData({
+    abi: [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] }] as const,
+    functionName: 'balanceOf',
+    args: [safeAddress as `0x${string}`],
+  })
+  const res = await polygonProvider.call({ to: CONTRACTS.USDC_E, data: balanceData })
+  return BigInt(res)
+}
+
+async function autoWrapUsdce(session: ClobSession): Promise<{ wrapped: boolean; amount: number; txHash: string | null }> {
+  if (!relayerBuilderConfig) return { wrapped: false, amount: 0, txHash: null }
+
+  const usdceBalance = await getUsdceBalance(session.safeAddress)
+  if (usdceBalance === 0n) return { wrapped: false, amount: 0, txHash: null }
+
+  const safeAddr = session.safeAddress as `0x${string}`
+  const onramp = CONTRACTS.COLLATERAL_ONRAMP as `0x${string}`
+  const usdceContract = CONTRACTS.USDC_E as `0x${string}`
+
+  const approveTx = {
+    to: usdceContract,
+    data: encodeFunctionData({
+      abi: ERC20_APPROVE_ABI,
+      functionName: 'approve',
+      args: [onramp, usdceBalance],
+    }),
+    value: '0',
+  }
+
+  const wrapTx = {
+    to: onramp,
+    data: encodeFunctionData({
+      abi: [{ name: 'wrap', type: 'function', inputs: [{ name: '_asset', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amount', type: 'uint256' }], outputs: [] }] as const,
+      functionName: 'wrap',
+      args: [usdceContract, safeAddr, usdceBalance],
+    }),
+    value: '0',
+  }
+
+  const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
+  const execRes = await relay.execute([approveTx, wrapTx], `Auto-wrap ${Number(usdceBalance) / 1e6} USDC.e → pUSD`)
+  const execResult = await execRes.wait()
+
+  const amount = Number(usdceBalance) / 1e6
+  const txHash = execResult?.transactionHash ?? null
+  console.log(`[clob] Auto-wrapped ${amount} USDC.e → pUSD${txHash ? ` tx=${txHash}` : ''}`)
+  return { wrapped: true, amount, txHash }
+}
 
 // --- Approval helpers ---
 
@@ -443,6 +497,16 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   }
 
   try {
+    // Auto-wrap any USDC.e sitting in the Safe (bridge deposits arrive as USDC.e)
+    try {
+      const wrapResult = await autoWrapUsdce(session)
+      if (wrapResult.wrapped) {
+        console.log(`[clob] Auto-wrapped ${wrapResult.amount} USDC.e before balance check`)
+      }
+    } catch (wrapErr: any) {
+      console.warn(`[clob] Auto-wrap failed (non-fatal): ${wrapErr.message}`)
+    }
+
     const client = getClient(session)
     const result = await client.getBalanceAllowance({ asset_type: 'COLLATERAL' as any }) // pUSD balance in V2
     const rawBalance = parseFloat(result.balance) || 0
@@ -450,7 +514,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
     const balance = rawBalance > 1_000_000 ? rawBalance / 1e6 : rawBalance
     const allowance = rawAllowance > 1_000_000 ? rawAllowance / 1e6 : rawAllowance
 
-    console.log(`[clob] Balance for ${polygonAddress} (Safe: ${session.safeAddress}): ${balance} USDC`)
+    console.log(`[clob] Balance for ${polygonAddress} (Safe: ${session.safeAddress}): ${balance} pUSD`)
     return c.json({ balance, allowance, raw: result })
   } catch (err: any) {
     console.error('[clob] Balance fetch failed:', err.message || err)
@@ -488,57 +552,12 @@ clobRoutes.post('/wrap', async (c) => {
   }
 
   try {
-    // 1. Check USDC.e balance on-chain
-    const usdceContract = CONTRACTS.USDC_E as `0x${string}`
-    const safeAddr = session.safeAddress as `0x${string}`
-    const onramp = CONTRACTS.COLLATERAL_ONRAMP as `0x${string}`
-
-    const balanceData = encodeFunctionData({
-      abi: [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] }] as const,
-      functionName: 'balanceOf',
-      args: [safeAddr],
-    })
-
-    const balanceRes = await polygonProvider.call({ to: usdceContract, data: balanceData })
-    const usdceBalance = BigInt(balanceRes)
-
-    if (usdceBalance === 0n) {
+    const result = await autoWrapUsdce(session)
+    if (!result.wrapped) {
       return c.json({ error: 'No USDC.e to wrap', balance: '0' }, 400)
     }
 
-    console.log(`[clob] Wrapping ${Number(usdceBalance) / 1e6} USDC.e → pUSD for Safe ${session.safeAddress}`)
-
-    // 2. Build approve + wrap txs
-    const approveTx = {
-      to: usdceContract,
-      data: encodeFunctionData({
-        abi: ERC20_APPROVE_ABI,
-        functionName: 'approve',
-        args: [onramp, usdceBalance],
-      }),
-      value: '0',
-    }
-
-    const wrapTx = {
-      to: onramp,
-      data: encodeFunctionData({
-        abi: [{ name: 'wrap', type: 'function', inputs: [{ name: '_asset', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amount', type: 'uint256' }], outputs: [] }] as const,
-        functionName: 'wrap',
-        args: [usdceContract, safeAddr, usdceBalance],
-      }),
-      value: '0',
-    }
-
-    // 3. Execute gaslessly via relayer
-    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-    const execRes = await relay.execute([approveTx, wrapTx], `Wrap ${Number(usdceBalance) / 1e6} USDC.e → pUSD`)
-    const execResult = await execRes.wait()
-
-    const txHash = execResult?.transactionHash ?? null
-    const amountWrapped = Number(usdceBalance) / 1e6
-    console.log(`[clob] Wrapped ${amountWrapped} USDC.e → pUSD${txHash ? ` tx=${txHash}` : ''}`)
-
-    return c.json({ ok: true, amountWrapped, txHash })
+    return c.json({ ok: true, amountWrapped: result.amount, txHash: result.txHash })
   } catch (err: any) {
     console.error('[clob] Wrap failed:', err.message || err)
     return c.json({ error: 'Wrap failed', detail: err.message }, 500)
@@ -549,11 +568,12 @@ clobRoutes.post('/wrap', async (c) => {
  * POST /clob/withdraw
  * Body: { polygonAddress, amount, solanaAddress }
  *
- * Withdraws USDC from Polymarket Safe to user's Solana wallet.
- * 1. Calls Polymarket Bridge API for withdraw/bridge deposit addresses
- * 2. Builds USDC.e transfer tx from Safe → bridge EVM address
- * 3. Relays via builder (gasless)
- * 4. Bridge delivers USDC to Solana wallet
+ * Withdraws from Polymarket Safe to user's Solana wallet (gasless).
+ * 1. Calls Polymarket Bridge API for withdraw deposit address
+ * 2. Unwraps pUSD → USDC.e via CollateralOfframp
+ * 3. Transfers USDC.e to bridge EVM address
+ * 4. All three txs batched atomically via relayer (gasless)
+ * 5. Bridge delivers USDC to Solana wallet
  */
 clobRoutes.post('/withdraw', async (c) => {
   let body: { polygonAddress?: string; amount?: number; solanaAddress?: string }
@@ -613,33 +633,52 @@ clobRoutes.post('/withdraw', async (c) => {
       return c.json({ error: 'No bridge deposit address returned' }, 502)
     }
 
-    // 2. Build pUSD transfer tx from Safe → bridge address
-    // Amount in pUSD (6 decimals, same as USDC)
+    // 2. Unwrap pUSD → USDC.e, then transfer USDC.e to bridge
     const amountRaw = BigInt(Math.floor(amount * 1e6))
+    const safeAddr = session.safeAddress as `0x${string}`
+    const offramp = CONTRACTS.COLLATERAL_OFFRAMP as `0x${string}`
+    const usdceContract = CONTRACTS.USDC_E as `0x${string}`
 
-    const transferData = encodeFunctionData({
-      abi: [{
-        name: 'transfer', type: 'function',
-        inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
-        outputs: [{ type: 'bool' }],
-      }] as const,
-      functionName: 'transfer',
-      args: [bridgeEvmAddress as `0x${string}`, amountRaw],
-    })
-
-    const transferTx = {
+    // Approve offramp to spend pUSD
+    const approveOfframpTx = {
       to: CONTRACTS.PUSD,
-      data: transferData,
+      data: encodeFunctionData({
+        abi: ERC20_APPROVE_ABI,
+        functionName: 'approve',
+        args: [offramp, amountRaw],
+      }),
       value: '0',
     }
 
-    // 3. Execute via builder relayer (gasless, still V1 HMAC auth)
+    // Unwrap pUSD → USDC.e (burns pUSD, returns USDC.e to Safe)
+    const unwrapTx = {
+      to: offramp,
+      data: encodeFunctionData({
+        abi: [{ name: 'unwrap', type: 'function', inputs: [{ name: '_asset', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amount', type: 'uint256' }], outputs: [] }] as const,
+        functionName: 'unwrap',
+        args: [usdceContract, safeAddr, amountRaw],
+      }),
+      value: '0',
+    }
+
+    // Transfer USDC.e to bridge
+    const transferTx = {
+      to: usdceContract,
+      data: encodeFunctionData({
+        abi: [{ name: 'transfer', type: 'function', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const,
+        functionName: 'transfer',
+        args: [bridgeEvmAddress as `0x${string}`, amountRaw],
+      }),
+      value: '0',
+    }
+
+    // 3. Execute all three atomically via relayer (gasless)
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-    const execRes = await relay.execute([transferTx], `Withdraw ${amount} USDC to Solana ${solanaAddress.slice(0, 8)}...`)
+    const execRes = await relay.execute([approveOfframpTx, unwrapTx, transferTx], `Withdraw ${amount} USDC to Solana ${solanaAddress.slice(0, 8)}...`)
     const execResult = await execRes.wait()
 
     const txHash = execResult?.transactionHash ?? null
-    console.log(`[clob] Withdraw ${amount} USDC from Safe ${session.safeAddress} → bridge ${bridgeEvmAddress} → Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
+    console.log(`[clob] Withdraw ${amount}: pUSD → unwrap → USDC.e → bridge ${bridgeEvmAddress} → Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
 
     return c.json({
       ok: true,
