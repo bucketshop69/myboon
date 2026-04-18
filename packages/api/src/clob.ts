@@ -21,6 +21,7 @@ import { Wallet, utils, providers } from 'ethers'
 import { ClobClient, SignatureTypeV2, Side, Chain } from '@polymarket/clob-client-v2'
 import type { ApiKeyCreds, BuilderConfig as ClobBuilderConfig } from '@polymarket/clob-client-v2'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
+import { deriveSafe } from '@polymarket/builder-relayer-client/dist/builder/derive'
 import { BuilderConfig as RelayerBuilderConfig } from '@polymarket/builder-signing-sdk'
 import { encodeFunctionData, maxUint256 } from 'viem'
 
@@ -33,6 +34,9 @@ const polygonProvider = new providers.JsonRpcProvider(POLYGON_RPC)
 
 // Builder code for V2 orders (public, no HMAC needed)
 const BUILDER_CODE = '019d669d-3447-78c6-8c77-c2f403474b94'
+
+// Gnosis Safe factory on Polygon (used for deterministic Safe address derivation)
+const SAFE_FACTORY = '0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b'
 
 // Polymarket V2 contract addresses (Polygon mainnet)
 const CONTRACTS = {
@@ -196,10 +200,10 @@ clobRoutes.post('/auth', async (c) => {
     // 2. Create RelayClient (SAFE mode — gasless, still uses V1 HMAC auth)
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
 
-    // 3. Get expected Safe address
-    const relayPayload = await relay.getRelayPayload(eoaAddress, 'SAFE')
-    const safeAddress = relayPayload.address
-    console.log(`[clob] Safe address: ${safeAddress}`)
+    // 3. Derive Safe address deterministically (CREATE2 from EOA + factory)
+    // NOTE: Do NOT use relay.getRelayPayload() — it returns the relay hub address, not the Safe!
+    const safeAddress = deriveSafe(eoaAddress, SAFE_FACTORY) as string
+    console.log(`[clob] Safe address (derived): ${safeAddress}`)
 
     // 4. Deploy Safe if needed
     try {
