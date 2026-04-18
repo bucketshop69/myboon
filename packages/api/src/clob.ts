@@ -579,9 +579,9 @@ clobRoutes.get('/gamma/events/:eventId', async (c) => {
 // V2 health check — verify CLOB host connectivity
 clobRoutes.get('/v2/health', async (c) => {
   try {
-    const res = await fetch(`${CLOB_HOST}/`)
-    const data = await res.text()
-    return c.json({ ok: res.ok, host: CLOB_HOST, status: res.status, body: data })
+    const res = await fetch(`${CLOB_HOST}/time`)
+    const data = await res.json().catch(() => null)
+    return c.json({ ok: res.ok, host: CLOB_HOST, status: res.status, serverTime: data })
   } catch (err: any) {
     return c.json({ ok: false, host: CLOB_HOST, error: err.message }, 502)
   }

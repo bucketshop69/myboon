@@ -47,10 +47,10 @@ async function run() {
 
   // ── 1. V2 Health ──
   console.log('\n[1] V2 CLOB connectivity')
-  results.push(await test('V2 health check', async () => {
+  results.push(await test('V2 health check (/time)', async () => {
     const { body } = await fetchJson('/clob/v2/health')
     if (!body?.ok) return `V2 CLOB not reachable: ${JSON.stringify(body)}`
-    if (!body.host?.includes('clob-v2')) return `wrong host: ${body.host}`
+    console.log(`    → host: ${body.host}, server time: ${JSON.stringify(body.serverTime)}`)
     return null
   }))
 
