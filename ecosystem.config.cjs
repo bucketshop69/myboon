@@ -70,18 +70,6 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
-      name: 'myboon-nansen-collector',
-      script: 'src/nansen/index.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
-      cwd: `${ROOT}/packages/collectors`,
-      watch: false,
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 5000,
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
-    },
-    {
       name: 'myboon-fomo-master',
       script: './packages/brain/src/run-fomo-master.ts',
       interpreter: 'node',
