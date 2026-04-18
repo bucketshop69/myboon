@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-// Inline the weight math from packages/collectors/src/nansen/index.ts
-// to avoid cross-package test dependencies.
+// Inline weight math for signal scoring tests.
 
 function marketSurgeWeight(volume24h: number): number {
   return Math.min(Math.floor(volume24h / 1_000_000) + 5, 10)

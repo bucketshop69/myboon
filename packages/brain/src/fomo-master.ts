@@ -1,7 +1,7 @@
 import 'dotenv/config'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { NansenClient } from '@myboon/shared'
+import { PolymarketProfileClient } from '@myboon/shared'
 import { fomoMasterGraph, type FormattedSignal, type XPostRow } from './graphs/fomo-master-graph.js'
 
 // --- env validation ---
@@ -9,13 +9,11 @@ import { fomoMasterGraph, type FormattedSignal, type XPostRow } from './graphs/f
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY
-const NANSEN_API_KEY = process.env.NANSEN_API_KEY
 
 const missing: string[] = []
 if (!SUPABASE_URL) missing.push('SUPABASE_URL')
 if (!SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY')
 if (!MINIMAX_API_KEY) missing.push('MINIMAX_API_KEY')
-if (!NANSEN_API_KEY) missing.push('NANSEN_API_KEY')
 
 if (missing.length > 0) {
   console.error(`[fomo_master] Missing required env vars: ${missing.join(', ')}`)
@@ -24,10 +22,11 @@ if (missing.length > 0) {
 
 const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
 
-const nansenClient = new NansenClient({
-  supabaseUrl: SUPABASE_URL!,
-  supabaseKey: SUPABASE_SERVICE_ROLE_KEY!,
-  nansenApiKey: NANSEN_API_KEY!,
+const profileClient = new PolymarketProfileClient({
+  cache: {
+    supabaseUrl: SUPABASE_URL!,
+    supabaseKey: SUPABASE_SERVICE_ROLE_KEY!,
+  },
 })
 
 // --- helpers ---
@@ -77,13 +76,46 @@ function formatAmount(amount: number): string {
   return `$${Math.round(amount).toLocaleString()}`
 }
 
+interface BettorProfile {
+  portfolio_value: number
+  markets_traded: number
+  trade_count: number
+  win_rate: number | null
+  total_pnl: number
+}
+
+async function fetchBettorProfile(address: string): Promise<BettorProfile | null> {
+  try {
+    const [value, traded, closed] = await Promise.all([
+      profileClient.getPortfolioValue(address),
+      profileClient.getMarketsTraded(address),
+      profileClient.getClosedPositions({ user: address, limit: 50, sortBy: 'REALIZEDPNL' }),
+    ])
+
+    const wins = closed.filter((p) => p.realizedPnl > 0).length
+    const win_rate = closed.length > 0 ? wins / closed.length : null
+    const total_pnl = closed.reduce((sum, p) => sum + p.realizedPnl, 0)
+
+    return {
+      portfolio_value: value?.value ?? 0,
+      markets_traded: traded?.traded ?? 0,
+      trade_count: closed.length,
+      win_rate,
+      total_pnl,
+    }
+  } catch (err) {
+    console.warn(`[fomo_master] fetchBettorProfile failed for ${address}:`, err)
+    return null
+  }
+}
+
 function formatSignalBlock(signal: {
   id: string
   type: string
   weight: number
   metadata: Record<string, unknown>
   created_at: string
-  nansen_profile: unknown | null
+  bettor_profile: BettorProfile | null
   live_odds: number | null
   market_history: { bet_count: number; distinct_wallets: number; total_volume: number }
   cluster_context: {
@@ -109,11 +141,11 @@ function formatSignalBlock(signal: {
   const oddsStr = signal.live_odds !== null ? `${(signal.live_odds * 100).toFixed(0)}% YES` : 'unknown'
   const line2 = `Market: ${slug ?? 'unknown'} | Current odds: ${oddsStr}`
 
-  // Line 3: Nansen profile
-  const profile = signal.nansen_profile as Record<string, unknown> | null
-  const win_rate = typeof profile?.win_rate === 'number' ? (profile.win_rate * 100).toFixed(0) : null
-  const total_pnl = typeof profile?.total_pnl === 'number' ? profile.total_pnl : null
-  const trade_count = typeof profile?.trade_count === 'number' ? profile.trade_count : null
+  // Line 3: Bettor profile (from Polymarket data APIs)
+  const profile = signal.bettor_profile
+  const win_rate = profile?.win_rate !== null && profile?.win_rate !== undefined ? (profile.win_rate * 100).toFixed(0) : null
+  const total_pnl = profile?.total_pnl ?? null
+  const trade_count = profile?.trade_count ?? null
 
   let line3: string
   if (profile && (win_rate !== null || total_pnl !== null || trade_count !== null)) {
@@ -124,6 +156,7 @@ function formatSignalBlock(signal: {
     if (win_rate !== null) parts.push(`Win rate: ${win_rate}%`)
     if (pnlStr !== null) parts.push(`PnL: ${pnlStr}`)
     if (trade_count !== null) parts.push(`Trades: ${trade_count}`)
+    if (profile.portfolio_value > 0) parts.push(`Portfolio: ${formatVolume(profile.portfolio_value)}`)
     line3 = `Bettor: ${address ?? 'unknown'} | ${parts.join(' | ')}`
   } else {
     line3 = `Bettor: ${address ?? 'unknown'} | No wallet history on record`
@@ -220,22 +253,22 @@ export async function runFomoMaster(): Promise<void> {
 
   console.log(`[fomo_master] ${representatives.length} cluster representative(s) after dedup`)
 
-  // Step 5: enrich each representative in parallel (Nansen + live odds + market history)
+  // Step 5: enrich each representative in parallel (profile + live odds + market history)
   const enriched = await Promise.all(
     representatives.map(async (signal) => {
       const address = signal.metadata?.user as string | undefined
       const slug = signal.metadata?.slug as string | undefined
 
-      const [nansenResult, oddsResult, historyResult] = await Promise.allSettled([
-        address ? nansenClient.bettorProfile(address) : Promise.resolve(null),
+      const [profileResult, oddsResult, historyResult] = await Promise.allSettled([
+        address ? fetchBettorProfile(address) : Promise.resolve(null),
         slug ? fetchPolymarketOdds(slug) : Promise.resolve(null),
         slug
           ? fetchMarketHistory(supabase, slug)
           : Promise.resolve({ bet_count: 0, distinct_wallets: 0, total_volume: 0 }),
       ])
 
-      if (nansenResult.status === 'rejected') {
-        console.warn(`[fomo_master] Nansen enrichment failed for ${address}:`, nansenResult.reason)
+      if (profileResult.status === 'rejected') {
+        console.warn(`[fomo_master] Profile enrichment failed for ${address}:`, profileResult.reason)
       }
       if (oddsResult.status === 'rejected') {
         console.warn(`[fomo_master] Odds fetch failed for ${slug}:`, oddsResult.reason)
@@ -246,7 +279,7 @@ export async function runFomoMaster(): Promise<void> {
 
       return {
         ...signal,
-        nansen_profile: nansenResult.status === 'fulfilled' ? nansenResult.value : null,
+        bettor_profile: profileResult.status === 'fulfilled' ? profileResult.value : null,
         live_odds: oddsResult.status === 'fulfilled' ? oddsResult.value : null,
         market_history:
           historyResult.status === 'fulfilled'
@@ -264,7 +297,7 @@ export async function runFomoMaster(): Promise<void> {
       weight: signal.weight,
       metadata: signal.metadata as Record<string, unknown>,
       created_at: signal.created_at,
-      nansen_profile: signal.nansen_profile,
+      bettor_profile: signal.bettor_profile,
       live_odds: signal.live_odds,
       market_history: signal.market_history,
       cluster_context: signal.cluster_context,

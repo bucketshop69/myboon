@@ -1,7 +1,6 @@
 import 'dotenv/config'
 import { PolymarketClient } from '@myboon/shared'
 import { createPolymarketTools } from './analyst-tools/polymarket.tools.js'
-import { nansenTools } from './analyst-tools/nansen.tools.js'
 import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp.js'
 import { buildMarketContexts } from './context-builder.js'
 import type { MarketContext } from './context-builder.js'
@@ -27,7 +26,6 @@ if (missing.length > 0) {
 const polymarketClient = new PolymarketClient()
 const analystTools: ResearchTool<any>[] = [
   ...createPolymarketTools(polymarketClient),
-  ...nansenTools,
 ]
 
 function toAnthropicDefinitions(tools: ResearchTool<any>[]): AnthropicToolDefinition[] {

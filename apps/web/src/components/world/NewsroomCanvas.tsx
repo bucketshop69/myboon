@@ -80,9 +80,9 @@ const ROOMS: Record<string, Room> = {
     x: 18, y: 28, w: 218, h: 252, name: 'WIRE ROOM', sub: 'Data Ingestion',
     info: {
       title: 'WIRE ROOM',
-      body: 'Data arrives here first.\nEvery 5 min: tracked wallet activity.\nEvery 2h: top Polymarket markets by volume.\nEvery 30 min: trending Nansen prediction market events.\nAll raw — the Analyst handles what it means.',
+      body: 'Data arrives here first.\nEvery 5 min: tracked wallet activity.\nEvery 2h: top Polymarket markets by volume.\nAll raw — the Analyst handles what it means.',
       stats: [['Status', '● LIVE'], ['Poll interval', '5 min'], ['Last ping', '47s ago'], ['Signals/hr', '~140']],
-      detail: 'Three collector agents run continuously in this room. The Polymarket Collector scrapes top markets by volume. The Nansen Collector tracks whale wallet movements. The User Tracker watches user-defined filters.\n\nAll signals land in the SIGNALS table in Supabase, completely unanalyzed.'
+      detail: 'Two collector agents run continuously in this room. The Polymarket Collector scrapes top markets by volume and whale bets. The User Tracker watches user-defined filters.\n\nAll signals land in the SIGNALS table in Supabase, completely unanalyzed.'
     }
   },
   research: {
@@ -160,10 +160,10 @@ const CHARS_TEMPLATE: Record<string, Omit<Character, 'x'|'y'|'homeX'|'homeY'|'bo
     walkInterval: 14, walkSpeed: 1.3,
   },
   col2: {
-    hd: '#c0986a', bd: '#3a5540', name: 'Nansen Collector',
+    hd: '#c0986a', bd: '#3a5540', name: 'Whale Tracker',
     info: {
-      title: 'NANSEN COLLECTOR',
-      body: 'Tracks whale wallet movements every 5 min.\nLogs any new position over $10k as a WHALE_BET signal.\nWrites to SIGNALS table immediately.',
+      title: 'WHALE TRACKER',
+      body: 'Tracks whale wallet movements via Polymarket APIs.\nLogs any new position over $10k as a WHALE_BET signal.\nWrites to SIGNALS table immediately.',
       stats: [['Last run', '2m ago'], ['Wallets tracked', '47'], ['Signals written', '3']]
     },
     routes: [{ x: R.wire.x + 12 + 26, y: R.wire.y + 130 }],
@@ -226,7 +226,7 @@ const PATHS: PathDef[] = [
   { ax: R.editorial.x + 30, ay: R.editorial.y + R.editorial.h, bx: R.archive.x + R.archive.w, by: R.archive.y + 50, col: '#9de1c0', r: 2.5, n: 3 },
 ]
 
-const TICKER = ['WHALE_BET \u25b6 UCL_FINAL', 'ODDS_SHIFT +7.3%', 'MARKET_DISCOVERED', 'PM_TRENDING', 'NANSEN \u25b6 $45k', 'WALLET 0x3a..f2', 'NEW_POSITION \u25b6 YES', 'ODDS_MOVE -4.1%']
+const TICKER = ['WHALE_BET \u25b6 UCL_FINAL', 'ODDS_SHIFT +7.3%', 'MARKET_DISCOVERED', 'PM_TRENDING', 'WHALE \u25b6 $45k', 'WALLET 0x3a..f2', 'NEW_POSITION \u25b6 YES', 'ODDS_MOVE -4.1%']
 
 /* ================================================================
    COMPONENT
@@ -963,7 +963,7 @@ export default function NewsroomCanvas() {
         {[
           { dot: 'g', time: '2m ago', text: 'Analyst scored cluster #52: 8.4/10 → passed to Editorial' },
           { dot: 'n', time: '7m ago', text: 'Publisher draft approved on 1st review' },
-          { dot: '',  time: '11m ago', text: '3 whale wallet signals ingested via Nansen' },
+          { dot: '',  time: '11m ago', text: '3 whale wallet signals ingested via Polymarket' },
           { dot: 'g', time: '18m ago', text: 'Influencer posted to X — UCL Final narrative' },
           { dot: '',  time: '24m ago', text: 'Polymarket scan complete — 24 markets indexed' },
         ].map((item, i) => (

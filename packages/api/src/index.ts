@@ -919,6 +919,105 @@ app.get('/predict/portfolio/:address', async (c) => {
   }
 })
 
+// GET /predict/profile/:address
+// Rich wallet profile card — identity, stats, top positions, top wins, classification.
+// Aggregates 5 data-api + gamma-api calls in parallel.
+app.get('/predict/profile/:address', async (c) => {
+  const address = c.req.param('address')
+  if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
+
+  try {
+    const [profileRes, valueRes, tradedRes, posRes, closedRes] = await Promise.allSettled([
+      gammaFetch(`public-profile?address=${encodeURIComponent(address)}`),
+      dataApiFetch(`value?user=${encodeURIComponent(address)}`),
+      dataApiFetch(`traded?user=${encodeURIComponent(address)}`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&limit=5&sortBy=CASHPNL&sortDirection=DESC`),
+      dataApiFetch(`closed-positions?user=${encodeURIComponent(address)}&limit=5&sortBy=REALIZEDPNL&sortDirection=DESC`),
+    ])
+
+    // Identity
+    let identity: Record<string, unknown> | null = null
+    if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+      const p = await profileRes.value.json() as Record<string, unknown>
+      identity = {
+        name: p.name ?? p.pseudonym ?? null,
+        pseudonym: p.pseudonym ?? null,
+        xUsername: p.xUsername ?? null,
+        verifiedBadge: p.verifiedBadge ?? false,
+        createdAt: p.createdAt ?? null,
+        profileImage: p.profileImage ?? null,
+        bio: p.bio ?? null,
+      }
+    }
+
+    // Portfolio value
+    let portfolioValue: number | null = null
+    if (valueRes.status === 'fulfilled' && valueRes.value.ok) {
+      const body = await valueRes.value.json() as unknown
+      if (Array.isArray(body) && body.length > 0) {
+        portfolioValue = parseNullableNumber((body[0] as Record<string, unknown>).value)
+      }
+    }
+
+    // Markets traded
+    let marketsTraded: number | null = null
+    if (tradedRes.status === 'fulfilled' && tradedRes.value.ok) {
+      const body = await tradedRes.value.json() as Record<string, unknown>
+      marketsTraded = parseNullableNumber(body.traded)
+    }
+
+    // Top positions
+    let topPositions: unknown[] = []
+    if (posRes.status === 'fulfilled' && posRes.value.ok) {
+      const body = await posRes.value.json() as unknown
+      topPositions = Array.isArray(body) ? body : []
+    }
+
+    // Top wins (closed)
+    let topWins: unknown[] = []
+    if (closedRes.status === 'fulfilled' && closedRes.value.ok) {
+      const body = await closedRes.value.json() as unknown
+      topWins = Array.isArray(body) ? body : []
+    }
+
+    // Derived stats
+    let totalOpenPnl = 0
+    for (const p of topPositions) {
+      totalOpenPnl += parseNullableNumber((p as Record<string, unknown>).cashPnl) ?? 0
+    }
+    let totalRealizedPnl = 0
+    for (const w of topWins) {
+      totalRealizedPnl += parseNullableNumber((w as Record<string, unknown>).realizedPnl) ?? 0
+    }
+
+    // Classification
+    let classification: string = 'unknown'
+    if (portfolioValue !== null) {
+      if (portfolioValue >= 50_000) classification = 'whale'
+      else if (portfolioValue >= 1_000) classification = 'mid'
+      else classification = 'retail'
+    }
+
+    return c.json({
+      address,
+      identity,
+      stats: {
+        portfolioValue: portfolioValue !== null ? Math.round(portfolioValue * 100) / 100 : null,
+        marketsTraded,
+        openPositions: topPositions.length,
+        totalOpenPnl: Math.round(totalOpenPnl * 100) / 100,
+        totalRealizedPnl: Math.round(totalRealizedPnl * 100) / 100,
+      },
+      classification,
+      topPositions,
+      topWins,
+    })
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/profile/${address}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 // GET /predict/activity/:address
 // Recent trade activity via Gamma data-api.
 app.get('/predict/activity/:address', async (c) => {

@@ -10,7 +10,13 @@ export interface FormattedSignal {
   weight: number
   metadata: Record<string, unknown>
   created_at: string
-  nansen_profile: unknown | null
+  bettor_profile: {
+    portfolio_value: number
+    markets_traded: number
+    trade_count: number
+    win_rate: number | null
+    total_pnl: number
+  } | null
   live_odds: number | null
   market_history: {
     bet_count: number
@@ -220,7 +226,7 @@ BAD:
 "An experienced wallet with a good track record has placed a bet."
 [Vague. No numbers. No credibility.]
 
---- FRESH_WALLET (no nansen_profile OR trade_count < 3) ---
+--- FRESH_WALLET (no bettor_profile OR trade_count < 3) ---
 Lead: the absence of history. Then the size of the bet. End with the open question.
 
 GOOD:
@@ -268,7 +274,7 @@ Ranking criteria (in order):
 4. Size — raw dollar amount (everyone can read this, so it's the weakest differentiator alone)
 5. Timing — a fresh bet is more relevant than a stale one
 
-You will receive formatted signal blocks with short IDs (S1, S2, ...). Each block includes: bet direction+odds (for contrarian scoring), Nansen profile (for credibility), market_history (for pattern), and cluster_context (if multiple wallets hit this market).
+You will receive formatted signal blocks with short IDs (S1, S2, ...). Each block includes: bet direction+odds (for contrarian scoring), bettor profile (win rate, PnL, trade count from Polymarket data), market_history (for pattern), and cluster_context (if multiple wallets hit this market).
 
 Return JSON:
 {
@@ -295,8 +301,8 @@ The reader should finish and think "huh" — not "so what."
 Before writing, classify the signal. First match wins:
 1. CONTRARIAN: live_odds < 0.30 — wallet betting heavily against consensus
 2. CLUSTER: 3+ wallets, same market, last 4h (cluster_context.signal_count)
-3. AUTHORITY: nansen_profile.win_rate >= 0.60 AND nansen_profile.trade_count >= 10
-4. FRESH_WALLET: no nansen_profile OR nansen_profile.trade_count < 3
+3. AUTHORITY: bettor_profile.win_rate >= 0.60 AND bettor_profile.trade_count >= 10
+4. FRESH_WALLET: no bettor_profile OR bettor_profile.trade_count < 3
 5. GENERAL: fallback — lead with the most specific number in the signal
 
 [TIME_SENSITIVE modifier]
@@ -311,7 +317,7 @@ ${PERSUASION_PLAYBOOK}
 - No hashtags
 - No emojis unless it genuinely adds something (max 1: ⚡ 🚨 — never 🚀🔥)
 - NEVER write "Full context in the feed." or any CTA
-- NEVER be vague — use actual nansen_profile numbers (win_rate, trade_count, total_pnl)
+- NEVER be vague — use actual bettor_profile numbers (win_rate, trade_count, total_pnl, portfolio_value)
 - Do NOT include the Polymarket URL — appended automatically
 
 You will receive ranked signal blocks. Write one post per signal.
