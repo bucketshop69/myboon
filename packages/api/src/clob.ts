@@ -202,18 +202,27 @@ clobRoutes.post('/auth', async (c) => {
     console.log(`[clob] Safe address: ${safeAddress}`)
 
     // 4. Deploy Safe if needed
-    const deployed = await relay.getDeployed(safeAddress)
-    if (!deployed) {
-      console.log(`[clob] Deploying Safe for ${eoaAddress}...`)
-      const deployRes = await relay.deploy()
-      const deployResult = await deployRes.wait()
-      if (deployResult) {
-        console.log(`[clob] Safe deployed: tx=${deployResult.transactionHash}`)
+    try {
+      const deployed = await relay.getDeployed(safeAddress)
+      if (!deployed) {
+        console.log(`[clob] Deploying Safe for ${eoaAddress}...`)
+        const deployRes = await relay.deploy()
+        const deployResult = await deployRes.wait()
+        if (deployResult) {
+          console.log(`[clob] Safe deployed: tx=${deployResult.transactionHash}`)
+        } else {
+          console.warn(`[clob] Safe deploy may have failed — continuing anyway`)
+        }
       } else {
-        console.warn(`[clob] Safe deploy may have failed — continuing anyway`)
+        console.log(`[clob] Safe already deployed`)
       }
-    } else {
-      console.log(`[clob] Safe already deployed`)
+    } catch (deployErr: any) {
+      // "safe already deployed!" is fine — just means the check was stale
+      if (deployErr.message?.includes('already deployed')) {
+        console.log(`[clob] Safe already deployed (caught)`)
+      } else {
+        throw deployErr
+      }
     }
 
     // 5. Run approvals for V2 contracts (gasless via builder relayer)
