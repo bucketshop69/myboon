@@ -1,36 +1,50 @@
 /**
- * Server-side CLOB session management and order routing.
+ * Server-side CLOB V2 session management and order routing.
  *
  * Flow (gasless via Builder Relayer + Safe wallet):
  * 1. Phone derives EVM key from Solana wallet signature (Phantom MWA)
  * 2. Phone sends the raw Solana signature to POST /clob/auth
  * 3. Server derives EVM key → deploys Safe (gasless) → runs approvals (gasless)
- *    → creates CLOB API credentials (SignatureType 2 / GNOSIS_SAFE)
+ *    → creates CLOB API credentials (SignatureTypeV2.POLY_GNOSIS_SAFE)
  * 4. Phone places orders via POST /clob/order — server signs & submits via builder
  *
- * All on-chain operations are gasless — the Builder Relayer pays gas.
- * User funds live in the Safe wallet. EOA is the signer only.
+ * V2 changes (April 2026):
+ * - Collateral: pUSD (0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB) replaces USDC.e
+ * - Exchange: V2 contracts (CTF Exchange V2, NegRisk CTF Exchange V2)
+ * - Builder: public builderCode replaces HMAC auth for orders
+ * - Order struct: timestamp, metadata, builder fields; no nonce/feeRateBps/taker
+ * - Relayer SDK: unchanged (still V1, still needs builder-signing-sdk for HMAC)
  */
 
 import { Hono } from 'hono'
 import { Wallet, utils, providers } from 'ethers'
-import { ClobClient } from '@polymarket/clob-client'
-import { BuilderConfig } from '@polymarket/builder-signing-sdk'
+import { ClobClient, SignatureTypeV2, Side, Chain } from '@polymarket/clob-client-v2'
+import type { ApiKeyCreds, BuilderConfig as ClobBuilderConfig } from '@polymarket/clob-client-v2'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
+import { BuilderConfig as RelayerBuilderConfig } from '@polymarket/builder-signing-sdk'
 import { encodeFunctionData, maxUint256 } from 'viem'
-import type { ApiKeyCreds } from '@polymarket/clob-client'
 
-const CLOB_HOST = 'https://clob.polymarket.com'
+// V2 preprod until cutover (April 22, 2026), then switch to production
+const CLOB_HOST = process.env.CLOB_HOST || 'https://clob-v2.polymarket.com'
 const RELAYER_URL = 'https://relayer-v2.polymarket.com'
 const CHAIN_ID = 137 // Polygon mainnet
 const POLYGON_RPC = process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com'
 const polygonProvider = new providers.JsonRpcProvider(POLYGON_RPC)
 
-// Polymarket contract addresses (Polygon mainnet)
+// Builder code for V2 orders (public, no HMAC needed)
+const BUILDER_CODE = '019d669d-3447-78c6-8c77-c2f403474b94'
+
+// Polymarket V2 contract addresses (Polygon mainnet)
 const CONTRACTS = {
-  USDC_E: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
-  CTF_EXCHANGE: '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E',
-  NEG_RISK_CTF_EXCHANGE: '0xC5d563A36AE78145C45a50134d48A1215220f80a',
+  // Collateral: pUSD replaces USDC.e in V2
+  PUSD: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB',
+  // V1 exchanges (still needed for relayer approvals during transition)
+  CTF_EXCHANGE_V1: '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E',
+  NEG_RISK_CTF_EXCHANGE_V1: '0xC5d563A36AE78145C45a50134d48A1215220f80a',
+  // V2 exchanges
+  CTF_EXCHANGE_V2: '0xE111180000d2663C0091e4f400237545B87B996B',
+  NEG_RISK_CTF_EXCHANGE_V2: '0xe2222d279d744050d28e00520010520000310F59',
+  // Unchanged
   NEG_RISK_ADAPTER: '0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296',
   CTF: '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045',
 } as const
@@ -47,29 +61,39 @@ const ERC1155_SET_APPROVAL_ABI = [{
   outputs: [],
 }] as const
 
-// --- Builder Config (from env) ---
+// --- Builder Config ---
 
+// Relayer still uses V1 HMAC auth (for Safe deploy/approve/withdraw)
 const builderKey = process.env.POLYMARKET_BUILDER_API_KEY
 const builderSecret = process.env.POLYMARKET_BUILDER_SECRET
 const builderPassphrase = process.env.POLYMARKET_BUILDER_PASSPHRASE
 
 if (!builderKey || !builderSecret || !builderPassphrase) {
-  console.warn('[clob] POLYMARKET_BUILDER_* env vars not set — gasless auth will fail')
+  console.warn('[clob] POLYMARKET_BUILDER_* env vars not set — gasless relay will fail')
 }
 
-const builderConfig = (builderKey && builderSecret && builderPassphrase)
-  ? new BuilderConfig({
+const relayerBuilderConfig = (builderKey && builderSecret && builderPassphrase)
+  ? new RelayerBuilderConfig({
       localBuilderCreds: { key: builderKey, secret: builderSecret, passphrase: builderPassphrase },
     })
   : undefined
 
+// V2 CLOB orders use public builderCode (no HMAC)
+const clobBuilderConfig: ClobBuilderConfig = { builderCode: BUILDER_CODE }
+
 // --- Approval helpers ---
 
 function buildApprovalTxs() {
-  const spenders = [CONTRACTS.CTF_EXCHANGE, CONTRACTS.NEG_RISK_CTF_EXCHANGE, CONTRACTS.NEG_RISK_ADAPTER]
+  // Approve V2 exchanges + adapter for pUSD and CTF tokens
+  const spenders = [
+    CONTRACTS.CTF_EXCHANGE_V2,
+    CONTRACTS.NEG_RISK_CTF_EXCHANGE_V2,
+    CONTRACTS.NEG_RISK_ADAPTER,
+  ]
 
-  const usdcApprovals = spenders.map((spender) => ({
-    to: CONTRACTS.USDC_E,
+  // pUSD approvals (replaces USDC.e in V2)
+  const pusdApprovals = spenders.map((spender) => ({
+    to: CONTRACTS.PUSD,
     data: encodeFunctionData({
       abi: ERC20_APPROVE_ABI,
       functionName: 'approve',
@@ -88,7 +112,7 @@ function buildApprovalTxs() {
     value: '0',
   }))
 
-  return [...usdcApprovals, ...ctfApprovals]
+  return [...pusdApprovals, ...ctfApprovals]
 }
 
 // --- In-memory session store ---
@@ -117,17 +141,15 @@ function cleanSessions() {
 setInterval(cleanSessions, 60 * 60 * 1000)
 
 function getClient(session: ClobSession): ClobClient {
-  return new ClobClient(
-    CLOB_HOST,
-    CHAIN_ID,
-    session.wallet,
-    session.creds,
-    2, // GNOSIS_SAFE — gasless via builder relayer
-    session.safeAddress, // funder — where USDC lives
-    undefined,
-    undefined,
-    builderConfig,
-  )
+  return new ClobClient({
+    host: CLOB_HOST,
+    chain: Chain.POLYGON,
+    signer: session.wallet,
+    creds: session.creds,
+    signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
+    funderAddress: session.safeAddress,
+    builderConfig: clobBuilderConfig,
+  })
 }
 
 // --- Routes ---
@@ -154,7 +176,7 @@ clobRoutes.post('/auth', async (c) => {
     return c.json({ error: 'Missing signature' }, 400)
   }
 
-  if (!builderConfig) {
+  if (!relayerBuilderConfig) {
     return c.json({ error: 'Builder not configured — set POLYMARKET_BUILDER_* env vars' }, 500)
   }
 
@@ -171,8 +193,8 @@ clobRoutes.post('/auth', async (c) => {
 
     console.log(`[clob] EOA derived: ${eoaAddress}`)
 
-    // 2. Create RelayClient (SAFE mode — gasless)
-    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, wallet, builderConfig, RelayerTxType.SAFE)
+    // 2. Create RelayClient (SAFE mode — gasless, still uses V1 HMAC auth)
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
 
     // 3. Get expected Safe address
     const relayPayload = await relay.getRelayPayload(eoaAddress, 'SAFE')
@@ -194,16 +216,16 @@ clobRoutes.post('/auth', async (c) => {
       console.log(`[clob] Safe already deployed`)
     }
 
-    // 5. Run approvals (gasless via builder relayer)
-    console.log(`[clob] Running approvals...`)
+    // 5. Run approvals for V2 contracts (gasless via builder relayer)
+    console.log(`[clob] Running V2 approvals...`)
     try {
       const approvalTxs = buildApprovalTxs()
-      const approvalRes = await relay.execute(approvalTxs, `Approve USDC.e + CTF for ${eoaAddress}`)
+      const approvalRes = await relay.execute(approvalTxs, `Approve pUSD + CTF for V2 exchanges (${eoaAddress})`)
       const approvalResult = await approvalRes.wait()
       if (approvalResult) {
-        console.log(`[clob] Approvals confirmed: tx=${approvalResult.transactionHash}`)
+        console.log(`[clob] V2 approvals confirmed: tx=${approvalResult.transactionHash}`)
       } else {
-        console.warn(`[clob] Approvals may have failed`)
+        console.warn(`[clob] V2 approvals may have failed`)
       }
     } catch (err: any) {
       // Approvals may already be set from a previous auth
@@ -211,7 +233,7 @@ clobRoutes.post('/auth', async (c) => {
     }
 
     // 6. Create CLOB API credentials (L1 auth — EIP-712 signature from EOA)
-    const tempClient = new ClobClient(CLOB_HOST, CHAIN_ID, wallet)
+    const tempClient = new ClobClient({ host: CLOB_HOST, chain: Chain.POLYGON, signer: wallet })
     const creds = await tempClient.createOrDeriveApiKey()
 
     // 7. Store session
@@ -286,7 +308,7 @@ clobRoutes.post('/order', async (c) => {
       tokenID,
       price,
       size,
-      side: side === 'BUY' ? 0 : 1,
+      side: side === 'BUY' ? Side.BUY : Side.SELL,
     })
 
     const result = await client.postOrder(signedOrder)
@@ -367,7 +389,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
 
   try {
     const client = getClient(session)
-    const result = await client.getBalanceAllowance({ asset_type: 'COLLATERAL' as any })
+    const result = await client.getBalanceAllowance({ asset_type: 'COLLATERAL' as any }) // pUSD balance in V2
     const rawBalance = parseFloat(result.balance) || 0
     const rawAllowance = parseFloat(result.allowance) || 0
     const balance = rawBalance > 1_000_000 ? rawBalance / 1e6 : rawBalance
@@ -408,7 +430,7 @@ clobRoutes.post('/withdraw', async (c) => {
     return c.json({ error: 'Amount must be positive' }, 400)
   }
 
-  if (!builderConfig) {
+  if (!relayerBuilderConfig) {
     return c.json({ error: 'Builder not configured' }, 500)
   }
 
@@ -449,8 +471,8 @@ clobRoutes.post('/withdraw', async (c) => {
       return c.json({ error: 'No bridge deposit address returned' }, 502)
     }
 
-    // 2. Build USDC.e transfer tx from Safe → bridge address
-    // Amount is in USDC (6 decimals)
+    // 2. Build pUSD transfer tx from Safe → bridge address
+    // Amount in pUSD (6 decimals, same as USDC)
     const amountRaw = BigInt(Math.floor(amount * 1e6))
 
     const transferData = encodeFunctionData({
@@ -464,13 +486,13 @@ clobRoutes.post('/withdraw', async (c) => {
     })
 
     const transferTx = {
-      to: CONTRACTS.USDC_E,
+      to: CONTRACTS.PUSD,
       data: transferData,
       value: '0',
     }
 
-    // 3. Execute via builder relayer (gasless)
-    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, builderConfig, RelayerTxType.SAFE)
+    // 3. Execute via builder relayer (gasless, still V1 HMAC auth)
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
     const execRes = await relay.execute([transferTx], `Withdraw ${amount} USDC to Solana ${solanaAddress.slice(0, 8)}...`)
     const execResult = await execRes.wait()
 
@@ -539,6 +561,29 @@ clobRoutes.get('/markets/:conditionId', async (c) => {
     return c.json(data, res.ok ? 200 : res.status)
   } catch (err: any) {
     return c.json({ error: 'CLOB market info proxy failed', detail: err.message }, 502)
+  }
+})
+
+// Gamma API proxy (also geo-restricted)
+clobRoutes.get('/gamma/events/:eventId', async (c) => {
+  const eventId = c.req.param('eventId')
+  try {
+    const res = await fetch(`https://gamma-api.polymarket.com/events/${encodeURIComponent(eventId)}`)
+    const data = await res.json()
+    return c.json(data, res.ok ? 200 : (res.status as any))
+  } catch (err: any) {
+    return c.json({ error: 'Gamma proxy failed', detail: err.message }, 502)
+  }
+})
+
+// V2 health check — verify CLOB host connectivity
+clobRoutes.get('/v2/health', async (c) => {
+  try {
+    const res = await fetch(`${CLOB_HOST}/`)
+    const data = await res.text()
+    return c.json({ ok: res.ok, host: CLOB_HOST, status: res.status, body: data })
+  } catch (err: any) {
+    return c.json({ ok: false, host: CLOB_HOST, error: err.message }, 502)
   }
 })
 

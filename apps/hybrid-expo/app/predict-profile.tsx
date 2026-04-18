@@ -63,11 +63,13 @@ export default function PredictProfileScreen() {
     // Gamma data-api tracks by Safe address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
     const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
+    console.log('[profile] Loading — EOA:', poly.polygonAddress, '| Gamma addr (Safe):', gammaAddr);
     const [portfolioData, balanceData, ordersData] = await Promise.all([
       fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
     ]);
+    console.log('[profile] Balance:', balanceData?.balance ?? 'no session', '| Positions:', portfolioData?.positions?.length ?? 0, '| Orders:', ordersData.length);
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
     if (balanceData) {
@@ -102,12 +104,12 @@ export default function PredictProfileScreen() {
     }
 
     Alert.alert(
-      'Open Polymarket Account',
-      'This will create a Polymarket trading account linked to your Solana wallet.\n\n' +
-        '• You\'ll sign a message with Phantom (not a transaction)\n' +
-        '• A Polygon trading address is derived from your signature\n' +
+      'Open Prediction Account',
+      'Create a prediction market account linked to your wallet.\n\n' +
+        '• Sign a message to verify ownership (no transaction)\n' +
+        '• A trading address is derived automatically\n' +
         '• No extra seed phrases or wallets to manage\n' +
-        '• You can deposit & trade on prediction markets',
+        '• Deposit & trade on prediction markets — gasless',
       [
         { text: 'Cancel', style: 'cancel' },
         {

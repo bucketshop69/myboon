@@ -5,13 +5,14 @@
   "scripts": {
     "dev": "tsx --watch src/index.ts",
     "start": "tsx src/index.ts",
-    "smoke": "tsx src/smoke-test.ts"
+    "smoke": "tsx src/smoke-test.ts",
+    "e2e:v2": "tsx src/e2e-v2.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@polymarket/builder-relayer-client": "^0.0.8",
     "@polymarket/builder-signing-sdk": "^1.0.0",
-    "@polymarket/clob-client": "^5.8.1",
+    "@polymarket/clob-client-v2": "^1.0.0",
     "dotenv": "^16.0.0",
     "ethers": "5",
     "hono": "^4.6.0",

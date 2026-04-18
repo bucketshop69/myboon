@@ -55,6 +55,7 @@ export function usePolymarketWallet(): PolymarketWallet {
       AsyncStorage.getItem(SAFE_STORAGE_KEY),
     ])
       .then(([storedEoa, storedSafe]) => {
+        console.log('[polymarket] Loaded from storage — EOA:', storedEoa ?? 'none', '| Safe:', storedSafe ?? 'none');
         if (storedEoa) setPolygonAddress(storedEoa);
         if (storedSafe) setSafeAddress(storedSafe);
       })
@@ -70,8 +71,10 @@ export function usePolymarketWallet(): PolymarketWallet {
     setIsLoading(true);
     try {
       // Step 1: Sign deterministic message with Solana wallet (MWA prompt)
+      console.log('[polymarket] Requesting wallet signature...');
       const messageBytes = new TextEncoder().encode(DERIVE_MESSAGE);
       const signature = await signMessage(messageBytes);
+      console.log('[polymarket] Signature received, sending to server...');
 
       // Step 2: Send hex-encoded signature to server for CLOB auth
       const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
@@ -84,10 +87,12 @@ export function usePolymarketWallet(): PolymarketWallet {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        console.error('[polymarket] Auth failed:', res.status, err);
         throw new Error(err.detail || err.error || 'CLOB auth failed');
       }
 
       const data = await res.json();
+      console.log('[polymarket] Auth success — EOA:', data.polygonAddress, '| Safe:', data.safeAddress ?? 'none');
       setPolygonAddress(data.polygonAddress);
       setSafeAddress(data.safeAddress ?? null);
 
