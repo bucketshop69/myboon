@@ -322,6 +322,44 @@ clobRoutes.post('/order', async (c) => {
 })
 
 /**
+ * POST /clob/order/signed
+ * Body: { polygonAddress, signedOrder }
+ *
+ * Phase 2: Phone signs order locally, sends pre-signed order here.
+ * Server wraps with L2 HMAC headers (API creds) and posts to CLOB.
+ * Server does NOT touch the private key for order signing.
+ */
+clobRoutes.post('/order/signed', async (c) => {
+  let body: { polygonAddress?: string; signedOrder?: any }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const { polygonAddress, signedOrder } = body
+  if (!polygonAddress || !signedOrder) {
+    return c.json({ error: 'Missing polygonAddress or signedOrder' }, 400)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  try {
+    const client = getClient(session)
+    const result = await client.postOrder(signedOrder)
+
+    console.log(`[clob] Signed order posted for ${polygonAddress}: ${signedOrder.side} (local signing)`)
+    return c.json(result)
+  } catch (err: any) {
+    console.error('[clob] Signed order failed:', err.message || err)
+    return c.json({ error: 'Order failed', detail: err.message }, 500)
+  }
+})
+
+/**
  * GET /clob/positions/:polygonAddress
  */
 clobRoutes.get('/positions/:polygonAddress', async (c) => {

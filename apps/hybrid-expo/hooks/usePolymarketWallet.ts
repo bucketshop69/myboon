@@ -12,10 +12,11 @@
  * - On disable: clears both local storage and server session.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
+import { useEvmSigner, type SignedOrderV2, type OrderParams } from '@/hooks/useEvmSigner';
 
 const DERIVE_MESSAGE = 'myboon:polymarket:enable';
 const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
@@ -32,14 +33,18 @@ const API_BASE = resolveApiBaseUrl();
 
 export interface PolymarketWallet {
   polygonAddress: string | null;
-  /** Safe wallet address — where USDC lives, used for deposits */
+  /** Safe wallet address — where pUSD lives, used for deposits */
   safeAddress: string | null;
   isReady: boolean;
   isLoading: boolean;
-  /** Sign with Solana wallet, send signature to server for CLOB auth */
+  /** Sign with Solana wallet, derive EVM key locally, send sig to server for Safe setup */
   enable: () => Promise<void>;
-  /** Clear session (server + local) */
+  /** Clear session (server + local + EVM key) */
   disable: () => void;
+  /** Sign a V2 order locally (EIP-712). Returns pre-signed order for VPS proxy. */
+  signOrder: (params: OrderParams) => Promise<SignedOrderV2>;
+  /** Whether local EVM signer is initialized */
+  canSignLocally: boolean;
 }
 
 export function usePolymarketWallet(): PolymarketWallet {
@@ -47,6 +52,7 @@ export function usePolymarketWallet(): PolymarketWallet {
   const [polygonAddress, setPolygonAddress] = useState<string | null>(null);
   const [safeAddress, setSafeAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const evmSigner = useEvmSigner();
 
   // Load stored addresses on mount (public info only)
   useEffect(() => {
@@ -76,7 +82,11 @@ export function usePolymarketWallet(): PolymarketWallet {
       const signature = await signMessage(messageBytes);
       console.log('[polymarket] Signature received, sending to server...');
 
-      // Step 2: Send hex-encoded signature to server for CLOB auth
+      // Step 2: Derive EVM key locally (same derivation as server)
+      evmSigner.deriveFromSignature(signature);
+      console.log('[polymarket] EVM key derived locally');
+
+      // Step 3: Send hex-encoded signature to server for Safe setup + CLOB API creds
       const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
 
       const res = await fetch(`${API_BASE}/clob/auth`, {
@@ -119,7 +129,14 @@ export function usePolymarketWallet(): PolymarketWallet {
     AsyncStorage.removeItem(SAFE_STORAGE_KEY).catch(() => {});
     setPolygonAddress(null);
     setSafeAddress(null);
+    // EVM key in useEvmSigner ref will be GC'd when component unmounts
   }, [polygonAddress]);
+
+  /** Sign order locally — phone holds the key, VPS just proxies the signed order */
+  const signOrder = useCallback(async (params: OrderParams): Promise<SignedOrderV2> => {
+    if (!safeAddress) throw new Error('No Safe address — enable wallet first');
+    return evmSigner.signOrder(params, safeAddress);
+  }, [evmSigner, safeAddress]);
 
   return {
     polygonAddress,
@@ -128,5 +145,7 @@ export function usePolymarketWallet(): PolymarketWallet {
     isLoading,
     enable,
     disable,
+    signOrder,
+    canSignLocally: evmSigner.isReady,
   };
 }

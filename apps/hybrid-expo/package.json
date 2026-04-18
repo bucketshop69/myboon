@@ -17,6 +17,9 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
+    "@ethersproject/bytes": "^5.8.0",
+    "@ethersproject/keccak256": "^5.8.0",
+    "@ethersproject/wallet": "^5.8.0",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@lazorkit/wallet": "^2.0.1",
