@@ -38,6 +38,7 @@ export function WithdrawModal({
 
   const parsedAmount = parseFloat(amount);
   const isValid = parsedAmount > 0 && (cashBalance === null || parsedAmount <= cashBalance);
+  console.log('[withdraw-modal] cashBalance:', cashBalance, '| amount:', amount, '| parsedAmount:', parsedAmount, '| isValid:', isValid);
 
   const handleClose = () => {
     setAmount('');
@@ -77,7 +78,8 @@ export function WithdrawModal({
 
   const handleMax = () => {
     if (cashBalance !== null && cashBalance > 0) {
-      setAmount(cashBalance.toFixed(2));
+      // Floor to 2 decimals to avoid exceeding balance
+      setAmount((Math.floor(cashBalance * 100) / 100).toFixed(2));
     }
   };
 
@@ -172,7 +174,7 @@ export function WithdrawModal({
                 <Pressable onPress={() => setState('input')} style={styles.backBtn}>
                   <Text style={styles.backBtnText}>Back</Text>
                 </Pressable>
-                <Pressable onPress={handleSubmit} style={styles.withdrawBtn}>
+                <Pressable onPress={handleSubmit} style={[styles.withdrawBtn, { flex: 2 }]}>
                   <Text style={styles.withdrawBtnText}>Withdraw</Text>
                 </Pressable>
               </View>
@@ -198,7 +200,7 @@ export function WithdrawModal({
               {txHash && (
                 <Text style={styles.txHash}>tx: {txHash.slice(0, 10)}...{txHash.slice(-8)}</Text>
               )}
-              <Pressable onPress={handleClose} style={[styles.withdrawBtn, { marginTop: 16 }]}>
+              <Pressable onPress={handleClose} style={[styles.withdrawBtn, { marginTop: 16, alignSelf: 'stretch' }]}>
                 <Text style={styles.withdrawBtnText}>Done</Text>
               </Pressable>
             </View>
@@ -209,7 +211,7 @@ export function WithdrawModal({
               <MaterialIcons name="error-outline" size={32} color={tokens.colors.vermillion} />
               <Text style={styles.statusText}>Withdraw failed</Text>
               <Text style={styles.statusSubtext}>{error}</Text>
-              <Pressable onPress={() => setState('input')} style={[styles.withdrawBtn, { marginTop: 16 }]}>
+              <Pressable onPress={() => setState('input')} style={[styles.withdrawBtn, { marginTop: 16, alignSelf: 'stretch' }]}>
                 <Text style={styles.withdrawBtnText}>Try Again</Text>
               </Pressable>
             </View>

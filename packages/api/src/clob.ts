@@ -511,10 +511,11 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
     const result = await client.getBalanceAllowance({ asset_type: 'COLLATERAL' as any }) // pUSD balance in V2
     const rawBalance = parseFloat(result.balance) || 0
     const rawAllowance = parseFloat(result.allowance) || 0
-    const balance = rawBalance > 1_000_000 ? rawBalance / 1e6 : rawBalance
-    const allowance = rawAllowance > 1_000_000 ? rawAllowance / 1e6 : rawAllowance
+    // V2 SDK returns raw units (6 decimals) — always divide
+    const balance = rawBalance >= 1000 ? rawBalance / 1e6 : rawBalance
+    const allowance = rawAllowance >= 1000 ? rawAllowance / 1e6 : rawAllowance
 
-    console.log(`[clob] Balance for ${polygonAddress} (Safe: ${session.safeAddress}): ${balance} pUSD`)
+    console.log(`[clob] Balance for ${polygonAddress} (Safe: ${session.safeAddress}): raw=${rawBalance} → ${balance} pUSD`)
     return c.json({ balance, allowance, raw: result })
   } catch (err: any) {
     console.error('[clob] Balance fetch failed:', err.message || err)
@@ -570,10 +571,8 @@ clobRoutes.post('/wrap', async (c) => {
  *
  * Withdraws from Polymarket Safe to user's Solana wallet (gasless).
  * 1. Calls Polymarket Bridge API for withdraw deposit address
- * 2. Unwraps pUSD → USDC.e via CollateralOfframp
- * 3. Transfers USDC.e to bridge EVM address
- * 4. All three txs batched atomically via relayer (gasless)
- * 5. Bridge delivers USDC to Solana wallet
+ * 2. Transfers pUSD to bridge EVM address (gasless via relayer)
+ * 3. Bridge auto-unwraps pUSD → USDC and bridges to Solana
  */
 clobRoutes.post('/withdraw', async (c) => {
   let body: { polygonAddress?: string; amount?: number; solanaAddress?: string }
@@ -633,37 +632,12 @@ clobRoutes.post('/withdraw', async (c) => {
       return c.json({ error: 'No bridge deposit address returned' }, 502)
     }
 
-    // 2. Unwrap pUSD → USDC.e, then transfer USDC.e to bridge
+    // 2. Transfer pUSD directly to bridge address
+    // Bridge auto-unwraps pUSD → USDC via CollateralOfframp + Uniswap pool
     const amountRaw = BigInt(Math.floor(amount * 1e6))
-    const safeAddr = session.safeAddress as `0x${string}`
-    const offramp = CONTRACTS.COLLATERAL_OFFRAMP as `0x${string}`
-    const usdceContract = CONTRACTS.USDC_E as `0x${string}`
 
-    // Approve offramp to spend pUSD
-    const approveOfframpTx = {
-      to: CONTRACTS.PUSD,
-      data: encodeFunctionData({
-        abi: ERC20_APPROVE_ABI,
-        functionName: 'approve',
-        args: [offramp, amountRaw],
-      }),
-      value: '0',
-    }
-
-    // Unwrap pUSD → USDC.e (burns pUSD, returns USDC.e to Safe)
-    const unwrapTx = {
-      to: offramp,
-      data: encodeFunctionData({
-        abi: [{ name: 'unwrap', type: 'function', inputs: [{ name: '_asset', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amount', type: 'uint256' }], outputs: [] }] as const,
-        functionName: 'unwrap',
-        args: [usdceContract, safeAddr, amountRaw],
-      }),
-      value: '0',
-    }
-
-    // Transfer USDC.e to bridge
     const transferTx = {
-      to: usdceContract,
+      to: CONTRACTS.PUSD,
       data: encodeFunctionData({
         abi: [{ name: 'transfer', type: 'function', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const,
         functionName: 'transfer',
@@ -672,13 +646,13 @@ clobRoutes.post('/withdraw', async (c) => {
       value: '0',
     }
 
-    // 3. Execute all three atomically via relayer (gasless)
+    // 3. Execute via relayer (gasless)
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-    const execRes = await relay.execute([approveOfframpTx, unwrapTx, transferTx], `Withdraw ${amount} USDC to Solana ${solanaAddress.slice(0, 8)}...`)
+    const execRes = await relay.execute([transferTx], `Withdraw ${amount} pUSD to Solana ${solanaAddress.slice(0, 8)}...`)
     const execResult = await execRes.wait()
 
     const txHash = execResult?.transactionHash ?? null
-    console.log(`[clob] Withdraw ${amount}: pUSD → unwrap → USDC.e → bridge ${bridgeEvmAddress} → Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
+    console.log(`[clob] Withdraw ${amount}: pUSD → bridge ${bridgeEvmAddress} → Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
 
     return c.json({
       ok: true,
