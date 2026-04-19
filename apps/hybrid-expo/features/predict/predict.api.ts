@@ -33,6 +33,13 @@ function toNumber(value: unknown): number | null {
 }
 
 function toStringArray(value: unknown): string[] {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed.filter((e): e is string => typeof e === 'string');
+    } catch { /* not JSON */ }
+    return [];
+  }
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === 'string');
 }

@@ -55,7 +55,7 @@ async function supabaseFetch(path: string): Promise<Response> {
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com'
 const DATA_API_BASE = 'https://data-api.polymarket.com'
-const CLOB_BASE = 'https://clob.polymarket.com'
+const CLOB_BASE = process.env.CLOB_HOST || 'https://clob-v2.polymarket.com'
 
 async function gammaFetch(path: string): Promise<Response> {
   return fetch(`${GAMMA_BASE}/${path}`)
@@ -342,70 +342,7 @@ app.get('/predict/markets/:slug', async (c) => {
   }
 })
 
-// POST /predict/order
-app.post('/predict/order', async (c) => {
-  let body: unknown
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Bad request' }, 400)
-  }
-
-  try {
-    const res = await clobFetch('order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    const responseText = await res.text()
-
-    if (!res.ok) {
-      console.error(`[api] CLOB POST /order error ${res.status}: ${responseText}`)
-      let detail = 'Order rejected by exchange'
-      try {
-        const parsed = JSON.parse(responseText) as Record<string, unknown>
-        if (typeof parsed.error === 'string') detail = parsed.error
-        else if (typeof parsed.message === 'string') detail = parsed.message
-      } catch { /* keep generic detail */ }
-      return c.json({ error: 'Order rejected', detail }, 502)
-    }
-
-    let responseData: unknown
-    try {
-      responseData = JSON.parse(responseText)
-    } catch {
-      responseData = { raw: responseText }
-    }
-
-    return c.json(responseData)
-  } catch (err) {
-    console.error('[api] Unexpected error in POST /predict/order:', err)
-    return c.json({ error: 'Internal server error' }, 500)
-  }
-})
-
-// GET /predict/orders/:address
-app.get('/predict/orders/:address', async (c) => {
-  const address = c.req.param('address')
-
-  if (!address || address.trim() === '') {
-    return c.json({ error: 'Bad request' }, 400)
-  }
-
-  try {
-    const res = await clobFetch(`orders?maker_address=${encodeURIComponent(address)}`)
-    if (!res.ok) {
-      console.error(`[api] CLOB GET /orders error ${res.status}`)
-      return c.json({ error: 'Internal server error' }, 500)
-    }
-
-    return c.json(await res.json())
-  } catch (err) {
-    console.error(`[api] Unexpected error in GET /predict/orders/${address}:`, err)
-    return c.json({ error: 'Internal server error' }, 500)
-  }
-})
+// V1 /predict/order and /predict/orders routes removed — use /clob/order and /clob/positions instead
 
 // GET /predict/history/:tokenId
 // tokenId = Yes token ID from clobTokenIds[0] (pass the Yes token for Yes price history)
