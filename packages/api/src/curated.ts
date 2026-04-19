@@ -15,7 +15,12 @@
 //   'will-trump-visit-china-by-april-30',
 //   'will-china-invade-taiwan-before-2027',
 // ] as const
-export const CURATED_GEOPOLITICS_SLUGS: readonly string[] = []
+// V2 preprod test markets (have liquidity on clob-v2.polymarket.com)
+export const CURATED_GEOPOLITICS_SLUGS: readonly string[] = [
+  'us-iran-nuclear-deal-before-2027',
+  'will-avengers-doomsday-be-the-top-grossing-movie-of-2026',
+  'will-wicked-for-good-be-the-top-grossing-movie-of-2026',
+]
 
 // UCL disabled for now — focusing on EPL for testing
 export const SUPPORTED_SPORTS = ['epl'] as const
