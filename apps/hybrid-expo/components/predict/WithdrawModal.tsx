@@ -37,8 +37,8 @@ export function WithdrawModal({
   const [error, setError] = useState<string | null>(null);
 
   const parsedAmount = parseFloat(amount);
-  const isValid = parsedAmount > 0 && (cashBalance === null || parsedAmount <= cashBalance);
-  console.log('[withdraw-modal] cashBalance:', cashBalance, '| amount:', amount, '| parsedAmount:', parsedAmount, '| isValid:', isValid);
+  const MIN_WITHDRAW = 1; // $1 minimum — dust amounts would fail on bridge
+  const isValid = parsedAmount >= MIN_WITHDRAW && (cashBalance === null || parsedAmount <= cashBalance);
 
   const handleClose = () => {
     setAmount('');
