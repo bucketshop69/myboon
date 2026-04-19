@@ -19,6 +19,7 @@ import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetch
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 
 interface PredictMarketDetailScreenProps {
@@ -231,10 +232,14 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     setOrderError(null);
     setBetSlipVisible(true);
 
-    // Fetch latest balance
+    // Fetch latest balance — null means 401 (session expired)
     if (poly.polygonAddress) {
       fetchClobBalance(poly.polygonAddress).then((b) => {
-        if (b) setClobBalance(b.balance);
+        if (b) {
+          setClobBalance(b.balance);
+        } else {
+          poly.disable();
+        }
       });
     }
   }, [yesPrice, noPrice, poly.polygonAddress]);
@@ -267,21 +272,48 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     setOrderError(null);
 
     try {
+      // Local signing: phone signs EIP-712, server just proxies
+      // Geopolitics markets are typically not neg-risk (binary yes/no)
+      const exchangeAddress = V2_CONTRACTS.CTF_EXCHANGE;
+      const size = Math.floor((betSlipAmount / betSlipPrice) * 100) / 100;
+
+      let signedOrder: unknown = undefined;
+      if (poly.canSignLocally) {
+        console.log('[order] Signing locally:', { tokenID, price: betSlipPrice, size, side: 'BUY', exchangeAddress });
+        signedOrder = await poly.signOrder({
+          tokenID,
+          price: betSlipPrice,
+          size,
+          side: 'BUY',
+          exchangeAddress,
+        });
+        console.log('[order] Signed locally, posting to server');
+      }
+
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
         tokenID,
         price: betSlipPrice,
         amount: betSlipAmount,
         side: 'BUY',
+        signedOrder,
       });
 
       if (result.success) {
         setOrderResult('success');
       } else {
+        // Session expired — clear stale state so wallet connect button appears
+        if (result.error?.includes('No active session')) {
+          poly.disable();
+          setOrderResult('error');
+          setOrderError('Session expired — connect wallet to continue');
+          return;
+        }
         setOrderResult('error');
         setOrderError(result.error ?? 'Order failed');
       }
     } catch (err) {
+      console.log('[order] Exception:', err);
       setOrderResult('error');
       setOrderError(err instanceof Error ? err.message : 'Order failed');
     } finally {

@@ -22,6 +22,7 @@ import { fetchSportMarketDetail, fetchPriceHistory, fetchClobBalance, fetchOpenO
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 
 interface PredictSportDetailScreenProps {
@@ -259,12 +260,32 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     setOrderError(null);
 
     try {
+      // Local signing: phone signs EIP-712, server just proxies
+      const exchangeAddress = detail?.negRisk
+        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+        : V2_CONTRACTS.CTF_EXCHANGE;
+      const size = Math.floor((betSlipAmount / betSlipPrice) * 100) / 100;
+
+      let signedOrder: unknown = undefined;
+      if (poly.canSignLocally) {
+        console.log('[order] Signing locally:', { tokenID: betSlipTokenID, price: betSlipPrice, size, side: 'BUY', exchangeAddress });
+        signedOrder = await poly.signOrder({
+          tokenID: betSlipTokenID,
+          price: betSlipPrice,
+          size,
+          side: 'BUY',
+          exchangeAddress,
+        });
+        console.log('[order] Signed locally, posting to server');
+      }
+
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
         tokenID: betSlipTokenID,
         price: betSlipPrice,
         amount: betSlipAmount,
         side: 'BUY',
+        signedOrder,
       });
 
       if (result.success) {

@@ -19,7 +19,7 @@
 import { Hono } from 'hono'
 import { Wallet, utils, providers } from 'ethers'
 import { ClobClient, SignatureTypeV2, Side, Chain } from '@polymarket/clob-client-v2'
-import type { ApiKeyCreds, BuilderConfig as ClobBuilderConfig } from '@polymarket/clob-client-v2'
+import type { ApiKeyCreds } from '@polymarket/clob-client-v2'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
 import { deriveSafe } from '@polymarket/builder-relayer-client/dist/builder/derive'
 import { BuilderConfig as RelayerBuilderConfig } from '@polymarket/builder-signing-sdk'
@@ -88,8 +88,8 @@ const relayerBuilderConfig = (builderKey && builderSecret && builderPassphrase)
     })
   : undefined
 
-// V2 CLOB orders use public builderCode (no HMAC)
-const clobBuilderConfig: ClobBuilderConfig = { builderCode: BUILDER_CODE }
+// Builder code disabled — Polymarket UI not yet updated for V2 builder codes
+// const clobBuilderConfig: ClobBuilderConfig = { builderCode: BUILDER_CODE }
 
 // --- USDC.e balance check + auto-wrap helper ---
 
@@ -210,7 +210,7 @@ function getClient(session: ClobSession): ClobClient {
     creds: session.creds,
     signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
     funderAddress: session.safeAddress,
-    builderConfig: clobBuilderConfig,
+    // builderConfig: clobBuilderConfig,  // disabled until builder code format resolved
   })
 }
 
