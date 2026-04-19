@@ -378,6 +378,19 @@ export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder
   return Array.isArray(data.orders) ? data.orders as OpenOrder[] : [];
 }
 
+export async function cancelOrder(polygonAddress: string, orderId: string): Promise<{ ok: boolean; error?: string }> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(
+    `${baseUrl}/clob/order/${encodeURIComponent(orderId)}?address=${encodeURIComponent(polygonAddress)}`,
+    { method: 'DELETE' },
+  );
+  const data = await response.json() as Record<string, unknown>;
+  if (!response.ok) {
+    return { ok: false, error: typeof data.detail === 'string' ? data.detail : 'Cancel failed' };
+  }
+  return { ok: true };
+}
+
 // --- CLOB Balance ---
 
 export interface ClobBalance {

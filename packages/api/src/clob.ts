@@ -449,6 +449,34 @@ clobRoutes.get('/positions/:polygonAddress', async (c) => {
 })
 
 /**
+ * DELETE /clob/order/:orderId
+ * Cancel a single open order.
+ */
+clobRoutes.delete('/order/:orderId', async (c) => {
+  const orderId = c.req.param('orderId')
+  const polygonAddress = c.req.query('address')
+
+  if (!polygonAddress) {
+    return c.json({ error: 'Missing address query param' }, 400)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  try {
+    const client = getClient(session)
+    const result = await client.cancelOrder({ orderID: orderId })
+    console.log(`[clob] Order cancelled: ${orderId} for ${polygonAddress}`)
+    return c.json({ ok: true, ...result })
+  } catch (err: any) {
+    console.error('[clob] Cancel failed:', err.message || err)
+    return c.json({ error: 'Cancel failed', detail: err.message }, 500)
+  }
+})
+
+/**
  * GET /clob/deposit/:polygonAddress
  * Fetches deposit addresses from Polymarket Bridge API.
  * Uses the Safe address — that's where funds need to land.

@@ -16,7 +16,7 @@ import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
 import type { PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
@@ -56,7 +56,26 @@ export default function PredictProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
 
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
   const isEnabled = poly.isReady && poly.polygonAddress;
+
+  const handleCancel = useCallback(async (orderId: string) => {
+    if (!poly.polygonAddress) return;
+    setCancellingId(orderId);
+    try {
+      const result = await cancelOrder(poly.polygonAddress, orderId);
+      if (result.ok) {
+        setOpenOrders((prev) => prev.filter((o) => o.id !== orderId));
+      } else {
+        Alert.alert('Cancel failed', result.error ?? 'Unknown error');
+      }
+    } catch {
+      Alert.alert('Cancel failed', 'Network error');
+    } finally {
+      setCancellingId(null);
+    }
+  }, [poly.polygonAddress]);
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
@@ -343,6 +362,17 @@ export default function PredictProfileScreen() {
                           <Text style={styles.orderStatVal}>{fillPct}%</Text>
                         </View>
                       </View>
+                      <Pressable
+                        style={styles.cancelBtn}
+                        disabled={cancellingId === o.id}
+                        onPress={() => handleCancel(o.id)}
+                      >
+                        {cancellingId === o.id ? (
+                          <ActivityIndicator size="small" color={semantic.sentiment.negative} />
+                        ) : (
+                          <Text style={styles.cancelBtnText}>Cancel</Text>
+                        )}
+                      </Pressable>
                     </View>
                   );
                 })}
@@ -797,6 +827,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  cancelBtn: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,69,58,0.25)',
+    borderRadius: 6,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '700',
+    color: semantic.sentiment.negative,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   emptyCard: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
