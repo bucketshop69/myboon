@@ -13,17 +13,20 @@
  *   pm2 startup   ← run the printed command as root
  *
  * Env vars are loaded from .env at the monorepo root — never hardcode secrets here.
+ *
+ * NOTE: Uses ./node_modules/.bin/tsx instead of `node --import tsx/esm`
+ * because Node 22 has ERR_REQUIRE_CYCLE_MODULE bugs with the ESM loader.
  */
 
 const ROOT = __dirname
+const TSX = `${ROOT}/node_modules/.bin/tsx`
 
 module.exports = {
   apps: [
     {
       name: 'myboon-api',
       script: 'src/index.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cwd: `${ROOT}/packages/api`,
       watch: false,
       autorestart: true,
@@ -34,8 +37,7 @@ module.exports = {
     {
       name: 'myboon-collectors',
       script: 'src/index.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cwd: `${ROOT}/packages/collectors`,
       watch: false,
       autorestart: true,
@@ -47,8 +49,7 @@ module.exports = {
       name: 'myboon-analyst',
       // Self-schedules via setInterval every 15min — PM2 just keeps it alive
       script: 'src/narrative-analyst.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cwd: `${ROOT}/packages/brain`,
       watch: false,
       autorestart: true,
@@ -60,8 +61,7 @@ module.exports = {
       name: 'myboon-publisher',
       // Self-schedules via setInterval every 30min — PM2 just keeps it alive
       script: 'src/publisher.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cwd: `${ROOT}/packages/brain`,
       watch: false,
       autorestart: true,
@@ -72,8 +72,7 @@ module.exports = {
     {
       name: 'myboon-fomo-master',
       script: './packages/brain/src/run-fomo-master.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cron_restart: '0 */1 * * *',
       autorestart: false,
       watch: false,
@@ -82,8 +81,7 @@ module.exports = {
     {
       name: 'myboon-crypto-god',
       script: './packages/brain/src/run-crypto-god.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cron_restart: '30 * * * *',   // offset 30min from fomo_master to spread LLM load
       autorestart: false,
       watch: false,
@@ -92,8 +90,7 @@ module.exports = {
     {
       name: 'myboon-sports-broadcaster',
       script: './packages/brain/src/run-sports-broadcaster.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cron_restart: '0 * * * *',
       autorestart: false,
       watch: false,
@@ -102,8 +99,7 @@ module.exports = {
     {
       name: 'myboon-influencer',
       script: './packages/brain/src/run-influencer.ts',
-      interpreter: 'node',
-      interpreter_args: '--import tsx/esm',
+      interpreter: TSX,
       cron_restart: '0 */2 * * *',
       autorestart: false,
       watch: false,
