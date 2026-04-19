@@ -9,7 +9,7 @@
  * Both sides get the same key from the same Solana signature.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Wallet } from '@ethersproject/wallet';
 import { keccak256 } from '@ethersproject/keccak256';
 
@@ -153,6 +153,8 @@ function calcAmounts(price: number, size: number, side: 'BUY' | 'SELL', tickSize
 
 export function useEvmSigner() {
   const walletRef = useRef<Wallet | null>(null);
+  const [ready, setReady] = useState(false);
+  const [eoaAddr, setEoaAddr] = useState<string | null>(null);
 
   /**
    * Derive EVM wallet from Solana signature (same derivation as server).
@@ -164,6 +166,8 @@ export function useEvmSigner() {
     const evmPrivateKey = keccak256(sigHex);
     const wallet = new Wallet(evmPrivateKey);
     walletRef.current = wallet;
+    setReady(true);
+    setEoaAddr(wallet.address);
     console.log('[evm-signer] Derived EOA:', wallet.address);
     return { eoaAddress: wallet.address };
   }, []);
@@ -219,13 +223,10 @@ export function useEvmSigner() {
     };
   }, []);
 
-  const isReady = walletRef.current !== null;
-  const eoaAddress = walletRef.current?.address ?? null;
-
   return {
     deriveFromSignature,
     signOrder,
-    isReady,
-    eoaAddress,
+    isReady: ready,
+    eoaAddress: eoaAddr,
   };
 }
