@@ -5,7 +5,7 @@ export type {
   ProfileUser,
   PortfolioValue,
   MarketsTraded,
-  Position,
+  Position as ProfilePosition,
   ClosedPosition,
   Activity,
   PositionsQuery,
