@@ -48,8 +48,8 @@ export const tokens = {
     monoWide: 1.2,
   },
   sizing: {
-    headerLogoWidth: 56,
-    headerLogoHeight: 52,
+    headerLogoWidth: 67,
+    headerLogoHeight: 62,
     percentColumnWidth: 52,
     navIcon: 22,
   },
