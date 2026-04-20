@@ -16,8 +16,8 @@ import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
-import type { PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
+import type { ActivityItem, PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -52,6 +52,7 @@ export default function PredictProfileScreen() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [tradeHistory, setTradeHistory] = useState<ActivityItem[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -83,14 +84,16 @@ export default function PredictProfileScreen() {
     // CLOB operations use EOA (polygonAddress) for session auth
     const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
     console.log('[profile] Loading — EOA:', poly.polygonAddress, '| Gamma addr (Safe):', gammaAddr);
-    const [portfolioData, balanceData, ordersData] = await Promise.all([
+    const [portfolioData, balanceData, ordersData, activityData] = await Promise.all([
       fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
+      fetchActivity(gammaAddr).catch(() => []),
     ]);
     console.log('[profile] Balance:', balanceData?.balance ?? 'no session', '| Positions:', portfolioData?.positions?.length ?? 0, '| Orders:', ordersData.length);
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
+    setTradeHistory(activityData);
     if (balanceData) {
       setCashBalance(balanceData.balance);
       setSessionExpired(false);
@@ -426,6 +429,37 @@ export default function PredictProfileScreen() {
                 );
               })}
             </View>
+
+            {/* Trade History */}
+            {tradeHistory.length > 0 && (
+              <View style={styles.positionsSection}>
+                <View style={styles.posHeader}>
+                  <Text style={styles.posTitle}>Trade History</Text>
+                  <Text style={styles.posCount}>{tradeHistory.length} trades</Text>
+                </View>
+                {tradeHistory.slice(0, 20).map((t, i) => {
+                  const isBuy = t.side === 'BUY';
+                  const date = new Date(t.timestamp * 1000);
+                  const timeStr = `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+                  return (
+                    <View key={`${t.timestamp}-${i}`} style={styles.posRow}>
+                      <View style={[styles.sideBadge, isBuy ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+                        <Text style={[styles.sideBadgeText, isBuy ? styles.posText : styles.negText]}>
+                          {t.side}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={styles.posQuestion} numberOfLines={1}>{t.title || t.slug}</Text>
+                        <Text style={styles.tradeTime}>{timeStr}</Text>
+                      </View>
+                      <Text style={[styles.posPnl, isBuy ? styles.posText : styles.negText]}>
+                        ${t.usdcSize.toFixed(2)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {/* Addresses + disable */}
             <View style={styles.addressesSection}>
@@ -778,6 +812,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 7.5,
     color: semantic.text.faint,
+  },
+  tradeTime: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+    marginTop: 1,
   },
 
   // Order cards

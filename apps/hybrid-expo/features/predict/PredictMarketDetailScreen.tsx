@@ -5,10 +5,12 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -121,9 +123,12 @@ const TABS: { key: Tab; label: string }[] = [
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const { width: screenWidth } = useWindowDimensions();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [interval, setInterval] = useState<Interval>('1h');
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -187,6 +192,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     } catch { /* silent */ }
   }
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      loadMarket(),
+      refreshPrice(),
+      loadHistory(interval),
+    ]);
+    loadOrdersAndPositions();
+    setRefreshing(false);
+  }, [interval]);
+
   useEffect(() => {
     if (!detail) return;
     void loadHistory(interval);
@@ -240,8 +256,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       fetchClobBalance(poly.polygonAddress).then((b) => {
         if (b) {
           setClobBalance(b.balance);
+          setSessionExpired(false);
         } else {
-          poly.disable();
+          setSessionExpired(true);
         }
       });
     }
@@ -312,11 +329,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           fetchClobBalance(poly.polygonAddress).then((b) => { if (b) setClobBalance(b.balance); });
         }
       } else {
-        // Session expired — clear stale state so wallet connect button appears
+        // Session expired — mark expired, don't nuke wallet
         if (result.error?.includes('No active session')) {
-          poly.disable();
+          setSessionExpired(true);
           setOrderResult('error');
-          setOrderError('Session expired — connect wallet to continue');
+          setOrderError('Session expired — reconnect from profile');
           return;
         }
         setOrderResult('error');
@@ -349,6 +366,14 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           <View style={styles.avatarInner} />
         </Pressable>
       </View>
+
+      {/* ── SESSION EXPIRED BANNER ── */}
+      {sessionExpired && poly.isReady && (
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.sessionBanner}>
+          <MaterialIcons name="refresh" size={14} color={semantic.text.accent} />
+          <Text style={styles.sessionBannerText}>Session expired — tap to reconnect</Text>
+        </Pressable>
+      )}
 
       {/* ── LOADING / ERROR ── */}
       {loading ? (
@@ -395,7 +420,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                         onPress={() => setInterval(iv)}
                         style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
                         <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
-                          {iv === '1h' ? '1D' : '1W'}
+                          {iv === '1h' ? '1H' : '1D'}
                         </Text>
                       </Pressable>
                     ))}
@@ -407,7 +432,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 {historyLoading ? (
                   <View style={styles.chartSkeleton} />
                 ) : history.length >= 2 ? (
-                  <Sparkline points={history} width={315} height={64} />
+                  <Sparkline points={history} width={screenWidth - 64} height={64} />
                 ) : (
                   <View style={[styles.chartSkeleton, { opacity: 0.4 }]} />
                 )}
@@ -432,7 +457,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             </View>
 
             {/* Tab content */}
-            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}>
+            <ScrollView
+              style={styles.tabContent}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.tabContentInner}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
@@ -719,7 +748,23 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 }}
               />
             </View>
+            {/* Amount presets */}
+            <View style={styles.presetsRow}>
+              {[5, 10, 25, 50].map((amt) => (
+                <Pressable key={amt} onPress={() => setBetSlipAmount(amt)} style={styles.presetChip}>
+                  <Text style={styles.presetText}>${amt}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
+
+          {/* Deposit CTA when balance is $0 */}
+          {clobBalance !== null && clobBalance === 0 && poly.isReady && (
+            <Pressable onPress={() => router.push('/predict-profile')} style={styles.depositCta}>
+              <MaterialIcons name="account-balance-wallet" size={14} color={semantic.text.accent} />
+              <Text style={styles.depositCtaText}>Deposit funds to start trading</Text>
+            </Pressable>
+          )}
 
           {/* Payout row */}
           <View style={styles.payoutRow}>
@@ -1465,5 +1510,64 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     fontWeight: '700',
+  },
+
+  // ── Session banner ──
+  sessionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    backgroundColor: 'rgba(232,197,71,0.08)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(232,197,71,0.15)',
+  },
+  sessionBannerText: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
+  },
+
+  // ── Amount presets ──
+  presetsRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+    marginTop: tokens.spacing.xs,
+  },
+  presetChip: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+  },
+  presetText: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+
+  // ── Deposit CTA ──
+  depositCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.15)',
+    backgroundColor: 'rgba(232,197,71,0.06)',
+  },
+  depositCtaText: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
 });

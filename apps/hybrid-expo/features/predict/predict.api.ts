@@ -61,6 +61,7 @@ function mapGeopoliticsMarket(row: unknown): GeopoliticsMarket | null {
     yesPrice: toNumber(market.yesPrice),
     noPrice: toNumber(market.noPrice),
     volume24h: toNumber(market.volume24h),
+    liquidity: toNumber(market.liquidityNum ?? market.liquidity),
     endDate: typeof market.endDate === 'string' ? market.endDate : null,
     active: typeof market.active === 'boolean' ? market.active : null,
     image: typeof market.image === 'string' ? market.image : null,

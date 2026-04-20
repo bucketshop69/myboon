@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
-import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { fetchCuratedMarkets, fetchSportsMarkets } from '@/features/predict/predict.api';
 import type { GeopoliticsMarket, PredictFilter, SportMarket } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -97,7 +97,9 @@ function BinaryMarketCard({ market, featured, onPress, formatOdds }: { market: G
         <Text style={styles.volText}>
           Vol 24h <Text style={styles.volTextValue}>{formatUsdCompact(market.volume24h)}</Text>
         </Text>
-        <Text style={styles.volText}>{formatDeadline(market.endDate, market.active)}</Text>
+        <Text style={styles.volText}>
+          Liq <Text style={styles.volTextValue}>{formatUsdCompact(market.liquidity)}</Text>
+        </Text>
       </View>
     </Pressable>
   );
@@ -161,13 +163,15 @@ function SportMarketCard({ market, onPress, formatOdds }: { market: SportMarket;
 
 export default function PredictScreen() {
   const router = useRouter();
-  const { format, setFormat, formatOdds } = useOddsFormat();
+  const { formatOdds } = useOddsFormat();
   const [filter, setFilter] = useState<PredictFilter>('All');
   const [geoMarkets, setGeoMarkets] = useState<GeopoliticsMarket[]>([]);
   const [eplMarkets, setEplMarkets] = useState<SportMarket[]>([]);
   const [uclMarkets, setUclMarkets] = useState<SportMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState('');
 
   async function loadPredictData() {
     setLoading(true);
@@ -197,9 +201,31 @@ export default function PredictScreen() {
     void loadPredictData();
   }, []);
 
-  const sortedGeo = useMemo(() => [...geoMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [geoMarkets]);
-  const sortedEpl = useMemo(() => [...eplMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [eplMarkets]);
-  const sortedUcl = useMemo(() => [...uclMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)), [uclMarkets]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadPredictData();
+    setRefreshing(false);
+  }, []);
+
+  const query = searchText.trim().toLowerCase();
+
+  const sortedGeo = useMemo(() => {
+    const sorted = [...geoMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+    if (!query) return sorted;
+    return sorted.filter((m) => m.question.toLowerCase().includes(query));
+  }, [geoMarkets, query]);
+
+  const sortedEpl = useMemo(() => {
+    const sorted = [...eplMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+    if (!query) return sorted;
+    return sorted.filter((m) => m.title.toLowerCase().includes(query) || m.outcomes.some((o) => o.label.toLowerCase().includes(query)));
+  }, [eplMarkets, query]);
+
+  const sortedUcl = useMemo(() => {
+    const sorted = [...uclMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+    if (!query) return sorted;
+    return sorted.filter((m) => m.title.toLowerCase().includes(query) || m.outcomes.some((o) => o.label.toLowerCase().includes(query)));
+  }, [uclMarkets, query]);
 
   const insets = useSafeAreaInsets();
 
@@ -215,30 +241,28 @@ export default function PredictScreen() {
       </View>
 
       <View style={styles.filterStripShell}>
-        <View style={styles.filterRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterStrip}>
-            {FILTERS.map((value) => {
-              const active = value === filter;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => setFilter(value)}
-                  style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
-                  <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{value}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          <View style={styles.toggleWrap}>
-            <OddsFormatToggle format={format} onFormatChange={setFormat} />
-          </View>
-        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterStrip}>
+          {FILTERS.map((value) => {
+            const active = value === filter;
+            return (
+              <Pressable
+                key={value}
+                onPress={() => setFilter(value)}
+                style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
+                <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{value}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.feedContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.feedContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
         {loading ? (
           <View style={styles.stateCard}>
             <ActivityIndicator size="small" color={semantic.text.accent} />
@@ -319,6 +343,24 @@ export default function PredictScreen() {
         ) : null}
       </ScrollView>
 
+      {/* Bottom search bar */}
+      <View style={styles.searchBar}>
+        <MaterialIcons name="search" size={16} color={semantic.text.dim} />
+        <TextInput
+          style={styles.searchInput}
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder="Search markets..."
+          placeholderTextColor={semantic.text.faint}
+          autoCorrect={false}
+        />
+        {searchText.length > 0 && (
+          <Pressable onPress={() => setSearchText('')} hitSlop={8} style={styles.searchClear}>
+            <MaterialIcons name="close" size={14} color={semantic.text.dim} />
+          </Pressable>
+        )}
+      </View>
+
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
@@ -375,18 +417,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,
   },
-  filterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   filterStrip: {
     gap: tokens.spacing.xs,
     paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
-    flex: 1,
-  },
-  toggleWrap: {
-    paddingRight: tokens.spacing.lg,
     paddingVertical: tokens.spacing.sm,
   },
   filterChip: {
@@ -687,5 +720,31 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  // ─── search bar ───
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.primary,
+    padding: 0,
+  },
+  searchClear: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

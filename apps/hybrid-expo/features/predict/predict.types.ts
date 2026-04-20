@@ -38,6 +38,7 @@ export interface GeopoliticsMarket {
   yesPrice: number | null;
   noPrice: number | null;
   volume24h: number | null;
+  liquidity: number | null;
   endDate: string | null;
   active: boolean | null;
   image: string | null;
