@@ -34,7 +34,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 
-function toRelativeTime(iso: string): string {
+export function toRelativeTime(iso: string): string {
   const createdAt = new Date(iso).getTime();
   if (Number.isNaN(createdAt)) return 'now';
 
@@ -67,21 +67,48 @@ function parseActions(raw: unknown): NarrativeAction[] {
   return result;
 }
 
+function extractHeadline(content: string): { headline: string; body: string } {
+  const trimmed = content.trim();
+  // Try splitting on first period or newline to get a headline
+  const periodIdx = trimmed.indexOf('. ');
+  const newlineIdx = trimmed.indexOf('\n');
+  let splitIdx = -1;
+  if (periodIdx > 0 && periodIdx < 120) splitIdx = periodIdx + 1;
+  else if (newlineIdx > 0 && newlineIdx < 120) splitIdx = newlineIdx;
+
+  if (splitIdx > 0) {
+    return {
+      headline: trimmed.slice(0, splitIdx).trim(),
+      body: trimmed.slice(splitIdx).trim(),
+    };
+  }
+  // If no good split point, use first 80 chars as headline
+  if (trimmed.length > 80) {
+    const spaceIdx = trimmed.lastIndexOf(' ', 80);
+    const cut = spaceIdx > 40 ? spaceIdx : 80;
+    return { headline: trimmed.slice(0, cut).trim(), body: trimmed.slice(cut).trim() };
+  }
+  return { headline: trimmed, body: '' };
+}
+
 function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number): FeedItem {
+  const raw = item.content_small?.trim() ?? '';
+  const { headline, body } = extractHeadline(raw);
   return {
     id: item.id,
     category: item.tags?.[0] ?? 'macro',
-    timeAgo: toRelativeTime(item.created_at),
-    description: item.content_small?.trim() ?? '',
+    createdAt: item.created_at,
+    headline,
+    description: body,
     isTop: index === 0,
     actions: parseActions(item.actions),
   };
 }
 
-export async function fetchFeedItems(limit = 20): Promise<FeedItem[]> {
-  const clamped = clamp(limit, 1, 20);
+export async function fetchFeedItems(limit = 20, offset = 0): Promise<FeedItem[]> {
+  const clamped = clamp(limit, 1, 50);
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/narratives?limit=${clamped}`);
+  const response = await fetch(`${baseUrl}/narratives?limit=${clamped}&offset=${offset}`);
 
   if (!response.ok) {
     throw new Error(`Feed request failed (${response.status})`);

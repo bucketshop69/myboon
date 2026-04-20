@@ -1,18 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
+import { toRelativeTime } from '@/features/feed/feed.api';
 import type { FeedItem } from '@/features/feed/feed.types';
 import { tokens } from '@/theme';
-
-// Category pill colors — spec-matched, not derived from theme tokens
-// (these are intentionally narrow, not in semantic.ts)
-const CATEGORY_STYLES: Record<
-  string,
-  { backgroundColor: string; color: string }
-> = {
-  Geopolitics: { backgroundColor: 'rgba(199,183,112,0.12)', color: '#c7b770' },
-  Macro:       { backgroundColor: 'rgba(90,88,64,0.30)',    color: '#8A7A50' },
-  Markets:     { backgroundColor: 'rgba(74,140,111,0.12)',  color: '#4A8C6F' },
-  Tech:        { backgroundColor: 'rgba(100,120,200,0.12)', color: '#7A9AC8' },
-};
 
 interface FeedCardProps {
   item: FeedItem;
@@ -20,7 +10,8 @@ interface FeedCardProps {
 }
 
 export function FeedCard({ item, onPress }: FeedCardProps) {
-  const catStyle = CATEGORY_STYLES[item.category] ?? CATEGORY_STYLES.Macro;
+  const catStyle = CATEGORY_STYLES[item.category] ?? DEFAULT_CATEGORY_STYLE;
+  const timeAgo = toRelativeTime(item.createdAt);
 
   return (
     <Pressable
@@ -31,7 +22,7 @@ export function FeedCard({ item, onPress }: FeedCardProps) {
       ]}
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={`${item.category} narrative from ${item.timeAgo}`}
+      accessibilityLabel={`${item.category} narrative from ${timeAgo}`}
     >
       <View style={styles.body}>
         {/* Meta row: category pill + time */}
@@ -41,11 +32,16 @@ export function FeedCard({ item, onPress }: FeedCardProps) {
               {item.category.toUpperCase()}
             </Text>
           </View>
-          <Text style={styles.timeText}>{item.timeAgo}</Text>
+          <Text style={styles.timeText}>{timeAgo}</Text>
         </View>
 
+        {/* Headline */}
+        <Text style={styles.headlineText} numberOfLines={2}>{item.headline}</Text>
+
         {/* Body text */}
-        <Text style={styles.bodyText}>{item.description}</Text>
+        {item.description ? (
+          <Text style={styles.bodyText} numberOfLines={3}>{item.description}</Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -95,10 +91,17 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     color: '#5A5840',
   },
-  bodyText: {
+  headlineText: {
     fontSize: tokens.fontSize.md,    // 14
-    color: 'rgba(208,202,168,0.88)',
-    lineHeight: 21,
+    color: 'rgba(208,202,168,0.95)',
+    lineHeight: 20,
     letterSpacing: -0.2,
+    fontWeight: '600',
+  },
+  bodyText: {
+    fontSize: tokens.fontSize.sm,    // 12
+    color: 'rgba(208,202,168,0.65)',
+    lineHeight: 18,
+    letterSpacing: -0.1,
   },
 });

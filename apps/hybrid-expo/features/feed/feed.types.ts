@@ -17,7 +17,8 @@ export interface NarrativeAction {
 export interface FeedItem {
   id: string;
   category: FeedCategory;
-  timeAgo: string;
+  createdAt: string; // ISO timestamp — timeAgo computed dynamically
+  headline: string;
   description: string;
   isTop?: boolean;
   actions: NarrativeAction[];

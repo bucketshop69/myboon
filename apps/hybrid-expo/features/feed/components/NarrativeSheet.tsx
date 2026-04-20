@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { fetchNarrativeDetail, fetchPredictMarket, extractSport } from '@/features/feed/feed.api';
+import { fetchNarrativeDetail, fetchPredictMarket, extractSport, toRelativeTime } from '@/features/feed/feed.api';
+import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
 import type { NarrativeAction } from '@/features/feed/feed.types';
 import type { PredictMarketData } from '@/features/feed/feed.api';
 import type { FeedCategory } from '@/features/feed/feed.types';
@@ -20,14 +21,6 @@ import { tokens } from '@/theme';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.75);
-
-// Category pill colors — same as FeedCard
-const CATEGORY_STYLES: Record<string, { backgroundColor: string; color: string }> = {
-  Geopolitics: { backgroundColor: 'rgba(199,183,112,0.12)', color: '#c7b770' },
-  Macro:       { backgroundColor: 'rgba(90,88,64,0.30)',    color: '#8A7A50' },
-  Markets:     { backgroundColor: 'rgba(74,140,111,0.12)',  color: '#4A8C6F' },
-  Tech:        { backgroundColor: 'rgba(100,120,200,0.12)', color: '#7A9AC8' },
-};
 
 function formatVolume(v: number | null): string {
   if (!v || !Number.isFinite(v)) return '—';
@@ -474,7 +467,7 @@ const predictStyles = StyleSheet.create({
 export interface NarrativeSheetItem {
   id: string;
   category: FeedCategory;
-  timeAgo: string;
+  createdAt: string;
   actions: NarrativeAction[];
 }
 
@@ -552,8 +545,8 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
   ).current;
 
   const catStyle = item
-    ? (CATEGORY_STYLES[item.category] ?? CATEGORY_STYLES.Macro)
-    : CATEGORY_STYLES.Macro;
+    ? (CATEGORY_STYLES[item.category] ?? DEFAULT_CATEGORY_STYLE)
+    : DEFAULT_CATEGORY_STYLE;
 
   // Collect up to 3 predict actions with slugs
   const predictActions = (item?.actions ?? [])
@@ -594,7 +587,7 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
                 {item?.category.toUpperCase() ?? ''}
               </Text>
             </View>
-            <Text style={styles.timeText}>{item?.timeAgo ?? ''}</Text>
+            <Text style={styles.timeText}>{item?.createdAt ? toRelativeTime(item.createdAt) : ''}</Text>
           </View>
 
           {/* Full text */}
