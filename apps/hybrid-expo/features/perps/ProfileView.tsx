@@ -1,16 +1,17 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
 import {
   fetchPerpsAccount,
@@ -19,6 +20,7 @@ import {
   formatPrice,
   closePosition,
   setTPSL,
+  removeTPSL,
   cancelOrder,
   cancelStopOrder,
 } from '@/features/perps/perps.api';
@@ -27,11 +29,41 @@ import { DepositModal } from '@/features/perps/DepositModal';
 import { WithdrawModal } from '@/features/perps/WithdrawModal';
 import { semantic, tokens } from '@/theme';
 
+// C-15: Trade history stored in AsyncStorage
+const TRADE_HISTORY_KEY = 'pnl:trade_history';
+
+interface TradeRecord {
+  id: string;
+  symbol: string;
+  side: 'long' | 'short';
+  size: number;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  closedAt: number;
+  type: 'market_close' | 'tp_trigger' | 'sl_trigger';
+}
+
+async function loadTradeHistory(): Promise<TradeRecord[]> {
+  try {
+    const raw = await AsyncStorage.getItem(TRADE_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+async function saveTradeRecord(record: TradeRecord): Promise<void> {
+  const existing = await loadTradeHistory();
+  existing.unshift(record);
+  // Keep last 100
+  if (existing.length > 100) existing.length = 100;
+  await AsyncStorage.setItem(TRADE_HISTORY_KEY, JSON.stringify(existing));
+}
+
 function truncate(addr: string, start = 6, end = 4): string {
   return `${addr.slice(0, start)}···${addr.slice(-end)}`;
 }
 
-type Tab = 'positions' | 'orders';
+type Tab = 'positions' | 'orders' | 'history';
 
 function orderTypeLabel(type: string): string {
   if (type === 'take_profit_limit') return 'Take Profit';
@@ -45,26 +77,39 @@ interface ProfileViewProps {
   onBack: () => void;
 }
 
+// C-14: Polling interval (30 seconds)
+const POLL_INTERVAL = 30_000;
+
 export function ProfileView({ onBack }: ProfileViewProps) {
-  const { connected, address, shortAddress, connect, disconnect, signMessage } = useWallet();
+  const { connected, address, connect, signMessage } = useWallet();
   const [account, setAccount] = useState<PerpsAccount | null>(null);
   const [positions, setPositions] = useState<PerpsPosition[]>([]);
   const [orders, setOrders] = useState<PerpsOrder[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [accountChecked, setAccountChecked] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
-  // Tabs
+  // C-15: Trade history
+  const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
+
+  // Tabs (C-15: added history tab)
   const [activeTab, setActiveTab] = useState<Tab>('positions');
 
-  // Position action menu
-  const [menuPosition, setMenuPosition] = useState<PerpsPosition | null>(null);
   // TP/SL modal
   const [tpslPosition, setTpslPosition] = useState<PerpsPosition | null>(null);
   const [tpPrice, setTpPrice] = useState('');
   const [slPrice, setSlPrice] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState('');
+
+  // C-13: Partial close modal
+  const [closePosition_, setClosePosition_] = useState<PerpsPosition | null>(null);
+  const [closeAmountText, setCloseAmountText] = useState('');
+
+  // Wallet USDC balance (C-16)
+  const [walletUsdcBalance, setWalletUsdcBalance] = useState<number | null>(null);
 
   const hasPacificAccount = accountChecked && account !== null;
   const noPacificAccount = accountChecked && account === null;
@@ -80,9 +125,27 @@ export function ProfileView({ onBack }: ProfileViewProps) {
     return map;
   }, [orders]);
 
-  const fetchAll = useCallback((addr: string) => {
-    setLoading(true);
-    setAccountChecked(false);
+  // C-16: Total unrealized PnL
+  const totalUnrealizedPnl = useMemo(() => {
+    return positions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0);
+  }, [positions]);
+
+  // C-16: Account leverage
+  const accountLeverage = useMemo(() => {
+    if (!account || account.equity <= 0) return 0;
+    return account.totalMarginUsed / account.equity;
+  }, [account]);
+
+  const fetchAll = useCallback((addr: string, mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
+    // Only show loading states on first load — polling and refresh update silently
+    if (mode === 'initial') {
+      setLoading(true);
+      setAccountChecked(false);
+    } else if (mode === 'refresh') {
+      setRefreshing(true);
+    }
+    // 'silent' — no loading indicators, just swap data in
+
     Promise.all([
       fetchPerpsPositions(addr),
       fetchPerpsAccount(addr),
@@ -94,19 +157,23 @@ export function ProfileView({ onBack }: ProfileViewProps) {
         setOrders(ord);
       })
       .catch(() => {
-        setAccount(null);
-        setPositions([]);
-        setOrders([]);
+        // Only blank data on initial load failure
+        if (mode === 'initial') {
+          setAccount(null);
+          setPositions([]);
+          setOrders([]);
+        }
       })
       .finally(() => {
         setLoading(false);
+        setRefreshing(false);
         setAccountChecked(true);
       });
   }, []);
 
   useEffect(() => {
     if (connected && address) {
-      fetchAll(address);
+      fetchAll(address, 'initial');
     } else {
       setAccount(null);
       setPositions([]);
@@ -115,26 +182,60 @@ export function ProfileView({ onBack }: ProfileViewProps) {
     }
   }, [connected, address, fetchAll]);
 
-  const refresh = useCallback(() => {
-    if (!connected || !address) return;
-    fetchAll(address);
+  // C-15: Load trade history
+  useEffect(() => {
+    loadTradeHistory().then(setTradeHistory);
+  }, []);
+
+  // C-14: Polling
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (connected && address) {
+      pollRef.current = setInterval(() => {
+        fetchAll(address, 'silent');
+      }, POLL_INTERVAL);
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [connected, address, fetchAll]);
 
-  const handleClosePosition = useCallback(async (pos: PerpsPosition) => {
+  // C-14: Pull-to-refresh handler
+  const onRefresh = useCallback(() => {
+    if (!connected || !address) return;
+    fetchAll(address, 'refresh');
+  }, [connected, address, fetchAll]);
+
+  // C-13: Close position (full or partial)
+  const handleClosePosition = useCallback(async (pos: PerpsPosition, partialSize?: number) => {
     if (!address) return;
-    setMenuPosition(null);
     setActionLoading(true);
+    setActionMsg('');
     try {
       const closeSide = pos.side === 'long' ? 'ask' : 'bid';
-      await closePosition(pos.symbol, closeSide, pos.size, address, signMessage);
-      Alert.alert('Position Closed', `${pos.symbol} ${pos.side.toUpperCase()} closed`);
-      refresh();
+      const sizeToClose = partialSize ?? pos.size;
+      await closePosition(pos.symbol, closeSide, sizeToClose, address, signMessage);
+      // C-15: Log trade to history
+      await saveTradeRecord({
+        id: `${pos.symbol}-${Date.now()}`,
+        symbol: pos.symbol,
+        side: pos.side,
+        size: sizeToClose,
+        entryPrice: pos.entryPrice,
+        exitPrice: pos.markPrice,
+        pnl: pos.unrealizedPnl * (sizeToClose / pos.size),
+        closedAt: Date.now(),
+        type: 'market_close',
+      });
+      loadTradeHistory().then(setTradeHistory);
+      setClosePosition_(null);
+      if (connected && address) fetchAll(address, 'silent');
     } catch (err: any) {
-      Alert.alert('Close Failed', err.message ?? 'Unknown error');
+      setActionMsg(err.message ?? 'Close failed');
     } finally {
       setActionLoading(false);
     }
-  }, [address, signMessage, refresh]);
+  }, [address, signMessage, connected, fetchAll]);
 
   const handleCancelOrder = useCallback(async (order: PerpsOrder) => {
     if (!address) return;
@@ -146,18 +247,19 @@ export function ProfileView({ onBack }: ProfileViewProps) {
       } else {
         await cancelOrder(order.orderId, order.symbol, address, signMessage);
       }
-      Alert.alert('Order Cancelled', `${orderTypeLabel(order.orderType)} for ${order.symbol} cancelled`);
-      refresh();
+      if (connected && address) fetchAll(address, 'silent');
     } catch (err: any) {
-      Alert.alert('Cancel Failed', err.message ?? 'Unknown error');
+      setActionMsg(err.message ?? 'Cancel failed');
     } finally {
       setActionLoading(false);
     }
-  }, [address, signMessage, refresh]);
+  }, [address, signMessage, connected, fetchAll]);
 
+  // C-11: Pre-populate TP/SL modal
   const handleSetTPSL = useCallback(async () => {
     if (!address || !tpslPosition) return;
     setActionLoading(true);
+    setActionMsg('');
     try {
       const side = tpslPosition.side === 'long' ? 'ask' : 'bid';
       const tpNum = parseFloat(tpPrice.trim());
@@ -166,27 +268,27 @@ export function ProfileView({ onBack }: ProfileViewProps) {
       const isLong = tpslPosition.side === 'long';
 
       if (!tpPrice.trim() && !slPrice.trim()) {
-        Alert.alert('Enter a Price', 'Set at least a take profit or stop loss price.');
+        setActionMsg('Set at least a take profit or stop loss price.');
         setActionLoading(false);
         return;
       }
       if (tpPrice.trim() && isLong && tpNum <= mark) {
-        Alert.alert('Invalid TP', `Take profit must be above mark price ($${mark.toFixed(2)}) for a long.`);
+        setActionMsg(`TP must be above mark ($${mark.toFixed(2)}) for a long.`);
         setActionLoading(false);
         return;
       }
       if (tpPrice.trim() && !isLong && tpNum >= mark) {
-        Alert.alert('Invalid TP', `Take profit must be below mark price ($${mark.toFixed(2)}) for a short.`);
+        setActionMsg(`TP must be below mark ($${mark.toFixed(2)}) for a short.`);
         setActionLoading(false);
         return;
       }
       if (slPrice.trim() && isLong && slNum >= mark) {
-        Alert.alert('Invalid SL', `Stop loss must be below mark price ($${mark.toFixed(2)}) for a long.`);
+        setActionMsg(`SL must be below mark ($${mark.toFixed(2)}) for a long.`);
         setActionLoading(false);
         return;
       }
       if (slPrice.trim() && !isLong && slNum <= mark) {
-        Alert.alert('Invalid SL', `Stop loss must be above mark price ($${mark.toFixed(2)}) for a short.`);
+        setActionMsg(`SL must be above mark ($${mark.toFixed(2)}) for a short.`);
         setActionLoading(false);
         return;
       }
@@ -194,41 +296,86 @@ export function ProfileView({ onBack }: ProfileViewProps) {
       const tp = tpPrice.trim() ? { stopPrice: tpPrice.trim(), limitPrice: tpPrice.trim() } : undefined;
       const sl = slPrice.trim() ? { stopPrice: slPrice.trim(), limitPrice: slPrice.trim() } : undefined;
       await setTPSL({ symbol: tpslPosition.symbol, side, takeProfit: tp, stopLoss: sl }, address, signMessage);
-      Alert.alert('TP/SL Set', `${tpslPosition.symbol} TP/SL updated`);
       setTpslPosition(null);
       setTpPrice('');
       setSlPrice('');
-      refresh();
+      if (connected && address) fetchAll(address, 'silent');
     } catch (err: any) {
-      Alert.alert('TP/SL Failed', err.message ?? 'Unknown error');
+      setActionMsg(err.message ?? 'TP/SL failed');
     } finally {
       setActionLoading(false);
     }
-  }, [address, signMessage, tpslPosition, tpPrice, slPrice, refresh]);
+  }, [address, signMessage, tpslPosition, tpPrice, slPrice, connected, fetchAll]);
 
+  // C-11: Pre-populate on open
   const openTPSLModal = useCallback((pos: PerpsPosition) => {
-    setMenuPosition(null);
-    setTpPrice('');
-    setSlPrice('');
+    const existing = tpslBySymbol[pos.symbol];
+    setTpPrice(existing?.tp?.stopPrice ? existing.tp.stopPrice.toString() : '');
+    setSlPrice(existing?.sl?.stopPrice ? existing.sl.stopPrice.toString() : '');
+    setActionMsg('');
     setTpslPosition(pos);
-  }, []);
+  }, [tpslBySymbol]);
+
+  // C-12: Remove TP/SL
+  const handleRemoveTPSL = useCallback(async (pos: PerpsPosition) => {
+    if (!address) return;
+    setActionLoading(true);
+    setActionMsg('');
+    try {
+      const apiSide = pos.side === 'long' ? 'ask' : 'bid';
+      await removeTPSL(pos.symbol, apiSide, 'both', address, signMessage, orders);
+      setTpslPosition(null);
+      if (connected && address) fetchAll(address, 'silent');
+    } catch (err: any) {
+      setActionMsg(err.message ?? 'Failed to remove TP/SL');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [address, signMessage, orders, connected, fetchAll]);
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header with deposit/withdraw pills (C-17) */}
       <View style={styles.header}>
         <Pressable onPress={onBack} style={styles.headerBtn}>
           <MaterialIcons name="arrow-back" size={14} color={semantic.text.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>
-        <Pressable style={[styles.headerBtn, styles.headerBtnGhost]}>
-          <MaterialIcons name="settings" size={16} color={semantic.text.dim} />
-        </Pressable>
+        {hasPacificAccount && (
+          <View style={styles.headerActions}>
+            <Pressable
+              style={styles.headerActionBtn}
+              onPress={() => setDepositOpen(true)}>
+              <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.viridian} />
+              <Text style={[styles.headerActionText, { color: tokens.colors.viridian }]}>Deposit</Text>
+            </Pressable>
+            <Pressable
+              style={styles.headerActionBtn}
+              onPress={() => setWithdrawOpen(true)}>
+              <MaterialIcons name="arrow-upward" size={12} color={tokens.colors.primary} />
+              <Text style={styles.headerActionText}>Withdraw</Text>
+            </Pressable>
+          </View>
+        )}
+        {!hasPacificAccount && (
+          <Pressable style={[styles.headerBtn, styles.headerBtnGhost]}>
+            <MaterialIcons name="settings" size={16} color={semantic.text.dim} />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}>
+        contentContainerStyle={styles.content}
+        refreshControl={
+          connected ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={tokens.colors.primary}
+            />
+          ) : undefined
+        }>
 
         {/* ── Identity section ── */}
         <View style={styles.identity}>
@@ -264,24 +411,6 @@ export function ProfileView({ onBack }: ProfileViewProps) {
           ) : null}
         </View>
 
-        {/* Switch / Disconnect wallet */}
-        {connected && (
-          <View style={styles.walletActions}>
-            <Pressable
-              style={styles.walletActionBtn}
-              onPress={async () => {
-                await disconnect();
-                await connect();
-              }}>
-              <MaterialIcons name="swap-horiz" size={14} color={semantic.text.primary} />
-              <Text style={styles.walletActionText}>Switch Wallet</Text>
-            </Pressable>
-            <Pressable style={styles.walletActionBtn} onPress={disconnect}>
-              <MaterialIcons name="logout" size={14} color={tokens.colors.vermillion} />
-              <Text style={[styles.walletActionText, { color: tokens.colors.vermillion }]}>Disconnect</Text>
-            </Pressable>
-          </View>
-        )}
 
         {/* ── Not connected ── */}
         {!connected && (
@@ -314,7 +443,7 @@ export function ProfileView({ onBack }: ProfileViewProps) {
         {/* ── Has account: equity + tabs ── */}
         {hasPacificAccount && (
           <>
-            {/* Equity card */}
+            {/* C-16: Enhanced equity card */}
             <View style={styles.equityCard}>
               <View style={styles.equityRow}>
                 <View style={styles.eqItem}>
@@ -330,56 +459,48 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                   <Text style={styles.eqVal}>${account.availableToSpend.toFixed(2)}</Text>
                 </View>
               </View>
+              {/* C-16: Extra row — unrealized PnL + account leverage */}
+              <View style={styles.equityDivider} />
+              <View style={styles.equityRow}>
+                <View style={styles.eqItem}>
+                  <Text style={styles.eqLabel}>Unrealized PnL</Text>
+                  <Text style={[styles.eqVal, totalUnrealizedPnl >= 0 ? styles.textPos : styles.textNeg]}>
+                    {totalUnrealizedPnl >= 0 ? '+' : ''}{totalUnrealizedPnl.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={[styles.eqItem, styles.eqItemCenter]}>
+                  <Text style={styles.eqLabel}>Acct Leverage</Text>
+                  <Text style={styles.eqVal}>{accountLeverage.toFixed(2)}x</Text>
+                </View>
+                <View style={[styles.eqItem, styles.eqItemRight]}>
+                  <Text style={styles.eqLabel}>Positions</Text>
+                  <Text style={styles.eqVal}>{positions.length}</Text>
+                </View>
+              </View>
             </View>
 
-            {/* Full-width Deposit / Withdraw buttons */}
-            <View style={styles.depositWithdrawRow}>
-              <Pressable
-                style={[styles.depositWithdrawBtn, styles.depositBtn]}
-                onPress={() => setDepositOpen(true)}>
-                <MaterialIcons name="arrow-downward" size={16} color={tokens.colors.viridian} />
-                <Text style={[styles.depositWithdrawText, { color: tokens.colors.viridian }]}>Deposit</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.depositWithdrawBtn, styles.withdrawBtn]}
-                onPress={() => setWithdrawOpen(true)}>
-                <MaterialIcons name="arrow-upward" size={16} color={tokens.colors.primary} />
-                <Text style={[styles.depositWithdrawText, { color: tokens.colors.primary }]}>Withdraw</Text>
-              </Pressable>
-            </View>
-
-            {/* ── Tabs: Positions | Orders ── */}
+            {/* ── Tabs: Positions | Orders | History (C-15) ── */}
             <View style={styles.tabBar}>
-              <Pressable
-                style={[styles.tab, activeTab === 'positions' && styles.tabActive]}
-                onPress={() => setActiveTab('positions')}
-              >
-                <Text style={[styles.tabText, activeTab === 'positions' && styles.tabTextActive]}>
-                  Positions
-                </Text>
-                {positions.length > 0 && (
-                  <View style={[styles.tabBadge, activeTab === 'positions' && styles.tabBadgeActive]}>
-                    <Text style={[styles.tabBadgeText, activeTab === 'positions' && styles.tabBadgeTextActive]}>
-                      {positions.length}
+              {(['positions', 'orders', 'history'] as Tab[]).map((tab) => {
+                const count = tab === 'positions' ? positions.length : tab === 'orders' ? orders.length : tradeHistory.length;
+                return (
+                  <Pressable
+                    key={tab}
+                    style={[styles.tab, activeTab === tab && styles.tabActive]}
+                    onPress={() => setActiveTab(tab)}>
+                    <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                      {tab === 'positions' ? 'Positions' : tab === 'orders' ? 'Orders' : 'History'}
                     </Text>
-                  </View>
-                )}
-              </Pressable>
-              <Pressable
-                style={[styles.tab, activeTab === 'orders' && styles.tabActive]}
-                onPress={() => setActiveTab('orders')}
-              >
-                <Text style={[styles.tabText, activeTab === 'orders' && styles.tabTextActive]}>
-                  Orders
-                </Text>
-                {orders.length > 0 && (
-                  <View style={[styles.tabBadge, activeTab === 'orders' && styles.tabBadgeActive]}>
-                    <Text style={[styles.tabBadgeText, activeTab === 'orders' && styles.tabBadgeTextActive]}>
-                      {orders.length}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
+                    {count > 0 && (
+                      <View style={[styles.tabBadge, activeTab === tab && styles.tabBadgeActive]}>
+                        <Text style={[styles.tabBadgeText, activeTab === tab && styles.tabBadgeTextActive]}>
+                          {count}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
 
             {/* ── Positions tab ── */}
@@ -394,6 +515,7 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                   positions.map((pos) => {
                     const isUp = pos.unrealizedPnl >= 0;
                     const tpsl = tpslBySymbol[pos.symbol];
+                    const hasTpsl = !!(tpsl?.tp || tpsl?.sl);
                     return (
                       <View key={pos.symbol} style={styles.posCard}>
                         <View style={styles.posRow}>
@@ -434,16 +556,19 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                             style={styles.posActionBtn}
                             onPress={() => openTPSLModal(pos)}>
                             <MaterialIcons name="flag" size={12} color={tokens.colors.primary} />
-                            <Text style={styles.posActionText}>TP/SL</Text>
+                            <Text style={styles.posActionText}>{hasTpsl ? 'Edit TP/SL' : 'TP/SL'}</Text>
                           </Pressable>
+                          {/* C-13: Partial close — opens modal */}
                           <Pressable
                             style={[styles.posActionBtn, styles.posActionBtnClose]}
-                            onPress={() => handleClosePosition(pos)}
+                            onPress={() => {
+                              setClosePosition_(pos);
+                              setCloseAmountText(pos.size.toString());
+                              setActionMsg('');
+                            }}
                             disabled={actionLoading}>
                             <MaterialIcons name="close" size={12} color={tokens.colors.vermillion} />
-                            <Text style={[styles.posActionText, { color: tokens.colors.vermillion }]}>
-                              {actionLoading ? 'Closing…' : 'Close'}
-                            </Text>
+                            <Text style={[styles.posActionText, { color: tokens.colors.vermillion }]}>Close</Text>
                           </Pressable>
                         </View>
                       </View>
@@ -488,10 +613,53 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                             style={styles.cancelBtn}
                             onPress={() => handleCancelOrder(order)}
                             disabled={actionLoading}
-                            hitSlop={6}
-                          >
+                            hitSlop={6}>
                             <MaterialIcons name="close" size={14} color={tokens.colors.vermillion} />
                           </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            )}
+
+            {/* ── C-15: History tab ── */}
+            {activeTab === 'history' && (
+              <View style={styles.tabContent}>
+                {tradeHistory.length === 0 ? (
+                  <View style={styles.posEmpty}>
+                    <MaterialIcons name="history" size={22} color={semantic.text.faint} />
+                    <Text style={styles.posEmptyText}>No trade history yet</Text>
+                    <Text style={[styles.posEmptyText, { fontSize: tokens.fontSize.xxs - 1 }]}>
+                      Closed positions will appear here
+                    </Text>
+                  </View>
+                ) : (
+                  tradeHistory.map((trade) => {
+                    const isUp = trade.pnl >= 0;
+                    return (
+                      <View key={trade.id} style={styles.orderCard}>
+                        <View style={styles.orderRow}>
+                          <View style={styles.orderLeft}>
+                            <View style={styles.orderTopRow}>
+                              <Text style={styles.posSym}>{trade.symbol}</Text>
+                              <View style={[styles.orderTypeBadge, trade.side === 'long' ? styles.orderTypeBadgeTP : styles.orderTypeBadgeSL]}>
+                                <Text style={[styles.orderTypeText, trade.side === 'long' ? styles.textPos : styles.textNeg]}>
+                                  {trade.side.toUpperCase()}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={styles.orderDetail}>
+                              {trade.size} · Entry {formatPrice(trade.entryPrice)} → {formatPrice(trade.exitPrice)}
+                            </Text>
+                            <Text style={styles.orderReduceOnly}>
+                              {new Date(trade.closedAt).toLocaleDateString()} {new Date(trade.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                          <Text style={[styles.posPnl, isUp ? styles.textPos : styles.textNeg]}>
+                            {isUp ? '+' : ''}${trade.pnl.toFixed(2)}
+                          </Text>
                         </View>
                       </View>
                     );
@@ -502,23 +670,29 @@ export function ProfileView({ onBack }: ProfileViewProps) {
           </>
         )}
 
+        {/* Action message bar */}
+        {actionMsg !== '' && (
+          <View style={styles.actionMsgBar}>
+            <Text style={styles.actionMsgText}>{actionMsg}</Text>
+          </View>
+        )}
+
         <View style={{ height: 120 }} />
       </ScrollView>
 
       <DepositModal visible={depositOpen} onClose={() => setDepositOpen(false)} />
       <WithdrawModal visible={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
 
-      {/* TP/SL Modal */}
+      {/* TP/SL Modal (C-11 pre-populated, C-12 remove button) */}
       <Modal
         visible={tpslPosition !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setTpslPosition(null)}
-      >
+        onRequestClose={() => setTpslPosition(null)}>
         <Pressable style={styles.modalOverlay} onPress={() => setTpslPosition(null)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>
-              TP / SL — {tpslPosition?.symbol} {tpslPosition?.side.toUpperCase()}
+              {tpslBySymbol[tpslPosition?.symbol ?? '']?.tp || tpslBySymbol[tpslPosition?.symbol ?? '']?.sl ? 'Edit' : 'Set'} TP / SL — {tpslPosition?.symbol} {tpslPosition?.side.toUpperCase()}
             </Text>
             <Text style={styles.modalSubtitle}>
               Entry {tpslPosition ? formatPrice(tpslPosition.entryPrice) : ''} · Mark {tpslPosition ? formatPrice(tpslPosition.markPrice) : ''}
@@ -552,6 +726,21 @@ export function ProfileView({ onBack }: ProfileViewProps) {
               />
             </View>
 
+            {/* C-12: Remove button */}
+            {tpslPosition && (tpslBySymbol[tpslPosition.symbol]?.tp || tpslBySymbol[tpslPosition.symbol]?.sl) && (
+              <Pressable
+                style={styles.removeTPSLBtn}
+                onPress={() => handleRemoveTPSL(tpslPosition)}
+                disabled={actionLoading}>
+                <MaterialIcons name="delete-outline" size={14} color={tokens.colors.vermillion} />
+                <Text style={styles.removeTPSLText}>Remove All TP/SL</Text>
+              </Pressable>
+            )}
+
+            {actionMsg !== '' && (
+              <Text style={styles.modalErrorText}>{actionMsg}</Text>
+            )}
+
             <View style={styles.modalActions}>
               <Pressable style={styles.modalCancelBtn} onPress={() => setTpslPosition(null)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -559,10 +748,79 @@ export function ProfileView({ onBack }: ProfileViewProps) {
               <Pressable
                 style={[styles.modalConfirmBtn, actionLoading && { opacity: 0.5 }]}
                 onPress={handleSetTPSL}
-                disabled={actionLoading}
-              >
+                disabled={actionLoading}>
                 <Text style={styles.modalConfirmText}>
-                  {actionLoading ? 'Setting…' : 'Confirm'}
+                  {actionLoading ? 'Setting...' : 'Confirm'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* C-13: Partial close modal */}
+      <Modal
+        visible={closePosition_ !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setClosePosition_(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setClosePosition_(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>
+              Close {closePosition_?.symbol} {closePosition_?.side.toUpperCase()}
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              Size: {closePosition_?.size} · Entry {closePosition_ ? formatPrice(closePosition_.entryPrice) : ''}
+            </Text>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Amount to Close</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={closeAmountText}
+                onChangeText={(t) => setCloseAmountText(t.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+              />
+              <View style={styles.closeQuickRow}>
+                {([25, 50, 75, 100] as const).map((pct) => (
+                  <Pressable
+                    key={pct}
+                    style={styles.closeQuickPill}
+                    onPress={() => {
+                      if (closePosition_) {
+                        setCloseAmountText(((closePosition_.size * pct) / 100).toString());
+                      }
+                    }}>
+                    <Text style={styles.closeQuickPillText}>{pct === 100 ? 'Full' : `${pct}%`}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            {actionMsg !== '' && (
+              <Text style={styles.modalErrorText}>{actionMsg}</Text>
+            )}
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setClosePosition_(null)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, actionLoading && { opacity: 0.5 }, { backgroundColor: tokens.colors.vermillion }]}
+                onPress={() => {
+                  if (closePosition_) {
+                    const amt = parseFloat(closeAmountText);
+                    if (!amt || amt <= 0) {
+                      setActionMsg('Enter a valid amount');
+                      return;
+                    }
+                    handleClosePosition(closePosition_, amt);
+                  }
+                }}
+                disabled={actionLoading}>
+                <Text style={styles.modalConfirmText}>
+                  {actionLoading ? 'Closing...' : 'Close Position'}
                 </Text>
               </Pressable>
             </View>
@@ -609,6 +867,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: semantic.text.dim,
   },
+  // C-17: Header action buttons
   headerActions: {
     flexDirection: 'row',
     gap: 6,
@@ -629,7 +888,7 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xxs - 1,
     fontWeight: '700',
     letterSpacing: 0.8,
-    color: tokens.colors.viridian,
+    color: tokens.colors.primary,
   },
 
   content: {
@@ -725,31 +984,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  // Wallet actions
-  walletActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  walletActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 8,
-    paddingVertical: 10,
-  },
-  walletActionText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    color: semantic.text.primary,
-  },
-
   // Empty states
   emptyState: {
     alignItems: 'center',
@@ -786,7 +1020,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Equity card
+  // Equity card (C-16 enhanced)
   equityCard: {
     backgroundColor: semantic.background.lift,
     borderRadius: tokens.radius.md,
@@ -796,6 +1030,11 @@ const styles = StyleSheet.create({
   },
   equityRow: {
     flexDirection: 'row',
+  },
+  equityDivider: {
+    height: 1,
+    backgroundColor: semantic.border.muted,
+    marginVertical: tokens.spacing.sm,
   },
   eqItem: {
     flex: 1,
@@ -962,38 +1201,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Three-dot menu
-  menuDots: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  actionMenu: {
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-    paddingVertical: 2,
-    paddingHorizontal: tokens.spacing.md,
-  },
-  actionMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-  },
-  actionMenuText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    color: semantic.text.primary,
-  },
-  actionMenuDivider: {
-    height: 1,
-    backgroundColor: semantic.border.muted,
-  },
-
   // Orders tab
   orderCard: {
     backgroundColor: semantic.background.lift,
@@ -1144,41 +1351,75 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+  modalErrorText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: tokens.colors.vermillion,
+    textAlign: 'center',
+  },
 
-  textPos: { color: tokens.colors.viridian },
-  textNeg: { color: tokens.colors.vermillion },
-
-  // Full-width deposit/withdraw row
-  depositWithdrawRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  depositBtn: {
-    borderColor: 'rgba(74,140,111,0.3)',
-    backgroundColor: 'rgba(74,140,111,0.08)',
-  },
-  withdrawBtn: {
-    borderColor: 'rgba(199,183,112,0.3)',
-    backgroundColor: 'rgba(199,183,112,0.08)',
-  },
-  depositWithdrawBtn: {
-    flex: 1,
+  // C-12: Remove TP/SL
+  removeTPSLBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.xs,
     borderWidth: 1,
-    borderRadius: tokens.radius.md,
-    paddingVertical: 12,
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.06)',
   },
-  depositWithdrawText: {
+  removeTPSLText: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
+    fontSize: tokens.fontSize.xxs,
     fontWeight: '700',
-    letterSpacing: 0.8,
+    color: tokens.colors.vermillion,
+    letterSpacing: 0.5,
   },
 
-  // Inline position action buttons (replacing 3-dot menu)
+  // C-13: Close position quick pills
+  closeQuickRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
+  closeQuickPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
+  closeQuickPillText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs - 1,
+    fontWeight: '700',
+    color: semantic.text.dim,
+    letterSpacing: 0.5,
+  },
+
+  // Action message bar (replaces Alerts)
+  actionMsgBar: {
+    backgroundColor: 'rgba(217,83,79,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.20)',
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  actionMsgText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: tokens.colors.vermillion,
+    textAlign: 'center',
+  },
+
+  textPos: { color: tokens.colors.viridian },
+  textNeg: { color: tokens.colors.vermillion },
+
+  // Inline position action buttons
   posActionRow: {
     flexDirection: 'row',
     gap: 6,

@@ -45,7 +45,7 @@ export function WithdrawModal({ visible, onClose }: WithdrawModalProps) {
     if (visible && connected && address) {
       setLoading(true);
       fetchPerpsAccount(address)
-        .then((acc) => setAvailable(acc.availableToSpend))
+        .then((acc) => setAvailable(acc.availableToWithdraw))
         .catch(() => setAvailable(null))
         .finally(() => setLoading(false));
     }
@@ -58,8 +58,7 @@ export function WithdrawModal({ visible, onClose }: WithdrawModalProps) {
 
   function handleMax() {
     if (available !== null) {
-      const max = Math.max(0, available - WITHDRAWAL_FEE);
-      setAmount(max.toFixed(2));
+      setAmount(available.toFixed(2));
     }
   }
 
@@ -85,7 +84,7 @@ export function WithdrawModal({ visible, onClose }: WithdrawModalProps) {
 
       // Refresh balance
       const acc = await fetchPerpsAccount(address).catch(() => null);
-      if (acc) setAvailable(acc.availableToSpend);
+      if (acc) setAvailable(acc.availableToWithdraw);
     } catch (err: any) {
       const msg = err?.message ?? 'Withdrawal failed';
       console.error('[Withdraw]', err);

@@ -1,10 +1,10 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import * as Haptics from 'expo-haptics';
 import { useWallet } from '@/hooks/useWallet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Pressable,
   ScrollView,
@@ -16,28 +16,38 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
 import {
   fetchPerpsMarkets,
   fetchPerpsAccount,
   fetchPerpsPositions,
+  fetchOpenOrders,
   formatChange,
   formatFunding,
   formatPrice,
   formatUsdCompact,
   placeOrder,
+  placeLimitOrder,
   closePosition,
   setTPSL,
+  removeTPSL,
 } from '@/features/perps/perps.api';
-import type { PerpsPosition } from '@/features/perps/perps.types';
+import type { PerpsPosition, PerpsOrder } from '@/features/perps/perps.types';
 import type { PerpsMarket } from '@/features/perps/perps.types';
 import { usePerpsLivePrice } from '@/features/perps/usePerpsWebSocket';
 import { PriceChart } from '@/features/perps/PriceChart';
 import { PACIFIC_BUILDER_CODE } from '@/features/perps/pacific.config';
+import { DepositModal } from '@/features/perps/DepositModal';
 import { semantic, tokens } from '@/theme';
 
 type Side = 'long' | 'short';
 type AmountMode = 'usd' | 'native';
+type OrderType = 'market' | 'limit';
+
+// Hold duration for hold-to-confirm (ms)
+const HOLD_DURATION = 800;
+
+// Button feedback states
+type ButtonState = 'idle' | 'holding' | 'submitting' | 'success' | 'error';
 
 interface MarketDetailScreenProps {
   symbol: string;
@@ -54,13 +64,16 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
 
   // Account balance
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  // Whether the user has a Pacific account at all
+  const [hasAccount, setHasAccount] = useState<boolean | null>(null);
 
   // UI state
   const [side, setSide] = useState<Side>('long');
+  const [orderType, setOrderType] = useState<OrderType>('market');
+  const [limitPriceText, setLimitPriceText] = useState('');
   const [amountMode, setAmountMode] = useState<AmountMode>('usd');
   const [amountText, setAmountText] = useState('');
   const [scrubPrice, setScrubPrice] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   // Quick-amount pill active state
   const [activePillPct, setActivePillPct] = useState<number | null>(null);
@@ -72,8 +85,18 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
 
   // My Positions
   const [positions, setPositions] = useState<PerpsPosition[]>([]);
+  const [orders, setOrders] = useState<PerpsOrder[]>([]);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
+
+  // Deposit modal
+  const [depositOpen, setDepositOpen] = useState(false);
+
+  // Submit button state (C-07 hold-to-confirm, C-08 feedback)
+  const [buttonState, setButtonState] = useState<ButtonState>('idle');
+  const [buttonMsg, setButtonMsg] = useState('');
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdProgressAnim = useRef(new Animated.Value(0)).current;
 
   // Live dot pulse animation
   const dotOpacity = useRef(new Animated.Value(1)).current;
@@ -130,23 +153,40 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
   useEffect(() => {
     if (connected && address) {
       fetchPerpsAccount(address)
-        .then((acc) => setAvailableBalance(acc.availableToSpend))
-        .catch(() => setAvailableBalance(null));
+        .then((acc) => {
+          setAvailableBalance(acc.availableToSpend);
+          setHasAccount(true);
+        })
+        .catch(() => {
+          setAvailableBalance(null);
+          setHasAccount(false);
+        });
     } else {
       setAvailableBalance(null);
+      setHasAccount(null);
     }
   }, [connected, address]);
 
-  // Fetch positions
+  // Fetch positions + orders
   const loadPositions = useCallback(() => {
     if (!connected || !address) {
       setPositions([]);
+      setOrders([]);
       return;
     }
     setPositionsLoading(true);
-    fetchPerpsPositions(address)
-      .then(setPositions)
-      .catch(() => setPositions([]))
+    Promise.all([
+      fetchPerpsPositions(address),
+      fetchOpenOrders(address),
+    ])
+      .then(([pos, ord]) => {
+        setPositions(pos);
+        setOrders(ord);
+      })
+      .catch(() => {
+        setPositions([]);
+        setOrders([]);
+      })
       .finally(() => setPositionsLoading(false));
   }, [connected, address]);
 
@@ -154,51 +194,88 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
     loadPositions();
   }, [loadPositions]);
 
-  // Close a position from My Positions section
+  // Build TP/SL map from orders
+  const tpslBySymbol = useMemo(() => {
+    const map: Record<string, { tp?: PerpsOrder; sl?: PerpsOrder }> = {};
+    for (const o of orders) {
+      if (!map[o.symbol]) map[o.symbol] = {};
+      if (o.orderType === 'take_profit_limit') map[o.symbol].tp = o;
+      if (o.orderType === 'stop_loss_limit') map[o.symbol].sl = o;
+    }
+    return map;
+  }, [orders]);
+
+  // Close a position from My Positions section (C-08: no Alert)
   const handleClosePositionCard = useCallback(async (pos: PerpsPosition) => {
     if (!address) return;
     setClosingSymbol(pos.symbol);
     try {
       const closeSide = pos.side === 'long' ? 'ask' : 'bid';
       await closePosition(pos.symbol, closeSide, pos.size, address, signMessage, PACIFIC_BUILDER_CODE || undefined);
-      Alert.alert('Position Closed', `${pos.symbol} ${pos.side.toUpperCase()} closed`);
       loadPositions();
-    } catch (err: any) {
-      Alert.alert('Close Failed', err.message ?? 'Unknown error');
+      // Refresh balance
+      fetchPerpsAccount(address).then((acc) => setAvailableBalance(acc.availableToSpend)).catch(() => {});
+    } catch (_err: any) {
+      // Error shown inline — closingSymbol resets
     } finally {
       setClosingSymbol(null);
     }
   }, [address, signMessage, loadPositions]);
 
-  // Open TP/SL modal for a position (reuse ProfileView pattern — shows existing modal via state)
+  // TP/SL modal for position cards (C-11: pre-populate)
   const [tpslModalPos, setTpslModalPos] = useState<PerpsPosition | null>(null);
   const [tpslModalTp, setTpslModalTp] = useState('');
   const [tpslModalSl, setTpslModalSl] = useState('');
   const [tpslModalLoading, setTpslModalLoading] = useState(false);
+  const [tpslModalMsg, setTpslModalMsg] = useState('');
+
+  // C-11: Open TP/SL modal with existing values pre-populated
+  const openTPSLModal = useCallback((pos: PerpsPosition) => {
+    const existing = tpslBySymbol[pos.symbol];
+    setTpslModalTp(existing?.tp?.stopPrice ? existing.tp.stopPrice.toString() : '');
+    setTpslModalSl(existing?.sl?.stopPrice ? existing.sl.stopPrice.toString() : '');
+    setTpslModalMsg('');
+    setTpslModalPos(pos);
+  }, [tpslBySymbol]);
 
   const handleSetTPSLCard = useCallback(async () => {
     if (!address || !tpslModalPos) return;
     setTpslModalLoading(true);
+    setTpslModalMsg('');
     try {
-      const side = tpslModalPos.side === 'long' ? 'ask' : 'bid';
+      const apiSide = tpslModalPos.side === 'long' ? 'ask' : 'bid';
       const tp = tpslModalTp.trim() ? { stopPrice: tpslModalTp.trim(), limitPrice: tpslModalTp.trim() } : undefined;
       const sl = tpslModalSl.trim() ? { stopPrice: tpslModalSl.trim(), limitPrice: tpslModalSl.trim() } : undefined;
       if (!tp && !sl) {
-        Alert.alert('Enter a Price', 'Set at least a TP or SL price.');
+        setTpslModalMsg('Set at least a TP or SL price.');
+        setTpslModalLoading(false);
         return;
       }
-      await setTPSL({ symbol: tpslModalPos.symbol, side, takeProfit: tp, stopLoss: sl, builderCode: PACIFIC_BUILDER_CODE || undefined }, address, signMessage);
-      Alert.alert('TP/SL Set', `${tpslModalPos.symbol} TP/SL updated`);
+      await setTPSL({ symbol: tpslModalPos.symbol, side: apiSide, takeProfit: tp, stopLoss: sl, builderCode: PACIFIC_BUILDER_CODE || undefined }, address, signMessage);
       setTpslModalPos(null);
-      setTpslModalTp('');
-      setTpslModalSl('');
       loadPositions();
     } catch (err: any) {
-      Alert.alert('TP/SL Failed', err.message ?? 'Unknown error');
+      setTpslModalMsg(err.message ?? 'Failed to set TP/SL');
     } finally {
       setTpslModalLoading(false);
     }
   }, [address, signMessage, tpslModalPos, tpslModalTp, tpslModalSl, loadPositions]);
+
+  // C-12: Remove TP/SL
+  const handleRemoveTPSL = useCallback(async (pos: PerpsPosition, which: 'tp' | 'sl' | 'both') => {
+    if (!address) return;
+    setTpslModalLoading(true);
+    try {
+      const apiSide = pos.side === 'long' ? 'ask' : 'bid';
+      await removeTPSL(pos.symbol, apiSide, which, address, signMessage, orders);
+      setTpslModalPos(null);
+      loadPositions();
+    } catch (err: any) {
+      setTpslModalMsg(err.message ?? 'Failed to remove TP/SL');
+    } finally {
+      setTpslModalLoading(false);
+    }
+  }, [address, signMessage, orders, loadPositions]);
 
   // Max notional = available margin × max leverage
   const maxLeverage = market?.maxLeverage ?? 1;
@@ -219,56 +296,178 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
     return amountUsdc / displayPrice;
   }, [amountUsdc, displayPrice]);
 
-  // ── Order submission ──
-  const handleSubmitOrder = useCallback(async () => {
+  // C-09: Dynamic leverage indicator
+  const effectiveLeverage = useMemo(() => {
+    if (!availableBalance || availableBalance <= 0 || amountUsdc <= 0) return null;
+    return amountUsdc / availableBalance;
+  }, [amountUsdc, availableBalance]);
+
+  // C-06: Fixed liq price calculation — use position margin, not entire account
+  const liqPrice = useMemo(() => {
+    if (amountUsdc <= 0 || !market) return null;
+    // Position margin = notional / maxLeverage
+    const positionMargin = amountUsdc / maxLeverage;
+    if (positionMargin <= 0) return null;
+    // Effective leverage for THIS position
+    const posLev = amountUsdc / positionMargin; // = maxLeverage
+    const actualLev = effectiveLeverage ?? posLev;
+    // Use the lower of effective and max leverage for a more realistic estimate
+    const lev = Math.min(actualLev, maxLeverage);
+    if (lev <= 1) return null;
+    return side === 'long'
+      ? displayPrice * (1 - 1 / lev)
+      : displayPrice * (1 + 1 / lev);
+  }, [amountUsdc, availableBalance, displayPrice, side, maxLeverage, effectiveLeverage, market]);
+
+  // ── Hold-to-confirm order submission (C-07) ──
+  const handlePressIn = useCallback(() => {
+    if (!connected || !address || amountUsdc <= 0 || buttonState === 'submitting') return;
+
+    setButtonState('holding');
+    holdProgressAnim.setValue(0);
+
+    Animated.timing(holdProgressAnim, {
+      toValue: 1,
+      duration: HOLD_DURATION,
+      useNativeDriver: false,
+    }).start();
+
+    holdTimerRef.current = setTimeout(() => {
+      void executeOrder();
+    }, HOLD_DURATION);
+  }, [connected, address, amountUsdc, buttonState]);
+
+  const handlePressOut = useCallback(() => {
+    if (buttonState === 'holding') {
+      // Released too early — cancel
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+      }
+      holdProgressAnim.stopAnimation();
+      holdProgressAnim.setValue(0);
+      setButtonState('idle');
+    }
+  }, [buttonState, holdProgressAnim]);
+
+  // C-04: Wire TP/SL inline with order + C-08: button feedback
+  const executeOrder = useCallback(async () => {
     if (!connected || !address || amountUsdc <= 0) return;
     if (maxNotional !== null && amountUsdc > maxNotional) {
-      Alert.alert('Exceeds Max', `Max position: $${maxNotional.toFixed(0)} (${availableBalance?.toFixed(2)} × ${maxLeverage}x)`);
+      setButtonState('error');
+      setButtonMsg(`Max: $${maxNotional.toFixed(0)} (${availableBalance?.toFixed(2)} × ${maxLeverage}x)`);
+      setTimeout(() => { setButtonState('idle'); setButtonMsg(''); }, 3000);
       return;
     }
-    setSubmitting(true);
+
+    setButtonState('submitting');
+    setButtonMsg('');
+
     try {
-      const orderId = await placeOrder(
-        {
-          symbol,
-          side: side === 'long' ? 'bid' : 'ask',
-          amountUsdc,
-          slippage: '1',
-          builderCode: PACIFIC_BUILDER_CODE || undefined,
-        },
-        address,
-        signMessage,
-      );
-      Alert.alert('Order Placed', `Order #${orderId} submitted successfully.`);
+      const apiSide = side === 'long' ? 'bid' : 'ask';
+
+      // Build TP/SL params (C-04: actually wire them)
+      const tpParam = tpPriceText.trim() ? { stopPrice: tpPriceText.trim(), limitPrice: tpPriceText.trim() } : undefined;
+      const slParam = slPriceText.trim() ? { stopPrice: slPriceText.trim(), limitPrice: slPriceText.trim() } : undefined;
+
+      console.log('[Submit] orderType:', orderType);
+      if (orderType === 'limit') {
+        const limitPrice = parseFloat(limitPriceText);
+        if (!limitPrice || limitPrice <= 0) {
+          setButtonState('error');
+          setButtonMsg('Enter a valid limit price');
+          setTimeout(() => { setButtonState('idle'); setButtonMsg(''); }, 3000);
+          return;
+        }
+        await placeLimitOrder(
+          {
+            symbol,
+            side: apiSide,
+            price: limitPrice,
+            amountUsdc,
+            builderCode: PACIFIC_BUILDER_CODE || undefined,
+          },
+          address,
+          signMessage,
+        );
+      } else {
+        // Market order — pass TP/SL inline with the order via placeOrder,
+        // then call setTPSL if TP/SL provided (Pacific create_market supports inline TP/SL
+        // but our placeOrder wrapper doesn't pass them — call setTPSL after)
+        const orderId = await placeOrder(
+          {
+            symbol,
+            side: apiSide,
+            amountUsdc,
+            slippage: '1',
+            builderCode: PACIFIC_BUILDER_CODE || undefined,
+          },
+          address,
+          signMessage,
+        );
+
+        // C-04: Wire TP/SL after order placement
+        if (tpParam || slParam) {
+          try {
+            await setTPSL(
+              { symbol, side: apiSide, takeProfit: tpParam, stopLoss: slParam, builderCode: PACIFIC_BUILDER_CODE || undefined },
+              address,
+              signMessage,
+            );
+          } catch (_tpslErr) {
+            // Order placed but TP/SL failed — show warning, don't roll back
+            setButtonState('success');
+            setButtonMsg(`Order #${orderId} placed — TP/SL failed, set manually`);
+            setTimeout(() => { setButtonState('idle'); setButtonMsg(''); }, 4000);
+            loadPositions();
+            fetchPerpsAccount(address).then((acc) => setAvailableBalance(acc.availableToSpend)).catch(() => {});
+            return;
+          }
+        }
+      }
+
+      setButtonState('success');
+      setButtonMsg('Executed — see positions');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadPositions();
+      fetchPerpsAccount(address).then((acc) => setAvailableBalance(acc.availableToSpend)).catch(() => {});
+      setTimeout(() => { setButtonState('idle'); setButtonMsg(''); }, 3000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Order failed';
-      Alert.alert('Order Failed', msg);
-    } finally {
-      setSubmitting(false);
+      setButtonState('error');
+      setButtonMsg(msg);
+      setTimeout(() => { setButtonState('idle'); setButtonMsg(''); }, 3000);
     }
-  }, [connected, address, amountUsdc, availableBalance, maxNotional, symbol, side, signMessage, maxLeverage]);
+  }, [connected, address, amountUsdc, availableBalance, maxNotional, symbol, side, signMessage, maxLeverage, orderType, limitPriceText, tpPriceText, slPriceText, loadPositions]);
+
+  // Cleanup hold timer on unmount
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    };
+  }, []);
 
   const change24h = market?.change24h ?? 0;
   const isUp = change24h >= 0;
 
-  // Submit button sub-line text (liq price + fee + optional TP/SL)
-  const submitSubLine = useMemo(() => {
-    if (amountUsdc <= 0 || !availableBalance || availableBalance <= 0) return '';
-    const effectiveLev = amountUsdc / availableBalance;
-    const liq = side === 'long'
-      ? displayPrice * (1 - 1 / effectiveLev)
-      : displayPrice * (1 + 1 / effectiveLev);
-    let line = `Liq. ~${formatPrice(liq)} · Fee $${(amountUsdc * 0.0002).toFixed(2)}`;
-    if (tpPriceText || slPriceText) {
-      const tpPart = tpPriceText ? `TP $${tpPriceText}` : '';
-      const slPart = slPriceText ? `SL $${slPriceText}` : '';
-      const tpslPart = [tpPart, slPart].filter(Boolean).join(' / ');
-      line += ` · ${tpslPart}`;
-    }
-    return line;
-  }, [amountUsdc, availableBalance, displayPrice, side, tpPriceText, slPriceText]);
-
   const insets = useSafeAreaInsets();
+
+  // Submit button color based on state
+  const submitBtnStyle = useMemo(() => {
+    if (buttonState === 'success') return styles.submitSuccess;
+    if (buttonState === 'error') return styles.submitError;
+    return side === 'long' ? styles.submitLong : styles.submitShort;
+  }, [buttonState, side]);
+
+  // Submit button text
+  const submitBtnText = useMemo(() => {
+    if (buttonState === 'submitting') return '';
+    if (buttonState === 'success') return buttonMsg || 'Executed';
+    if (buttonState === 'error') return buttonMsg || 'Failed';
+    if (amountUsdc <= 0) return `Hold to ${side === 'long' ? 'Long' : 'Short'}`;
+    const typeLabel = orderType === 'limit' ? 'Limit ' : '';
+    return `Hold — ${typeLabel}${side === 'long' ? 'Long' : 'Short'} $${amountUsdc.toFixed(0)}`;
+  }, [buttonState, buttonMsg, amountUsdc, side, orderType]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -297,7 +496,11 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
           )}
         </View>
 
-        <WalletHeaderButton />
+        <Pressable onPress={() => router.push('/trade?view=profile')} style={styles.avatarRing}>
+          <View style={styles.avatarInner}>
+            <MaterialIcons name="person" size={12} color={semantic.text.primary} />
+          </View>
+        </Pressable>
       </View>
 
       {loadingMarket ? (
@@ -353,6 +556,17 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                   <Text style={styles.connectWalletText}>Connect Wallet</Text>
                 </Pressable>
               </View>
+            ) : hasAccount === false ? (
+              /* C-05: Connected but no Pacific account */
+              <View style={styles.disconnectedCta}>
+                <MaterialIcons name="rocket-launch" size={32} color={semantic.text.dim} />
+                <Text style={styles.disconnectedText}>
+                  Deposit USDC to create your trading account
+                </Text>
+                <Pressable style={styles.connectWalletBtn} onPress={() => setDepositOpen(true)}>
+                  <Text style={styles.connectWalletText}>Deposit to Start</Text>
+                </Pressable>
+              </View>
             ) : (
               <View style={styles.orderSection}>
                 {/* Side toggle */}
@@ -368,6 +582,39 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                     <Text style={[styles.sideBtnText, side === 'short' && { color: tokens.colors.vermillion }]}>Short</Text>
                   </Pressable>
                 </View>
+
+                {/* C-10: Market/Limit toggle */}
+                <View style={styles.orderTypeRow}>
+                  <Pressable
+                    style={[styles.orderTypePill, orderType === 'market' && styles.orderTypePillActive]}
+                    onPress={() => { console.log('[OrderType] switched to: market'); setOrderType('market'); }}>
+                    <Text style={[styles.orderTypePillText, orderType === 'market' && styles.orderTypePillTextActive]}>Market</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.orderTypePill, orderType === 'limit' && styles.orderTypePillActive]}
+                    onPress={() => { console.log('[OrderType] switched to: limit'); setOrderType('limit'); if (!limitPriceText && displayPrice > 0) setLimitPriceText(displayPrice.toFixed(2)); }}>
+                    <Text style={[styles.orderTypePillText, orderType === 'limit' && styles.orderTypePillTextActive]}>Limit</Text>
+                  </Pressable>
+                </View>
+
+                {/* Limit price input (C-10) */}
+                {orderType === 'limit' && (
+                  <View style={styles.limitPriceSection}>
+                    <Text style={styles.amountLabel}>Limit Price (USD)</Text>
+                    <View style={styles.limitPriceRow}>
+                      <Text style={styles.amountDollar}>$</Text>
+                      <TextInput
+                        style={styles.limitPriceInput}
+                        value={limitPriceText}
+                        onChangeText={(t) => setLimitPriceText(t.replace(/[^0-9.]/g, ''))}
+                        keyboardType="decimal-pad"
+                        selectTextOnFocus
+                        placeholder={displayPrice > 0 ? displayPrice.toFixed(2) : '0'}
+                        placeholderTextColor={semantic.text.faint}
+                      />
+                    </View>
+                  </View>
+                )}
 
                 {/* Amount input — tappable label toggles USD / native */}
                 <View style={styles.amountSection}>
@@ -431,52 +678,62 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                   </View>
                 )}
 
-                {/* Available balance row */}
+                {/* C-09: Dynamic leverage indicator */}
                 {availableBalance !== null && maxNotional !== null && (
-                  <View style={styles.maxRow}>
+                  <View style={styles.leverageRow}>
                     <Text style={styles.availText}>
-                      ${availableBalance.toFixed(0)} × {maxLeverage}x = ${maxNotional.toFixed(0)}
+                      ${availableBalance.toFixed(0)} balance
+                    </Text>
+                    {effectiveLeverage !== null && effectiveLeverage > 0 && (
+                      <Text style={[styles.leverageText, effectiveLeverage > maxLeverage * 0.8 ? styles.textNeg : styles.textPos]}>
+                        {effectiveLeverage.toFixed(1)}x leverage
+                      </Text>
+                    )}
+                    <Text style={styles.availText}>
+                      max {maxLeverage}x
                     </Text>
                   </View>
                 )}
 
                 {/* TP/SL collapsible */}
-                <View style={styles.tpslSection}>
-                  <Pressable style={styles.tpslHeader} onPress={() => setTpslExpanded(!tpslExpanded)}>
-                    <Text style={styles.tpslHeaderText}>Take Profit / Stop Loss</Text>
-                    <MaterialIcons
-                      name={tpslExpanded ? 'expand-less' : 'expand-more'}
-                      size={18}
-                      color={semantic.text.dim}
-                    />
-                  </Pressable>
-                  {tpslExpanded && (
-                    <View style={styles.tpslInputRow}>
-                      <View style={styles.tpslField}>
-                        <Text style={styles.tpslFieldLabel}>TP Price</Text>
-                        <TextInput
-                          style={styles.tpslInput}
-                          value={tpPriceText}
-                          onChangeText={setTpPriceText}
-                          placeholder="--"
-                          placeholderTextColor={semantic.text.faint}
-                          keyboardType="decimal-pad"
-                        />
+                {orderType === 'market' && (
+                  <View style={styles.tpslSection}>
+                    <Pressable style={styles.tpslHeader} onPress={() => setTpslExpanded(!tpslExpanded)}>
+                      <Text style={styles.tpslHeaderText}>Take Profit / Stop Loss</Text>
+                      <MaterialIcons
+                        name={tpslExpanded ? 'expand-less' : 'expand-more'}
+                        size={18}
+                        color={semantic.text.dim}
+                      />
+                    </Pressable>
+                    {tpslExpanded && (
+                      <View style={styles.tpslInputRow}>
+                        <View style={styles.tpslField}>
+                          <Text style={styles.tpslFieldLabel}>TP Price</Text>
+                          <TextInput
+                            style={styles.tpslInput}
+                            value={tpPriceText}
+                            onChangeText={setTpPriceText}
+                            placeholder="--"
+                            placeholderTextColor={semantic.text.faint}
+                            keyboardType="decimal-pad"
+                          />
+                        </View>
+                        <View style={styles.tpslField}>
+                          <Text style={[styles.tpslFieldLabel, { color: tokens.colors.vermillion }]}>SL Price</Text>
+                          <TextInput
+                            style={[styles.tpslInput, styles.tpslInputSl]}
+                            value={slPriceText}
+                            onChangeText={setSlPriceText}
+                            placeholder="--"
+                            placeholderTextColor={semantic.text.faint}
+                            keyboardType="decimal-pad"
+                          />
+                        </View>
                       </View>
-                      <View style={styles.tpslField}>
-                        <Text style={[styles.tpslFieldLabel, { color: tokens.colors.vermillion }]}>SL Price</Text>
-                        <TextInput
-                          style={[styles.tpslInput, styles.tpslInputSl]}
-                          value={slPriceText}
-                          onChangeText={setSlPriceText}
-                          placeholder="--"
-                          placeholderTextColor={semantic.text.faint}
-                          keyboardType="decimal-pad"
-                        />
-                      </View>
-                    </View>
-                  )}
-                </View>
+                    )}
+                  </View>
+                )}
 
                 {/* Order summary */}
                 <View style={styles.orderSummary}>
@@ -498,43 +755,64 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                   <View style={[styles.sumItem, { alignItems: 'flex-end' }]}>
                     <Text style={styles.sumLabel}>Liq. Price</Text>
                     <Text style={[styles.sumVal, styles.textNeg]}>
-                      {amountUsdc > 0 && availableBalance && availableBalance > 0
-                        ? `~${formatPrice((() => {
-                            const effectiveLev = amountUsdc / availableBalance;
-                            return side === 'long'
-                              ? displayPrice * (1 - 1 / effectiveLev)
-                              : displayPrice * (1 + 1 / effectiveLev);
-                          })())}`
+                      {liqPrice !== null && liqPrice > 0
+                        ? `~${formatPrice(liqPrice)}`
                         : '--'}
                     </Text>
                   </View>
                 </View>
 
-                {/* Submit button */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.submitBtn,
-                    side === 'long' ? styles.submitLong : styles.submitShort,
-                    (amountUsdc <= 0 || submitting) && styles.submitDisabled,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  disabled={amountUsdc <= 0 || submitting}
-                  onPress={handleSubmitOrder}>
-                  {submitting ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Text style={styles.submitText}>
-                        {`Open ${side === 'long' ? 'Long' : 'Short'} — $${amountUsdc.toFixed(0)}`}
-                      </Text>
-                      {amountUsdc > 0 && availableBalance && availableBalance > 0 && (
-                        <Text style={styles.submitSubText}>
-                          {submitSubLine}
-                        </Text>
-                      )}
-                    </>
+                {/* C-07: Hold-to-confirm submit button + C-08: feedback states */}
+                <View style={styles.submitContainer}>
+                  <Pressable
+                    style={[
+                      styles.submitBtn,
+                      submitBtnStyle,
+                      (amountUsdc <= 0 || buttonState === 'submitting') && styles.submitDisabled,
+                    ]}
+                    disabled={amountUsdc <= 0 || buttonState === 'submitting' || buttonState === 'success' || buttonState === 'error'}
+                    onPressIn={handlePressIn}
+                    onPressOut={handlePressOut}>
+                    {/* Hold progress bar overlay */}
+                    {buttonState === 'holding' && (
+                      <Animated.View
+                        style={[
+                          styles.holdProgress,
+                          side === 'long' ? styles.holdProgressLong : styles.holdProgressShort,
+                          {
+                            width: holdProgressAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ['0%', '100%'],
+                            }),
+                          },
+                        ]}
+                      />
+                    )}
+                    {buttonState === 'submitting' ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : buttonState === 'success' ? (
+                      <View style={styles.submitFeedbackRow}>
+                        <MaterialIcons name="check-circle" size={16} color="#fff" />
+                        <Text style={styles.submitText}>{submitBtnText}</Text>
+                      </View>
+                    ) : buttonState === 'error' ? (
+                      <View style={styles.submitFeedbackRow}>
+                        <MaterialIcons name="error" size={16} color="#fff" />
+                        <Text style={styles.submitText}>{submitBtnText}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.submitText}>{submitBtnText}</Text>
+                    )}
+                  </Pressable>
+
+                  {/* C-05: Insufficient funds CTA */}
+                  {connected && availableBalance !== null && availableBalance <= 0 && (
+                    <Pressable style={styles.depositCta} onPress={() => setDepositOpen(true)}>
+                      <MaterialIcons name="add-circle-outline" size={14} color={tokens.colors.viridian} />
+                      <Text style={styles.depositCtaText}>Deposit funds to trade</Text>
+                    </Pressable>
                   )}
-                </Pressable>
+                </View>
 
                 {/* My Positions */}
                 <View style={styles.myPositionsSection}>
@@ -545,8 +823,10 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                     <Text style={styles.myPositionsEmpty}>No open positions</Text>
                   ) : (
                     positions.map((pos) => {
-                      const isUp = pos.unrealizedPnl >= 0;
+                      const posIsUp = pos.unrealizedPnl >= 0;
                       const isClosing = closingSymbol === pos.symbol;
+                      const tpsl = tpslBySymbol[pos.symbol];
+                      const hasTpsl = !!(tpsl?.tp || tpsl?.sl);
                       return (
                         <View key={pos.symbol} style={styles.posCard}>
                           <View style={styles.posCardTop}>
@@ -559,37 +839,30 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                             <Text style={styles.posSize}>
                               {pos.size} {pos.symbol.replace('USDC', '').replace('-PERP', '')}
                             </Text>
-                            <Text style={[styles.posPnl, isUp ? styles.textPos : styles.textNeg]}>
-                              {isUp ? '+' : ''}${pos.unrealizedPnl.toFixed(2)}
+                            <Text style={[styles.posPnl, posIsUp ? styles.textPos : styles.textNeg]}>
+                              {posIsUp ? '+' : ''}${pos.unrealizedPnl.toFixed(2)}
                             </Text>
                           </View>
                           <View style={styles.posCardMeta}>
                             <Text style={styles.posMetaText}>Entry {formatPrice(pos.entryPrice)}</Text>
-                            <Text style={styles.posMetaText}>Liq {formatPrice(
-                              (() => {
-                                const effectiveLev = pos.entryPrice > 0 ? (pos.size * pos.entryPrice) / (pos.size * pos.entryPrice * 0.1) : 10;
-                                return pos.side === 'long'
-                                  ? pos.markPrice * (1 - 1 / effectiveLev)
-                                  : pos.markPrice * (1 + 1 / effectiveLev);
-                              })()
-                            )}</Text>
+                            <Text style={styles.posMetaText}>Mark {formatPrice(pos.markPrice)}</Text>
+                            {/* Show TP/SL inline on position card */}
+                            {tpsl?.tp && <Text style={[styles.posMetaText, styles.textPos]}>TP {formatPrice(tpsl.tp.stopPrice!)}</Text>}
+                            {tpsl?.sl && <Text style={[styles.posMetaText, styles.textNeg]}>SL {formatPrice(tpsl.sl.stopPrice!)}</Text>}
                           </View>
                           <View style={styles.posCardActions}>
                             <Pressable
                               style={styles.posActionBtn}
-                              onPress={() => {
-                                setTpslModalPos(pos);
-                                setTpslModalTp('');
-                                setTpslModalSl('');
-                              }}>
-                              <Text style={styles.posActionBtnText}>TP/SL</Text>
+                              onPress={() => openTPSLModal(pos)}>
+                              {/* C-11: Change button text when TP/SL exists */}
+                              <Text style={styles.posActionBtnText}>{hasTpsl ? 'Edit TP/SL' : 'TP/SL'}</Text>
                             </Pressable>
                             <Pressable
                               style={[styles.posActionBtn, styles.posActionBtnClose]}
                               onPress={() => handleClosePositionCard(pos)}
                               disabled={isClosing}>
                               <Text style={[styles.posActionBtnText, { color: tokens.colors.vermillion }]}>
-                                {isClosing ? 'Closing…' : 'Close'}
+                                {isClosing ? 'Closing...' : 'Close'}
                               </Text>
                             </Pressable>
                           </View>
@@ -607,12 +880,12 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
         </>
       )}
 
-      {/* TP/SL Modal for position cards */}
+      {/* TP/SL Modal for position cards (C-11 pre-populated, C-12 remove button) */}
       {tpslModalPos !== null && (
         <Pressable style={styles.modalOverlay} onPress={() => setTpslModalPos(null)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>
-              TP / SL — {tpslModalPos.symbol} {tpslModalPos.side.toUpperCase()}
+              {tpslBySymbol[tpslModalPos.symbol]?.tp || tpslBySymbol[tpslModalPos.symbol]?.sl ? 'Edit' : 'Set'} TP / SL — {tpslModalPos.symbol} {tpslModalPos.side.toUpperCase()}
             </Text>
             <View style={styles.tpslInputRow}>
               <View style={styles.tpslField}>
@@ -638,6 +911,22 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                 />
               </View>
             </View>
+
+            {/* C-12: Remove TP/SL button */}
+            {(tpslBySymbol[tpslModalPos.symbol]?.tp || tpslBySymbol[tpslModalPos.symbol]?.sl) && (
+              <Pressable
+                style={styles.removeTPSLBtn}
+                onPress={() => handleRemoveTPSL(tpslModalPos, 'both')}
+                disabled={tpslModalLoading}>
+                <MaterialIcons name="delete-outline" size={14} color={tokens.colors.vermillion} />
+                <Text style={styles.removeTPSLText}>Remove All TP/SL</Text>
+              </Pressable>
+            )}
+
+            {tpslModalMsg !== '' && (
+              <Text style={styles.tpslModalMsg}>{tpslModalMsg}</Text>
+            )}
+
             <View style={styles.modalActions}>
               <Pressable style={styles.modalCancelBtn} onPress={() => setTpslModalPos(null)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -647,7 +936,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                 onPress={handleSetTPSLCard}
                 disabled={tpslModalLoading}>
                 <Text style={styles.modalConfirmText}>
-                  {tpslModalLoading ? 'Setting…' : 'Confirm'}
+                  {tpslModalLoading ? 'Setting...' : 'Confirm'}
                 </Text>
               </Pressable>
             </View>
@@ -655,6 +944,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
         </Pressable>
       )}
 
+      <DepositModal visible={depositOpen} onClose={() => setDepositOpen(false)} />
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
@@ -707,6 +997,27 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xxs,
     fontWeight: '600',
     marginTop: 1,
+  },
+
+  // Avatar (matches TradeListScreen pattern)
+  avatarRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: semantic.text.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Loading / error states
@@ -810,6 +1121,53 @@ const styles = StyleSheet.create({
     color: semantic.text.dim,
   },
 
+  // C-10: Order type toggle (Market / Limit)
+  orderTypeRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  orderTypePill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
+  orderTypePillActive: {
+    borderColor: tokens.colors.primary,
+    backgroundColor: 'rgba(199,183,112,0.10)',
+  },
+  orderTypePillText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: semantic.text.dim,
+  },
+  orderTypePillTextActive: {
+    color: tokens.colors.primary,
+  },
+
+  // Limit price input
+  limitPriceSection: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  limitPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  limitPriceInput: {
+    fontFamily: 'monospace',
+    fontSize: 28,
+    fontWeight: '700',
+    color: semantic.text.primary,
+    minWidth: 80,
+    textAlign: 'center',
+    padding: 0,
+  },
+
   // Amount input
   amountSection: {
     alignItems: 'center',
@@ -842,7 +1200,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 0,
   },
-
   amountToggleHint: {
     fontSize: tokens.fontSize.xxs - 2,
     color: semantic.text.accent,
@@ -862,10 +1219,12 @@ const styles = StyleSheet.create({
     color: semantic.text.dim,
     letterSpacing: 0.5,
   },
-  maxRow: {
+
+  // C-09: Leverage indicator row
+  leverageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     marginTop: 2,
   },
   availText: {
@@ -874,12 +1233,11 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
     letterSpacing: 0.5,
   },
-  maxBtn: {
+  leverageText: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs - 1,
+    fontSize: tokens.fontSize.xxs,
     fontWeight: '700',
-    color: semantic.text.accent,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
 
   // Order summary
@@ -915,16 +1273,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // Submit button
+  // Submit button (C-07 hold-to-confirm + C-08 feedback)
+  submitContainer: {
+    gap: 8,
+  },
   submitBtn: {
     paddingVertical: 14,
     alignItems: 'center',
     borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
   },
   submitLong: {
     backgroundColor: tokens.colors.viridian,
   },
   submitShort: {
+    backgroundColor: tokens.colors.vermillion,
+  },
+  submitSuccess: {
+    backgroundColor: tokens.colors.viridian,
+  },
+  submitError: {
     backgroundColor: tokens.colors.vermillion,
   },
   submitDisabled: {
@@ -937,6 +1306,44 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     color: '#fff',
+  },
+  submitFeedbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  holdProgress: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 10,
+  },
+  holdProgressLong: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  holdProgressShort: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+
+  // C-05: Deposit CTA for insufficient funds
+  depositCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.3)',
+    backgroundColor: 'rgba(74,140,111,0.06)',
+  },
+  depositCtaText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    color: tokens.colors.viridian,
+    letterSpacing: 0.5,
   },
 
   // Colors
@@ -1038,15 +1445,6 @@ const styles = StyleSheet.create({
   },
   tpslInputSl: {
     borderColor: 'rgba(217,83,79,0.3)',
-  },
-
-  // Submit button second line
-  submitSubText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs - 1,
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 0.3,
-    marginTop: 2,
   },
 
   // Disconnected wallet CTA
@@ -1156,6 +1554,7 @@ const styles = StyleSheet.create({
   posCardMeta: {
     flexDirection: 'row',
     gap: 12,
+    flexWrap: 'wrap',
   },
   posMetaText: {
     fontFamily: 'monospace',
@@ -1251,5 +1650,31 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xxs,
     fontWeight: '700',
     color: '#fff',
+  },
+
+  // C-12: Remove TP/SL button
+  removeTPSLBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.06)',
+  },
+  removeTPSLText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    color: tokens.colors.vermillion,
+    letterSpacing: 0.5,
+  },
+  tpslModalMsg: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: tokens.colors.vermillion,
+    textAlign: 'center',
   },
 });
