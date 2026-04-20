@@ -157,6 +157,7 @@ function mapGeopoliticsMarketDetail(row: unknown): GeopoliticsMarketDetail | nul
     outcomePrices,
     clobTokenIds: toStringArray(market.clobTokenIds),
     image: typeof market.image === 'string' ? market.image : null,
+    negRisk: market.negRisk === true,
   };
 }
 

@@ -321,9 +321,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         <Text style={styles.headerTitle} numberOfLines={2}>
           {detail?.title ?? 'Loading...'}
         </Text>
-        <View style={styles.avatarRing}>
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
           <View style={styles.avatarInner} />
-        </View>
+        </Pressable>
       </View>
 
       {/* ── LOADING / ERROR ── */}

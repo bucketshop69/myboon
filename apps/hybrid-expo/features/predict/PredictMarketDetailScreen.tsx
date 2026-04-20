@@ -15,8 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, placeBet } from '@/features/predict/predict.api';
-import type { PortfolioPosition } from '@/features/predict/predict.api';
+import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
@@ -145,8 +145,12 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   // CLOB balance for bet slip
   const [clobBalance, setClobBalance] = useState<number | null>(null);
 
-  // Market positions for current user
+  // Market positions + open orders for current user
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+
+  // Sell mode state
+  const [betSlipMode, setBetSlipMode] = useState<'buy' | 'sell'>('buy');
 
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
@@ -198,19 +202,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   useEffect(() => { void loadMarket(); }, [slug]);
 
-  // Fetch user's positions for this market
-  useEffect(() => {
-    if (!detail || !poly.polygonAddress) {
-      setMarketPositions([]);
-      return;
-    }
-    // Use conditionId from the detail's clobTokenIds — the conditionId is embedded in positions data
-    // For now, fetch all positions and filter client-side by slug
+  // Fetch user's orders + positions for this market
+  const loadOrdersAndPositions = useCallback(() => {
+    if (!poly.polygonAddress) return;
     const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
-    fetchMarketPositions(gammaAddr, slug)
-      .then(setMarketPositions)
-      .catch(() => setMarketPositions([]));
-  }, [detail, poly.polygonAddress, poly.safeAddress, slug]);
+    fetchOpenOrders(poly.polygonAddress).then(setOpenOrders).catch(() => setOpenOrders([]));
+    fetchMarketPositions(gammaAddr, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
+  }, [poly.polygonAddress, poly.safeAddress, slug]);
+
+  useEffect(() => {
+    if (poly.polygonAddress && detail) loadOrdersAndPositions();
+  }, [poly.polygonAddress, detail, loadOrdersAndPositions]);
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice  = livePrice?.noPrice  ?? (detail?.outcomePrices[1] ?? null);
@@ -228,6 +230,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
     setBetSlipPrice(price);
     setBetSlipAmount(0);
+    setBetSlipMode('buy');
     setOrderResult(null);
     setOrderError(null);
     setBetSlipVisible(true);
@@ -273,18 +276,20 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
     try {
       // Local signing: phone signs EIP-712, server just proxies
-      // Geopolitics markets are typically not neg-risk (binary yes/no)
-      const exchangeAddress = V2_CONTRACTS.CTF_EXCHANGE;
+      const exchangeAddress = detail?.negRisk
+        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+        : V2_CONTRACTS.CTF_EXCHANGE;
+      const orderSide = betSlipMode === 'sell' ? 'SELL' : 'BUY';
       const size = Math.floor((betSlipAmount / betSlipPrice) * 100) / 100;
 
       let signedOrder: unknown = undefined;
       if (poly.canSignLocally) {
-        console.log('[order] Signing locally:', { tokenID, price: betSlipPrice, size, side: 'BUY', exchangeAddress });
+        console.log('[order] Signing locally:', { tokenID, price: betSlipPrice, size, side: orderSide, exchangeAddress });
         signedOrder = await poly.signOrder({
           tokenID,
           price: betSlipPrice,
           size,
-          side: 'BUY',
+          side: orderSide,
           exchangeAddress,
         });
         console.log('[order] Signed locally, posting to server');
@@ -295,12 +300,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         tokenID,
         price: betSlipPrice,
         amount: betSlipAmount,
-        side: 'BUY',
+        side: orderSide,
         signedOrder,
       });
 
       if (result.success) {
         setOrderResult('success');
+        // Refresh orders, positions, balance
+        loadOrdersAndPositions();
+        if (poly.polygonAddress) {
+          fetchClobBalance(poly.polygonAddress).then((b) => { if (b) setClobBalance(b.balance); });
+        }
       } else {
         // Session expired — clear stale state so wallet connect button appears
         if (result.error?.includes('No active session')) {
@@ -335,9 +345,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         <Text style={styles.headerTitle} numberOfLines={2}>
           {detail?.question ?? 'Loading...'}
         </Text>
-        <View style={styles.avatarRing}>
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
           <View style={styles.avatarInner} />
-        </View>
+        </Pressable>
       </View>
 
       {/* ── LOADING / ERROR ── */}
@@ -426,60 +436,141 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
-                marketPositions.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
-                    <Text style={styles.emptyTitle}>No positions yet</Text>
-                    <Text style={styles.emptyBody}>Trade below to open a position</Text>
-                  </View>
-                ) : (
-                  <View style={styles.tabSection}>
-                    {marketPositions.map((pos, i) => {
-                      const pnl = pos.cashPnl ?? 0;
-                      const isPositive = pnl >= 0;
-                      return (
-                        <View key={`${pos.conditionId}-${i}`} style={styles.positionCard}>
-                          <View style={styles.positionHeader}>
-                            <View style={[styles.posSideBadge, pos.outcome === 'No' ? styles.posSideBadgeNo : styles.posSideBadgeYes]}>
-                              <Text style={[styles.posSideBadgeText, { color: pos.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
-                                {pos.outcome?.toUpperCase() ?? 'YES'}
+                <View style={{ gap: 12 }}>
+                  {/* Open Orders */}
+                  {openOrders.length > 0 && (
+                    <View>
+                      <Text style={styles.posSecTitle}>Open Orders</Text>
+                      {openOrders.map((o) => {
+                        const sizeNum = parseFloat(o.original_size) || 0;
+                        const matched = parseFloat(o.size_matched) || 0;
+                        const priceNum = parseFloat(o.price) || 0;
+                        const cost = sizeNum * priceNum;
+                        const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
+                        return (
+                          <View key={o.id} style={styles.positionCard}>
+                            <View style={styles.positionHeader}>
+                              <View style={[styles.posSideBadge, o.side === 'BUY' ? styles.posSideBadgeYes : styles.posSideBadgeNo]}>
+                                <Text style={[styles.posSideBadgeText, { color: o.side === 'BUY' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                                  {o.side}
+                                </Text>
+                              </View>
+                              <Text style={styles.orderOutcomeText} numberOfLines={1}>{o.outcome || '--'}</Text>
+                              <Pressable
+                                onPress={async () => {
+                                  if (!poly.polygonAddress) return;
+                                  await cancelOrder(poly.polygonAddress, o.id);
+                                  loadOrdersAndPositions();
+                                }}
+                                style={styles.cancelBtn}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                              </Pressable>
+                            </View>
+                            <View style={styles.positionStats}>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Price</Text>
+                                <Text style={styles.posStatVal}>{Math.round(priceNum * 100)}¢</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Shares</Text>
+                                <Text style={styles.posStatVal}>{sizeNum.toFixed(2)}</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Cost</Text>
+                                <Text style={styles.posStatVal}>${cost.toFixed(2)}</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Filled</Text>
+                                <Text style={styles.posStatVal}>{fillPct}%</Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Positions */}
+                  {marketPositions.length > 0 && (
+                    <View>
+                      <Text style={styles.posSecTitle}>Positions</Text>
+                      {marketPositions.map((pos, i) => {
+                        const pnl = pos.cashPnl ?? 0;
+                        const isPositive = pnl >= 0;
+                        return (
+                          <View key={`${pos.conditionId}-${i}`} style={styles.positionCard}>
+                            <View style={styles.positionHeader}>
+                              <View style={[styles.posSideBadge, pos.outcome === 'No' ? styles.posSideBadgeNo : styles.posSideBadgeYes]}>
+                                <Text style={[styles.posSideBadgeText, { color: pos.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
+                                  {pos.outcome?.toUpperCase() ?? 'YES'}
+                                </Text>
+                              </View>
+                              <Text style={[styles.positionPnl, { color: isPositive ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                                {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                               </Text>
+                              <Pressable
+                                onPress={() => {
+                                  const side = pos.outcome === 'No' ? 'no' : 'yes';
+                                  const price = side === 'yes' ? (yesPrice ?? 0.5) : (noPrice ?? 0.5);
+                                  setBetSlipSide(side);
+                                  setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
+                                  setBetSlipPrice(price);
+                                  setBetSlipAmount(0);
+                                  setBetSlipMode('sell');
+                                  setOrderResult(null);
+                                  setOrderError(null);
+                                  setBetSlipVisible(true);
+                                  if (poly.polygonAddress) {
+                                    fetchClobBalance(poly.polygonAddress).then((b) => {
+                                      if (b) setClobBalance(b.balance);
+                                    });
+                                  }
+                                }}
+                                style={styles.sellBtn}>
+                                <Text style={styles.sellBtnText}>Sell</Text>
+                              </Pressable>
                             </View>
-                            <Text style={[styles.positionPnl, { color: isPositive ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
-                              {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-                            </Text>
+                            <View style={styles.positionStats}>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Shares</Text>
+                                <Text style={styles.posStatVal}>{pos.size?.toFixed(1) ?? '--'}</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Avg</Text>
+                                <Text style={styles.posStatVal}>{pos.avgPrice?.toFixed(2) ?? '--'}¢</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Current</Text>
+                                <Text style={styles.posStatVal}>{pos.curPrice?.toFixed(2) ?? '--'}¢</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Value</Text>
+                                <Text style={styles.posStatVal}>${pos.currentValue?.toFixed(2) ?? '--'}</Text>
+                              </View>
+                            </View>
                           </View>
-                          <View style={styles.positionStats}>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Shares</Text>
-                              <Text style={styles.posStatVal}>{pos.size?.toFixed(1) ?? '--'}</Text>
-                            </View>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Avg</Text>
-                              <Text style={styles.posStatVal}>{pos.avgPrice?.toFixed(2) ?? '--'}¢</Text>
-                            </View>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Current</Text>
-                              <Text style={styles.posStatVal}>{pos.curPrice?.toFixed(2) ?? '--'}¢</Text>
-                            </View>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Value</Text>
-                              <Text style={styles.posStatVal}>${pos.currentValue?.toFixed(2) ?? '--'}</Text>
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Empty state */}
+                  {openOrders.length === 0 && marketPositions.length === 0 && (
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                      <Text style={styles.emptyTitle}>No positions yet</Text>
+                      <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                    </View>
+                  )}
+                </View>
               ) : null}
 
               {/* STATS TAB */}
               {activeTab === 'stats' ? (
                 <View style={styles.tabSection}>
-                  {/* Smart money bar */}
+                  {/* Market sentiment bar */}
                   <View style={styles.statsCard}>
-                    <Text style={styles.cardLabel}>Smart Money</Text>
+                    <Text style={styles.cardLabel}>Market Sentiment</Text>
                     <View style={styles.smartMoneyRow}>
                       <Text style={styles.smYesLabel}>YES</Text>
                       <View style={styles.smTrack}>
@@ -495,10 +586,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
                   {/* Metric row */}
                   <View style={styles.metricRow}>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricLabel}>Traders</Text>
-                      <Text style={styles.metricValue}>--</Text>
-                    </View>
                     <View style={styles.metricBox}>
                       <Text style={styles.metricLabel}>Volume</Text>
                       <Text style={styles.metricValue}>{formatUsdCompact(detail.volume24h)}</Text>
@@ -544,20 +631,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
               {/* FEED TAB */}
               {activeTab === 'feed' ? (
-                <View style={styles.tabSection}>
-                  {[
-                    { source: 'Smart Money Alert', text: 'Large YES position opened — $12K notional at 61¢', time: '4m ago' },
-                    { source: 'Market Signal', text: 'Price moved +3.2% in the last 2h on elevated volume', time: '18m ago' },
-                    { source: 'Whale Watch', text: 'Top 5 traders net long YES by $28K combined', time: '1h ago' },
-                  ].map((item, i) => (
-                    <View key={i} style={styles.feedCard}>
-                      <View style={styles.feedCardHeader}>
-                        <Text style={styles.feedSource}>{item.source}</Text>
-                        <Text style={styles.feedTime}>{item.time}</Text>
-                      </View>
-                      <Text style={styles.feedText}>{item.text}</Text>
-                    </View>
-                  ))}
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="rss-feed" size={32} color={semantic.text.faint} />
+                  <Text style={styles.emptyTitle}>Coming Soon</Text>
+                  <Text style={styles.emptyBody}>Live market activity and signals will appear here</Text>
                 </View>
               ) : null}
 
@@ -596,9 +673,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           <View style={styles.betSlipHandle} />
           <View style={styles.betSlipHeader}>
             <Text style={styles.betSlipTitle}>{detail?.question ?? ''}</Text>
-            <View style={[styles.sideBadge, betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-              <Text style={[styles.sideBadgeText, { color: betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
-                {betSlipLabel}
+            <View style={[styles.sideBadge, betSlipMode === 'sell' ? styles.sideBadgeNo : betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+              <Text style={[styles.sideBadgeText, { color: betSlipMode === 'sell' ? semantic.sentiment.negative : betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                {betSlipMode === 'sell' ? `SELL ${betSlipLabel}` : betSlipLabel}
               </Text>
             </View>
           </View>
@@ -703,7 +780,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 <ActivityIndicator size="small" color={semantic.text.primary} />
               ) : (
                 <Text style={styles.confirmBtnText}>
-                  Confirm {betSlipLabel} — ${betSlipAmount}
+                  {betSlipMode === 'sell' ? 'Sell' : 'Confirm'} {betSlipLabel} — ${betSlipAmount}
                 </Text>
               )}
             </Pressable>
@@ -948,6 +1025,55 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xs,
     fontWeight: '700',
     color: semantic.text.primary,
+  },
+
+  // ── Position section ──
+  posSecTitle: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  orderOutcomeText: {
+    flex: 1,
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    marginLeft: 8,
+  },
+  cancelBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+  },
+  cancelBtnText: {
+    color: semantic.text.dim,
+    fontSize: 8,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  sellBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.xs,
+    backgroundColor: 'rgba(244,88,78,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(244,88,78,0.3)',
+  },
+  sellBtnText: {
+    color: semantic.sentiment.negative,
+    fontSize: 8,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 
   // ── Stats tab ──

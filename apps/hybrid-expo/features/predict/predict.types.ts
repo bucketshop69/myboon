@@ -77,6 +77,7 @@ export interface GeopoliticsMarketDetail {
   outcomePrices: number[];
   clobTokenIds: string[];
   image: string | null;
+  negRisk: boolean;
 }
 
 export interface SportOutcomeDetail extends SportOutcome {
