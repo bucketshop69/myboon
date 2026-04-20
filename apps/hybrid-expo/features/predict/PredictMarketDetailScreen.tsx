@@ -156,11 +156,12 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   // Sell mode state
   const [betSlipMode, setBetSlipMode] = useState<'buy' | 'sell'>('buy');
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
-  async function loadMarket() {
-    setLoading(true);
+  async function loadMarket(silent = false) {
+    if (!silent) setLoading(true);
     setErrorMessage(null);
     try {
       const next = await fetchCuratedMarketDetail(slug);
@@ -169,7 +170,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load market');
       setDetail(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -195,7 +196,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
-      loadMarket(),
+      loadMarket(true),
       refreshPrice(),
       loadHistory(interval),
     ]);
@@ -222,9 +223,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const loadOrdersAndPositions = useCallback(() => {
     if (!poly.polygonAddress) return;
     const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
-    fetchOpenOrders(poly.polygonAddress).then(setOpenOrders).catch(() => setOpenOrders([]));
+    fetchOpenOrders(poly.polygonAddress).then((orders) => {
+      // Filter to orders matching this market's token IDs
+      const marketTokens = detail?.clobTokenIds ?? [];
+      if (marketTokens.length > 0) {
+        setOpenOrders(orders.filter((o) => marketTokens.includes(o.asset_id)));
+      } else {
+        setOpenOrders(orders);
+      }
+    }).catch(() => setOpenOrders([]));
     fetchMarketPositions(gammaAddr, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
-  }, [poly.polygonAddress, poly.safeAddress, slug]);
+  }, [poly.polygonAddress, poly.safeAddress, slug, detail?.clobTokenIds]);
 
   useEffect(() => {
     if (poly.polygonAddress && detail) loadOrdersAndPositions();
@@ -301,7 +310,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
       let signedOrder: unknown = undefined;
       if (poly.canSignLocally) {
-        console.log('[order] Signing locally:', { tokenID, price: betSlipPrice, size, side: orderSide, exchangeAddress });
         signedOrder = await poly.signOrder({
           tokenID,
           price: betSlipPrice,
@@ -309,7 +317,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           side: orderSide,
           exchangeAddress,
         });
-        console.log('[order] Signed locally, posting to server');
       }
 
       const result = await placeBet({
@@ -465,7 +472,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
-                <View style={{ gap: 12 }}>
+                <View style={styles.positionTabWrap}>
                   {/* Open Orders */}
                   {openOrders.length > 0 && (
                     <View>
@@ -486,13 +493,22 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                               </View>
                               <Text style={styles.orderOutcomeText} numberOfLines={1}>{o.outcome || '--'}</Text>
                               <Pressable
+                                disabled={cancellingId === o.id}
                                 onPress={async () => {
                                   if (!poly.polygonAddress) return;
-                                  await cancelOrder(poly.polygonAddress, o.id);
-                                  loadOrdersAndPositions();
+                                  setCancellingId(o.id);
+                                  try {
+                                    const res = await cancelOrder(poly.polygonAddress, o.id);
+                                    if (res.ok) loadOrdersAndPositions();
+                                  } catch { /* silent */ }
+                                  finally { setCancellingId(null); }
                                 }}
                                 style={styles.cancelBtn}>
-                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                                {cancellingId === o.id ? (
+                                  <ActivityIndicator size={10} color={semantic.text.dim} />
+                                ) : (
+                                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                                )}
                               </Pressable>
                             </View>
                             <View style={styles.positionStats}>
@@ -541,10 +557,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                                 onPress={() => {
                                   const side = pos.outcome === 'No' ? 'no' : 'yes';
                                   const price = side === 'yes' ? (yesPrice ?? 0.5) : (noPrice ?? 0.5);
+                                  const maxSellValue = Math.floor((pos.size ?? 0) * price * 100) / 100;
                                   setBetSlipSide(side);
                                   setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
                                   setBetSlipPrice(price);
-                                  setBetSlipAmount(0);
+                                  setBetSlipAmount(maxSellValue);
                                   setBetSlipMode('sell');
                                   setOrderResult(null);
                                   setOrderError(null);
@@ -769,7 +786,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           {/* Payout row */}
           <View style={styles.payoutRow}>
             <View>
-              <Text style={styles.betSlipMetaLabel}>Est. Payout</Text>
+              <Text style={styles.betSlipMetaLabel}>{betSlipMode === 'sell' ? 'Est. Return' : 'Est. Payout'}</Text>
               <Text style={[styles.betSlipMetaValue, { color: semantic.sentiment.positive }]}>
                 ${payout.toFixed(2)}
               </Text>
@@ -1073,6 +1090,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Position section ──
+  positionTabWrap: { gap: 12 },
   posSecTitle: {
     color: semantic.text.faint,
     fontSize: tokens.fontSize.xxs,

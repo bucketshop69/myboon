@@ -448,7 +448,7 @@ export default function PredictProfileScreen() {
                           {t.side}
                         </Text>
                       </View>
-                      <View style={{ flex: 1, marginLeft: 8 }}>
+                      <View style={styles.tradeInfoWrap}>
                         <Text style={styles.posQuestion} numberOfLines={1}>{t.title || t.slug}</Text>
                         <Text style={styles.tradeTime}>{timeStr}</Text>
                       </View>
@@ -818,6 +818,10 @@ const styles = StyleSheet.create({
     fontSize: 7.5,
     color: semantic.text.faint,
     marginTop: 1,
+  },
+  tradeInfoWrap: {
+    flex: 1,
+    marginLeft: 8,
   },
 
   // Order cards
