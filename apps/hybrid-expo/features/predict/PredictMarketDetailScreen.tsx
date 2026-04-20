@@ -5,18 +5,20 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, placeBet } from '@/features/predict/predict.api';
-import type { PortfolioPosition } from '@/features/predict/predict.api';
+import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
@@ -121,9 +123,12 @@ const TABS: { key: Tab; label: string }[] = [
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const { width: screenWidth } = useWindowDimensions();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [interval, setInterval] = useState<Interval>('1h');
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -145,13 +150,18 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   // CLOB balance for bet slip
   const [clobBalance, setClobBalance] = useState<number | null>(null);
 
-  // Market positions for current user
+  // Market positions + open orders for current user
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+
+  // Sell mode state
+  const [betSlipMode, setBetSlipMode] = useState<'buy' | 'sell'>('buy');
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
 
-  async function loadMarket() {
-    setLoading(true);
+  async function loadMarket(silent = false) {
+    if (!silent) setLoading(true);
     setErrorMessage(null);
     try {
       const next = await fetchCuratedMarketDetail(slug);
@@ -160,7 +170,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load market');
       setDetail(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -183,6 +193,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     } catch { /* silent */ }
   }
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      loadMarket(true),
+      refreshPrice(),
+      loadHistory(interval),
+    ]);
+    loadOrdersAndPositions();
+    setRefreshing(false);
+  }, [interval]);
+
   useEffect(() => {
     if (!detail) return;
     void loadHistory(interval);
@@ -198,19 +219,25 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   useEffect(() => { void loadMarket(); }, [slug]);
 
-  // Fetch user's positions for this market
-  useEffect(() => {
-    if (!detail || !poly.polygonAddress) {
-      setMarketPositions([]);
-      return;
-    }
-    // Use conditionId from the detail's clobTokenIds — the conditionId is embedded in positions data
-    // For now, fetch all positions and filter client-side by slug
+  // Fetch user's orders + positions for this market
+  const loadOrdersAndPositions = useCallback(() => {
+    if (!poly.polygonAddress) return;
     const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
-    fetchMarketPositions(gammaAddr, slug)
-      .then(setMarketPositions)
-      .catch(() => setMarketPositions([]));
-  }, [detail, poly.polygonAddress, poly.safeAddress, slug]);
+    fetchOpenOrders(poly.polygonAddress).then((orders) => {
+      // Filter to orders matching this market's token IDs
+      const marketTokens = detail?.clobTokenIds ?? [];
+      if (marketTokens.length > 0) {
+        setOpenOrders(orders.filter((o) => marketTokens.includes(o.asset_id)));
+      } else {
+        setOpenOrders(orders);
+      }
+    }).catch(() => setOpenOrders([]));
+    fetchMarketPositions(gammaAddr, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
+  }, [poly.polygonAddress, poly.safeAddress, slug, detail?.clobTokenIds]);
+
+  useEffect(() => {
+    if (poly.polygonAddress && detail) loadOrdersAndPositions();
+  }, [poly.polygonAddress, detail, loadOrdersAndPositions]);
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice  = livePrice?.noPrice  ?? (detail?.outcomePrices[1] ?? null);
@@ -228,6 +255,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
     setBetSlipPrice(price);
     setBetSlipAmount(0);
+    setBetSlipMode('buy');
     setOrderResult(null);
     setOrderError(null);
     setBetSlipVisible(true);
@@ -237,8 +265,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       fetchClobBalance(poly.polygonAddress).then((b) => {
         if (b) {
           setClobBalance(b.balance);
+          setSessionExpired(false);
         } else {
-          poly.disable();
+          setSessionExpired(true);
         }
       });
     }
@@ -273,21 +302,21 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
     try {
       // Local signing: phone signs EIP-712, server just proxies
-      // Geopolitics markets are typically not neg-risk (binary yes/no)
-      const exchangeAddress = V2_CONTRACTS.CTF_EXCHANGE;
+      const exchangeAddress = detail?.negRisk
+        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+        : V2_CONTRACTS.CTF_EXCHANGE;
+      const orderSide = betSlipMode === 'sell' ? 'SELL' : 'BUY';
       const size = Math.floor((betSlipAmount / betSlipPrice) * 100) / 100;
 
       let signedOrder: unknown = undefined;
       if (poly.canSignLocally) {
-        console.log('[order] Signing locally:', { tokenID, price: betSlipPrice, size, side: 'BUY', exchangeAddress });
         signedOrder = await poly.signOrder({
           tokenID,
           price: betSlipPrice,
           size,
-          side: 'BUY',
+          side: orderSide,
           exchangeAddress,
         });
-        console.log('[order] Signed locally, posting to server');
       }
 
       const result = await placeBet({
@@ -295,18 +324,23 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         tokenID,
         price: betSlipPrice,
         amount: betSlipAmount,
-        side: 'BUY',
+        side: orderSide,
         signedOrder,
       });
 
       if (result.success) {
         setOrderResult('success');
+        // Refresh orders, positions, balance
+        loadOrdersAndPositions();
+        if (poly.polygonAddress) {
+          fetchClobBalance(poly.polygonAddress).then((b) => { if (b) setClobBalance(b.balance); });
+        }
       } else {
-        // Session expired — clear stale state so wallet connect button appears
+        // Session expired — mark expired, don't nuke wallet
         if (result.error?.includes('No active session')) {
-          poly.disable();
+          setSessionExpired(true);
           setOrderResult('error');
-          setOrderError('Session expired — connect wallet to continue');
+          setOrderError('Session expired — reconnect from profile');
           return;
         }
         setOrderResult('error');
@@ -335,10 +369,18 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         <Text style={styles.headerTitle} numberOfLines={2}>
           {detail?.question ?? 'Loading...'}
         </Text>
-        <View style={styles.avatarRing}>
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
           <View style={styles.avatarInner} />
-        </View>
+        </Pressable>
       </View>
+
+      {/* ── SESSION EXPIRED BANNER ── */}
+      {sessionExpired && poly.isReady && (
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.sessionBanner}>
+          <MaterialIcons name="refresh" size={14} color={semantic.text.accent} />
+          <Text style={styles.sessionBannerText}>Session expired — tap to reconnect</Text>
+        </Pressable>
+      )}
 
       {/* ── LOADING / ERROR ── */}
       {loading ? (
@@ -385,7 +427,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                         onPress={() => setInterval(iv)}
                         style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
                         <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
-                          {iv === '1h' ? '1D' : '1W'}
+                          {iv === '1h' ? '1H' : '1D'}
                         </Text>
                       </Pressable>
                     ))}
@@ -397,7 +439,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 {historyLoading ? (
                   <View style={styles.chartSkeleton} />
                 ) : history.length >= 2 ? (
-                  <Sparkline points={history} width={315} height={64} />
+                  <Sparkline points={history} width={screenWidth - 64} height={64} />
                 ) : (
                   <View style={[styles.chartSkeleton, { opacity: 0.4 }]} />
                 )}
@@ -422,64 +464,159 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             </View>
 
             {/* Tab content */}
-            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}>
+            <ScrollView
+              style={styles.tabContent}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.tabContentInner}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
-                marketPositions.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
-                    <Text style={styles.emptyTitle}>No positions yet</Text>
-                    <Text style={styles.emptyBody}>Trade below to open a position</Text>
-                  </View>
-                ) : (
-                  <View style={styles.tabSection}>
-                    {marketPositions.map((pos, i) => {
-                      const pnl = pos.cashPnl ?? 0;
-                      const isPositive = pnl >= 0;
-                      return (
-                        <View key={`${pos.conditionId}-${i}`} style={styles.positionCard}>
-                          <View style={styles.positionHeader}>
-                            <View style={[styles.posSideBadge, pos.outcome === 'No' ? styles.posSideBadgeNo : styles.posSideBadgeYes]}>
-                              <Text style={[styles.posSideBadgeText, { color: pos.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
-                                {pos.outcome?.toUpperCase() ?? 'YES'}
+                <View style={styles.positionTabWrap}>
+                  {/* Open Orders */}
+                  {openOrders.length > 0 && (
+                    <View>
+                      <Text style={styles.posSecTitle}>Open Orders</Text>
+                      {openOrders.map((o) => {
+                        const sizeNum = parseFloat(o.original_size) || 0;
+                        const matched = parseFloat(o.size_matched) || 0;
+                        const priceNum = parseFloat(o.price) || 0;
+                        const cost = sizeNum * priceNum;
+                        const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
+                        return (
+                          <View key={o.id} style={styles.positionCard}>
+                            <View style={styles.positionHeader}>
+                              <View style={[styles.posSideBadge, o.side === 'BUY' ? styles.posSideBadgeYes : styles.posSideBadgeNo]}>
+                                <Text style={[styles.posSideBadgeText, { color: o.side === 'BUY' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                                  {o.side}
+                                </Text>
+                              </View>
+                              <Text style={styles.orderOutcomeText} numberOfLines={1}>{o.outcome || '--'}</Text>
+                              <Pressable
+                                disabled={cancellingId === o.id}
+                                onPress={async () => {
+                                  if (!poly.polygonAddress) return;
+                                  setCancellingId(o.id);
+                                  try {
+                                    const res = await cancelOrder(poly.polygonAddress, o.id);
+                                    if (res.ok) loadOrdersAndPositions();
+                                  } catch { /* silent */ }
+                                  finally { setCancellingId(null); }
+                                }}
+                                style={styles.cancelBtn}>
+                                {cancellingId === o.id ? (
+                                  <ActivityIndicator size={10} color={semantic.text.dim} />
+                                ) : (
+                                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                                )}
+                              </Pressable>
+                            </View>
+                            <View style={styles.positionStats}>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Price</Text>
+                                <Text style={styles.posStatVal}>{Math.round(priceNum * 100)}¢</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Shares</Text>
+                                <Text style={styles.posStatVal}>{sizeNum.toFixed(2)}</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Cost</Text>
+                                <Text style={styles.posStatVal}>${cost.toFixed(2)}</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Filled</Text>
+                                <Text style={styles.posStatVal}>{fillPct}%</Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Positions */}
+                  {marketPositions.length > 0 && (
+                    <View>
+                      <Text style={styles.posSecTitle}>Positions</Text>
+                      {marketPositions.map((pos, i) => {
+                        const pnl = pos.cashPnl ?? 0;
+                        const isPositive = pnl >= 0;
+                        return (
+                          <View key={`${pos.conditionId}-${i}`} style={styles.positionCard}>
+                            <View style={styles.positionHeader}>
+                              <View style={[styles.posSideBadge, pos.outcome === 'No' ? styles.posSideBadgeNo : styles.posSideBadgeYes]}>
+                                <Text style={[styles.posSideBadgeText, { color: pos.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
+                                  {pos.outcome?.toUpperCase() ?? 'YES'}
+                                </Text>
+                              </View>
+                              <Text style={[styles.positionPnl, { color: isPositive ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                                {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                               </Text>
+                              <Pressable
+                                onPress={() => {
+                                  const side = pos.outcome === 'No' ? 'no' : 'yes';
+                                  const price = side === 'yes' ? (yesPrice ?? 0.5) : (noPrice ?? 0.5);
+                                  const maxSellValue = Math.floor((pos.size ?? 0) * price * 100) / 100;
+                                  setBetSlipSide(side);
+                                  setBetSlipLabel(side === 'yes' ? 'YES' : 'NO');
+                                  setBetSlipPrice(price);
+                                  setBetSlipAmount(maxSellValue);
+                                  setBetSlipMode('sell');
+                                  setOrderResult(null);
+                                  setOrderError(null);
+                                  setBetSlipVisible(true);
+                                  if (poly.polygonAddress) {
+                                    fetchClobBalance(poly.polygonAddress).then((b) => {
+                                      if (b) setClobBalance(b.balance);
+                                    });
+                                  }
+                                }}
+                                style={styles.sellBtn}>
+                                <Text style={styles.sellBtnText}>Sell</Text>
+                              </Pressable>
                             </View>
-                            <Text style={[styles.positionPnl, { color: isPositive ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
-                              {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-                            </Text>
+                            <View style={styles.positionStats}>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Shares</Text>
+                                <Text style={styles.posStatVal}>{pos.size?.toFixed(1) ?? '--'}</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Avg</Text>
+                                <Text style={styles.posStatVal}>{pos.avgPrice?.toFixed(2) ?? '--'}¢</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Current</Text>
+                                <Text style={styles.posStatVal}>{pos.curPrice?.toFixed(2) ?? '--'}¢</Text>
+                              </View>
+                              <View style={styles.positionStat}>
+                                <Text style={styles.posStatLabel}>Value</Text>
+                                <Text style={styles.posStatVal}>${pos.currentValue?.toFixed(2) ?? '--'}</Text>
+                              </View>
+                            </View>
                           </View>
-                          <View style={styles.positionStats}>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Shares</Text>
-                              <Text style={styles.posStatVal}>{pos.size?.toFixed(1) ?? '--'}</Text>
-                            </View>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Avg</Text>
-                              <Text style={styles.posStatVal}>{pos.avgPrice?.toFixed(2) ?? '--'}¢</Text>
-                            </View>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Current</Text>
-                              <Text style={styles.posStatVal}>{pos.curPrice?.toFixed(2) ?? '--'}¢</Text>
-                            </View>
-                            <View style={styles.positionStat}>
-                              <Text style={styles.posStatLabel}>Value</Text>
-                              <Text style={styles.posStatVal}>${pos.currentValue?.toFixed(2) ?? '--'}</Text>
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Empty state */}
+                  {openOrders.length === 0 && marketPositions.length === 0 && (
+                    <View style={styles.emptyState}>
+                      <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
+                      <Text style={styles.emptyTitle}>No positions yet</Text>
+                      <Text style={styles.emptyBody}>Trade below to open a position</Text>
+                    </View>
+                  )}
+                </View>
               ) : null}
 
               {/* STATS TAB */}
               {activeTab === 'stats' ? (
                 <View style={styles.tabSection}>
-                  {/* Smart money bar */}
+                  {/* Market sentiment bar */}
                   <View style={styles.statsCard}>
-                    <Text style={styles.cardLabel}>Smart Money</Text>
+                    <Text style={styles.cardLabel}>Market Sentiment</Text>
                     <View style={styles.smartMoneyRow}>
                       <Text style={styles.smYesLabel}>YES</Text>
                       <View style={styles.smTrack}>
@@ -495,10 +632,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
                   {/* Metric row */}
                   <View style={styles.metricRow}>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricLabel}>Traders</Text>
-                      <Text style={styles.metricValue}>--</Text>
-                    </View>
                     <View style={styles.metricBox}>
                       <Text style={styles.metricLabel}>Volume</Text>
                       <Text style={styles.metricValue}>{formatUsdCompact(detail.volume24h)}</Text>
@@ -544,20 +677,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
               {/* FEED TAB */}
               {activeTab === 'feed' ? (
-                <View style={styles.tabSection}>
-                  {[
-                    { source: 'Smart Money Alert', text: 'Large YES position opened — $12K notional at 61¢', time: '4m ago' },
-                    { source: 'Market Signal', text: 'Price moved +3.2% in the last 2h on elevated volume', time: '18m ago' },
-                    { source: 'Whale Watch', text: 'Top 5 traders net long YES by $28K combined', time: '1h ago' },
-                  ].map((item, i) => (
-                    <View key={i} style={styles.feedCard}>
-                      <View style={styles.feedCardHeader}>
-                        <Text style={styles.feedSource}>{item.source}</Text>
-                        <Text style={styles.feedTime}>{item.time}</Text>
-                      </View>
-                      <Text style={styles.feedText}>{item.text}</Text>
-                    </View>
-                  ))}
+                <View style={styles.emptyState}>
+                  <MaterialIcons name="rss-feed" size={32} color={semantic.text.faint} />
+                  <Text style={styles.emptyTitle}>Coming Soon</Text>
+                  <Text style={styles.emptyBody}>Live market activity and signals will appear here</Text>
                 </View>
               ) : null}
 
@@ -596,9 +719,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           <View style={styles.betSlipHandle} />
           <View style={styles.betSlipHeader}>
             <Text style={styles.betSlipTitle}>{detail?.question ?? ''}</Text>
-            <View style={[styles.sideBadge, betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-              <Text style={[styles.sideBadgeText, { color: betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
-                {betSlipLabel}
+            <View style={[styles.sideBadge, betSlipMode === 'sell' ? styles.sideBadgeNo : betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
+              <Text style={[styles.sideBadgeText, { color: betSlipMode === 'sell' ? semantic.sentiment.negative : betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
+                {betSlipMode === 'sell' ? `SELL ${betSlipLabel}` : betSlipLabel}
               </Text>
             </View>
           </View>
@@ -642,12 +765,28 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 }}
               />
             </View>
+            {/* Amount presets */}
+            <View style={styles.presetsRow}>
+              {[5, 10, 25, 50].map((amt) => (
+                <Pressable key={amt} onPress={() => setBetSlipAmount(amt)} style={styles.presetChip}>
+                  <Text style={styles.presetText}>${amt}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
+
+          {/* Deposit CTA when balance is $0 */}
+          {clobBalance !== null && clobBalance === 0 && poly.isReady && (
+            <Pressable onPress={() => router.push('/predict-profile')} style={styles.depositCta}>
+              <MaterialIcons name="account-balance-wallet" size={14} color={semantic.text.accent} />
+              <Text style={styles.depositCtaText}>Deposit funds to start trading</Text>
+            </Pressable>
+          )}
 
           {/* Payout row */}
           <View style={styles.payoutRow}>
             <View>
-              <Text style={styles.betSlipMetaLabel}>Est. Payout</Text>
+              <Text style={styles.betSlipMetaLabel}>{betSlipMode === 'sell' ? 'Est. Return' : 'Est. Payout'}</Text>
               <Text style={[styles.betSlipMetaValue, { color: semantic.sentiment.positive }]}>
                 ${payout.toFixed(2)}
               </Text>
@@ -703,7 +842,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 <ActivityIndicator size="small" color={semantic.text.primary} />
               ) : (
                 <Text style={styles.confirmBtnText}>
-                  Confirm {betSlipLabel} — ${betSlipAmount}
+                  {betSlipMode === 'sell' ? 'Sell' : 'Confirm'} {betSlipLabel} — ${betSlipAmount}
                 </Text>
               )}
             </Pressable>
@@ -948,6 +1087,56 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xs,
     fontWeight: '700',
     color: semantic.text.primary,
+  },
+
+  // ── Position section ──
+  positionTabWrap: { gap: 12 },
+  posSecTitle: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  orderOutcomeText: {
+    flex: 1,
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.xs,
+    fontFamily: 'monospace',
+    marginLeft: 8,
+  },
+  cancelBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+  },
+  cancelBtnText: {
+    color: semantic.text.dim,
+    fontSize: 8,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  sellBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.xs,
+    backgroundColor: 'rgba(244,88,78,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(244,88,78,0.3)',
+  },
+  sellBtnText: {
+    color: semantic.sentiment.negative,
+    fontSize: 8,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 
   // ── Stats tab ──
@@ -1339,5 +1528,64 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     fontWeight: '700',
+  },
+
+  // ── Session banner ──
+  sessionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.sm,
+    backgroundColor: 'rgba(232,197,71,0.08)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(232,197,71,0.15)',
+  },
+  sessionBannerText: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
+  },
+
+  // ── Amount presets ──
+  presetsRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.xs,
+    marginTop: tokens.spacing.xs,
+  },
+  presetChip: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+  },
+  presetText: {
+    color: semantic.text.dim,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
+
+  // ── Deposit CTA ──
+  depositCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.15)',
+    backgroundColor: 'rgba(232,197,71,0.06)',
+  },
+  depositCtaText: {
+    color: semantic.text.accent,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
 });

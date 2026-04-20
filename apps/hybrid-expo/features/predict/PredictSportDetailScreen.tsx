@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -114,6 +115,7 @@ function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const { width: screenWidth } = useWindowDimensions();
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -321,9 +323,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         <Text style={styles.headerTitle} numberOfLines={2}>
           {detail?.title ?? 'Loading...'}
         </Text>
-        <View style={styles.avatarRing}>
+        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
           <View style={styles.avatarInner} />
-        </View>
+        </Pressable>
       </View>
 
       {/* ── LOADING / ERROR ── */}
@@ -367,7 +369,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                         onPress={() => setInterval(iv)}
                         style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
                         <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
-                          {iv === '1h' ? '1D' : '1W'}
+                          {iv === '1h' ? '1H' : '1D'}
                         </Text>
                       </Pressable>
                     ))}
@@ -399,7 +401,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                 {historyLoading ? (
                   <View style={styles.chartSkeleton} />
                 ) : history.length >= 2 ? (
-                  <Sparkline points={history} width={315} height={64} color={sparkColor} />
+                  <Sparkline points={history} width={screenWidth - 64} height={64} color={sparkColor} />
                 ) : (
                   <View style={[styles.chartSkeleton, { opacity: 0.4 }]} />
                 )}
