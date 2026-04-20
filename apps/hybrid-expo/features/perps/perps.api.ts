@@ -125,9 +125,12 @@ async function pacificSignedPost(
 // ─── Public GET helper ──────────────────────────────────────────────────────
 
 async function pacificGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${PACIFIC_REST}${path}`);
+  const url = `${PACIFIC_REST}${path}`;
+  console.log('[Pacific] GET', url);
+  const res = await fetch(url);
   if (res.status === 429) throw new Error('Rate limit — try again shortly');
   const json = (await res.json()) as { success?: boolean; data?: T; error?: string };
+  console.log('[Pacific] GET response:', JSON.stringify(json).slice(0, 500));
   if (!res.ok || json.success === false) {
     throw new Error(json.error ?? `HTTP ${res.status}`);
   }
@@ -143,6 +146,7 @@ export async function fetchPerpsMarkets(): Promise<PerpsMarket[]> {
   const priceMap = new Map(prices.map((p) => [p.symbol, p]));
 
   return markets
+    .filter((m) => m.instrument_type === 'perpetual')
     .map((m): PerpsMarket | null => {
       const p = priceMap.get(m.symbol);
       if (!p) return null;
@@ -197,6 +201,7 @@ export async function fetchPerpsAccount(address: string): Promise<PerpsAccount> 
   return {
     equity: safeNum(acc.account_equity),
     availableToSpend: safeNum(acc.available_to_spend),
+    availableToWithdraw: safeNum(acc.available_to_withdraw),
     totalMarginUsed: safeNum(acc.total_margin_used),
     positionsCount: acc.positions_count,
   };
@@ -206,6 +211,7 @@ export async function fetchPerpsAccount(address: string): Promise<PerpsAccount> 
 
 export async function fetchOpenOrders(address: string): Promise<PerpsOrder[]> {
   const raw = await pacificGet<RawOrder[]>(`/orders?account=${encodeURIComponent(address)}`);
+  console.log('[Pacific] fetchOpenOrders raw:', JSON.stringify(raw));
   return raw.map((o): PerpsOrder => ({
     orderId: o.order_id,
     symbol: o.symbol,
@@ -316,6 +322,57 @@ export async function fetchCandles(
   }));
 }
 
+// ─── Builder code approval ─────────────────────────────────────────────────
+
+export async function approveBuilderCode(
+  builderCode: string,
+  maxFeeRate: string,
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<void> {
+  await pacificSignedPost(
+    '/account/builder_codes/approve',
+    'approve_builder_code',
+    { builder_code: builderCode, max_fee_rate: maxFeeRate },
+    account,
+    signMessage,
+  );
+}
+
+/** Wraps a signed API call: if it fails due to builder code issues, retry without builder code */
+async function withBuilderCodeRetry<T>(
+  fn: () => Promise<T>,
+  fnWithoutBuilder: () => Promise<T>,
+  builderCode: string | undefined,
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<T> {
+  if (!builderCode) return fn();
+  try {
+    return await fn();
+  } catch (err: any) {
+    const msg = err?.message ?? '';
+    if (msg.includes('has not approved builder code')) {
+      // Try to approve, then retry
+      try {
+        console.log('[Pacific] Auto-approving builder code:', builderCode);
+        await approveBuilderCode(builderCode, '0.001', account, signMessage);
+        return await fn();
+      } catch (_approveErr) {
+        // Builder code doesn't exist or approval failed — retry without it
+        console.log('[Pacific] Builder code unavailable, placing without it');
+        return await fnWithoutBuilder();
+      }
+    }
+    if (msg.includes('Builder code not found') || msg.includes('builder_code')) {
+      // Builder code doesn't exist — retry without it
+      console.log('[Pacific] Builder code not found, placing without it');
+      return await fnWithoutBuilder();
+    }
+    throw err;
+  }
+}
+
 // ─── Trade execution (signed API calls) ─────────────────────────────────────
 
 export async function placeOrder(
@@ -355,10 +412,16 @@ export async function placeOrder(
     throw new Error(`Amount too small — minimum lot size is ${market.lot_size} ${params.symbol}`);
   }
 
+  // Format with lot_size decimal precision to avoid floating point artifacts
+  const decimals = market.lot_size.includes('.')
+    ? market.lot_size.split('.')[1].length
+    : 0;
+  const amountStr = amount.toFixed(decimals);
+
   const payload: Record<string, unknown> = {
     symbol: params.symbol,
     side: params.side,
-    amount: amount.toString(),
+    amount: amountStr,
     slippage_percent: params.slippage,
     reduce_only: false,
     client_order_id: crypto.randomUUID(),
@@ -366,10 +429,78 @@ export async function placeOrder(
   if (params.builderCode) {
     payload.builder_code = params.builderCode;
   }
-  const res = await pacificSignedPost(
-    '/orders/create_market',
-    'create_market_order',
-    payload,
+
+  const payloadNoBuilder = { ...payload };
+  delete payloadNoBuilder.builder_code;
+
+  const res = await withBuilderCodeRetry(
+    () => pacificSignedPost('/orders/create_market', 'create_market_order', payload, account, signMessage),
+    () => pacificSignedPost('/orders/create_market', 'create_market_order', payloadNoBuilder, account, signMessage),
+    params.builderCode,
+    account,
+    signMessage,
+  );
+  return res.data?.order_id ?? res.order_id;
+}
+
+export async function placeLimitOrder(
+  params: {
+    symbol: string;
+    side: 'bid' | 'ask';
+    /** Price in USD */
+    price: number;
+    /** Amount in USDC (UI value). Converted to asset units internally. */
+    amountUsdc: number;
+    tif?: 'GTC' | 'IOC' | 'ALO' | 'TOB';
+    reduceOnly?: boolean;
+    builderCode?: string;
+  },
+  account: string,
+  signMessage: SignMessageFn,
+): Promise<number> {
+  const markets = await pacificGet<RawMarketInfo[]>('/info');
+  const market = markets.find((m) => m.symbol === params.symbol);
+  if (!market) throw new Error(`Market ${params.symbol} not found`);
+
+  if (params.price <= 0) throw new Error('Invalid limit price');
+
+  const rawAmount = params.amountUsdc / params.price;
+  const lotSize = parseFloat(market.lot_size);
+  const amount = lotSize > 0
+    ? Math.floor(rawAmount / lotSize) * lotSize
+    : rawAmount;
+
+  if (amount <= 0) {
+    throw new Error(`Amount too small — minimum lot size is ${market.lot_size} ${params.symbol}`);
+  }
+
+  const tickDecimals = market.tick_size.includes('.')
+    ? market.tick_size.split('.')[1].length
+    : 0;
+  const lotDecimals = market.lot_size.includes('.')
+    ? market.lot_size.split('.')[1].length
+    : 0;
+
+  const payload: Record<string, unknown> = {
+    symbol: params.symbol,
+    side: params.side,
+    price: params.price.toFixed(tickDecimals),
+    amount: amount.toFixed(lotDecimals),
+    tif: params.tif ?? 'GTC',
+    reduce_only: params.reduceOnly ?? false,
+    client_order_id: crypto.randomUUID(),
+  };
+  if (params.builderCode) {
+    payload.builder_code = params.builderCode;
+  }
+
+  const payloadNoBuilder = { ...payload };
+  delete payloadNoBuilder.builder_code;
+
+  const res = await withBuilderCodeRetry(
+    () => pacificSignedPost('/orders/create', 'create_order', payload, account, signMessage),
+    () => pacificSignedPost('/orders/create', 'create_order', payloadNoBuilder, account, signMessage),
+    params.builderCode,
     account,
     signMessage,
   );
@@ -411,10 +542,14 @@ export async function closePosition(
   if (builderCode) {
     payload.builder_code = builderCode;
   }
-  const res = await pacificSignedPost(
-    '/orders/create_market',
-    'create_market_order',
-    payload,
+
+  const payloadNoBuilder = { ...payload };
+  delete payloadNoBuilder.builder_code;
+
+  const res = await withBuilderCodeRetry(
+    () => pacificSignedPost('/orders/create_market', 'create_market_order', payload, account, signMessage),
+    () => pacificSignedPost('/orders/create_market', 'create_market_order', payloadNoBuilder, account, signMessage),
+    builderCode,
     account,
     signMessage,
   );

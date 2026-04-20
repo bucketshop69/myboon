@@ -82,6 +82,7 @@ export interface PerpsPosition {
 export interface PerpsAccount {
   equity: number;
   availableToSpend: number;
+  availableToWithdraw: number;
   totalMarginUsed: number;
   positionsCount: number;
 }

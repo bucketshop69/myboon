@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { memo, useEffect, useState } from 'react';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SvgXml } from 'react-native-svg';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
@@ -26,15 +27,45 @@ import { semantic, tokens } from '@/theme';
 
 type TradeView = 'markets' | 'profile';
 
-const CATEGORIES = ['All', 'Hot', 'Memes', 'L1', 'DeFi', 'AI', 'L2', 'RWA'] as const;
+// In-memory SVG cache — persists for the app session
+const svgCache = new Map<string, string | null>();
+
+const TokenIcon = memo(function TokenIcon({ symbol }: { symbol: string }) {
+  const base = symbol.split('-')[0];
+  const uri = `https://app.pacifica.fi/imgs/tokens/${base}.svg`;
+  const [xml, setXml] = useState<string | null>(svgCache.get(base) ?? null);
+  const [failed, setFailed] = useState(svgCache.get(base) === null && svgCache.has(base));
+
+  useEffect(() => {
+    if (svgCache.has(base)) return;
+    fetch(uri)
+      .then((res) => (res.ok ? res.text() : Promise.reject()))
+      .then((text) => { svgCache.set(base, text); setXml(text); })
+      .catch(() => { svgCache.set(base, null); setFailed(true); });
+  }, [base, uri]);
+
+  if (failed || !xml) {
+    return (
+      <View style={[styles.tokenIcon, styles.tokenFallback]}>
+        <Text style={styles.tokenFallbackText}>{base[0]}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.tokenIcon}>
+      <SvgXml xml={xml} width={28} height={28} />
+    </View>
+  );
+});
+
 
 export function TradeListScreen() {
   const router = useRouter();
+  const { view: viewParam } = useLocalSearchParams<{ view?: string }>();
   const [markets, setMarkets] = useState<PerpsMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [view, setView] = useState<TradeView>('markets');
-  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [view, setView] = useState<TradeView>(viewParam === 'profile' ? 'profile' : 'markets');
   const [searchText, setSearchText] = useState('');
 
   const filteredMarkets = markets.filter((m) => {
@@ -97,25 +128,6 @@ export function TradeListScreen() {
             </View>
           ) : (
             <View style={styles.tableContainer}>
-              {/* Category filter pills */}
-              <View style={styles.pillsRow}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.pillsContent}>
-                  {CATEGORIES.map((cat) => (
-                    <Pressable
-                      key={cat}
-                      style={[styles.pill, activeCategory === cat && styles.pillActive]}
-                      onPress={() => setActiveCategory(cat)}>
-                      <Text style={[styles.pillText, activeCategory === cat && styles.pillTextActive]}>
-                        {cat}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-
               <View style={styles.tableHeader}>
                 <Text style={[styles.th, styles.thLeft]}>Market</Text>
                 <Text style={[styles.th, styles.thRight]}>Price</Text>
@@ -132,9 +144,9 @@ export function TradeListScreen() {
                       key={market.symbol}
                       style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
                       onPress={() => goToMarket(market.symbol)}>
+                      <TokenIcon symbol={market.symbol} />
                       <View style={styles.symCol}>
-                        <Text style={styles.rowSym}>{market.symbol}</Text>
-                        <Text style={styles.rowSubText}>PERP · {market.maxLeverage}×</Text>
+                        <Text style={styles.rowSym}>{market.symbol} <Text style={styles.rowLev}>{market.maxLeverage}×</Text></Text>
                       </View>
                       <Text style={[styles.rowCell, styles.rowPrice]}>
                         {formatPrice(market.markPrice)}
@@ -171,9 +183,11 @@ export function TradeListScreen() {
                     <MaterialIcons name="close" size={14} color={semantic.text.dim} />
                   </Pressable>
                 )}
-                <Text style={styles.marketCount}>
-                  {filteredMarkets.length}/{markets.length}
-                </Text>
+                {searchText.length > 0 && (
+                  <Text style={styles.marketCount}>
+                    {filteredMarkets.length}/{markets.length}
+                  </Text>
+                )}
               </View>
             </View>
           )}
@@ -302,47 +316,65 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
+    paddingVertical: tokens.spacing.md + 2,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(48,47,32,0.5)',
   },
   tableRowPressed: {
     backgroundColor: 'rgba(199,183,112,0.04)',
   },
+  tokenIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginRight: tokens.spacing.sm,
+  },
+  tokenFallback: {
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tokenFallbackText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    color: semantic.text.dim,
+  },
   symCol: {
     flex: 1,
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   rowSym: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
+    fontSize: tokens.fontSize.md,
     fontWeight: '700',
     color: semantic.text.primary,
     letterSpacing: 0.2,
   },
-  rowSubText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
+  rowLev: {
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '400',
     color: semantic.text.faint,
-    letterSpacing: 0.8,
   },
   rowCell: {
     fontFamily: 'monospace',
     textAlign: 'right',
   },
   rowPrice: {
-    fontSize: tokens.fontSize.xs,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '600',
     color: semantic.text.primary,
     width: COL_PRICE,
   },
   rowChange: {
-    fontSize: tokens.fontSize.xs,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '600',
     width: COL_CHANGE,
   },
   rowOi: {
-    fontSize: tokens.fontSize.xxs,
+    fontSize: tokens.fontSize.xs,
     color: semantic.text.dim,
     width: COL_OI,
   },
@@ -353,39 +385,6 @@ const styles = StyleSheet.create({
   },
   textNeg: {
     color: tokens.colors.vermillion,
-  },
-
-  // Category filter pills
-  pillsRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  pillsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  pillActive: {
-    backgroundColor: 'rgba(199,183,112,0.12)',
-  },
-  pillText: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-    color: semantic.text.dim,
-  },
-  pillTextActive: {
-    color: tokens.colors.primary,
-  },
-  pillTextActive: {
-    color: tokens.colors.primary,
   },
 
   // Bottom search bar
