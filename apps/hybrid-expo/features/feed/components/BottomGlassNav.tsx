@@ -18,7 +18,7 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
     if (route === '/') {
       return pathname === '/' || pathname === '/index';
     }
-    return pathname === route;
+    return pathname === route || pathname.startsWith(`${route}/`);
   }
 
   return (

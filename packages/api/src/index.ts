@@ -130,11 +130,13 @@ app.get('/health', (c) => {
 // GET /narratives
 app.get('/narratives', async (c) => {
   const rawLimit = parseInt(c.req.query('limit') ?? '20', 10)
-  const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 20)
+  const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 50)
+  const rawOffset = parseInt(c.req.query('offset') ?? '0', 10)
+  const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset
 
   try {
     const res = await supabaseFetch(
-      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,thread_id,created_at&order=created_at.desc,priority.desc&limit=${limit}`
+      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,thread_id,created_at&order=created_at.desc,priority.desc&limit=${limit}&offset=${offset}`
     )
 
     if (!res.ok) {

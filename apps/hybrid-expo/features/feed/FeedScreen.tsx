@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { FeedList } from '@/features/feed/components/FeedList';
+import { FeedSkeleton } from '@/features/feed/components/FeedSkeleton';
 import { NarrativeSheet } from '@/features/feed/components/NarrativeSheet';
 import type { NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
@@ -11,37 +12,90 @@ import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import type { FeedItem } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
 
+const PAGE_SIZE = 20;
+const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
+const TIMEAGO_TICK_MS = 60 * 1000; // 1 minute
+
 export default function FeedScreen() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sheetItem, setSheetItem] = useState<NarrativeSheetItem | null>(null);
+  const [, setTick] = useState(0); // force re-render for live timeAgo
 
-  async function loadFeed(): Promise<void> {
-    setIsLoading(true);
+  const loadingMoreRef = useRef(false);
+
+  async function loadFeed(silent = false): Promise<void> {
+    if (!silent) setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      const nextItems = await fetchFeedItems(20);
+      const nextItems = await fetchFeedItems(PAGE_SIZE, 0);
       setItems(nextItems);
+      setHasMore(nextItems.length >= PAGE_SIZE);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load feed';
-      setErrorMessage(message);
-      setItems([]);
+      if (!silent) setErrorMessage(message);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const nextItems = await fetchFeedItems(PAGE_SIZE, 0);
+      setItems(nextItems);
+      setHasMore(nextItems.length >= PAGE_SIZE);
+    } catch {
+      // silent fail on pull-to-refresh
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  const handleEndReached = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+
+    try {
+      const moreItems = await fetchFeedItems(PAGE_SIZE, items.length);
+      if (moreItems.length < PAGE_SIZE) setHasMore(false);
+      setItems((prev) => [...prev, ...moreItems]);
+    } catch {
+      // silent fail on pagination
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [hasMore, items.length]);
+
+  // Initial load
   useEffect(() => {
     void loadFeed();
+  }, []);
+
+  // Auto-refresh every 5 minutes (silent)
+  useEffect(() => {
+    const id = setInterval(() => void loadFeed(true), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Tick every minute to update timeAgo displays
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), TIMEAGO_TICK_MS);
+    return () => clearInterval(id);
   }, []);
 
   const handleCardPress = useCallback((item: FeedItem) => {
     setSheetItem({
       id: item.id,
       category: item.category,
-      timeAgo: item.timeAgo,
+      createdAt: item.createdAt,
       actions: item.actions,
     });
   }, []);
@@ -57,12 +111,7 @@ export default function FeedScreen() {
       <FeedHeader />
 
       {isLoading ? (
-        <View style={styles.bodyFill}>
-          <View style={styles.stateWrap}>
-            <ActivityIndicator size="small" color={semantic.text.accent} />
-            <Text style={styles.stateText}>Loading feed...</Text>
-          </View>
-        </View>
+        <FeedSkeleton />
       ) : null}
 
       {!isLoading && errorMessage ? (
@@ -87,7 +136,14 @@ export default function FeedScreen() {
       ) : null}
 
       {!isLoading && !errorMessage && items.length > 0 ? (
-        <FeedList items={items} onCardPress={handleCardPress} />
+        <FeedList
+          items={items}
+          onCardPress={handleCardPress}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          onEndReached={handleEndReached}
+          loadingMore={loadingMore}
+        />
       ) : null}
 
       <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
