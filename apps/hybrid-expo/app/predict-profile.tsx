@@ -81,14 +81,12 @@ export default function PredictProfileScreen() {
     // Gamma data-api tracks by Safe address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
     const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
-    console.log('[profile] Loading — EOA:', poly.polygonAddress, '| Gamma addr (Safe):', gammaAddr);
     const [portfolioData, balanceData, ordersData, activityData] = await Promise.all([
       fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
       fetchActivity(gammaAddr).catch(() => []),
     ]);
-    console.log('[profile] Balance:', balanceData?.balance ?? 'no session', '| Positions:', portfolioData?.positions?.length ?? 0, '| Orders:', ordersData.length);
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
     setTradeHistory(activityData);

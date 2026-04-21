@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import * as Haptics from 'expo-haptics';
 import { usePathname, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +38,10 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
         return (
           <Pressable
             key={item.key}
-            onPress={() => router.replace(item.route)}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.replace(item.route);
+            }}
             style={({ pressed }) => [
               styles.item,
               !active && styles.itemMuted,

@@ -76,9 +76,7 @@ export function WithdrawModal({ visible, onClose }: WithdrawModalProps) {
     setSubmitting(true);
     setSuccess(false);
     try {
-      console.log('[Withdraw] requesting', withdrawAmount, 'USDC from', address);
       await requestWithdrawal(withdrawAmount, address, signMessage);
-      console.log('[Withdraw] success');
       setSuccess(true);
       setAmount('');
 
@@ -87,7 +85,6 @@ export function WithdrawModal({ visible, onClose }: WithdrawModalProps) {
       if (acc) setAvailable(acc.availableToWithdraw);
     } catch (err: any) {
       const msg = err?.message ?? 'Withdrawal failed';
-      console.error('[Withdraw]', err);
       showAlert('Withdrawal failed', msg);
     } finally {
       setSubmitting(false);

@@ -368,7 +368,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
       const tpParam = tpPriceText.trim() ? { stopPrice: tpPriceText.trim(), limitPrice: tpPriceText.trim() } : undefined;
       const slParam = slPriceText.trim() ? { stopPrice: slPriceText.trim(), limitPrice: slPriceText.trim() } : undefined;
 
-      console.log('[Submit] orderType:', orderType);
+      if (__DEV__) console.log('[Submit] orderType:', orderType);
       if (orderType === 'limit') {
         const limitPrice = parseFloat(limitPriceText);
         if (!limitPrice || limitPrice <= 0) {
@@ -585,12 +585,12 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                 <View style={styles.orderTypeRow}>
                   <Pressable
                     style={[styles.orderTypePill, orderType === 'market' && styles.orderTypePillActive]}
-                    onPress={() => { console.log('[OrderType] switched to: market'); setOrderType('market'); }}>
+                    onPress={() => setOrderType('market')}>
                     <Text style={[styles.orderTypePillText, orderType === 'market' && styles.orderTypePillTextActive]}>Market</Text>
                   </Pressable>
                   <Pressable
                     style={[styles.orderTypePill, orderType === 'limit' && styles.orderTypePillActive]}
-                    onPress={() => { console.log('[OrderType] switched to: limit'); setOrderType('limit'); if (!limitPriceText && displayPrice > 0) setLimitPriceText(displayPrice.toFixed(2)); }}>
+                    onPress={() => { setOrderType('limit'); if (!limitPriceText && displayPrice > 0) setLimitPriceText(displayPrice.toFixed(2)); }}>
                     <Text style={[styles.orderTypePillText, orderType === 'limit' && styles.orderTypePillTextActive]}>Limit</Text>
                   </Pressable>
                 </View>

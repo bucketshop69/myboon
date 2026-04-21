@@ -5,6 +5,7 @@ import { fetchWithTimeout } from '@/lib/api';
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -63,6 +64,7 @@ export function TradeListScreen() {
   const { view: viewParam } = useLocalSearchParams<{ view?: string }>();
   const [markets, setMarkets] = useState<PerpsMarket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [view, setView] = useState<TradeView>(viewParam === 'profile' ? 'profile' : 'markets');
   const [searchText, setSearchText] = useState('');
@@ -87,6 +89,15 @@ export function TradeListScreen() {
   useEffect(() => {
     void loadMarkets();
   }, []);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    try {
+      const data = await fetchPerpsMarkets();
+      setMarkets(data);
+    } catch { /* silent */ }
+    setRefreshing(false);
+  }
 
   function goToMarket(symbol: string) {
     router.push(`/trade/${encodeURIComponent(symbol)}`);
@@ -135,7 +146,8 @@ export function TradeListScreen() {
               </View>
               <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.tableBody}>
+                contentContainerStyle={styles.tableBody}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
                 {filteredMarkets.map((market) => {
                   const isUp = market.change24h >= 0;
                   return (

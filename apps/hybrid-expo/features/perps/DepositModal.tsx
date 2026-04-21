@@ -113,9 +113,7 @@ export function DepositModal({ visible, onClose }: DepositModalProps) {
         blockhash,
         lastValidBlockHeight,
       }).add(ix);
-      console.log('[Deposit] signing tx, feePayer:', depositor.toBase58(), 'amount:', depositAmount);
       const sig = await signAndSendTransaction(tx);
-      console.log('[Deposit] sent, sig:', sig);
       setTxSignature(sig);
 
       // Refresh balances after deposit
@@ -128,7 +126,6 @@ export function DepositModal({ visible, onClose }: DepositModalProps) {
       setAmount('');
     } catch (err: any) {
       const msg = err?.message ?? 'Deposit failed';
-      console.error('[Deposit]', err);
       showAlert('Deposit failed', msg);
     } finally {
       setSubmitting(false);

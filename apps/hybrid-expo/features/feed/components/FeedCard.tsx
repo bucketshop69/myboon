@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
 import { toRelativeTime } from '@/features/feed/feed.api';
 import type { FeedItem } from '@/features/feed/feed.types';
-import { tokens } from '@/theme';
+import { semantic, tokens } from '@/theme';
 
 interface FeedCardProps {
   item: FeedItem;
@@ -49,18 +49,18 @@ export function FeedCard({ item, onPress }: FeedCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#222318',
+    backgroundColor: semantic.background.surface,
     borderWidth: 1,
-    borderColor: '#302F20',
+    borderColor: semantic.border.muted,
     borderRadius: tokens.radius.md,
     overflow: 'hidden',
   },
   cardTop: {
-    borderColor: 'rgba(199,183,112,0.14)',
-    backgroundColor: 'rgba(199,183,112,0.025)',
+    borderColor: semantic.border.nav,
+    backgroundColor: semantic.background.topCardOverlay,
   },
   cardPressed: {
-    backgroundColor: '#2C2D1F',
+    backgroundColor: semantic.background.surfaceRaised,
   },
   body: {
     paddingHorizontal: 14,
@@ -87,21 +87,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   timeText: {
-    fontSize: tokens.fontSize.xs,    // 10
+    fontSize: tokens.fontSize.xs,
     fontFamily: 'monospace',
-    color: '#5A5840',
+    color: semantic.text.faint,
   },
   headlineText: {
-    fontSize: tokens.fontSize.md,    // 14
-    color: 'rgba(208,202,168,0.95)',
+    fontSize: tokens.fontSize.md,
+    color: semantic.text.primary,
     lineHeight: 20,
-    letterSpacing: -0.2,
+    letterSpacing: tokens.letterSpacing.tighter,
     fontWeight: '600',
   },
   bodyText: {
-    fontSize: tokens.fontSize.sm,    // 12
-    color: 'rgba(208,202,168,0.65)',
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.categoryMeta,
     lineHeight: 18,
-    letterSpacing: -0.1,
+    letterSpacing: tokens.letterSpacing.nav,
   },
 });

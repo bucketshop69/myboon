@@ -55,19 +55,14 @@ export function DepositModal({ isOpen, onClose, polygonAddress }: DepositModalPr
 
     fetchWithTimeout(`${API_BASE}/clob/deposit/${polygonAddress}`)
       .then((res) => {
-        console.log('[deposit] Response status:', res.status);
         if (!res.ok) throw new Error('Failed to fetch deposit addresses');
         return res.json();
       })
       .then((data) => {
-        console.log('[deposit] Raw response:', JSON.stringify(data));
         const addrs = data.address ?? data;
-        console.log('[deposit] Parsed addresses:', JSON.stringify(addrs));
-        console.log('[deposit] Keys:', Object.keys(addrs));
         setAddresses(addrs);
       })
       .catch((err) => {
-        console.error('[deposit] Error:', err.message);
         setError(err.message);
       })
       .finally(() => setLoading(false));
