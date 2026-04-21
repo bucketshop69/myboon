@@ -14,8 +14,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import {
   fetchPerpsMarkets,
   fetchPerpsAccount,
@@ -945,7 +943,6 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
       )}
 
       <DepositModal visible={depositOpen} onClose={() => setDepositOpen(false)} />
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }

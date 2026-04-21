@@ -1,4 +1,5 @@
 import type { SwapQuotePreview, SwapToken } from '@/features/swap/swap.types';
+import { fetchWithTimeout } from '@/lib/api';
 
 const JUP_BASE_URL = 'https://api.jup.ag';
 
@@ -70,7 +71,7 @@ export async function searchSwapTokens(query: string): Promise<SwapToken[]> {
   const normalized = query.trim();
   if (!normalized) return FALLBACK_TOKENS;
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${JUP_BASE_URL}/tokens/v2/search?query=${encodeURIComponent(normalized)}`,
     { headers: jupiterHeaders() }
   );
@@ -90,7 +91,7 @@ export async function searchSwapTokens(query: string): Promise<SwapToken[]> {
 
 export async function fetchTokenPrices(mints: string[]): Promise<Record<string, number>> {
   if (mints.length === 0) return {};
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${JUP_BASE_URL}/price/v3?ids=${encodeURIComponent(mints.join(','))}`,
     { headers: jupiterHeaders() }
   );
@@ -150,7 +151,7 @@ export async function fetchSwapQuotePreview(args: {
     `&amount=${encodeURIComponent(amount)}` +
     `&slippageBps=${encodeURIComponent(String(args.slippageBps))}`;
 
-  const response = await fetch(url, { headers: jupiterHeaders() });
+  const response = await fetchWithTimeout(url, { headers: jupiterHeaders() });
   if (!response.ok) {
     throw new Error(`Quote preview failed (${response.status})`);
   }

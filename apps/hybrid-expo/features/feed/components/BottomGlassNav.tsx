@@ -18,6 +18,15 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
     if (route === '/') {
       return pathname === '/' || pathname === '/index';
     }
+    if (route === '/predict') {
+      return pathname === '/predict'
+        || pathname.startsWith('/predict/')
+        || pathname.startsWith('/predict-');
+    }
+    if (route === '/trade') {
+      return pathname === '/trade'
+        || pathname.startsWith('/trade/');
+    }
     return pathname === route || pathname.startsWith(`${route}/`);
   }
 

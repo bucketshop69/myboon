@@ -1,6 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { memo, useEffect, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { fetchWithTimeout } from '@/lib/api';
 import {
   ActivityIndicator,
   Pressable,
@@ -12,8 +13,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
 import {
   fetchPerpsMarkets,
@@ -38,7 +37,7 @@ const TokenIcon = memo(function TokenIcon({ symbol }: { symbol: string }) {
 
   useEffect(() => {
     if (svgCache.has(base)) return;
-    fetch(uri)
+    fetchWithTimeout(uri)
       .then((res) => (res.ok ? res.text() : Promise.reject()))
       .then((text) => { svgCache.set(base, text); setXml(text); })
       .catch(() => { svgCache.set(base, null); setFailed(true); });
@@ -194,7 +193,6 @@ export function TradeListScreen() {
         </>
       )}
 
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }

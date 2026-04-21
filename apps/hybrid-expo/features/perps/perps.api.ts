@@ -11,6 +11,7 @@ import type {
   RawPosition,
   RawPriceInfo,
 } from '@/features/perps/perps.types';
+import { fetchWithTimeout } from '@/lib/api';
 
 import bs58 from 'bs58';
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
@@ -97,7 +98,7 @@ async function pacificSignedPost(
   console.log('[Pacific] message to sign:', message);
   console.log('[Pacific] body:', JSON.stringify(body));
 
-  const res = await fetch(`${PACIFIC_REST}${path}`, {
+  const res = await fetchWithTimeout(`${PACIFIC_REST}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -127,7 +128,7 @@ async function pacificSignedPost(
 async function pacificGet<T>(path: string): Promise<T> {
   const url = `${PACIFIC_REST}${path}`;
   console.log('[Pacific] GET', url);
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (res.status === 429) throw new Error('Rate limit — try again shortly');
   const json = (await res.json()) as { success?: boolean; data?: T; error?: string };
   console.log('[Pacific] GET response:', JSON.stringify(json).slice(0, 500));

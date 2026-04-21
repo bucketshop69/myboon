@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
 import { FeedList } from '@/features/feed/components/FeedList';
 import { FeedSkeleton } from '@/features/feed/components/FeedSkeleton';
 import { NarrativeSheet } from '@/features/feed/components/NarrativeSheet';
 import type { NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import type { FeedItem } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
 
@@ -145,8 +143,6 @@ export default function FeedScreen() {
           loadingMore={loadingMore}
         />
       ) : null}
-
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
 
       <NarrativeSheet item={sheetItem} onClose={handleSheetClose} />
     </View>

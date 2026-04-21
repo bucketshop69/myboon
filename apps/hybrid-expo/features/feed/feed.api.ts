@@ -1,5 +1,5 @@
-import { Platform } from 'react-native';
 import type { FeedItem, NarrativeAction, PredictOutcome } from '@/features/feed/feed.types';
+import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 interface PublishedNarrativeListItem {
   id: string;
@@ -9,20 +9,6 @@ interface PublishedNarrativeListItem {
   priority: number;
   actions: unknown;
   created_at: string;
-}
-
-function resolveApiBaseUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (fromEnv) {
-    return fromEnv.replace(/\/$/, '');
-  }
-
-  // Local defaults for development when env is not set.
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
-  }
-
-  return 'http://localhost:3000';
 }
 
 export function getApiBaseUrl(): string {
@@ -108,7 +94,7 @@ function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number)
 export async function fetchFeedItems(limit = 20, offset = 0): Promise<FeedItem[]> {
   const clamped = clamp(limit, 1, 50);
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/narratives?limit=${clamped}&offset=${offset}`);
+  const response = await fetchWithTimeout(`${baseUrl}/narratives?limit=${clamped}&offset=${offset}`);
 
   if (!response.ok) {
     throw new Error(`Feed request failed (${response.status})`);
@@ -136,7 +122,7 @@ export interface NarrativeDetail {
 
 export async function fetchNarrativeDetail(id: string): Promise<NarrativeDetail> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/narratives/${encodeURIComponent(id)}`);
+  const response = await fetchWithTimeout(`${baseUrl}/narratives/${encodeURIComponent(id)}`);
 
   if (!response.ok) {
     throw new Error(`Narrative detail request failed (${response.status})`);
@@ -197,7 +183,7 @@ export async function fetchPredictMarket(slug: string): Promise<PredictMarketDat
 
 async function fetchGeoMarket(slug: string): Promise<PredictMarketData | null> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/predict/markets/${encodeURIComponent(slug)}`);
+  const response = await fetchWithTimeout(`${baseUrl}/predict/markets/${encodeURIComponent(slug)}`);
 
   if (!response.ok) {
     return null;
@@ -251,7 +237,7 @@ async function fetchGeoMarket(slug: string): Promise<PredictMarketData | null> {
 async function fetchSportsMarket(slug: string): Promise<PredictMarketData | null> {
   const sport = extractSport(slug);
   const baseUrl = resolveApiBaseUrl();
-  const res = await fetch(`${baseUrl}/predict/sports/${sport}/${encodeURIComponent(slug)}`);
+  const res = await fetchWithTimeout(`${baseUrl}/predict/sports/${sport}/${encodeURIComponent(slug)}`);
   if (!res.ok) return null;
   const data = (await res.json()) as Record<string, unknown>;
 

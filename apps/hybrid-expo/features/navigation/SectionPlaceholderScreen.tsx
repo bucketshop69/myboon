@@ -1,8 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { semantic, tokens } from '@/theme';
 
 interface SectionPlaceholderScreenProps {
@@ -21,7 +19,6 @@ export function SectionPlaceholderScreen({ title }: SectionPlaceholderScreenProp
           <Text style={styles.description}>This section is coming next.</Text>
         </View>
       </View>
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }

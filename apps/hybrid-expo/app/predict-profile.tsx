@@ -12,10 +12,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
@@ -489,8 +487,6 @@ export default function PredictProfileScreen() {
           </>
         )}
       </ScrollView>
-
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
 
       {poly.polygonAddress && (
         <DepositModal

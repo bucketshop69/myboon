@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,13 +11,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { semantic, tokens } from '@/theme';
-
-function resolveApiBaseUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, '');
-  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
-  return 'http://localhost:3000';
-}
+import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 const API_BASE = resolveApiBaseUrl();
 
@@ -60,8 +53,7 @@ export function DepositModal({ isOpen, onClose, polygonAddress }: DepositModalPr
     setLoading(true);
     setError(null);
 
-    console.log('[deposit] Fetching from:', `${API_BASE}/clob/deposit/${polygonAddress}`);
-    fetch(`${API_BASE}/clob/deposit/${polygonAddress}`)
+    fetchWithTimeout(`${API_BASE}/clob/deposit/${polygonAddress}`)
       .then((res) => {
         console.log('[deposit] Response status:', res.status);
         if (!res.ok) throw new Error('Failed to fetch deposit addresses');

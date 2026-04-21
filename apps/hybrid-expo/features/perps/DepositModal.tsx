@@ -24,6 +24,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { fetchPerpsAccount, buildDepositInstruction } from '@/features/perps/perps.api';
 import { SOLANA_RPC, USDC_MINT, USDC_DECIMALS, USDC_LABEL, PACIFIC_MIN_DEPOSIT } from '@/features/perps/pacific.config';
 import { semantic, tokens } from '@/theme';
+import { fetchWithTimeout } from '@/lib/api';
 
 const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
@@ -33,7 +34,7 @@ interface DepositModalProps {
 }
 
 async function fetchTokenBalance(owner: string): Promise<number> {
-  const res = await fetch(SOLANA_RPC, {
+  const res = await fetchWithTimeout(SOLANA_RPC, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

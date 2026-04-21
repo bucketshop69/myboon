@@ -3,8 +3,6 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
 import { fetchCuratedMarkets, fetchSportsMarkets } from '@/features/predict/predict.api';
 import type { GeopoliticsMarket, PredictFilter, SportMarket } from '@/features/predict/predict.types';
@@ -361,7 +359,6 @@ export default function PredictScreen() {
         )}
       </View>
 
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }
