@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { semantic, tokens } from '@/theme';
 import { useWallet } from '@/hooks/useWallet';
 
@@ -19,6 +20,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
       return;
     }
     await connect();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onClose();
   }
 
@@ -79,7 +81,8 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: tokens.fontSize.md,
-    fontFamily: 'JetBrainsMono_700Bold',
+    fontFamily: 'monospace',
+    fontWeight: '700',
     color: semantic.text.primary,
     letterSpacing: tokens.letterSpacing.mono,
     marginBottom: tokens.spacing.sm,
@@ -99,13 +102,15 @@ const styles = StyleSheet.create({
   addressLabel: {
     fontSize: tokens.fontSize.sm,
     color: semantic.text.dim,
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: 'monospace',
+    fontWeight: '400',
     letterSpacing: tokens.letterSpacing.mono,
   },
   addressValue: {
     fontSize: tokens.fontSize.sm,
     color: semantic.text.accent,
-    fontFamily: 'JetBrainsMono_700Bold',
+    fontFamily: 'monospace',
+    fontWeight: '700',
     letterSpacing: tokens.letterSpacing.monoWide,
   },
   connectButton: {
@@ -116,7 +121,8 @@ const styles = StyleSheet.create({
   },
   connectButtonText: {
     fontSize: tokens.fontSize.md,
-    fontFamily: 'JetBrainsMono_700Bold',
+    fontFamily: 'monospace',
+    fontWeight: '700',
     color: tokens.colors.backgroundDark,
     letterSpacing: tokens.letterSpacing.mono,
   },
@@ -130,7 +136,8 @@ const styles = StyleSheet.create({
   },
   disconnectButtonText: {
     fontSize: tokens.fontSize.md,
-    fontFamily: 'JetBrainsMono_700Bold',
+    fontFamily: 'monospace',
+    fontWeight: '700',
     color: tokens.colors.vermillion,
     letterSpacing: tokens.letterSpacing.mono,
   },
@@ -141,7 +148,8 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: tokens.fontSize.sm,
     color: semantic.text.dim,
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: 'monospace',
+    fontWeight: '400',
     letterSpacing: tokens.letterSpacing.mono,
   },
 });

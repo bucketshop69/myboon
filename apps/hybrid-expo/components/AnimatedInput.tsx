@@ -77,7 +77,7 @@ export function AnimatedInput({ style }: AnimatedInputProps) {
       const text = await ClipboardModule.getStringAsync();
       setInputValue(text);
     } catch (err) {
-      console.error("Failed to read clipboard:", err);
+      if (__DEV__) console.error("Failed to read clipboard:", err);
     }
   };
 

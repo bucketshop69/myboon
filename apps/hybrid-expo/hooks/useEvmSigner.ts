@@ -168,7 +168,7 @@ export function useEvmSigner() {
     walletRef.current = wallet;
     setReady(true);
     setEoaAddr(wallet.address);
-    console.log('[evm-signer] Derived EOA:', wallet.address);
+    if (__DEV__) console.log('[evm-signer] Derived EOA:', wallet.address);
     return { eoaAddress: wallet.address };
   }, []);
 

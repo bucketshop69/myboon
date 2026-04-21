@@ -11,6 +11,7 @@ import type {
   RawPosition,
   RawPriceInfo,
 } from '@/features/perps/perps.types';
+import { fetchWithTimeout } from '@/lib/api';
 
 import bs58 from 'bs58';
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
@@ -74,7 +75,6 @@ async function pacificSignedPost(
   const message = buildSigningMessage(type, payload, timestamp, expiryWindow);
   const messageBytes = new TextEncoder().encode(message);
   const signatureBytes = await signMessage(messageBytes);
-  console.log('[Pacific] signMessage returned', signatureBytes.length, 'bytes');
 
   // bs58 encode the signature (same as lpcli)
   const encoded = bs58.encode(signatureBytes);
@@ -87,17 +87,7 @@ async function pacificSignedPost(
     ...payload,
   };
 
-  // Debug: log hex of sig + pubkey for offline verification
-  const sigHex = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  const pubHex = Array.from(new PublicKey(account).toBytes()).map(b => b.toString(16).padStart(2, '0')).join('');
-  console.log('[Pacific] sig hex:', sigHex);
-  console.log('[Pacific] pub hex:', pubHex);
-
-  console.log('[Pacific] POST', path, 'type:', type);
-  console.log('[Pacific] message to sign:', message);
-  console.log('[Pacific] body:', JSON.stringify(body));
-
-  const res = await fetch(`${PACIFIC_REST}${path}`, {
+  const res = await fetchWithTimeout(`${PACIFIC_REST}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -105,16 +95,13 @@ async function pacificSignedPost(
 
   if (res.status === 429) throw new Error('Rate limit — try again shortly');
   const text = await res.text();
-  console.log('[Pacific] Response (HTTP', res.status, '):', text.slice(0, 500));
   let json: any;
   try {
     json = JSON.parse(text);
-  } catch (parseErr) {
-    console.error('[Pacific] JSON parse failed:', parseErr, 'raw:', text.slice(0, 200));
+  } catch {
     throw new Error(`Bad response from Pacific (HTTP ${res.status}): ${text.slice(0, 100)}`);
   }
   if (!res.ok || json.success === false) {
-    console.error('[Pacific] API error:', json.error ?? json.message ?? text);
     const err = new Error(json.error ?? json.message ?? text ?? `HTTP ${res.status}`);
     (err as any).code = json.code ?? res.status;
     throw err;
@@ -126,11 +113,9 @@ async function pacificSignedPost(
 
 async function pacificGet<T>(path: string): Promise<T> {
   const url = `${PACIFIC_REST}${path}`;
-  console.log('[Pacific] GET', url);
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (res.status === 429) throw new Error('Rate limit — try again shortly');
   const json = (await res.json()) as { success?: boolean; data?: T; error?: string };
-  console.log('[Pacific] GET response:', JSON.stringify(json).slice(0, 500));
   if (!res.ok || json.success === false) {
     throw new Error(json.error ?? `HTTP ${res.status}`);
   }
@@ -211,7 +196,6 @@ export async function fetchPerpsAccount(address: string): Promise<PerpsAccount> 
 
 export async function fetchOpenOrders(address: string): Promise<PerpsOrder[]> {
   const raw = await pacificGet<RawOrder[]>(`/orders?account=${encodeURIComponent(address)}`);
-  console.log('[Pacific] fetchOpenOrders raw:', JSON.stringify(raw));
   return raw.map((o): PerpsOrder => ({
     orderId: o.order_id,
     symbol: o.symbol,
@@ -355,18 +339,18 @@ async function withBuilderCodeRetry<T>(
     if (msg.includes('has not approved builder code')) {
       // Try to approve, then retry
       try {
-        console.log('[Pacific] Auto-approving builder code:', builderCode);
+        if (__DEV__) console.log('[Pacific] Auto-approving builder code:', builderCode);
         await approveBuilderCode(builderCode, '0.001', account, signMessage);
         return await fn();
       } catch (_approveErr) {
         // Builder code doesn't exist or approval failed — retry without it
-        console.log('[Pacific] Builder code unavailable, placing without it');
+        if (__DEV__) console.log('[Pacific] Builder code unavailable, placing without it');
         return await fnWithoutBuilder();
       }
     }
     if (msg.includes('Builder code not found') || msg.includes('builder_code')) {
       // Builder code doesn't exist — retry without it
-      console.log('[Pacific] Builder code not found, placing without it');
+      if (__DEV__) console.log('[Pacific] Builder code not found, placing without it');
       return await fnWithoutBuilder();
     }
     throw err;
@@ -629,13 +613,7 @@ export function formatChange(change: number): string {
   return `${sign}${change.toFixed(2)}%`;
 }
 
-export function formatUsdCompact(value: number): string {
-  if (value === 0) return '--';
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
+export { formatUsdCompact } from '@/lib/format';
 
 export function formatFunding(rate: number): string {
   const sign = rate >= 0 ? '+' : '';

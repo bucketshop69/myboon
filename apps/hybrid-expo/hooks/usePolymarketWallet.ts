@@ -13,21 +13,14 @@
  */
 
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
 import { useEvmSigner, type SignedOrderV2, type OrderParams } from '@/hooks/useEvmSigner';
+import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 const DERIVE_MESSAGE = 'myboon:polymarket:enable';
 const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
 const SAFE_STORAGE_KEY = 'polymarket_safe_address'; // Safe wallet address (where USDC lives)
-
-function resolveApiBaseUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, '');
-  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
-  return 'http://localhost:3000';
-}
 
 const API_BASE = resolveApiBaseUrl();
 
@@ -61,7 +54,6 @@ export function usePolymarketWallet(): PolymarketWallet {
       AsyncStorage.getItem(SAFE_STORAGE_KEY),
     ])
       .then(([storedEoa, storedSafe]) => {
-        console.log('[polymarket] Loaded from storage — EOA:', storedEoa ?? 'none', '| Safe:', storedSafe ?? 'none');
         if (storedEoa) setPolygonAddress(storedEoa);
         if (storedSafe) setSafeAddress(storedSafe);
       })
@@ -77,19 +69,16 @@ export function usePolymarketWallet(): PolymarketWallet {
     setIsLoading(true);
     try {
       // Step 1: Sign deterministic message with Solana wallet (MWA prompt)
-      console.log('[polymarket] Requesting wallet signature...');
       const messageBytes = new TextEncoder().encode(DERIVE_MESSAGE);
       const signature = await signMessage(messageBytes);
-      console.log('[polymarket] Signature received, sending to server...');
 
       // Step 2: Derive EVM key locally (same derivation as server)
       evmSigner.deriveFromSignature(signature);
-      console.log('[polymarket] EVM key derived locally');
 
       // Step 3: Send hex-encoded signature to server for Safe setup + CLOB API creds
       const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
 
-      const res = await fetch(`${API_BASE}/clob/auth`, {
+      const res = await fetchWithTimeout(`${API_BASE}/clob/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ signature: sigHex }),
@@ -97,12 +86,10 @@ export function usePolymarketWallet(): PolymarketWallet {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        console.error('[polymarket] Auth failed:', res.status, err);
         throw new Error(err.detail || err.error || 'CLOB auth failed');
       }
 
       const data = await res.json();
-      console.log('[polymarket] Auth success — EOA:', data.polygonAddress, '| Safe:', data.safeAddress ?? 'none');
       setPolygonAddress(data.polygonAddress);
       setSafeAddress(data.safeAddress ?? null);
 
@@ -112,7 +99,6 @@ export function usePolymarketWallet(): PolymarketWallet {
         await AsyncStorage.setItem(SAFE_STORAGE_KEY, data.safeAddress);
       }
     } catch (err) {
-      console.error('[polymarket] Enable failed:', err);
       throw err;
     } finally {
       setIsLoading(false);
@@ -122,7 +108,7 @@ export function usePolymarketWallet(): PolymarketWallet {
   const disable = useCallback(() => {
     // Clear server session
     if (polygonAddress) {
-      fetch(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
+      fetchWithTimeout(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
     }
     // Clear local storage
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});

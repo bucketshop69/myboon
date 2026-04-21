@@ -3,13 +3,12 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
 import { fetchCuratedMarkets, fetchSportsMarkets } from '@/features/predict/predict.api';
 import type { GeopoliticsMarket, PredictFilter, SportMarket } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
+import { formatUsdCompact } from '@/lib/format';
 
 const FILTERS: PredictFilter[] = ['All', 'Geopolitics', 'EPL', 'UCL'];
 const BINARY_ROW_HEIGHT = 40;
@@ -18,13 +17,6 @@ const SPORT_ROW_HEIGHT = 34;
 function formatPercent(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return '--';
   return `${Math.round(value * 100)}%`;
-}
-
-function formatUsdCompact(value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) return '--';
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
 }
 
 function formatDeadline(endDate: string | null, active: boolean | null): string {
@@ -361,7 +353,6 @@ export default function PredictScreen() {
         )}
       </View>
 
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }

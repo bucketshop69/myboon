@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
@@ -8,6 +9,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,14 +19,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { fetchSportMarketDetail, fetchPriceHistory, fetchClobBalance, fetchOpenOrders, fetchMarketPositions, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
+import { formatUsdCompact } from '@/lib/format';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -33,13 +34,6 @@ interface PredictSportDetailScreenProps {
 
 type Interval = '1h' | '1d';
 type Tab = 'position' | 'stats' | 'rules' | 'feed';
-
-function formatUsdCompact(value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) return '--';
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
 
 function formatKickoff(isoDate: string | null): string {
   if (!isoDate) return 'TBD';
@@ -118,6 +112,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const { width: screenWidth } = useWindowDimensions();
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [interval, setInterval] = useState<Interval>('1h');
   const [history, setHistory] = useState<PricePoint[]>([]);
@@ -179,6 +174,16 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onRefresh() {
+    setRefreshing(true);
+    try {
+      const next = await fetchSportMarketDetail(sport, slug);
+      setDetail(next);
+      loadOrdersAndPositions();
+    } catch { /* silent */ }
+    setRefreshing(false);
   }
 
   async function loadHistory(outcome: SportOutcomeDetail, iv: Interval) {
@@ -270,7 +275,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
       let signedOrder: unknown = undefined;
       if (poly.canSignLocally) {
-        console.log('[order] Signing locally:', { tokenID: betSlipTokenID, price: betSlipPrice, size, side: 'BUY', exchangeAddress });
         signedOrder = await poly.signOrder({
           tokenID: betSlipTokenID,
           price: betSlipPrice,
@@ -278,7 +282,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
           side: 'BUY',
           exchangeAddress,
         });
-        console.log('[order] Signed locally, posting to server');
       }
 
       const result = await placeBet({
@@ -292,6 +295,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
       if (result.success) {
         setOrderResult('success');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         // Refresh orders, positions, balance
         loadOrdersAndPositions();
         if (poly.polygonAddress) {
@@ -426,7 +430,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
             </View>
 
             {/* Tab content */}
-            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}>
+            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
 
               {/* POSITION TAB */}
               {activeTab === 'position' ? (
@@ -810,7 +815,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         </KeyboardAvoidingView>
       </Modal>
 
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }

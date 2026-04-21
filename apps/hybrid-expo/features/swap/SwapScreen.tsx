@@ -12,9 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { FeedHeader } from '@/features/feed/components/FeedHeader';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import {
   fetchSwapQuotePreview,
   fetchTokenPrices,
@@ -365,8 +363,6 @@ export default function SwapScreen() {
           <Text style={styles.ctaText}>COMING SOON</Text>
         </View>
       </View>
-
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
 
       <Modal visible={tokenModalVisible} transparent animationType="slide" onRequestClose={closeTokenPicker}>
         <View style={styles.modalOverlay}>

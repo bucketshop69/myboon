@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import type {
   GeopoliticsMarket,
   GeopoliticsMarketDetail,
@@ -12,17 +11,7 @@ import type {
   SportOutcomeDetail,
   TrendingMarket,
 } from '@/features/predict/predict.types';
-
-function resolveApiBaseUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, '');
-
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
-  }
-
-  return 'http://localhost:3000';
-}
+import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -214,7 +203,7 @@ function mapSportMarketDetail(row: unknown): SportMarketDetail | null {
 
 async function getJson(path: string): Promise<unknown> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}${path}`);
+  const response = await fetchWithTimeout(`${baseUrl}${path}`);
   if (!response.ok) {
     throw new Error(`Request failed (${response.status})`);
   }
@@ -314,7 +303,7 @@ export async function placeBet(params: PlaceBetParams & { signedOrder?: unknown 
 
   // If we have a pre-signed order, use the signed endpoint
   if (params.signedOrder) {
-    const response = await fetch(`${baseUrl}/clob/order/signed`, {
+    const response = await fetchWithTimeout(`${baseUrl}/clob/order/signed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -337,7 +326,7 @@ export async function placeBet(params: PlaceBetParams & { signedOrder?: unknown 
   }
 
   // Fallback: server-side signing (Phase 1 compat)
-  const response = await fetch(`${baseUrl}/clob/order`, {
+  const response = await fetchWithTimeout(`${baseUrl}/clob/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -374,7 +363,7 @@ export interface OpenOrder {
 
 export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder[]> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/clob/positions/${encodeURIComponent(polygonAddress)}`);
+  const response = await fetchWithTimeout(`${baseUrl}/clob/positions/${encodeURIComponent(polygonAddress)}`);
   if (!response.ok) return [];
   const data = await response.json() as Record<string, unknown>;
   return Array.isArray(data.orders) ? data.orders as OpenOrder[] : [];
@@ -382,7 +371,7 @@ export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder
 
 export async function cancelOrder(polygonAddress: string, orderId: string): Promise<{ ok: boolean; error?: string }> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${baseUrl}/clob/order/${encodeURIComponent(orderId)}?address=${encodeURIComponent(polygonAddress)}`,
     { method: 'DELETE' },
   );
@@ -402,7 +391,7 @@ export interface ClobBalance {
 
 export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance | null> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
+  const response = await fetchWithTimeout(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
   if (!response.ok) {
     // 401 = no active CLOB session (server restart / TTL expired) — not a crash
     return null;
@@ -505,7 +494,7 @@ export interface WithdrawResult {
 
 export async function withdrawFromPolymarket(params: WithdrawParams): Promise<WithdrawResult> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetch(`${baseUrl}/clob/withdraw`, {
+  const response = await fetchWithTimeout(`${baseUrl}/clob/withdraw`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),

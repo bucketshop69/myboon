@@ -17,7 +17,7 @@ import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.co
 import type { NarrativeAction } from '@/features/feed/feed.types';
 import type { PredictMarketData } from '@/features/feed/feed.api';
 import type { FeedCategory } from '@/features/feed/feed.types';
-import { tokens } from '@/theme';
+import { semantic, tokens } from '@/theme';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.75);
@@ -621,11 +621,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SHEET_HEIGHT,
-    backgroundColor: '#222318',
+    backgroundColor: semantic.background.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderColor: '#302F20',
+    borderColor: semantic.border.muted,
     overflow: 'hidden',
   },
   handleArea: {
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#302F20',
+    backgroundColor: semantic.border.muted,
   },
   scrollView: {
     flex: 1,
@@ -669,21 +669,21 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: tokens.fontSize.xs,   // 10
     fontFamily: 'monospace',
-    color: '#5A5840',
+    color: semantic.text.faint,
   },
   fullText: {
     fontSize: 15,
-    color: 'rgba(208,202,168,0.88)',
+    color: semantic.text.primary,
     lineHeight: 25,
     letterSpacing: -0.2,
   },
   loadingText: {
     fontSize: tokens.fontSize.sm,
-    color: '#5A5840',
+    color: semantic.text.faint,
     fontFamily: 'monospace',
   },
   divider: {
     height: 1,
-    backgroundColor: '#302F20',
+    backgroundColor: semantic.border.muted,
   },
 });

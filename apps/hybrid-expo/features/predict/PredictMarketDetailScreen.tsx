@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
@@ -15,14 +16,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchPriceHistory, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
+import { formatUsdCompact } from '@/lib/format';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -30,13 +30,6 @@ interface PredictMarketDetailScreenProps {
 
 type Interval = '1h' | '1d';
 type Tab = 'position' | 'stats' | 'rules' | 'feed';
-
-function formatUsdCompact(value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) return '--';
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
 
 function formatDeadline(endDate: string | null, active: boolean | null): string {
   if (!endDate) return active === false ? 'Closed' : 'Open';
@@ -330,6 +323,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
       if (result.success) {
         setOrderResult('success');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         // Refresh orders, positions, balance
         loadOrdersAndPositions();
         if (poly.polygonAddress) {
@@ -347,7 +341,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         setOrderError(result.error ?? 'Order failed');
       }
     } catch (err) {
-      console.log('[order] Exception:', err);
+      if (__DEV__) console.log('[order] Exception:', err);
       setOrderResult('error');
       setOrderError(err instanceof Error ? err.message : 'Order failed');
     } finally {
@@ -850,7 +844,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         </View>
       </Modal>
 
-      <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
     </View>
   );
 }
