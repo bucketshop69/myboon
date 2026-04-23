@@ -73,7 +73,7 @@ module.exports = {
       name: 'myboon-fomo-master',
       script: './packages/brain/src/run-fomo-master.ts',
       interpreter: TSX,
-      cron_restart: '0 */1 * * *',
+      cron_restart: '5 */1 * * *',   // :05 — staggered to avoid MiniMax concurrency
       autorestart: false,
       watch: false,
       env: { NODE_ENV: 'production' },
@@ -82,7 +82,7 @@ module.exports = {
       name: 'myboon-crypto-god',
       script: './packages/brain/src/run-crypto-god.ts',
       interpreter: TSX,
-      cron_restart: '30 * * * *',   // offset 30min from fomo_master to spread LLM load
+      cron_restart: '20 * * * *',   // :20 — staggered
       autorestart: false,
       watch: false,
       env: { NODE_ENV: 'production' },
@@ -91,7 +91,7 @@ module.exports = {
       name: 'myboon-sports-broadcaster',
       script: './packages/brain/src/run-sports-broadcaster.ts',
       interpreter: TSX,
-      cron_restart: '0 * * * *',
+      cron_restart: '35 * * * *',   // :35 — staggered
       autorestart: false,
       watch: false,
       env: { NODE_ENV: 'production' },
@@ -100,7 +100,7 @@ module.exports = {
       name: 'myboon-influencer',
       script: './packages/brain/src/run-influencer.ts',
       interpreter: TSX,
-      cron_restart: '0 */2 * * *',
+      cron_restart: '50 */2 * * *', // :50 — staggered
       autorestart: false,
       watch: false,
       env: { NODE_ENV: 'production' },

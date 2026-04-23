@@ -33,7 +33,7 @@ export interface CallMinimaxOptions {
 
 const TOKEN_WARN_THRESHOLD = 40_000
 const RETRY_STATUS_CODES = new Set([401, 429, 500, 502, 503, 520, 529])
-const MAX_RETRIES = 3
+const MAX_RETRIES = 5
 
 export function estimateTokens(messages: AnthropicMessage[], systemPrompt: string): number {
   const systemChars = systemPrompt.length
@@ -51,7 +51,7 @@ export function estimateTokens(messages: AnthropicMessage[], systemPrompt: strin
 
 /**
  * Call the MiniMax API (Anthropic-compatible endpoint).
- * Retries up to 3 times with exponential backoff on 5xx / 429 / 520 errors.
+ * Retries up to 5 times with exponential backoff + jitter on 5xx / 401 / 429 errors.
  */
 export async function callMinimax(
   messages: AnthropicMessage[],
@@ -84,7 +84,8 @@ export async function callMinimax(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (attempt > 0) {
-      const delayMs = 2000 * Math.pow(2, attempt - 1) // 2s, 4s, 8s
+      const jitter = Math.floor(Math.random() * 2000) // 0-2s random jitter
+      const delayMs = 2000 * Math.pow(2, attempt - 1) + jitter // 2-4s, 4-6s, 8-10s, 16-18s
       console.warn(`[minimax] Retry ${attempt}/${MAX_RETRIES - 1} after ${delayMs}ms...`)
       await new Promise((r) => setTimeout(r, delayMs))
     }
