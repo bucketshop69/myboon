@@ -32,7 +32,7 @@ export interface CallMinimaxOptions {
 }
 
 const TOKEN_WARN_THRESHOLD = 40_000
-const RETRY_STATUS_CODES = new Set([429, 500, 502, 503, 520])
+const RETRY_STATUS_CODES = new Set([401, 429, 500, 502, 503, 520, 529])
 const MAX_RETRIES = 3
 
 export function estimateTokens(messages: AnthropicMessage[], systemPrompt: string): number {

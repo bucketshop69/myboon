@@ -179,37 +179,96 @@ function formatSignalLine(signal: Signal): string {
   }
 }
 
+// --- robust JSON extraction ---
+
+function extractJson<T>(text: string, label?: string): T | null {
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+  try { return JSON.parse(cleaned) as T } catch { /* fall through */ }
+  const start = cleaned.search(/[{[]/)
+  if (start === -1) {
+    if (label) console.warn(`[${label}] No JSON object found:\n${cleaned.slice(0, 300)}`)
+    return null
+  }
+  const opener = cleaned[start]
+  const closer = opener === '{' ? '}' : ']'
+  let depth = 0, inString = false, escape = false
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === opener) depth++
+    else if (ch === closer) depth--
+    if (depth === 0) {
+      try { return JSON.parse(cleaned.slice(start, i + 1)) as T } catch { break }
+    }
+  }
+  try {
+    const fragment = cleaned.slice(start)
+    const opens = (fragment.match(/\{/g) ?? []).length - (fragment.match(/\}/g) ?? []).length
+    const arrOpens = (fragment.match(/\[/g) ?? []).length - (fragment.match(/\]/g) ?? []).length
+    const repaired = fragment + ']'.repeat(Math.max(0, arrOpens)) + '}'.repeat(Math.max(0, opens))
+    return JSON.parse(repaired) as T
+  } catch {
+    if (label) console.warn(`[${label}] All JSON extraction attempts failed:\n${cleaned.slice(0, 500)}`)
+    return null
+  }
+}
+
 // --- minimax call with tool-use loop ---
 
 const MAX_TOOL_ITERATIONS = 10
+
+const ANALYST_RETRY_CODES = new Set([401, 429, 500, 502, 503, 520, 529])
+const ANALYST_MAX_RETRIES = 3
 
 async function callMinimax(
   messages: AnthropicMessage[],
   tools: AnthropicToolDefinition[]
 ): Promise<AnthropicResponse> {
-  const res = await fetch('https://api.minimax.io/anthropic/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': MINIMAX_API_KEY!,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'MiniMax-M2.7',
-      temperature: 0.3,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      tools,
-      tool_choice: { type: 'auto' },
-      messages,
-    }),
-  })
+  let lastError: Error | null = null
 
-  if (!res.ok) {
-    throw new Error(`MiniMax request failed: ${res.status} ${await res.text()}`)
+  for (let attempt = 0; attempt < ANALYST_MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delayMs = 2000 * Math.pow(2, attempt - 1)
+      console.warn(`[narrative-analyst] Retry ${attempt}/${ANALYST_MAX_RETRIES - 1} after ${delayMs}ms...`)
+      await new Promise((r) => setTimeout(r, delayMs))
+    }
+
+    const res = await fetch('https://api.minimax.io/anthropic/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': MINIMAX_API_KEY!,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'MiniMax-M2.7',
+        temperature: 0.3,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools,
+        tool_choice: { type: 'auto' },
+        messages,
+      }),
+    })
+
+    if (res.ok) {
+      return res.json() as Promise<AnthropicResponse>
+    }
+
+    const errorText = await res.text()
+    lastError = new Error(`MiniMax request failed: ${res.status} ${errorText}`)
+
+    if (!ANALYST_RETRY_CODES.has(res.status)) {
+      throw lastError
+    }
+
+    console.warn(`[narrative-analyst] Retryable error (attempt ${attempt + 1}): ${res.status} ${errorText.slice(0, 120)}`)
   }
 
-  return res.json() as Promise<AnthropicResponse>
+  throw lastError!
 }
 
 const SYSTEM_PROMPT =
@@ -309,8 +368,11 @@ Return a JSON array only — no markdown, no explanation. Each element:
         | Extract<ContentBlock, { type: 'text' }>
         | undefined
       const text = textBlock?.text ?? ''
-      const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-      return JSON.parse(clean) as NarrativeCluster[]
+      const parsed = extractJson<NarrativeCluster[]>(text, 'narrative-analyst')
+      if (!parsed) {
+        throw new Error(`[narrative-analyst] Could not parse JSON from LLM response: ${text.slice(0, 300)}`)
+      }
+      return parsed
     }
 
     break

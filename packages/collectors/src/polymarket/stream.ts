@@ -63,7 +63,7 @@ async function handlePriceUpdate(
     type: 'ODDS_SHIFT',
     topic: market.title,
     slug: market.slug,
-    weight: Math.min(shift / SHIFT_THRESHOLD, 5),
+    weight: Math.round(Math.min(shift / SHIFT_THRESHOLD, 5)),
     metadata: {
       marketId: market.market_id,
       slug: market.slug,

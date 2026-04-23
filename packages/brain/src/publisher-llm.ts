@@ -47,6 +47,47 @@ async function executeTool(
   }
 }
 
+// --- robust JSON extraction (handles markdown fences, trailing text, truncated responses) ---
+
+function extractJson<T>(text: string, label?: string): T | null {
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+
+  try { return JSON.parse(cleaned) as T } catch { /* fall through */ }
+
+  const start = cleaned.search(/[{[]/)
+  if (start === -1) {
+    if (label) console.warn(`[${label}] No JSON object found:\n${cleaned.slice(0, 300)}`)
+    return null
+  }
+
+  const opener = cleaned[start]
+  const closer = opener === '{' ? '}' : ']'
+  let depth = 0, inString = false, escape = false
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === opener) depth++
+    else if (ch === closer) depth--
+    if (depth === 0) {
+      try { return JSON.parse(cleaned.slice(start, i + 1)) as T } catch { break }
+    }
+  }
+
+  try {
+    const fragment = cleaned.slice(start)
+    const opens = (fragment.match(/\{/g) ?? []).length - (fragment.match(/\}/g) ?? []).length
+    const arrOpens = (fragment.match(/\[/g) ?? []).length - (fragment.match(/\]/g) ?? []).length
+    const repaired = fragment + ']'.repeat(Math.max(0, arrOpens)) + '}'.repeat(Math.max(0, opens))
+    return JSON.parse(repaired) as T
+  } catch {
+    if (label) console.warn(`[${label}] All JSON extraction attempts failed:\n${cleaned.slice(0, 500)}`)
+    return null
+  }
+}
+
 // --- sports detection ---
 
 const SPORTS_KEYWORDS = /\b(cricket|football|soccer|esports|tennis|nba|nfl|nhl|mlb|epl|ipl|t20|odi|fifa|ufc|mma|rugby|golf|f1|formula.?1|counter.?strike|cs2|dota|league.?of.?legends|valorant|esl|blast|major|grand.?slam|champions.?league|premier.?league|la.?liga|bundesliga|serie.?a)\b/i
@@ -60,40 +101,71 @@ export function isSportsNarrative(cluster: string): boolean {
 function buildSystemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10)
   return (
-    'You are a market intelligence publisher with a co-researcher role. You receive a narrative cluster from prediction market signals and must decide whether it is worth publishing.\n\n' +
-    `Today's date is ${today}. Use this to assess how fresh and time-sensitive the signals are.\n\n` +
+    'You are a market intelligence publisher. You receive narrative clusters from prediction market signals and decide whether to publish.\n\n' +
+    `Today's date is ${today}. Use this to assess freshness and time-sensitivity.\n\n` +
     'You have two research tools:\n' +
-    '- search_published: checks our own published database for related content. Always call this first.\n' +
-    '  Returns: content_small, content_full, reasoning, tags, priority, created_at for each match.\n' +
-    '- get_tag_history: fetches recent narratives matching topic tags. Call this to understand what angle has already been covered.\n\n' +
-    'Your job:\n\n' +
-    '1. Call search_published and get_tag_history to check if we already covered this topic.\n' +
-    '   Read the full content_full and reasoning of any matches — then decide:\n' +
-    '   - Same story, nothing materially changed → reject as duplicate.\n' +
-    '   - Same story but odds/positioning shifted significantly → publish as an update. Reference the previous piece and lead with what moved (e.g. "Iran ceasefire odds jumped from 60% to 80% in under 2 hours").\n' +
-    '   - No match → evaluate on its own merits.\n' +
-    '2. Give the narrative a publisher_score (1-10). Only narratives you score >= 8 will be saved. Be selective — not everything is worth publishing.\n' +
-    '3. Classify content_type (pick the FIRST match):\n' +
-    '   - "sports": narrative is about a match, tournament, or sports prediction market (UCL, EPL, NBA, NFL, etc.)\n' +
-    '   - "macro": narrative is about geopolitics, elections, central bank decisions, trade war, or regime change\n' +
-    '   - "fomo": lead is a specific unusual position from one wallet ("A $50K position appeared on...")\n' +
-    '   - "signal": lead is a pattern across multiple actors ("Smart money has been consistently buying NO on...")\n' +
-    '   - "news": lead is a real-world event with immediate market reaction\n' +
-    '   - "crypto": lead is about token prices, DEX flows, or on-chain crypto activity\n\n' +
-    '4. Produce:\n\n' +
-    'content_small: 2-4 sentences, punchy, no fluff. Lookonchain style but smarter. State the position, what it signals, why it matters. Written for a trader who has 5 seconds. No markdown. Do not use the word "whale" or "whales" — describe the position and conviction instead (e.g. "smart money", "a $50K position", "concentrated bets").\n\n' +
-    'content_full: Deep analysis connecting prediction market signals to real-world context. Use your own knowledge to add context where relevant. Link related themes (e.g. Iran bets + oil prices = same meta-narrative). Do not make up news.\n\n' +
-    'reasoning: Internal note — why you scored it the way you did, what research you found, how you connected the dots.\n\n' +
-    'tags: 2-5 lowercase tags (e.g. "iran", "election", "crypto", "oil", "fed", "ai", "geopolitics", "sports").\n\n' +
+    '- search_published: checks our published database for related content. Always call this first.\n' +
+    '- get_tag_history: fetches recent narratives matching topic tags.\n\n' +
+    'STEP 1 — DEDUP CHECK:\n' +
+    'Call search_published and get_tag_history. Then decide:\n' +
+    '- Same story, nothing materially changed → reject as duplicate.\n' +
+    '- Same story but odds/positioning shifted significantly → publish as update, lead with what moved.\n' +
+    '- Same wallet featured 3+ times in last 24h → reject unless this is a genuinely new market or thesis.\n' +
+    '- No match → evaluate on its own merits.\n\n' +
+    'STEP 2 — SCORE:\n' +
+    'publisher_score (1-10). Only >= 8 gets published. Be selective.\n\n' +
+    'STEP 3 — CLASSIFY content_type (first match):\n' +
+    '- "sports": match, tournament, or sports prediction market\n' +
+    '- "macro": geopolitics, elections, central bank, trade war, regime change\n' +
+    '- "fomo": specific unusual position from one wallet\n' +
+    '- "signal": pattern across multiple actors or time\n' +
+    '- "news": real-world event with immediate market reaction\n' +
+    '- "crypto": token prices, DEX flows, on-chain activity\n\n' +
+    'STEP 4 — WRITE:\n\n' +
+    'content_small — THE CARD. This is what users see scrolling the feed. Rules:\n' +
+    '- 3-4 SHORT lines. Each line is one fact. Not a paragraph.\n' +
+    '- Total under 200 characters.\n' +
+    '- Lead depends on content_type:\n' +
+    '  • fomo/signal → lead with the number: "$500K against Hormuz at 99% odds"\n' +
+    '  • macro/news → lead with the thesis: "Fed rate cut odds just collapsed"\n' +
+    '  • sports → lead with what happened: "Real Madrid odds just flipped"\n' +
+    '  • crypto → either works\n' +
+    '- End with a one-liner punchline: "And they\'re still holding." / "Two shorts, very different." / "Maybe he knows something."\n' +
+    '- Name the wallet — use Polymarket username, short address, or alias. NEVER write "a tracked wallet" or "a wallet".\n' +
+    '- No markdown. No jargon like "scenario bifurcation" or "conditional resolution pathways".\n' +
+    '- Write like you\'re texting a trader friend, not writing a research report.\n\n' +
+    'EXAMPLES of good content_small:\n\n' +
+    'fomo example:\n' +
+    '"Trader 0x5c26 continues to short $CHIP.\n' +
+    'He now holds a 34.5M $CHIP ($4.75M) short and is already down $1.82M.\n' +
+    'Liquidation price: $0.217"\n\n' +
+    'signal example:\n' +
+    '"epsteinfiles spent $12.3K betting MicroStrategy holds 1M+ BTC by Dec 2026.\n' +
+    'This trader only bets MicroStrategy markets.\n' +
+    'Won them all so far."\n\n' +
+    'macro example:\n' +
+    '"Japan\'s exports just jumped +11.7% YoY — 2nd highest since May 2024.\n' +
+    'China drove the surge: +17.7%, led by chips and industrial metals.\n' +
+    'China\'s demand is driving the Japanese economy."\n\n' +
+    'crypto example:\n' +
+    '"0x65B4 sold 10,829 ETH at $2,300 three days ago.\n' +
+    'Bought back 7,448 ETH at $2,350 one hour ago.\n' +
+    'Sold the bottom, bought it back higher."\n\n' +
+    'content_full — THE DETAIL. 3-5 sentences max. Adds context to content_small:\n' +
+    '- What the position is and why it stands out\n' +
+    '- What the market consensus says vs what this actor is doing\n' +
+    '- Why it matters NOW (deadline, catalyst, timing)\n' +
+    '- Conversational tone. End with why the reader should care.\n' +
+    '- Do not repeat content_small. Add new information only.\n' +
+    '- Do not make up news.\n\n' +
+    'reasoning: Internal note — why you scored it, what research found, dedup decision.\n\n' +
+    'tags: 2-5 lowercase (e.g. "iran", "fed", "crypto", "btc", "sports").\n\n' +
     'priority: Integer 1-10. Higher = more urgent/time-sensitive.\n\n' +
-    'publisher_score: Integer 1-10. Your honest assessment of this narrative\'s publish-worthiness. >= 8 gets published.\n\n' +
-    'content_type: One of "fomo", "signal", "sports", "macro", "news", "crypto" — see classification rules above.\n\n' +
-    'actions: Array of action targets. Predict actions are pre-populated from market slugs — do not add or change them. You may add perps actions only for crypto price signals: { "type": "perps", "asset": "BTC" } — asset is the base symbol only, no pair or suffix. Empty array if no perps action applies.\n\n' +
+    'content_type: One of "fomo", "signal", "sports", "macro", "news", "crypto".\n\n' +
+    'actions: Predict actions are pre-populated from slugs — do not change them. You may add perps actions for crypto: { "type": "perps", "asset": "BTC" }. Empty array if none.\n\n' +
     'SPORTS:\n' +
-    'For sports narratives (cricket, football, esports, tennis, etc.):\n' +
-    '- Skip the search tools — write from the signal data only.\n' +
-    '- Sports moves fast. Your readers want the play, not the backstory.\n' +
-    '- Lead with what happened and what the market did: "After Sporting CP\'s comeback, YES odds jumped from 20% to 65%."\n\n' +
+    '- Skip search tools — write from signal data only.\n' +
+    '- Lead with what happened and what the market did.\n\n' +
     'Return a single JSON object. No markdown, no explanation.'
   )
 }
@@ -206,11 +278,21 @@ export async function runPublisherLLM(
         | Extract<ContentBlock, { type: 'text' }>
         | undefined
       const text = textBlock?.text ?? ''
-      const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-      const output = JSON.parse(clean) as PublishedOutput
+      const output = extractJson<PublishedOutput>(text, 'publisher-llm')
+      if (!output) {
+        throw new Error(`[publisher-llm] Could not parse JSON from LLM response: ${text.slice(0, 300)}`)
+      }
+
+      // Ensure required fields have defaults
+      output.content_small = output.content_small ?? ''
+      output.content_full = output.content_full ?? ''
+      output.tags = output.tags ?? []
+      output.actions = output.actions ?? []
+      output.priority = output.priority ?? 5
+      output.publisher_score = output.publisher_score ?? 0
 
       // Build predict actions deterministically from analyst-extracted slugs
-      const llmPerpsActions = (output.actions ?? []).filter((a) => a.type === 'perps')
+      const llmPerpsActions = output.actions.filter((a) => a.type === 'perps')
       const predictActions = (narrative.slugs ?? []).map((slug) => ({
         type: 'predict' as const,
         slug,
