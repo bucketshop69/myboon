@@ -1,5 +1,7 @@
 # myboon — Architecture & Product Vision
 
+> **Last updated:** 2026-04-21 · Covers commits through `1363fc8`
+
 ## The Product
 
 A mobile-first narrative intelligence app for on-chain traders and prediction market participants.
@@ -19,10 +21,11 @@ A mobile-first narrative intelligence app for on-chain traders and prediction ma
 
 ---
 
-## Hackathon Plan (near-term)
+## Current Milestone
 
-Mobile app with Feed live, Predict live (list + detail), and Swap in GET-preview mode. Trade remains WIP. Clean demo story:
-> "This feed is powered by on-chain signals + prediction market intelligence + a multi-agent brain."
+All four tabs functional. Feed, Predict (full CLOB execution), and Trade (full perps execution) are production-ready. Swap remains preview-only. Cross-cutting polish (error boundaries, fonts, haptics, shared config) complete.
+
+> **Demo story:** "Feed powered by on-chain signals + prediction market intelligence + multi-agent brain. Tap any market → trade it instantly via gasless wallet."
 
 ---
 
@@ -41,9 +44,6 @@ Pacific collector        →     signals table      →        Brain agents (cry
   - discovery (2h REST)     (FUNDING_SPIKE,
                              CROWDED_TRADE, POSITIONING)
 
-Nansen collector         →     signals table      →        Brain agents (fomo_master)
-  - PM bettor activity
-  - PM event trending
 
 BTC terminal (local)     →     local JSON snapshots →      Manual X posts (daily)
   - Polymarket odds (Dome)
@@ -117,12 +117,10 @@ Layer 3 — Influencers (runs every 2-4h)
 
 - Layer 3b (crypto_god) ✅ — **Pacific perps broadcast floor**. Runs every 30min (offset from fomo_master). Reads Pacific signals (`FUNDING_SPIKE`, `CROWDED_TRADE`, `POSITIONING`). LangGraph graph with archetypes: `WIPEOUT`, `CROWDED`, `POSITIONING`, `GENERAL`. Writes to `x_posts` with `agent_type='crypto_god'`.
 
-- Layer 3b (fomo_master) ✅ — **specialized broadcast floor** (issues #047, #048). Runs hourly via PM2 cron. Reads `WHALE_BET` signals (weight ≥ 8, last 4h) directly — no narrative layer. LangGraph `fomo-master-graph`: `rank → write → broadcast → resolve` loop. Runner does all deterministic enrichment before graph: slug clustering (one representative per market), Nansen bettor profile (cached 24h), live Polymarket odds (no cache), market_history (7d signal aggregate). Ranker picks 1-3 best stories using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Writer classifies each signal by archetype (CONTRARIAN / CLUSTER / AUTHORITY / FRESH_WALLET / GENERAL — first match wins on live_odds, cluster_context, nansen_profile) then writes 4-5 line observational posts: build tension through facts, end with implication. `slug` attached deterministically from `signal.metadata.slug` in writeNode (never from LLM). `chief_broadcaster` reviews all drafts in one batch — 3-way decision: approved / soft_reject (max 2 retries) / hard_reject. Duplicate detection uses angle fingerprint `{slug}:{archetype}` — same market with different archetype is a fresh story. Only `status='posted'` records count toward frequency limits. Approved drafts save as `status='draft'`. Polymarket profile URL appended in code, never by LLM. `why_skipped` written back to `signals.skip_reasoning` after each run.
+- Layer 3b (fomo_master) ✅ — **specialized broadcast floor** (issues #047, #048). Runs hourly via PM2 cron. Reads `WHALE_BET` signals (weight ≥ 8, last 4h) directly — no narrative layer. LangGraph `fomo-master-graph`: `rank → write → broadcast → resolve` loop. Runner does all deterministic enrichment before graph: slug clustering (one representative per market), Polymarket bettor profile (cached 24h), live Polymarket odds (no cache), market_history (7d signal aggregate). Ranker picks 1-3 best stories using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Writer classifies each signal by archetype (CONTRARIAN / CLUSTER / AUTHORITY / FRESH_WALLET / GENERAL — first match wins on live_odds, cluster_context, bettor_profile) then writes 4-5 line observational posts: build tension through facts, end with implication. `slug` attached deterministically from `signal.metadata.slug` in writeNode (never from LLM). `chief_broadcaster` reviews all drafts in one batch — 3-way decision: approved / soft_reject (max 2 retries) / hard_reject. Duplicate detection uses angle fingerprint `{slug}:{archetype}` — same market with different archetype is a fresh story. Only `status='posted'` records count toward frequency limits. Approved drafts save as `status='draft'`. Polymarket profile URL appended in code, never by LLM. `why_skipped` written back to `signals.skip_reasoning` after each run.
 
 **Next (pipeline track):**
 
-- Issue #042 — Nansen intelligence layer: wallet PnL via Nansen CLI enriches analyst signal weights
-- Issue #044 — Nansen slug gap fix: PM_EVENT_TRENDING and PM_BETTOR_ACTIVITY dedup + slug enrichment
 - Issue #041 (influencer graph) + #043 (critic/influencer quality) — content pipeline improvements
 - `sports_analyst` + `macro_analyst` — Phase 3 of broadcast floor (see #047)
 
@@ -145,7 +143,7 @@ packages/
   shared/           Shared SDK — PolymarketClient, PacificClient (REST+WebSocket), types
   tx-parser/        Solana tx parsing — Jupiter, Meteora, SOL transfers
   brain/            All LLM agents — classifier, research, analyst (live), publisher (live)
-  collectors/       Data ingestion scripts — Polymarket (live), Pacific (live), Nansen (live), BTC terminal (local), X/Kalshi (planned)
+  collectors/       Data ingestion scripts — Polymarket (live), Pacific (live), BTC terminal (local), X/Kalshi (planned)
   entity-memory/    In-memory entity store (pre-persistence MVP)
 ```
 
@@ -181,12 +179,6 @@ packages/
 ### Pacific Collector (`packages/collectors/src/pacific/`)
 
 - `discovery.ts` — fetches all Pacific perps markets every 2h, emits `FUNDING_SPIKE`, `CROWDED_TRADE`, `POSITIONING` signals based on funding rate and OI thresholds
-
-### Nansen Collector (`packages/collectors/src/nansen/`)
-
-- Runs as separate PM2 process (`myboon-nansen-collector`)
-- Polls Nansen MCP for prediction market bettor activity and event trending data
-- Writes `PM_BETTOR_ACTIVITY` and `PM_EVENT_TRENDING` signals
 
 ### BTC Terminal (`packages/collectors/src/btc-terminal/`)
 
@@ -245,16 +237,32 @@ Hono server, runs on VPS alongside collectors and brain. All Polymarket calls pr
 - `GET /narratives` — published narratives list (limit 20, priority desc)
 - `GET /narratives/:id` — full narrative detail
 
-**Predict endpoints (curated markets only — edit `src/curated.ts`):**
+**Predict endpoints (config-driven market collections — `src/curated.ts`):**
 
 - `GET /predict/markets` — curated geopolitics markets with live yes/no prices
-- `GET /predict/markets/:slug` — single curated geopolitics market detail (404 if not curated)
+- `GET /predict/markets/:slug` — any valid Polymarket slug (no longer gated to curated list)
 - `GET /predict/sports/:sport` — dynamic sports market list (`epl`, `ucl`) with 3-way outcomes
 - `GET /predict/sports/:sport/:slug` — full sports market detail with per-outcome best bid/ask
 - `GET /predict/history/:tokenId?interval=1m|5m|1h|1d` — 7-day price history (strict interval validation)
 - `POST /predict/order` — forward signed order to Polymarket CLOB
 - `GET /predict/orders/:address` — user open orders
 - `GET /predict/price/:tokenId` — best buy/sell price
+
+**CLOB proxy endpoints (read-only + execution):**
+
+- `GET /clob/book/:tokenId` — order book
+- `GET /clob/midpoint/:tokenId` — midpoint price
+- `GET /clob/last-trade-price/:tokenId` — last trade price
+- `GET /clob/markets` — CLOB markets list
+- `POST /clob/wrap` — gasless USDC.e → pUSD wrapping
+- `POST /clob/withdraw` — gasless withdraw (min $1)
+- `POST /clob/cancel` — cancel open order
+
+**Portfolio endpoints (Gamma data-api):**
+
+- `GET /portfolio/:address` — user portfolio summary
+- `GET /portfolio/:address/activity` — recent trade activity
+- `GET /portfolio/:address/positions` — market positions
 
 **Smoke test:** `API_BASE=http://localhost:3000 pnpm --filter @myboon/api smoke`
 
@@ -264,20 +272,37 @@ x402 micropayments on Solana — post-MVP.
 
 ## Mobile App (`apps/hybrid-expo`) — CURRENT
 
-Expo Router stack with Predict detail routes:
+Expo Router stack with full execution on Predict and Trade tabs:
 
-- `/` Feed (live data from API)
-- `/predict` live markets feed (geopolitics + sports)
-- `/predict-market/[slug]` geopolitics market detail
-- `/predict-sport/[sport]/[slug]` sports market detail
+- `/` Feed (live data from API) — pull-to-refresh, pagination, skeleton loaders, live timeAgo
+- `/predict` live markets feed (geopolitics + sports) — search, pull-to-refresh
+- `/predict-market/[slug]` geopolitics market detail — 3-zone layout, tabs, bet slip, buy/sell execution
+- `/predict-sport/[sport]/[slug]` sports market detail — sports bet slip (EPL), multi-outcome
 - `/swap` interactive preview screen (no execution)
 - `/trade` Pacific perps market list — asset strip (top 6 trending) + full table (#053 ✅)
-- `/trade/[symbol]` Market detail — hero price (WebSocket live) + chart placeholder + Market tab (order form) + Profile tab (wallet card, equity, open positions) + fixed action dock (Long/Short pinned above nav)
+- `/trade/[symbol]` Market detail — hero price (WebSocket live) + chart + order form (TP/SL) + Profile tab (wallet card, equity, open positions) + fixed action dock (Long/Short)
+
+### CLOB Auth & Order Flow (Predict)
+
+Solana-derived EVM key → gasless Safe wallet via Builder Relayer → local order signing on phone:
+
+1. User authenticates — Solana wallet signs → derives EVM key → deploys gasless Safe wallet via Builder Relayer
+2. Auto-wraps USDC.e → pUSD on balance check
+3. Orders signed locally on phone (CLOB V2 SDK), forwarded to Polymarket CLOB via geo-proxy
+4. Builder code `MYB00N` attached to all order paths (affiliate tracking)
+5. Session expiry UX — handles expired CLOB sessions gracefully
+6. Cancel orders, open orders view, portfolio + positions from Gamma data-api
+
+### Perps Execution (Trade)
+
+- On-chain deposit flow (Pacific testnet + mainnet) + withdrawal flow with signed API
+- Place order + close position with TP/SL, USD/native toggle
+- Robinhood-style UI redesign
 
 Service layer split:
 
 - Feed service (`features/feed/feed.api.ts`) consumes `GET /narratives` + `GET /narratives/:id` + `GET /predict/markets/:slug`
-- Predict service (`features/predict/predict.api.ts`) consumes curated/sports list + detail endpoints
+- Predict service (`features/predict/predict.api.ts`) consumes curated/sports list + detail + CLOB endpoints
 - Swap service (`features/swap/swap.api.ts`) consumes Jupiter GET endpoints (`tokens`, `price`, `quote`)
 - Perps service (`features/perps/perps.api.ts`) — direct Pacific REST (`api.pacifica.fi/api/v1`); `usePerpsWebSocket.ts` for live prices (RN-native global WebSocket, bypasses isomorphic-ws)
 
@@ -294,11 +319,23 @@ Feed card design:
 - Resolved/inactive markets: predict block hidden silently (null fetch = no render)
 - Filter chips removed — no category filtering in current phase
 
+### Cross-Cutting (X0 + X1)
+
+- Global error boundary with recovery
+- Navigation consolidation (shared tab bar)
+- Shared API config (single base URL, timeouts)
+- Custom fonts (brand typography)
+- Console cleanup (no dev noise in prod)
+- Color system standardization
+- Haptic feedback on interactions
+- Pull-to-refresh across all tabs
+
 Execution policy:
 
-- Swap CTA remains non-transactional (`COMING SOON`)
-- YES/NO/View Market navigates to Predict tab detail — no order execution from Feed
-- No wallet signing or on-chain submit in current phase
+- **Predict**: Full CLOB execution live — buy, sell, cancel orders via gasless Safe wallet + local signing
+- **Trade**: Full perps execution live — deposit, place order (TP/SL), close position, withdraw
+- **Swap**: CTA remains non-transactional (`COMING SOON`)
+- **Feed**: YES/NO/View Market navigates to Predict detail — no order execution from Feed
 
 ---
 
@@ -333,3 +370,7 @@ Execution policy:
 | Dome API over Gamma for sports odds (#050) | Gamma API is geo-restricted (blocks US VPS). Dome (`api.domeapi.io/v1`) proxies Polymarket data without restriction — same odds, no geo block. Used for market registration and live odds in sports-broadcaster. |
 | Dome API for pinned market discovery | Gamma `?slug=` only works for single-outcome markets. Multi-outcome events (BTC price targets, WTI, FIFA) need Dome `?event_slug=` to resolve all sub-markets. Discovery now tries event_slug first, falls back to market_slug. |
 | BTC terminal as local script (not VPS) | Daily content series — user runs manually, eyeballs output, posts to X by hand. No brain agent; raw data + conversational format. Snapshots stored locally for delta tracking. |
+| Gasless Safe wallet over EOA signing | Builder Relayer deploys Safe per user — no gas for user, no private key export. Solana wallet derives EVM key deterministically. |
+| CLOB V2 over V1 | V1 deprecated by Polymarket. V2 SDK + preprod test markets for validation before mainnet. |
+| Local order signing over server-side | Phone signs orders locally with derived EVM key — server never touches private keys. Geo-proxy only forwards signed payloads. |
+| Gamma data-api for portfolio | Portfolio, activity, and position data served via Gamma's data-api (same infra as Polymarket frontend). More reliable than CLOB endpoints for read-heavy queries. |

@@ -33,11 +33,15 @@ describe.skipIf(SKIP)('publisherGraph (e2e)', () => {
 
     expect(typeof draft.content_small).toBe('string')
     expect(draft.content_small.length).toBeGreaterThan(0)
+    expect(draft.content_small.length).toBeLessThanOrEqual(300) // enforced ~200 target, allow some flex
+    expect(draft.content_small).not.toMatch(/^A tracked wallet/i) // must not start with generic wallet ref
+    expect(draft.content_small).not.toMatch(/^A wallet/i)
 
     expect(typeof draft.content_full).toBe('string')
     expect(draft.content_full.length).toBeGreaterThan(0)
+    expect(draft.content_full.length).toBeLessThanOrEqual(1200) // 3-5 sentences max
 
-    expect(['fomo', 'signal', 'news']).toContain(draft.content_type)
+    expect(['fomo', 'signal', 'news', 'sports', 'macro', 'crypto']).toContain(draft.content_type)
 
     expect(typeof draft.publisher_score).toBe('number')
     expect(draft.publisher_score).toBeGreaterThanOrEqual(1)

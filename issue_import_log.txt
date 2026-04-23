@@ -1,0 +1,232 @@
+Creating #1: 001: Wallet Connection
+  → https://github.com/bucketshop69/myboon/issues/49
+✓ Closed issue #49 (#1 — 001: Wallet Connection)
+
+Creating #2: 002: Custom Wallet Modal
+  → https://github.com/bucketshop69/myboon/issues/50
+✓ Closed issue #50 (#2 — 002: Custom Wallet Modal)
+
+Creating #3: 003: Wallet Details Modal + Gasless Transfer
+  → https://github.com/bucketshop69/myboon/issues/51
+✓ Closed issue #51 (#3 — 003: Wallet Details Modal + Gasless Transfer)
+
+Creating #4: 004: Gasless Raydium Swap
+  → https://github.com/bucketshop69/myboon/issues/52
+✓ Closed issue #52 (#4 — 004: Gasless Raydium Swap)
+
+Creating #008-clob-auth-status.md: Issue #8 — Polymarket CLOB Auth: Implementation Status
+  → https://github.com/bucketshop69/myboon/issues/53
+✓ Closed issue #53 (#008-clob-auth-status.md — Issue #8 — Polymarket CLOB Auth: Implementation Status)
+
+Creating #011-refactor-indexer-foundation.md: Issue #011: Refactor to Indexer-Based Foundation
+  → https://github.com/bucketshop69/myboon/issues/54
+✓ Closed issue #54 (#011-refactor-indexer-foundation.md — Issue #011: Refactor to Indexer-Based Foundation)
+
+Creating #012-jupiter-buy-sell-classification.md: Issue #012: Jupiter Swap Buy/Sell Classification
+  → https://github.com/bucketshop69/myboon/issues/55
+✓ Closed issue #55 (#012-jupiter-buy-sell-classification.md — Issue #012: Jupiter Swap Buy/Sell Classification)
+
+Creating #013-transaction-streaming.md: Issue #013: Transaction Stream Pipeline
+  → https://github.com/bucketshop69/myboon/issues/56
+✓ Closed issue #56 (#013-transaction-streaming.md — Issue #013: Transaction Stream Pipeline)
+
+Creating #014-token-memory-schema.md: Issue #014: Entity Memory Schema
+  → https://github.com/bucketshop69/myboon/issues/57
+✓ Closed issue #57 (#014-token-memory-schema.md — Issue #014: Entity Memory Schema)
+
+Creating #015-research-agent.md: Issue #015: Research Agent (Brain 2)
+  → https://github.com/bucketshop69/myboon/issues/58
+✓ Closed issue #58 (#015-research-agent.md — Issue #015: Research Agent (Brain 2))
+
+Creating #016-classifier-brain.md: Issue #016: Classifier Brain (Brain 1)
+  → https://github.com/bucketshop69/myboon/issues/59
+✓ Closed issue #59 (#016-classifier-brain.md — Issue #016: Classifier Brain (Brain 1))
+
+Creating #017-output-layer.md: 017-output-layer.md
+  → https://github.com/bucketshop69/myboon/issues/60
+✓ Closed issue #60 (#017-output-layer.md — 017-output-layer.md)
+
+Creating #018-wire-classifier-to-minimax.md: Issue #018: Wire Classifier to MiniMax & Create Runner
+  → https://github.com/bucketshop69/myboon/issues/61
+✓ Closed issue #61 (#018-wire-classifier-to-minimax.md — Issue #018: Wire Classifier to MiniMax & Create Runner)
+
+Creating #019-meteora-dlmm-parser-poc.md: Issue #019: Meteora DLMM Parser — POC
+  → https://github.com/bucketshop69/myboon/issues/62
+✓ Closed issue #62 (#019-meteora-dlmm-parser-poc.md — Issue #019: Meteora DLMM Parser — POC)
+
+Creating #020-polymarket-collector.md: Issue #020: Polymarket Collector
+  → https://github.com/bucketshop69/myboon/issues/63
+✓ Closed issue #63 (#020-polymarket-collector.md — Issue #020: Polymarket Collector)
+
+Creating #021-polymarket-shared-sdk.md: Issue 021 — Polymarket Shared SDK (`packages/shared`)
+  → https://github.com/bucketshop69/myboon/issues/64
+✓ Closed issue #64 (#021-polymarket-shared-sdk.md — Issue 021 — Polymarket Shared SDK (`packages/shared`))
+
+Creating #022-analyst-tool-calling.md: Issue 022 — Narrative Analyst Tool Calling
+  → https://github.com/bucketshop69/myboon/issues/65
+✓ Closed issue #65 (#022-analyst-tool-calling.md — Issue 022 — Narrative Analyst Tool Calling)
+
+Creating #023-publisher-brain.md: Issue 023 — Publisher Brain
+  → https://github.com/bucketshop69/myboon/issues/66
+✓ Closed issue #66 (#023-publisher-brain.md — Issue 023 — Publisher Brain)
+
+Creating #025-feed-api.md: Issue 025 — Feed API
+  → https://github.com/bucketshop69/myboon/issues/67
+✓ Closed issue #67 (#025-feed-api.md — Issue 025 — Feed API)
+
+Creating #026-predict-tab-backend.md: Issue 026 — Predict Tab Backend API
+  → https://github.com/bucketshop69/myboon/issues/68
+✓ Closed issue #68 (#026-predict-tab-backend.md — Issue 026 — Predict Tab Backend API)
+
+Creating #027-hybrid-expo-initialization.md: Issue 027 — Hybrid Expo Initialization
+  → https://github.com/bucketshop69/myboon/issues/69
+✓ Closed issue #69 (#027-hybrid-expo-initialization.md — Issue 027 — Hybrid Expo Initialization)
+
+Creating #028-feed-ui-service.md: Issue 028 — Feed UI + Service Layer
+  → https://github.com/bucketshop69/myboon/issues/70
+✓ Closed issue #70 (#028-feed-ui-service.md — Issue 028 — Feed UI + Service Layer)
+
+Creating #029-swap-ui-service.md: Issue 029 — Swap UI + GET Preview Service
+  → https://github.com/bucketshop69/myboon/issues/71
+✓ Closed issue #71 (#029-swap-ui-service.md — Issue 029 — Swap UI + GET Preview Service)
+
+Creating #030-feed-card-redesign.md: 030-feed-card-redesign.md
+  → https://github.com/bucketshop69/myboon/issues/72
+✓ Closed issue #72 (#030-feed-card-redesign.md — 030-feed-card-redesign.md)
+
+Creating #031-slug-write-time-validation.md: 031-slug-write-time-validation.md
+  → https://github.com/bucketshop69/myboon/issues/73
+✓ Closed issue #73 (#031-slug-write-time-validation.md — 031-slug-write-time-validation.md)
+
+Creating #032-delta-based-discovery.md: 032-delta-based-discovery.md
+  → https://github.com/bucketshop69/myboon/issues/74
+✓ Closed issue #74 (#032-delta-based-discovery.md — 032-delta-based-discovery.md)
+
+Creating #033-market-context-builder.md: 033-market-context-builder.md
+  → https://github.com/bucketshop69/myboon/issues/75
+✓ Closed issue #75 (#033-market-context-builder.md — 033-market-context-builder.md)
+
+Creating #034-publisher-topic-cap-threads.md: 034-publisher-topic-cap-threads.md
+  → https://github.com/bucketshop69/myboon/issues/76
+✓ Closed issue #76 (#034-publisher-topic-cap-threads.md — 034-publisher-topic-cap-threads.md)
+
+Creating #035-wallet-win-rate.md: 035-wallet-win-rate.md
+  → https://github.com/bucketshop69/myboon/issues/77
+✓ Closed issue #77 (#035-wallet-win-rate.md — 035-wallet-win-rate.md)
+
+Creating #037-publisher-reflection-critic.md: 037-publisher-reflection-critic.md
+  → https://github.com/bucketshop69/myboon/issues/78
+✓ Closed issue #78 (#037-publisher-reflection-critic.md — 037-publisher-reflection-critic.md)
+
+Creating #038-feed-content-types-ui.md: 038-feed-content-types-ui.md
+  → https://github.com/bucketshop69/myboon/issues/79
+✓ Closed issue #79 (#038-feed-content-types-ui.md — 038-feed-content-types-ui.md)
+
+Creating #039-web-search-tool-duckduckgo.md: 039-web-search-tool-duckduckgo.md
+  → https://github.com/bucketshop69/myboon/issues/80
+✓ Closed issue #80 (#039-web-search-tool-duckduckgo.md — 039-web-search-tool-duckduckgo.md)
+
+Creating #040-feed-sports-predict-block.md: 040-feed-sports-predict-block.md
+  → https://github.com/bucketshop69/myboon/issues/81
+✓ Closed issue #81 (#040-feed-sports-predict-block.md — 040-feed-sports-predict-block.md)
+
+Creating #041-x-content-agent.md: 041-x-content-agent.md
+  → https://github.com/bucketshop69/myboon/issues/82
+✓ Closed issue #82 (#041-x-content-agent.md — 041-x-content-agent.md)
+
+Creating #042-nansen-intelligence-layer.md: 042-nansen-intelligence-layer.md
+  → https://github.com/bucketshop69/myboon/issues/83
+✓ Closed issue #83 (#042-nansen-intelligence-layer.md — 042-nansen-intelligence-layer.md)
+
+Creating #043-content-pipeline-critic-and-influencer.md: 043-content-pipeline-critic-and-influencer.md
+  → https://github.com/bucketshop69/myboon/issues/84
+✓ Closed issue #84 (#043-content-pipeline-critic-and-influencer.md — 043-content-pipeline-critic-and-influencer.md)
+
+Creating #044-nansen-slug-gap.md: 044-nansen-slug-gap.md
+  → https://github.com/bucketshop69/myboon/issues/85
+✓ Closed issue #85 (#044-nansen-slug-gap.md — 044-nansen-slug-gap.md)
+
+Creating #045-landing-hero-section.md: 045-landing-hero-section.md
+  → https://github.com/bucketshop69/myboon/issues/86
+✓ Closed issue #86 (#045-landing-hero-section.md — 045-landing-hero-section.md)
+
+Creating #046-newsroom-world.md: 046-newsroom-world.md
+  → https://github.com/bucketshop69/myboon/issues/87
+✓ Closed issue #87 (#046-newsroom-world.md — 046-newsroom-world.md)
+
+Creating #047-specialized-broadcast-floor.md: 047-specialized-broadcast-floor.md
+  → https://github.com/bucketshop69/myboon/issues/88
+✓ Closed issue #88 (#047-specialized-broadcast-floor.md — 047-specialized-broadcast-floor.md)
+
+Creating #048-persuasion-layer-fomo-master.md: 048-persuasion-layer-fomo-master.md
+  → https://github.com/bucketshop69/myboon/issues/89
+✓ Closed issue #89 (#048-persuasion-layer-fomo-master.md — 048-persuasion-layer-fomo-master.md)
+
+Creating #049-content-architecture.md: 049-content-architecture.md
+  → https://github.com/bucketshop69/myboon/issues/90
+✓ Closed issue #90 (#049-content-architecture.md — 049-content-architecture.md)
+
+Creating #050-sports-content-pipeline.md: 050-sports-content-pipeline.md
+  → https://github.com/bucketshop69/myboon/issues/91
+✓ Closed issue #91 (#050-sports-content-pipeline.md — 050-sports-content-pipeline.md)
+
+Creating #051-pacific-collectors.md: 051-pacific-collectors.md
+  → https://github.com/bucketshop69/myboon/issues/92
+✓ Closed issue #92 (#051-pacific-collectors.md — 051-pacific-collectors.md)
+
+Creating #052-pacific-api-client.md: 052-pacific-api-client.md
+  → https://github.com/bucketshop69/myboon/issues/93
+✓ Closed issue #93 (#052-pacific-api-client.md — 052-pacific-api-client.md)
+
+Creating #053-pacific-trade-ui.md: 053-pacific-trade-ui.md
+  → https://github.com/bucketshop69/myboon/issues/94
+✓ Closed issue #94 (#053-pacific-trade-ui.md — 053-pacific-trade-ui.md)
+
+Creating #054-pacific-builder-code.md: 054-pacific-builder-code.md
+  → https://github.com/bucketshop69/myboon/issues/95
+✓ Closed issue #95 (#054-pacific-builder-code.md — 054-pacific-builder-code.md)
+
+Creating #058-scroll-features-world-inline.md: 058-scroll-features-world-inline.md
+  → https://github.com/bucketshop69/myboon/issues/96
+✓ Closed issue #96 (#058-scroll-features-world-inline.md — 058-scroll-features-world-inline.md)
+
+Creating #059-dome-api-migration.md: 059-dome-api-migration.md
+  → https://github.com/bucketshop69/myboon/issues/97
+✓ Closed issue #97 (#059-dome-api-migration.md — 059-dome-api-migration.md)
+
+Creating #060-predict-api-enhancements.md: 060-predict-api-enhancements.md
+  → https://github.com/bucketshop69/myboon/issues/98
+✓ Closed issue #98 (#060-predict-api-enhancements.md — 060-predict-api-enhancements.md)
+
+Creating #061-predict-ui-redesign.md: 061-predict-ui-redesign.md
+  → https://github.com/bucketshop69/myboon/issues/99
+✓ Closed issue #99 (#061-predict-ui-redesign.md — 061-predict-ui-redesign.md)
+
+Creating #062-predict-profile-screen.md: 062-predict-profile-screen.md
+  → https://github.com/bucketshop69/myboon/issues/100
+✓ Closed issue #100 (#062-predict-profile-screen.md — 062-predict-profile-screen.md)
+
+Creating #063-wallet-connect-backlog.md: 063-wallet-connect-backlog.md
+  → https://github.com/bucketshop69/myboon/issues/101
+✓ Closed issue #101 (#063-wallet-connect-backlog.md — 063-wallet-connect-backlog.md)
+
+Creating #064-predict-cashout-losscut-odds.md: 064-predict-cashout-losscut-odds.md
+  → https://github.com/bucketshop69/myboon/issues/102
+✓ Closed issue #102 (#064-predict-cashout-losscut-odds.md — 064-predict-cashout-losscut-odds.md)
+
+Creating #065-polymarket-clob-auth.md: 065-polymarket-clob-auth.md
+  → https://github.com/bucketshop69/myboon/issues/103
+✓ Closed issue #103 (#065-polymarket-clob-auth.md — 065-polymarket-clob-auth.md)
+
+Creating #066-order-execution-pipeline.md: 066-order-execution-pipeline.md
+  → https://github.com/bucketshop69/myboon/issues/104
+✓ Closed issue #104 (#066-order-execution-pipeline.md — 066-order-execution-pipeline.md)
+
+Creating #067-price-monitoring-service.md: 067-price-monitoring-service.md
+  → https://github.com/bucketshop69/myboon/issues/105
+✓ Closed issue #105 (#067-price-monitoring-service.md — 067-price-monitoring-service.md)
+
+Creating #068-trade-order-execution.md: 068-trade-order-execution.md
+  → https://github.com/bucketshop69/myboon/issues/106
+✓ Closed issue #106 (#068-trade-order-execution.md — 068-trade-order-execution.md)
+
