@@ -6,7 +6,8 @@
     "dev": "tsx --watch src/index.ts",
     "start": "tsx src/index.ts",
     "smoke": "tsx src/smoke-test.ts",
-    "e2e:v2": "tsx src/e2e-v2.ts"
+    "e2e:v2": "tsx src/e2e-v2.ts",
+    "e2e:feed": "tsx src/e2e/api-e2e.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

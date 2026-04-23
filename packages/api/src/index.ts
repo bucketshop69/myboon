@@ -1,10 +1,13 @@
 import 'dotenv/config'
+import { readFileSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
 import { clobRoutes } from './clob.js'
-import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
+import { CURATED_GEOPOLITICS_SLUGS, deriveCategory } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
   isDomeAvailable,
@@ -20,7 +23,21 @@ import {
   domeMarketToClobTokenIds,
   domeEndTimeToIso,
   domeStatusToActive,
+  domeGetIplMatches,
 } from './dome.js'
+
+// --- pinned markets ---
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const pinnedPath = resolve(__dirname, '../../collectors/src/polymarket/pinned.json')
+let PINNED_SLUGS: string[] = []
+try {
+  PINNED_SLUGS = JSON.parse(readFileSync(pinnedPath, 'utf-8')) as string[]
+  console.log(`[api] Loaded ${PINNED_SLUGS.length} pinned slugs`)
+} catch (err) {
+  console.warn(`[api] Could not load pinned.json: ${err instanceof Error ? err.message : err}`)
+}
 
 // --- env validation ---
 
@@ -1006,6 +1023,240 @@ app.get('/predict/positions/:address/market/:slug', async (c) => {
     return c.json(filtered)
   } catch (err) {
     console.error(`[api] Unexpected error in GET /predict/positions/${address}/market/${slug}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// --- unified predict feed ---
+
+interface FeedItem {
+  type: 'binary' | 'match'
+  slug: string
+  question?: string
+  title?: string
+  category: string
+  tags: string[]
+  sport?: string
+  yesPrice?: number | null
+  noPrice?: number | null
+  volume: number | null
+  endDate: string | null
+  startDate?: string | null
+  active: boolean | null
+  image: string | null
+  clobTokenIds?: string[]
+  conditionId?: string | null
+  outcomes?: {
+    label: string
+    price: number | null
+    conditionId?: string | null
+    clobTokenIds: string[]
+  }[]
+}
+
+app.get('/predict/feed', async (c) => {
+  const categoryFilter = (c.req.query('category') ?? 'all').toLowerCase()
+  const sportFilter = c.req.query('sport')?.toLowerCase() ?? null
+  const rawLimit = parseInt(c.req.query('limit') ?? '30', 10)
+  const limit = isNaN(rawLimit) || rawLimit < 1 ? 30 : Math.min(rawLimit, 50)
+
+  if (!isDomeAvailable()) {
+    return c.json({ items: [], categories: [] })
+  }
+
+  try {
+    // Parallel-fetch all three sources
+    const [pinnedResult, eplResult, iplResult] = await Promise.allSettled([
+      // 1. Pinned binary markets
+      (async (): Promise<FeedItem[]> => {
+        if (PINNED_SLUGS.length === 0) return []
+        if (sportFilter) return [] // sport filter excludes pinned
+        if (categoryFilter === 'sports') return []
+
+        const domeMap = await domeGetMarketsBySlugs(PINNED_SLUGS)
+
+        // Fetch prices in parallel for all found markets
+        const entries = Array.from(domeMap.entries())
+        const priceResults = await Promise.allSettled(
+          entries.map(([, m]) =>
+            Promise.all([
+              m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
+              m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
+            ])
+          )
+        )
+
+        return entries
+          .map(([slug, m], i) => {
+            const category = deriveCategory(m.tags ?? [])
+            if (categoryFilter !== 'all' && category !== categoryFilter) return null
+
+            const pr = priceResults[i]
+            const [yesPrice, noPrice] = pr.status === 'fulfilled' ? pr.value : [null, null]
+
+            return {
+              type: 'binary' as const,
+              slug,
+              question: m.title,
+              category,
+              tags: m.tags ?? [],
+              yesPrice,
+              noPrice,
+              volume: m.volume_1_week ?? m.volume_total ?? null,
+              endDate: domeEndTimeToIso(m.end_time),
+              active: domeStatusToActive(m.status),
+              image: m.image ?? null,
+              clobTokenIds: domeMarketToClobTokenIds(m),
+              conditionId: m.condition_id ?? null,
+            }
+          })
+          .filter((item): item is FeedItem => item !== null)
+      })(),
+
+      // 2. EPL matches
+      (async (): Promise<FeedItem[]> => {
+        if (sportFilter && sportFilter !== 'epl') return []
+        if (categoryFilter !== 'all' && categoryFilter !== 'sports') return []
+
+        const allMarkets = await domeGetSportMarkets('epl')
+        const now = Math.floor(Date.now() / 1000)
+        const matchGroups = domeGroupMatchOutcomes(allMarkets)
+          .filter((g) => !g.endTime || g.endTime > now)
+
+        // Fetch all YES token prices in one parallel batch
+        const allTokenIds = matchGroups.flatMap((g) =>
+          g.outcomes.map((m) => m.side_a?.id).filter(Boolean) as string[]
+        )
+        const priceResults = await Promise.allSettled(
+          allTokenIds.map((id) => domeGetMarketPrice(id))
+        )
+        const priceMap = new Map<string, number | null>()
+        allTokenIds.forEach((id, i) => {
+          const r = priceResults[i]
+          priceMap.set(id, r.status === 'fulfilled' ? r.value : null)
+        })
+
+        return matchGroups.map((g) => {
+          const outcomes = g.outcomes.map((m) => ({
+            label: domeOutcomeLabel(m),
+            price: priceMap.get(m.side_a?.id ?? '') ?? null,
+            conditionId: m.condition_id ?? null,
+            clobTokenIds: domeMarketToClobTokenIds(m),
+          }))
+
+          return {
+            type: 'match' as const,
+            slug: g.eventSlug,
+            title: deriveMatchTitle(g.outcomes),
+            category: 'sports',
+            sport: 'epl',
+            tags: ['sports', 'epl'],
+            startDate: g.gameStartTime ?? null,
+            endDate: domeEndTimeToIso(g.endTime),
+            image: g.image ?? null,
+            active: true,
+            volume: g.volume1Week,
+            outcomes,
+          }
+        })
+      })(),
+
+      // 3. IPL matches
+      (async (): Promise<FeedItem[]> => {
+        if (sportFilter && sportFilter !== 'ipl') return []
+        if (categoryFilter !== 'all' && categoryFilter !== 'sports') return []
+
+        const matches = await domeGetIplMatches()
+
+        // Fetch prices for both sides in parallel
+        const priceResults = await Promise.allSettled(
+          matches.map((m) =>
+            Promise.all([
+              m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
+              m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
+            ])
+          )
+        )
+
+        return matches.map((m, i) => {
+          const pr = priceResults[i]
+          const [priceA, priceB] = pr.status === 'fulfilled' ? pr.value : [null, null]
+
+          return {
+            type: 'match' as const,
+            slug: m.market_slug,
+            title: m.title.replace(/^Indian Premier League:\s*/, ''),
+            category: 'sports',
+            sport: 'ipl',
+            tags: m.tags ?? ['sports', 'cricket', 'indian premier league'],
+            startDate: m.game_start_time ?? null,
+            endDate: domeEndTimeToIso(m.end_time),
+            image: m.image ?? null,
+            active: domeStatusToActive(m.status),
+            volume: m.volume_1_week ?? m.volume_total ?? null,
+            outcomes: [
+              {
+                label: m.side_a?.label ?? 'Team A',
+                price: priceA,
+                conditionId: m.condition_id ?? null,
+                clobTokenIds: m.side_a?.id ? [m.side_a.id] : [],
+              },
+              {
+                label: m.side_b?.label ?? 'Team B',
+                price: priceB,
+                conditionId: m.condition_id ?? null,
+                clobTokenIds: m.side_b?.id ? [m.side_b.id] : [],
+              },
+            ],
+          }
+        })
+      })(),
+    ])
+
+    // Collect results, skip failed sources
+    const items: FeedItem[] = []
+    const sources = [pinnedResult, eplResult, iplResult]
+    const sourceNames = ['pinned', 'epl', 'ipl']
+    for (let i = 0; i < sources.length; i++) {
+      const r = sources[i]
+      if (r.status === 'fulfilled') {
+        items.push(...r.value)
+      } else {
+        console.error(`[api] /predict/feed — ${sourceNames[i]} failed:`, r.reason)
+      }
+    }
+
+    // Sort: upcoming matches (next 48h) first by startDate, then pinned by volume, then rest
+    const now = Date.now()
+    const cutoff48h = now + 48 * 60 * 60 * 1000
+
+    items.sort((a, b) => {
+      const aStart = a.startDate ? new Date(a.startDate).getTime() : null
+      const bStart = b.startDate ? new Date(b.startDate).getTime() : null
+      const aUpcoming = aStart && aStart > now && aStart < cutoff48h
+      const bUpcoming = bStart && bStart > now && bStart < cutoff48h
+
+      // Upcoming matches first
+      if (aUpcoming && !bUpcoming) return -1
+      if (!aUpcoming && bUpcoming) return 1
+      if (aUpcoming && bUpcoming) return aStart! - bStart!
+
+      // Then binary markets by volume
+      if (a.type === 'binary' && b.type === 'match') return -1
+      if (a.type === 'match' && b.type === 'binary') return 1
+      if (a.type === 'binary' && b.type === 'binary') return (b.volume ?? 0) - (a.volume ?? 0)
+
+      // Then remaining matches by startDate
+      if (aStart && bStart) return aStart - bStart
+      return (b.volume ?? 0) - (a.volume ?? 0)
+    })
+
+    // Dedupe categories from actual items
+    const categories = [...new Set(items.map((item) => item.category))]
+
+    return c.json({ items: items.slice(0, limit), categories })
+  } catch (err) {
+    console.error('[api] Unexpected error in GET /predict/feed:', err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
