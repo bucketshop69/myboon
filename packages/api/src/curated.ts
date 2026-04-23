@@ -30,3 +30,16 @@ export const CURATED_SLUGS = {
   geopolitics: [...CURATED_GEOPOLITICS_SLUGS],
   sports: [...SUPPORTED_SPORTS],
 }
+
+/**
+ * Derive a display category from Dome market tags.
+ */
+export function deriveCategory(tags: string[]): string {
+  const t = new Set(tags.map((s) => s.toLowerCase()))
+  if (t.has('crypto') || t.has('bitcoin') || t.has('ethereum') || t.has('solana')) return 'crypto'
+  if (t.has('politics') || t.has('geopolitics')) return 'politics'
+  if (t.has('sports') || t.has('epl') || t.has('cricket')) return 'sports'
+  if (t.has('ai') || t.has('tech')) return 'tech'
+  if (t.has('economics') || t.has('fed') || t.has('macro')) return 'macro'
+  return tags[0]?.toLowerCase() ?? 'other'
+}

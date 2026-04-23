@@ -282,3 +282,19 @@ function isMatchSlug(slug: string): boolean {
   return /\d{4}-\d{2}-\d{2}$/.test(slug)
 }
 
+// ---- IPL helpers ----
+
+/**
+ * Fetch open IPL match markets from Dome.
+ * IPL matches are 2-way binary (side_a=Team A, side_b=Team B) — no grouping needed.
+ * Each market IS the match (event_slug = market_slug).
+ */
+export async function domeGetIplMatches(): Promise<DomeMarket[]> {
+  const markets = await domeGetSportMarkets('cricket')
+  return markets.filter((m) =>
+    m.market_slug.startsWith('cricipl-') &&
+    m.game_start_time &&
+    m.status === 'open'
+  )
+}
+

@@ -11,6 +11,7 @@ const DOME_BASE_URL = 'https://api.domeapi.io/v1'
 const VOLUME_SURGE_THRESHOLD = 0.20
 const CLOSING_WINDOW_MS = 48 * 60 * 60 * 1000 // 48 hours
 const CLOSING_SIGNAL_COOLDOWN_MS = 6 * 60 * 60 * 1000 // 6 hours
+const MAX_SUB_MARKETS_PER_EVENT = 5 // Cap sub-markets for multi-outcome events
 
 function domeHeaders(): Record<string, string> {
   const key = process.env.DOME_API_KEY
@@ -32,15 +33,26 @@ interface DomeMarket {
   side_b: { id: string; label: string }
 }
 
+/** Extended Market with source metadata */
+interface DiscoveryMarket extends Market {
+  /** true if this market is a sub-outcome of a multi-outcome event (not independently pinned) */
+  isEventExpansion?: boolean
+}
+
 /**
  * Fetch pinned markets via Dome API.
  * Tries event_slug first (multi-outcome), falls back to market_slug (single-outcome).
+ * For multi-outcome events, only keeps the top sub-markets by volume to prevent signal spam.
  */
-async function fetchPinnedViaDome(slugs: string[]): Promise<Market[]> {
+async function fetchPinnedViaDome(slugs: string[]): Promise<DiscoveryMarket[]> {
   const now = new Date()
-  const results: Market[] = []
+  const results: DiscoveryMarket[] = []
+  const seen = new Set<string>()
 
   for (const slug of slugs) {
+    if (seen.has(slug)) continue // skip duplicate slugs
+    seen.add(slug)
+
     try {
       // Try as event slug first (multi-outcome markets)
       let res = await fetch(
@@ -49,6 +61,7 @@ async function fetchPinnedViaDome(slugs: string[]): Promise<Market[]> {
       )
       let data = res.ok ? await res.json() : { markets: [] }
       let domeMarkets: DomeMarket[] = data.markets ?? []
+      const isEvent = domeMarkets.length > 1
 
       // If no event results, try as market slug (single-outcome)
       if (domeMarkets.length === 0) {
@@ -60,15 +73,21 @@ async function fetchPinnedViaDome(slugs: string[]): Promise<Market[]> {
         domeMarkets = data.markets ?? []
       }
 
+      // Filter expired
+      domeMarkets = domeMarkets.filter((dm) => {
+        if (!dm.end_time) return true
+        return new Date(dm.end_time * 1000) > now
+      }).filter((dm) => dm.side_a?.id)
+
+      // For multi-outcome events, only keep top N by volume
+      if (isEvent && domeMarkets.length > MAX_SUB_MARKETS_PER_EVENT) {
+        domeMarkets.sort((a, b) => (b.volume_total ?? 0) - (a.volume_total ?? 0))
+        const dropped = domeMarkets.length - MAX_SUB_MARKETS_PER_EVENT
+        domeMarkets = domeMarkets.slice(0, MAX_SUB_MARKETS_PER_EVENT)
+        console.log(`[discovery] Event "${slug}": kept top ${MAX_SUB_MARKETS_PER_EVENT}, dropped ${dropped} low-volume sub-markets`)
+      }
+
       for (const dm of domeMarkets) {
-        // Skip expired
-        if (dm.end_time) {
-          const endDate = new Date(dm.end_time * 1000)
-          if (endDate < now) continue
-        }
-
-        if (!dm.side_a?.id) continue
-
         results.push({
           title: dm.title,
           id: dm.condition_id,
@@ -76,6 +95,7 @@ async function fetchPinnedViaDome(slugs: string[]): Promise<Market[]> {
           tokenIds: [dm.side_a.id, dm.side_b?.id ?? ''],
           endDate: dm.end_time ? new Date(dm.end_time * 1000).toISOString() : undefined,
           volume: dm.volume_total ?? 0,
+          isEventExpansion: isEvent,
         })
       }
     } catch (err) {
@@ -101,13 +121,16 @@ export async function runDiscovery(): Promise<void> {
   const now = new Date()
   const pinnedMarkets = await fetchPinnedViaDome(pinnedSlugs)
 
+  // Wrap top markets as DiscoveryMarket (not event expansions)
+  const topDiscovery: DiscoveryMarket[] = topMarkets.map((m) => ({ ...m, isEventExpansion: false }))
+
   // Merge: top markets first, then pinned markets not already present
-  const seenIds = new Set(topMarkets.map((m) => m.id))
+  const seenIds = new Set(topDiscovery.map((m) => m.id))
   const uniquePinned = pinnedMarkets.filter((m) => !seenIds.has(m.id))
-  const markets = [...topMarkets, ...uniquePinned]
+  const markets: DiscoveryMarket[] = [...topDiscovery, ...uniquePinned]
 
   console.log(
-    `[discovery] Found ${topMarkets.length} top markets + ${uniquePinned.length} pinned = ${markets.length} total`
+    `[discovery] Found ${topDiscovery.length} top markets + ${uniquePinned.length} pinned = ${markets.length} total`
   )
 
   let signalCount = 0
@@ -189,7 +212,9 @@ export async function runDiscovery(): Promise<void> {
     // Gate signal inserts on delta conditions
     let anySignalFired = false
 
-    if (is_new) {
+    // Skip MARKET_DISCOVERED for event sub-markets (e.g. individual candidates in a nomination event)
+    // They're just sub-outcomes of a known pinned event, not genuinely new discoveries
+    if (is_new && !market.isEventExpansion) {
       const signal: Signal = {
         source: 'POLYMARKET',
         type: 'MARKET_DISCOVERED',
