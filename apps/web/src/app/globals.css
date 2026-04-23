@@ -127,6 +127,25 @@ body {
   animation-play-state: paused;
 }
 
+/* Ticker tape scroll */
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-scroll {
+  animation: ticker-scroll 30s linear infinite;
+  width: max-content;
+}
+
+.ticker-scroll:hover {
+  animation-play-state: paused;
+}
+
 /* Card transition for non-animation properties */
 .card-float {
   transition: opacity 0.5s cubic-bezier(0.19, 1, 0.22, 1),
