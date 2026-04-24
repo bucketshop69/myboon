@@ -366,6 +366,13 @@ async function run(): Promise<void> {
         continue
       }
 
+      // Catch empty content before wasting a critic LLM call
+      if (!draft.content_small?.trim() && !draft.content_full?.trim()) {
+        console.log(`[publisher] Empty content for "${narrative.cluster}" — MiniMax returned no content. Rejecting.`)
+        await markNarrativeStatus(narrative.id, 'rejected')
+        continue
+      }
+
       // Critic rejected — skip insert
       if (critic?.verdict === 'reject') {
         console.log(`[publisher] Critic rejected narrative ${narrative.id}: ${critic.issues.join(', ')}`)
