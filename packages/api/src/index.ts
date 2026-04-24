@@ -7,7 +7,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
 import { clobRoutes } from './clob.js'
-import { CURATED_GEOPOLITICS_SLUGS, deriveCategory } from './curated.js'
+import { CURATED_GEOPOLITICS_SLUGS, deriveCategory, deriveCategoryFromText } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
   isDomeAvailable,
@@ -1061,291 +1061,153 @@ app.get('/predict/feed', async (c) => {
   const limit = isNaN(rawLimit) || rawLimit < 1 ? 30 : Math.min(rawLimit, 50)
 
   try {
-    // Parallel-fetch all three sources (Dome primary, Gamma fallback)
+    // Parallel-fetch all three sources (Gamma only — Dome is unreliable)
     const [pinnedResult, eplResult, iplResult] = await Promise.allSettled([
-      // 1. Pinned binary markets (Dome primary, Gamma fallback)
+      // 1. Pinned binary markets via Gamma
       (async (): Promise<FeedItem[]> => {
         if (PINNED_SLUGS.length === 0) return []
-        if (sportFilter) return [] // sport filter excludes pinned
+        if (sportFilter) return []
         if (categoryFilter === 'sports') return []
 
-        return withDomeFallback(
-          'feed/pinned',
-          async () => {
-            const domeMap = await domeGetMarketsBySlugs(PINNED_SLUGS)
-            const entries = Array.from(domeMap.entries())
-            const priceResults = await Promise.allSettled(
-              entries.map(([, m]) =>
-                Promise.all([
-                  m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
-                  m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
-                ])
-              )
-            )
+        const results = await Promise.allSettled(
+          PINNED_SLUGS.map(async (slug) => {
+            const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
+            if (!res.ok) return null
+            const arr = await res.json() as unknown[]
+            if (!Array.isArray(arr) || arr.length === 0) return null
+            const market = arr[0] as Record<string, unknown>
 
-            return entries
-              .map(([slug, m], i) => {
-                const category = deriveCategory(m.tags ?? [])
-                if (categoryFilter !== 'all' && category !== categoryFilter) return null
+            // Gamma markets don't have tags — derive category from slug + question
+            const question = String(market.question ?? market.title ?? slug).toLowerCase()
+            const category = deriveCategoryFromText(slug, question)
+            if (categoryFilter !== 'all' && category !== categoryFilter) return null
 
-                const pr = priceResults[i]
-                const [yesPrice, noPrice] = pr.status === 'fulfilled' ? pr.value : [null, null]
+            const clobTokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
 
-                return {
-                  type: 'binary' as const,
-                  slug,
-                  question: m.title,
-                  category,
-                  tags: m.tags ?? [],
-                  yesPrice,
-                  noPrice,
-                  volume: m.volume_1_week ?? m.volume_total ?? null,
-                  endDate: domeEndTimeToIso(m.end_time),
-                  active: domeStatusToActive(m.status),
-                  image: m.image ?? null,
-                  clobTokenIds: domeMarketToClobTokenIds(m),
-                  conditionId: m.condition_id ?? null,
-                }
-              })
-              .filter((item): item is FeedItem => item !== null)
-          },
-          async () => {
-            // Gamma fallback: fetch each slug individually, get prices from CLOB
-            const results = await Promise.allSettled(
-              PINNED_SLUGS.map(async (slug) => {
-                const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
-                if (!res.ok) return null
-                const arr = await res.json() as unknown[]
-                if (!Array.isArray(arr) || arr.length === 0) return null
-                const market = arr[0] as Record<string, unknown>
-                const tags = Array.isArray(market.tags) ? (market.tags as string[]) : []
-                const gammaTags = tags.length > 0 ? tags : [String(market.category ?? 'other').toLowerCase()]
-                const category = deriveCategory(gammaTags)
-                if (categoryFilter !== 'all' && category !== categoryFilter) return null
+            // Parse outcomePrices from Gamma (already embedded in market response)
+            const outcomePrices = parseStringArray(market.outcomePrices)
+            const yesPrice = parseNullableNumber(outcomePrices[0])
+            const noPrice = parseNullableNumber(outcomePrices[1])
 
-                const clobTokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
-                let yesPrice: number | null = null
-                let noPrice: number | null = null
-                if (clobTokenIds.length >= 2) {
-                  const [yRes, nRes] = await Promise.allSettled([
-                    clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[0])}&side=buy`),
-                    clobFetch(`price?token_id=${encodeURIComponent(clobTokenIds[1])}&side=buy`),
-                  ])
-                  if (yRes.status === 'fulfilled' && yRes.value.ok) {
-                    const body = await yRes.value.json() as Record<string, unknown>
-                    yesPrice = parseNullableNumber(body.price)
-                  }
-                  if (nRes.status === 'fulfilled' && nRes.value.ok) {
-                    const body = await nRes.value.json() as Record<string, unknown>
-                    noPrice = parseNullableNumber(body.price)
-                  }
-                }
-
-                return {
-                  type: 'binary' as const,
-                  slug,
-                  question: market.question ?? market.title ?? null,
-                  category,
-                  tags: gammaTags,
-                  yesPrice,
-                  noPrice,
-                  volume: market.volume24hr ?? market.volume ?? null,
-                  endDate: market.endDate ?? market.end_date ?? null,
-                  active: market.active ?? null,
-                  image: market.image ?? market.imageUrl ?? null,
-                  clobTokenIds,
-                  conditionId: market.conditionId ?? market.condition_id ?? null,
-                } as FeedItem
-              })
-            )
-            return results
-              .filter((r): r is PromiseFulfilledResult<FeedItem | null> => r.status === 'fulfilled')
-              .map((r) => r.value)
-              .filter((item): item is FeedItem => item !== null)
-          },
+            return {
+              type: 'binary' as const,
+              slug,
+              question: market.question ?? market.title ?? null,
+              category,
+              tags: [category],
+              yesPrice,
+              noPrice,
+              volume: market.volume24hr ?? market.volume ?? null,
+              endDate: market.endDate ?? market.end_date ?? null,
+              active: market.active ?? null,
+              image: market.image ?? market.imageUrl ?? null,
+              clobTokenIds,
+              conditionId: market.conditionId ?? market.condition_id ?? null,
+            } as FeedItem
+          })
         )
+        return results
+          .filter((r): r is PromiseFulfilledResult<FeedItem | null> => r.status === 'fulfilled')
+          .map((r) => r.value)
+          .filter((item): item is FeedItem => item !== null)
       })(),
 
-      // 2. EPL matches (Dome primary, Gamma fallback via series_id 10188)
+      // 2. EPL matches via Gamma (series_id 10188)
       (async (): Promise<FeedItem[]> => {
         if (sportFilter && sportFilter !== 'epl') return []
         if (categoryFilter !== 'all' && categoryFilter !== 'sports') return []
 
-        return withDomeFallback(
-          'feed/epl',
-          async () => {
-            const allMarkets = await domeGetSportMarkets('epl')
-            const now = Math.floor(Date.now() / 1000)
-            const matchGroups = domeGroupMatchOutcomes(allMarkets)
-              .filter((g) => !g.endTime || g.endTime > now)
+        const res = await gammaFetch('events?series_id=10188&active=true&closed=false&limit=20')
+        if (!res.ok) return []
+        const events = await res.json() as Record<string, unknown>[]
+        if (!Array.isArray(events)) return []
 
-            const allTokenIds = matchGroups.flatMap((g) =>
-              g.outcomes.map((m) => m.side_a?.id).filter(Boolean) as string[]
-            )
-            const priceResults = await Promise.allSettled(
-              allTokenIds.map((id) => domeGetMarketPrice(id))
-            )
-            const priceMap = new Map<string, number | null>()
-            allTokenIds.forEach((id, i) => {
-              const r = priceResults[i]
-              priceMap.set(id, r.status === 'fulfilled' ? r.value : null)
+        return events
+          .filter((e) => {
+            const slug = String(e.slug ?? '')
+            return slug.startsWith('epl-') && !slug.endsWith('-more-markets')
+          })
+          .map((e) => {
+            const markets = (e.markets ?? []) as Record<string, unknown>[]
+            const outcomes = markets.map((m) => {
+              const outcomePrices = parseStringArray(m.outcomePrices)
+              const clobTokenIds = parseStringArray(m.clobTokenIds)
+              return {
+                label: m.groupItemTitle ?? m.question ?? null,
+                price: parseNullableNumber(outcomePrices[0]),
+                conditionId: m.conditionId ?? m.condition_id ?? null,
+                clobTokenIds,
+              }
             })
-
-            return matchGroups.map((g) => ({
+            return {
               type: 'match' as const,
-              slug: g.eventSlug,
-              title: deriveMatchTitle(g.outcomes),
+              slug: e.slug as string,
+              title: e.title as string,
               category: 'sports',
               sport: 'epl',
               tags: ['sports', 'epl'],
-              startDate: g.gameStartTime ?? null,
-              endDate: domeEndTimeToIso(g.endTime),
-              image: g.image ?? null,
-              active: true,
-              volume: g.volume1Week,
-              outcomes: g.outcomes.map((m) => ({
-                label: domeOutcomeLabel(m),
-                price: priceMap.get(m.side_a?.id ?? '') ?? null,
-                conditionId: m.condition_id ?? null,
-                clobTokenIds: domeMarketToClobTokenIds(m),
-              })),
-            }))
-          },
-          async () => {
-            // Gamma fallback: series_id 10188 = EPL
-            const res = await gammaFetch('events?series_id=10188&active=true&closed=false&limit=20')
-            if (!res.ok) return []
-            const events = await res.json() as Record<string, unknown>[]
-            if (!Array.isArray(events)) return []
-
-            return events
-              .filter((e) => {
-                const slug = String(e.slug ?? '')
-                return slug.startsWith('epl-') && !slug.endsWith('-more-markets')
-              })
-              .map((e) => {
-                const markets = (e.markets ?? []) as Record<string, unknown>[]
-                const outcomes = markets.map((m) => {
-                  const outcomePrices = parseStringArray(m.outcomePrices)
-                  const clobTokenIds = parseStringArray(m.clobTokenIds)
-                  return {
-                    label: m.groupItemTitle ?? m.question ?? null,
-                    price: parseNullableNumber(outcomePrices[0]),
-                    conditionId: m.conditionId ?? m.condition_id ?? null,
-                    clobTokenIds,
-                  }
-                })
-                return {
-                  type: 'match' as const,
-                  slug: e.slug as string,
-                  title: e.title as string,
-                  category: 'sports',
-                  sport: 'epl',
-                  tags: ['sports', 'epl'],
-                  startDate: (e.startDate as string) ?? null,
-                  endDate: (e.endDate as string) ?? null,
-                  image: (e.image as string) ?? null,
-                  active: (e.active as boolean) ?? null,
-                  volume: (e.volume24hr ?? e.volume ?? null) as number | null,
-                  outcomes,
-                } as FeedItem
-              })
-          },
-        )
+              startDate: (e.startDate as string) ?? null,
+              endDate: (e.endDate as string) ?? null,
+              image: (e.image as string) ?? null,
+              active: (e.active as boolean) ?? null,
+              volume: (e.volume24hr ?? e.volume ?? null) as number | null,
+              outcomes,
+            } as FeedItem
+          })
       })(),
 
-      // 3. IPL matches (Dome primary, Gamma fallback via series_id 11213)
+      // 3. IPL matches via Gamma (series_id 11213)
       (async (): Promise<FeedItem[]> => {
         if (sportFilter && sportFilter !== 'ipl') return []
         if (categoryFilter !== 'all' && categoryFilter !== 'sports') return []
 
-        return withDomeFallback(
-          'feed/ipl',
-          async () => {
-            const matches = await domeGetIplMatches()
-            const priceResults = await Promise.allSettled(
-              matches.map((m) =>
-                Promise.all([
-                  m.side_a?.id ? domeGetMarketPrice(m.side_a.id) : Promise.resolve(null),
-                  m.side_b?.id ? domeGetMarketPrice(m.side_b.id) : Promise.resolve(null),
-                ])
-              )
-            )
+        const res = await gammaFetch('events?series_id=11213&active=true&closed=false&limit=20')
+        if (!res.ok) return []
+        const events = await res.json() as Record<string, unknown>[]
+        if (!Array.isArray(events)) return []
 
-            return matches.map((m, i) => {
-              const pr = priceResults[i]
-              const [priceA, priceB] = pr.status === 'fulfilled' ? pr.value : [null, null]
-              return {
-                type: 'match' as const,
-                slug: m.market_slug,
-                title: m.title.replace(/^Indian Premier League:\s*/, ''),
-                category: 'sports',
-                sport: 'ipl',
-                tags: m.tags ?? ['sports', 'cricket', 'indian premier league'],
-                startDate: m.game_start_time ?? null,
-                endDate: domeEndTimeToIso(m.end_time),
-                image: m.image ?? null,
-                active: domeStatusToActive(m.status),
-                volume: m.volume_1_week ?? m.volume_total ?? null,
-                outcomes: [
-                  { label: m.side_a?.label ?? 'Team A', price: priceA, conditionId: m.condition_id ?? null, clobTokenIds: m.side_a?.id ? [m.side_a.id] : [] },
-                  { label: m.side_b?.label ?? 'Team B', price: priceB, conditionId: m.condition_id ?? null, clobTokenIds: m.side_b?.id ? [m.side_b.id] : [] },
-                ],
-              }
-            })
-          },
-          async () => {
-            // Gamma fallback: series_id 11213 = IPL
-            const res = await gammaFetch('events?series_id=11213&active=true&closed=false&limit=20')
-            if (!res.ok) return []
-            const events = await res.json() as Record<string, unknown>[]
-            if (!Array.isArray(events)) return []
+        return events
+          .filter((e) => {
+            const slug = String(e.slug ?? '')
+            // Only main match events, exclude props like -toss-*, -most-sixes, etc
+            return slug.startsWith('cricipl-') && /\d{4}-\d{2}-\d{2}$/.test(slug)
+          })
+          .map((e) => {
+            const markets = (e.markets ?? []) as Record<string, unknown>[]
+            const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
+            if (!mainMarket) return null
 
-            return events
-              .filter((e) => {
-                const slug = String(e.slug ?? '')
-                // Only main match events: cricipl-{team}-{team}-{date}, exclude props like -toss-*, -most-sixes, etc
-                return slug.startsWith('cricipl-') && /\d{4}-\d{2}-\d{2}$/.test(slug)
-              })
-              .map((e) => {
-                const markets = (e.markets ?? []) as Record<string, unknown>[]
-                // Main match market is the one whose slug matches the event slug
-                const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
-                if (!mainMarket) return null
+            const outcomesRaw = typeof mainMarket.outcomes === 'string'
+              ? JSON.parse(mainMarket.outcomes as string) as string[]
+              : (mainMarket.outcomes ?? []) as string[]
+            const outcomePrices = parseStringArray(mainMarket.outcomePrices)
+            const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
 
-                const outcomesRaw = typeof mainMarket.outcomes === 'string'
-                  ? JSON.parse(mainMarket.outcomes as string) as string[]
-                  : (mainMarket.outcomes ?? []) as string[]
-                const outcomePrices = parseStringArray(mainMarket.outcomePrices)
-                const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
+            const outcomes = outcomesRaw.map((label, idx) => ({
+              label,
+              price: parseNullableNumber(outcomePrices[idx]),
+              conditionId: mainMarket.conditionId ?? mainMarket.condition_id ?? null,
+              clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
+            }))
 
-                const outcomes = outcomesRaw.map((label, idx) => ({
-                  label,
-                  price: parseNullableNumber(outcomePrices[idx]),
-                  conditionId: mainMarket.conditionId ?? mainMarket.condition_id ?? null,
-                  clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
-                }))
+            const title = String(e.title ?? '').replace(/^Indian Premier League:\s*/, '')
 
-                const title = String(e.title ?? '').replace(/^Indian Premier League:\s*/, '')
-
-                return {
-                  type: 'match' as const,
-                  slug: e.slug as string,
-                  title,
-                  category: 'sports',
-                  sport: 'ipl',
-                  tags: ['sports', 'cricket', 'indian premier league'],
-                  startDate: (e.startDate as string) ?? null,
-                  endDate: (e.endDate as string) ?? null,
-                  image: (e.image as string) ?? null,
-                  active: (e.active as boolean) ?? null,
-                  volume: (e.volume24hr ?? e.volume ?? null) as number | null,
-                  outcomes,
-                } as FeedItem
-              })
-              .filter((item): item is FeedItem => item !== null)
-          },
-        )
+            return {
+              type: 'match' as const,
+              slug: e.slug as string,
+              title,
+              category: 'sports',
+              sport: 'ipl',
+              tags: ['sports', 'cricket', 'indian premier league'],
+              startDate: (e.startDate as string) ?? null,
+              endDate: (e.endDate as string) ?? null,
+              image: (e.image as string) ?? null,
+              active: (e.active as boolean) ?? null,
+              volume: (e.volume24hr ?? e.volume ?? null) as number | null,
+              outcomes,
+            } as FeedItem
+          })
+          .filter((item): item is FeedItem => item !== null)
       })(),
     ])
 
