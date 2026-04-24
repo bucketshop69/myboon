@@ -38,12 +38,20 @@ async function fetchDraftNarratives(): Promise<Narrative[]> {
   return res.json() as Promise<Narrative[]>
 }
 
+/** Escape PostgREST special chars in filter values (dots, parens, commas). */
+function postgrestEscape(value: string): string {
+  // PostgREST treats . ( ) , as operators inside filter values — double-quote to escape
+  if (/[.(),]/.test(value)) return `"${value.replace(/"/g, '\\"')}"`
+  return value
+}
+
 async function isTopicCapped(clusterTitle: string): Promise<boolean> {
   // Cap: same cluster title already published in the last 24h → skip.
   // Queries the narratives table directly on cluster + status to avoid
   // the old first-word keyword approach which was blocking unrelated topics.
   const since = new Date(Date.now() - 86400000).toISOString()
-  const url = `${SUPABASE_URL}/rest/v1/narratives?cluster=eq.${encodeURIComponent(clusterTitle)}&status=eq.published&updated_at=gte.${encodeURIComponent(since)}&select=id&limit=1`
+  const escaped = postgrestEscape(clusterTitle)
+  const url = `${SUPABASE_URL}/rest/v1/narratives?cluster=eq.${encodeURIComponent(escaped)}&status=eq.published&updated_at=gte.${encodeURIComponent(since)}&select=id&limit=1`
   const res = await fetch(url, { headers: supabaseHeaders() })
   if (!res.ok) return false
   const rows = await res.json() as unknown[]
@@ -155,27 +163,36 @@ function buildEditorialBrief(recent: RecentPublication[]): string {
   const typeBreakdown = [...typeCounts.entries()]
     .map(([type, count]) => `${type}: ${count}`)
 
-  // Wallet mentions (extract from content_small)
-  const walletMentions = new Map<string, number>()
+  // Actor mentions — hex addresses (0x...) and Polymarket usernames (alphanumeric handles)
+  const actorMentions = new Map<string, number>()
   for (const pub of recent) {
-    const matches = pub.content_small.match(/0x[a-f0-9]{6,10}/gi) ?? []
-    for (const addr of matches) {
+    // Match 0x hex addresses
+    const hexMatches = pub.content_small.match(/0x[a-f0-9]{6,40}/gi) ?? []
+    for (const addr of hexMatches) {
       const key = addr.toLowerCase().slice(0, 10)
-      walletMentions.set(key, (walletMentions.get(key) ?? 0) + 1)
+      actorMentions.set(key, (actorMentions.get(key) ?? 0) + 1)
+    }
+    // Match Polymarket-style usernames (word at start of line or after newline, before "is"/"bought"/"sold"/"dropped" etc.)
+    const usernameMatches = pub.content_small.match(/(?:^|\n)([a-zA-Z][a-zA-Z0-9_]{2,25})\s+(?:is|bought|sold|dropped|went|has|placed|shorted|longed|flipped)/gm) ?? []
+    for (const m of usernameMatches) {
+      const username = m.trim().split(/\s+/)[0].toLowerCase()
+      if (!['the', 'this', 'that', 'fed', 'btc', 'eth', 'japan', 'china', 'real'].includes(username)) {
+        actorMentions.set(username, (actorMentions.get(username) ?? 0) + 1)
+      }
     }
   }
-  const repeatWallets = [...walletMentions.entries()]
+  const repeatWallets = [...actorMentions.entries()]
     .filter(([, count]) => count >= 2)
     .sort((a, b) => b[1] - a[1])
-    .map(([addr, count]) => `${addr} (${count}x)`)
+    .map(([actor, count]) => `${actor} (${count}x)`)
 
   return [
     `Published in last 24h: ${recent.length} narratives.`,
     `Content types: ${typeBreakdown.join(', ')}`,
     `Top tags: ${topTags.join(', ')}`,
     repeatWallets.length > 0
-      ? `Repeat wallets: ${repeatWallets.join(', ')} — deprioritize unless genuinely new angle`
-      : 'No repeat wallets.',
+      ? `Repeat actors: ${repeatWallets.join(', ')} — deprioritize unless genuinely new angle`
+      : 'No repeat actors.',
     '',
     'Recent cards (newest first):',
     ...recent.slice(0, 8).map((p, i) =>
@@ -227,8 +244,8 @@ async function runChiefEditor(
     cluster: d.cluster,
     score: d.score,
     signal_count: d.signal_count,
-    observation: (d.observation ?? '').slice(0, 300),
-    key_signals: (d.key_signals ?? []).slice(0, 5).map((s) => (s ?? '').slice(0, 150)),
+    observation: (d.observation ?? '').slice(0, 600),
+    key_signals: (d.key_signals ?? []).slice(0, 5).map((s) => (s ?? '').slice(0, 300)),
   }))
 
   const userPrompt = [
@@ -262,16 +279,16 @@ async function runChiefEditor(
       const arrStart = cleaned.indexOf('[')
       const arrEnd = cleaned.lastIndexOf(']')
       if (arrStart === -1 || arrEnd === -1) {
-        console.warn('[chief-editor] Could not parse response — allowing all drafts')
-        return drafts.map((d) => ({ narrative_id: d.id, decision: 'publish' as const, reason: 'fallback — editor parse failed' }))
+        console.warn('[chief-editor] Could not parse response — skipping all drafts (gatekeeper safety)')
+        return drafts.map((d) => ({ narrative_id: d.id, decision: 'skip' as const, reason: 'fallback — editor parse failed, skipping as safety measure' }))
       }
       decisions = JSON.parse(cleaned.slice(arrStart, arrEnd + 1)) as ChiefEditorDecision[]
     }
 
     return decisions
   } catch (err) {
-    console.error('[chief-editor] LLM call failed — allowing all drafts:', err instanceof Error ? err.message : err)
-    return drafts.map((d) => ({ narrative_id: d.id, decision: 'publish' as const, reason: 'fallback — editor error' }))
+    console.error('[chief-editor] LLM call failed — skipping all drafts (gatekeeper safety):', err instanceof Error ? err.message : err)
+    return drafts.map((d) => ({ narrative_id: d.id, decision: 'skip' as const, reason: 'fallback — editor LLM unavailable, skipping as safety measure' }))
   }
 }
 

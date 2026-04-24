@@ -7,7 +7,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
 import { clobRoutes } from './clob.js'
-import { CURATED_GEOPOLITICS_SLUGS, deriveCategory, deriveCategoryFromText } from './curated.js'
+import { CURATED_GEOPOLITICS_SLUGS, deriveCategoryFromText } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
   isDomeAvailable,
@@ -74,8 +74,25 @@ const GAMMA_BASE = 'https://gamma-api.polymarket.com'
 const DATA_API_BASE = 'https://data-api.polymarket.com'
 const CLOB_BASE = process.env.CLOB_HOST || 'https://clob-v2.polymarket.com'
 
+// --- TTL cache for Gamma API responses ---
+const CACHE_TTL_MS = 60_000 // 60 seconds
+const gammaCache = new Map<string, { data: unknown; expiresAt: number }>()
+
 async function gammaFetch(path: string): Promise<Response> {
   return fetch(`${GAMMA_BASE}/${path}`)
+}
+
+/** Gamma fetch with TTL cache — avoids hammering the API on concurrent /predict/feed requests. */
+async function gammaFetchCached<T>(path: string): Promise<T | null> {
+  const now = Date.now()
+  const cached = gammaCache.get(path)
+  if (cached && cached.expiresAt > now) return cached.data as T
+
+  const res = await gammaFetch(path)
+  if (!res.ok) return null
+  const data = await res.json() as T
+  gammaCache.set(path, { data, expiresAt: now + CACHE_TTL_MS })
+  return data
 }
 
 async function dataApiFetch(path: string): Promise<Response> {
@@ -200,8 +217,6 @@ app.get('/narratives/:id', async (c) => {
 })
 
 // --- predict routes ---
-
-const CURATED_GEO_SET = new Set<string>(CURATED_GEOPOLITICS_SLUGS)
 
 // GET /predict/markets
 app.get('/predict/markets', async (c) => {
@@ -1128,9 +1143,7 @@ app.get('/predict/feed', async (c) => {
 
         const results = await Promise.allSettled(
           PINNED_SLUGS.map(async (slug) => {
-            const res = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
-            if (!res.ok) return null
-            const arr = await res.json() as unknown[]
+            const arr = await gammaFetchCached<unknown[]>(`markets?slug=${encodeURIComponent(slug)}`)
             if (!Array.isArray(arr) || arr.length === 0) return null
             const market = arr[0] as Record<string, unknown>
 
@@ -1174,9 +1187,7 @@ app.get('/predict/feed', async (c) => {
         if (sportFilter && sportFilter !== 'epl') return []
         if (categoryFilter !== 'all' && categoryFilter !== 'sports') return []
 
-        const res = await gammaFetch('events?series_id=10188&active=true&closed=false&limit=20')
-        if (!res.ok) return []
-        const events = await res.json() as Record<string, unknown>[]
+        const events = await gammaFetchCached<Record<string, unknown>[]>('events?series_id=10188&active=true&closed=false&limit=20')
         if (!Array.isArray(events)) return []
 
         return events
@@ -1223,9 +1234,7 @@ app.get('/predict/feed', async (c) => {
         if (sportFilter && sportFilter !== 'ipl') return []
         if (categoryFilter !== 'all' && categoryFilter !== 'sports') return []
 
-        const res = await gammaFetch('events?series_id=11213&active=true&closed=false&limit=20')
-        if (!res.ok) return []
-        const events = await res.json() as Record<string, unknown>[]
+        const events = await gammaFetchCached<Record<string, unknown>[]>('events?series_id=11213&active=true&closed=false&limit=20')
         if (!Array.isArray(events)) return []
 
         // Dedupe: Polymarket creates both "cricipl-guj-che-DATE" and "cricipl-che-guj-DATE"
@@ -1239,7 +1248,9 @@ app.get('/predict/feed', async (c) => {
           const teams = parts[1].split('-').sort().join('-')
           const key = `${teams}-${parts[2]}`
           const existing = matchMap.get(key)
-          if (!existing || ((e.volume ?? 0) as number) > ((existing.volume ?? 0) as number)) {
+          const eVol = Number(e.volume ?? 0) || 0
+          const existingVol = Number(existing?.volume ?? 0) || 0
+          if (!existing || eVol > existingVol) {
             matchMap.set(key, e)
           }
         }
