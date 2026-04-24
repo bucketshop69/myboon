@@ -1037,6 +1037,8 @@ interface FeedItem {
   category: string
   tags: string[]
   sport?: string
+  status?: 'live' | 'upcoming' | 'ended'
+  gameStartTime?: string | null
   yesPrice?: number | null
   noPrice?: number | null
   volume: number | null
@@ -1052,6 +1054,16 @@ interface FeedItem {
     conditionId?: string | null
     clobTokenIds: string[]
   }[]
+}
+
+function deriveMatchStatus(gameStartTime: string | null | undefined, active: boolean, closed: boolean): 'live' | 'upcoming' | 'ended' {
+  if (closed) return 'ended'
+  if (!gameStartTime) return active ? 'upcoming' : 'ended'
+  const start = new Date(gameStartTime).getTime()
+  const now = Date.now()
+  if (now >= start && active) return 'live'
+  if (now < start) return 'upcoming'
+  return 'ended'
 }
 
 app.get('/predict/feed', async (c) => {
@@ -1129,6 +1141,9 @@ app.get('/predict/feed', async (c) => {
           })
           .map((e) => {
             const markets = (e.markets ?? []) as Record<string, unknown>[]
+            const gameStart = String(markets[0]?.gameStartTime ?? e.startTime ?? '')
+            const isActive = (e.active as boolean) ?? false
+            const isClosed = (e.closed as boolean) ?? false
             const outcomes = markets.map((m) => {
               const outcomePrices = parseStringArray(m.outcomePrices)
               const clobTokenIds = parseStringArray(m.clobTokenIds)
@@ -1146,10 +1161,12 @@ app.get('/predict/feed', async (c) => {
               category: 'sports',
               sport: 'epl',
               tags: ['sports', 'epl'],
+              status: deriveMatchStatus(gameStart || null, isActive, isClosed),
+              gameStartTime: gameStart || null,
               startDate: (e.startDate as string) ?? null,
               endDate: (e.endDate as string) ?? null,
               image: (e.image as string) ?? null,
-              active: (e.active as boolean) ?? null,
+              active: isActive,
               volume: (e.volume24hr ?? e.volume ?? null) as number | null,
               outcomes,
             } as FeedItem
@@ -1191,6 +1208,9 @@ app.get('/predict/feed', async (c) => {
             }))
 
             const title = String(e.title ?? '').replace(/^Indian Premier League:\s*/, '')
+            const gameStart = String(mainMarket.gameStartTime ?? e.startTime ?? '')
+            const isActive = (e.active as boolean) ?? false
+            const isClosed = (e.closed as boolean) ?? false
 
             return {
               type: 'match' as const,
@@ -1199,10 +1219,12 @@ app.get('/predict/feed', async (c) => {
               category: 'sports',
               sport: 'ipl',
               tags: ['sports', 'cricket', 'indian premier league'],
+              status: deriveMatchStatus(gameStart || null, isActive, isClosed),
+              gameStartTime: gameStart || null,
               startDate: (e.startDate as string) ?? null,
               endDate: (e.endDate as string) ?? null,
               image: (e.image as string) ?? null,
-              active: (e.active as boolean) ?? null,
+              active: isActive,
               volume: (e.volume24hr ?? e.volume ?? null) as number | null,
               outcomes,
             } as FeedItem
@@ -1224,28 +1246,26 @@ app.get('/predict/feed', async (c) => {
       }
     }
 
-    // Sort: upcoming matches (next 48h) first by startDate, then pinned by volume, then rest
-    const now = Date.now()
-    const cutoff48h = now + 48 * 60 * 60 * 1000
+    // Sort: live first, then upcoming (by gameStartTime), then pinned by volume, then rest
+    const statusOrder = { live: 0, upcoming: 1, ended: 2 }
 
     items.sort((a, b) => {
-      const aStart = a.startDate ? new Date(a.startDate).getTime() : null
-      const bStart = b.startDate ? new Date(b.startDate).getTime() : null
-      const aUpcoming = aStart && aStart > now && aStart < cutoff48h
-      const bUpcoming = bStart && bStart > now && bStart < cutoff48h
+      const aStatus = statusOrder[a.status ?? 'ended'] ?? 2
+      const bStatus = statusOrder[b.status ?? 'ended'] ?? 2
 
-      // Upcoming matches first
-      if (aUpcoming && !bUpcoming) return -1
-      if (!aUpcoming && bUpcoming) return 1
-      if (aUpcoming && bUpcoming) return aStart! - bStart!
+      // Live matches always first
+      if (aStatus !== bStatus) return aStatus - bStatus
 
-      // Then binary markets by volume
-      if (a.type === 'binary' && b.type === 'match') return -1
-      if (a.type === 'match' && b.type === 'binary') return 1
-      if (a.type === 'binary' && b.type === 'binary') return (b.volume ?? 0) - (a.volume ?? 0)
+      // Within same status, sort matches by gameStartTime
+      if (a.status === b.status && a.gameStartTime && b.gameStartTime) {
+        return new Date(a.gameStartTime).getTime() - new Date(b.gameStartTime).getTime()
+      }
 
-      // Then remaining matches by startDate
-      if (aStart && bStart) return aStart - bStart
+      // Matches before binary markets
+      if (a.type === 'match' && b.type !== 'match') return -1
+      if (a.type !== 'match' && b.type === 'match') return 1
+
+      // Binary markets by volume
       return (b.volume ?? 0) - (a.volume ?? 0)
     })
 

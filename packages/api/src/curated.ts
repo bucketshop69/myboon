@@ -50,7 +50,7 @@ export function deriveCategory(tags: string[]): string {
 export function deriveCategoryFromText(slug: string, question: string): string {
   const text = `${slug} ${question}`.toLowerCase()
 
-  if (/bitcoin|btc|ethereum|eth|solana|sol|crypto|token|defi|nft/.test(text)) return 'crypto'
+  if (/bitcoin|btc|ethereum|eth\b|solana|sol\b|crypto|token|defi|nft|binance|coinbase|hyperliquid|stablecoin|altcoin|memecoin|meme coin|doge|xrp|cardano|polkadot|avalanche|polygon|matic|aave|uniswap/.test(text)) return 'crypto'
   if (/trump|biden|president|congress|senate|election|vote|democrat|republican|geopolit|iran|china|nato|ukraine|russia|war|ceasefire|regime|invade|invasion|netanyahu|tariff/.test(text)) return 'politics'
   if (/epl|ipl|cricket|nba|nfl|nhl|mlb|football|soccer|tennis|f1|formula|championship|league|match|premier|ucl|la liga|serie a|bundesliga|sport/.test(text)) return 'sports'
   if (/\bai\b|openai|chatgpt|google|apple|microsoft|meta|nvidia|tech|artificial intelligence/.test(text)) return 'tech'
