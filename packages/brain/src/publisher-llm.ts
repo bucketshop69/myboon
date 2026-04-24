@@ -123,44 +123,38 @@ function buildSystemPrompt(): string {
     '- "crypto": token prices, DEX flows, on-chain activity\n\n' +
     'STEP 4 — WRITE:\n\n' +
     'content_small — THE CARD. This is what users see scrolling the feed. Rules:\n' +
-    '- 3-4 SHORT lines. Each line is one fact. Not a paragraph.\n' +
-    '- Total under 200 characters.\n' +
+    '- 2-3 SHORT lines. Each line is one punchy fact.\n' +
+    '- HARD LIMIT: 100-150 characters total. Count them. If over 150 → rewrite shorter.\n' +
+    '- This is a phone notification, not a paragraph. Be brutal about brevity.\n' +
     '- Lead depends on content_type:\n' +
-    '  • fomo/signal → lead with the number: "$500K against Hormuz at 99% odds"\n' +
-    '  • macro/news → lead with the thesis: "Fed rate cut odds just collapsed"\n' +
-    '  • sports → lead with what happened: "Real Madrid odds just flipped"\n' +
+    '  • fomo/signal → lead with the number: "$500K against Hormuz at 99%"\n' +
+    '  • macro/news → lead with the thesis: "Fed cut odds collapsed"\n' +
+    '  • sports → lead with what happened: "Real Madrid odds flipped"\n' +
     '  • crypto → either works\n' +
-    '- End with a one-liner punchline: "And they\'re still holding." / "Two shorts, very different." / "Maybe he knows something."\n' +
-    '- Name the wallet — use Polymarket username, short address, or alias. NEVER write "a tracked wallet" or "a wallet".\n' +
-    '- No markdown. No jargon like "scenario bifurcation" or "conditional resolution pathways".\n' +
-    '- Write like you\'re texting a trader friend, not writing a research report.\n\n' +
-    'EXAMPLES of good content_small:\n\n' +
-    'fomo example:\n' +
-    '"Trader 0x5c26 continues to short $CHIP.\n' +
-    'He now holds a 34.5M $CHIP ($4.75M) short and is already down $1.82M.\n' +
-    'Liquidation price: $0.217"\n\n' +
-    'signal example:\n' +
-    '"epsteinfiles spent $12.3K betting MicroStrategy holds 1M+ BTC by Dec 2026.\n' +
-    'This trader only bets MicroStrategy markets.\n' +
-    'Won them all so far."\n\n' +
-    'macro example:\n' +
-    '"Japan\'s exports just jumped +11.7% YoY — 2nd highest since May 2024.\n' +
-    'China drove the surge: +17.7%, led by chips and industrial metals.\n' +
-    'China\'s demand is driving the Japanese economy."\n\n' +
-    'crypto example:\n' +
-    '"0x65B4 sold 10,829 ETH at $2,300 three days ago.\n' +
-    'Bought back 7,448 ETH at $2,350 one hour ago.\n' +
-    'Sold the bottom, bought it back higher."\n\n' +
-    'content_full — THE DETAIL. 3-5 sentences max. Adds context to content_small:\n' +
-    '- What the position is and why it stands out\n' +
-    '- What the market consensus says vs what this actor is doing\n' +
-    '- Why it matters NOW (deadline, catalyst, timing)\n' +
-    '- Conversational tone. End with why the reader should care.\n' +
-    '- Do not repeat content_small. Add new information only.\n' +
-    '- Do not make up news.\n\n' +
-    'reasoning: Internal note — why you scored it, what research found, dedup decision.\n\n' +
+    '- End with a short punchline that lands.\n' +
+    '- Name the wallet — use Polymarket username or short address. NEVER "a tracked wallet".\n' +
+    '- No markdown. No jargon. No analyst-speak.\n' +
+    '- Write like you\'re texting a trader friend. Sharp, punchy, zero filler.\n\n' +
+    'EXAMPLES of good content_small (note the length — all under 150 chars):\n\n' +
+    'fomo: "0x5c26 is short 34.5M $CHIP ($4.75M).\\nDown $1.82M and still holding.\\nLiquidation: $0.217"\n\n' +
+    'signal: "epsteinfiles dropped $12.3K on MicroStrategy holding 1M+ BTC.\\nOnly bets MSTR markets. Won them all."\n\n' +
+    'macro: "Japan exports +11.7% YoY.\\nChina drove it: +17.7%, chips and metals.\\nDemand is back."\n\n' +
+    'crypto: "0x65B4 sold 10,829 ETH at $2,300.\\nBought 7,448 back at $2,350.\\nSold the bottom."\n\n' +
+    'content_full — THE DETAIL. 2-3 sentences. Max 400 characters.\n' +
+    '- Add context that content_small doesn\'t have.\n' +
+    '- Why this matters NOW (deadline, catalyst, timing).\n' +
+    '- Conversational. End with why the reader should care.\n' +
+    '- Do NOT repeat content_small. New info only.\n' +
+    '- Do NOT make up news.\n\n' +
+    'reasoning: Internal note — why you scored it, dedup decision.\n\n' +
     'tags: 2-5 lowercase (e.g. "iran", "fed", "crypto", "btc", "sports").\n\n' +
-    'priority: Integer 1-10. Higher = more urgent/time-sensitive.\n\n' +
+    'priority: Integer 1-10. USE THE FULL RANGE:\n' +
+    '  1-3: routine market movement, low urgency, common pattern\n' +
+    '  4-5: notable but not time-sensitive, interesting angle\n' +
+    '  6-7: significant move, clear catalyst, worth watching\n' +
+    '  8-9: major event, large position, time-sensitive\n' +
+    '  10: breaking, massive, once-a-week level event\n' +
+    'Most narratives should be 4-6. Only 1-2 per day should hit 8+. If everything is 8, nothing is.\n\n' +
     'content_type: One of "fomo", "signal", "sports", "macro", "news", "crypto".\n\n' +
     'actions: Predict actions are pre-populated from slugs — do not change them. You may add perps actions for crypto: { "type": "perps", "asset": "BTC" }. Empty array if none.\n\n' +
     'SPORTS:\n' +
