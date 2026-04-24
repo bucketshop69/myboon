@@ -1027,35 +1027,80 @@ app.get('/predict/positions/:address/market/:slug', async (c) => {
   }
 })
 
-// --- unified predict feed ---
+// ---------------------------------------------------------------------------
+// GET /predict/feed — Unified predict feed
+// ---------------------------------------------------------------------------
+//
+// Returns a mixed list of binary markets and sport matches from three sources:
+//   1. Pinned binary markets  (from packages/collectors/src/polymarket/pinned.json)
+//   2. EPL matches            (Gamma series_id 10188)
+//   3. IPL matches            (Gamma series_id 11213)
+//
+// All data comes from Polymarket's Gamma API (gamma-api.polymarket.com).
+//
+// Query params:
+//   ?category=crypto|politics|sports|tech|macro|entertainment|all  (default: all)
+//   ?sport=epl|ipl          — filter to specific sport (implies category=sports)
+//   ?limit=N                — max items returned, default 30, max 50
+//
+// Response shape:
+//   {
+//     items: FeedItem[],       — mixed binary + match items, sorted
+//     categories: string[]     — unique categories present in items
+//   }
+//
+// Sort order: live matches → upcoming matches (by kickoff) → binary markets (by volume)
+//
+// FE notes:
+//   - type="binary": use yesPrice/noPrice, clobTokenIds[0]=YES token, [1]=NO token
+//   - type="match":  use outcomes[] array, each has label/price/clobTokenIds
+//   - status="live": match is in progress — show live indicator
+//   - status="upcoming": match hasn't started — show gameStartTime as countdown
+//   - gameStartTime: actual match kickoff (NOT market creation time)
+//   - startDate: market creation time (less useful for display)
+//   - prices are 0-1 (probability), e.g. 0.65 = 65% chance
+//   - conditionId + clobTokenIds needed for placing trades via CLOB
+// ---------------------------------------------------------------------------
 
+/**
+ * Feed item — either a binary market (yes/no) or a sport match (multiple outcomes).
+ *
+ * Binary (type="binary"):
+ *   question, yesPrice, noPrice, clobTokenIds[0]=YES / [1]=NO, conditionId
+ *
+ * Match (type="match"):
+ *   title, sport ("epl"|"ipl"), outcomes[].label/price/clobTokenIds, status, gameStartTime
+ *   - EPL: 3 outcomes (Team A / Team B / Draw)
+ *   - IPL: 2 outcomes (Team A / Team B, no draw in cricket)
+ */
 interface FeedItem {
   type: 'binary' | 'match'
-  slug: string
-  question?: string
-  title?: string
-  category: string
-  tags: string[]
-  sport?: string
-  status?: 'live' | 'upcoming' | 'ended'
-  gameStartTime?: string | null
-  yesPrice?: number | null
-  noPrice?: number | null
-  volume: number | null
-  endDate: string | null
-  startDate?: string | null
-  active: boolean | null
-  image: string | null
-  clobTokenIds?: string[]
-  conditionId?: string | null
-  outcomes?: {
-    label: string
-    price: number | null
-    conditionId?: string | null
-    clobTokenIds: string[]
+  slug: string                              // Polymarket market/event slug — unique identifier
+  question?: string                         // Binary only: market question text
+  title?: string                            // Match only: "Team A vs Team B"
+  category: string                          // crypto | politics | sports | tech | macro | entertainment | other
+  tags: string[]                            // Category-related tags
+  sport?: string                            // Match only: "epl" | "ipl"
+  status?: 'live' | 'upcoming' | 'ended'    // Match only: derived from gameStartTime vs now
+  gameStartTime?: string | null             // Match only: actual kickoff time (ISO/UTC)
+  yesPrice?: number | null                  // Binary only: YES outcome price (0-1)
+  noPrice?: number | null                   // Binary only: NO outcome price (0-1)
+  volume: number | null                     // 24h trading volume in USD
+  endDate: string | null                    // Market resolution/expiry date
+  startDate?: string | null                 // Market creation date (not game start)
+  active: boolean | null                    // Market accepting trades
+  image: string | null                      // Market/event thumbnail URL
+  clobTokenIds?: string[]                   // Binary only: [yesTokenId, noTokenId] for CLOB trades
+  conditionId?: string | null               // Binary only: Polymarket condition ID for CLOB
+  outcomes?: {                              // Match only: one entry per possible outcome
+    label: string                           //   Team name or "Draw"
+    price: number | null                    //   Outcome price (0-1)
+    conditionId?: string | null             //   Condition ID for this outcome's market
+    clobTokenIds: string[]                  //   Token IDs for placing trades
   }[]
 }
 
+/** Derive match status from kickoff time. gameStartTime is actual kickoff, not market creation. */
 function deriveMatchStatus(gameStartTime: string | null | undefined, active: boolean, closed: boolean): 'live' | 'upcoming' | 'ended' {
   if (closed) return 'ended'
   if (!gameStartTime) return active ? 'upcoming' : 'ended'
