@@ -227,8 +227,8 @@ async function runChiefEditor(
     cluster: d.cluster,
     score: d.score,
     signal_count: d.signal_count,
-    observation: d.observation.slice(0, 300),
-    key_signals: d.key_signals.slice(0, 5).map((s) => s.slice(0, 150)),
+    observation: (d.observation ?? '').slice(0, 300),
+    key_signals: (d.key_signals ?? []).slice(0, 5).map((s) => (s ?? '').slice(0, 150)),
   }))
 
   const userPrompt = [
