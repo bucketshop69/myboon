@@ -1183,12 +1183,23 @@ app.get('/predict/feed', async (c) => {
         const events = await res.json() as Record<string, unknown>[]
         if (!Array.isArray(events)) return []
 
-        return events
-          .filter((e) => {
-            const slug = String(e.slug ?? '')
-            // Only main match events, exclude props like -toss-*, -most-sixes, etc
-            return slug.startsWith('cricipl-') && /\d{4}-\d{2}-\d{2}$/.test(slug)
-          })
+        // Dedupe: Polymarket creates both "cricipl-guj-che-DATE" and "cricipl-che-guj-DATE"
+        // for the same match with flipped team order. Keep the one with higher volume.
+        const matchMap = new Map<string, Record<string, unknown>>()
+        for (const e of events) {
+          const slug = String(e.slug ?? '')
+          if (!slug.startsWith('cricipl-') || !/\d{4}-\d{2}-\d{2}$/.test(slug)) continue
+          const parts = slug.replace('cricipl-', '').match(/^(.+)-(\d{4}-\d{2}-\d{2})$/)
+          if (!parts) continue
+          const teams = parts[1].split('-').sort().join('-')
+          const key = `${teams}-${parts[2]}`
+          const existing = matchMap.get(key)
+          if (!existing || ((e.volume ?? 0) as number) > ((existing.volume ?? 0) as number)) {
+            matchMap.set(key, e)
+          }
+        }
+
+        return Array.from(matchMap.values())
           .map((e) => {
             const markets = (e.markets ?? []) as Record<string, unknown>[]
             const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
