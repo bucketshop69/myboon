@@ -629,9 +629,38 @@ app.get('/predict/sports/:sport/:slug', async (c) => {
           return String(id) === seriesId
         })
 
-        if (!eventSlug.startsWith(`${sport}-`) && !belongsToSeries) throw new Error('not found')
+        const slugPrefix = sport === 'ipl' ? 'cricipl-' : `${sport}-`
+        if (!eventSlug.startsWith(slugPrefix) && !belongsToSeries) throw new Error('not found')
 
         const markets = (e.markets ?? []) as Record<string, unknown>[]
+
+        // IPL: single market with outcomes embedded as string array — extract from main market
+        // EPL/UCL: each market = one outcome, label from groupItemTitle
+        let outcomes: ReturnType<typeof mapOutcome>[]
+        if (sport === 'ipl') {
+          const mainMarket = markets.find((m) => m.slug === slug) ?? markets[0]
+          if (!mainMarket) throw new Error('not found')
+          const outcomeLabels = typeof mainMarket.outcomes === 'string'
+            ? JSON.parse(mainMarket.outcomes as string) as string[]
+            : Array.isArray(mainMarket.outcomes) ? mainMarket.outcomes as string[] : []
+          const outcomePrices = parseStringArray(mainMarket.outcomePrices)
+          const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
+          outcomes = outcomeLabels.map((label, idx) => ({
+            label,
+            question: mainMarket.question ?? null,
+            price: parseNullableNumber(outcomePrices[idx]),
+            conditionId: mainMarket.conditionId ?? mainMarket.condition_id ?? null,
+            clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
+            liquidity: mainMarket.liquidityNum ?? null,
+            volume24h: mainMarket.volume24hr ?? null,
+            bestBid: mainMarket.bestBid ?? null,
+            bestAsk: mainMarket.bestAsk ?? null,
+            acceptingOrders: mainMarket.acceptingOrders ?? null,
+          }))
+        } else {
+          outcomes = markets.map(mapOutcome)
+        }
+
         return {
           slug: e.slug,
           title: e.title,
@@ -644,7 +673,7 @@ app.get('/predict/sports/:sport/:slug', async (c) => {
           negRisk: e.negRisk ?? false,
           volume24h: e.volume24hr ?? null,
           liquidity: e.liquidity ?? null,
-          outcomes: markets.map(mapOutcome),
+          outcomes,
         }
       },
     )
