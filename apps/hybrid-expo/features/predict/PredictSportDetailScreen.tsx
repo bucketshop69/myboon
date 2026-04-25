@@ -1,8 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
+  Animated,
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
@@ -229,8 +230,22 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // The displayed sparkline price is the current outcome's price
   const sparkPct = sparkOutcome?.price !== null ? Math.round((sparkOutcome?.price ?? 0) * 100) : null;
 
+  // Pulsing animation for the LIVE header badge
+  const livePulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (detail?.status !== 'live') return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, { toValue: 0.2, duration: 700, useNativeDriver: true }),
+        Animated.timing(livePulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [detail?.status, livePulse]);
+
   const openBetSlip = useCallback((outcome: SportOutcomeDetail, side: 'yes' | 'no') => {
-    const price = side === 'yes' ? (outcome.bestAsk ?? outcome.price ?? 0.5) : (outcome.bestBid ?? (1 - (outcome.price ?? 0.5)));
+    const price = side === 'yes' ? (outcome.price ?? 0.5) : (1 - (outcome.price ?? 0.5));
     setBetSlipSide(side);
     setBetSlipLabel(side.toUpperCase());
     setBetSlipOutcome(outcome.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw'));
@@ -324,9 +339,17 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={16} color={semantic.text.primary} />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={2}>
-          {detail?.title ?? 'Loading...'}
-        </Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle} numberOfLines={2}>
+            {detail?.title ?? 'Loading...'}
+          </Text>
+          {detail?.status === 'live' && (
+            <View style={styles.headerLiveBadge}>
+              <Animated.View style={[styles.headerLiveDot, { opacity: livePulse }]} />
+              <Text style={styles.headerLiveText}>LIVE</Text>
+            </View>
+          )}
+        </View>
         <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
           <View style={styles.avatarInner} />
         </Pressable>
@@ -388,7 +411,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   const label = isDraw ? 'Draw' : outcome.label;
                   return (
                     <Pressable
-                      key={outcome.conditionId ?? outcome.label}
+                      key={`${outcome.conditionId ?? outcome.label}-${i}`}
                       onPress={() => setSparkOutcomeIdx(i)}
                       style={[styles.sparkOutcomeChip, sparkOutcomeIdx === i && styles.sparkOutcomeChipActive]}>
                       <Text
@@ -411,6 +434,39 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                 )}
               </View>
             </View>
+          </View>
+
+          {/* ── OUTCOME PROBABILITY TABS ── */}
+          <View style={styles.outcomeTabsZone}>
+            {sortedOutcomes.map((outcome, i) => {
+              const isDraw = outcome.label.toLowerCase().includes('draw');
+              const pct = outcome.price !== null ? Math.round(outcome.price * 100) : null;
+              const isLead = leadPrice !== null && outcome.price === leadPrice;
+              const color = outcomeColor(outcome, isLead);
+              // Short label: "Draw" for draw, otherwise truncate to first word / team name
+              const shortLabel = isDraw
+                ? 'Draw'
+                : (outcome.label.split(/\s+/)[0] ?? outcome.label);
+              const isActive = sparkOutcomeIdx === i;
+              return (
+                <Pressable
+                  key={`${outcome.conditionId ?? outcome.label}-${i}`}
+                  onPress={() => setSparkOutcomeIdx(i)}
+                  style={[
+                    styles.outcomeTab,
+                    isActive && { borderColor: color, backgroundColor: `${color}18` },
+                  ]}>
+                  <Text
+                    style={[styles.outcomeTabLabel, { color: isActive ? color : semantic.text.dim }]}
+                    numberOfLines={1}>
+                    {shortLabel}
+                  </Text>
+                  <Text style={[styles.outcomeTabPct, { color: isActive ? color : semantic.text.faint }]}>
+                    {pct !== null ? `${pct}%` : '--'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           {/* ── MID ZONE: TABS ── */}
@@ -558,13 +614,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   {/* Outcome concentration */}
                   <View style={styles.statsCard}>
                     <Text style={styles.cardLabel}>Outcome Concentration</Text>
-                    {sortedOutcomes.map((outcome) => {
+                    {sortedOutcomes.map((outcome, i) => {
                       const isDraw = outcome.label.toLowerCase().includes('draw');
                       const isLead = leadPrice !== null && outcome.price === leadPrice;
                       const color = outcomeColor(outcome, isLead);
                       const pct = outcome.price !== null ? Math.round(outcome.price * 100) : 0;
                       return (
-                        <View key={outcome.conditionId ?? outcome.label} style={styles.concBar}>
+                        <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={styles.concBar}>
                           <View style={styles.concBarHeader}>
                             <Text style={[styles.concBarLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
                               {isDraw ? 'Draw' : outcome.label}
@@ -636,14 +692,14 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
           {/* ── BOTTOM ZONE: OUTCOME SELECTION ROWS ── */}
           <View style={styles.bottomZone}>
-            {sortedOutcomes.map((outcome) => {
+            {sortedOutcomes.map((outcome, i) => {
               const isDraw = outcome.label.toLowerCase().includes('draw');
               const isLead = leadPrice !== null && outcome.price === leadPrice;
               const label = isDraw ? 'Draw' : outcome.label;
               const yesCents = outcome.price !== null ? Math.round(outcome.price * 100) : null;
               const noCents = outcome.price !== null ? Math.round((1 - outcome.price) * 100) : null;
               return (
-                <View key={outcome.conditionId ?? outcome.label} style={styles.outcomeRow}>
+                <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={styles.outcomeRow}>
                   <View style={styles.outcomeMeta}>
                     <Text style={[styles.outcomeLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
                       {label}
@@ -842,14 +898,42 @@ const styles = StyleSheet.create({
     borderColor: semantic.border.muted,
     flexShrink: 0,
   },
-  headerTitle: {
+  headerCenter: {
     flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerTitle: {
     color: semantic.text.primary,
     fontSize: tokens.fontSize.xxs,
     fontFamily: 'monospace',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     textAlign: 'center',
+  },
+  headerLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(244,88,78,0.25)',
+    backgroundColor: 'rgba(244,88,78,0.10)',
+  },
+  headerLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: tokens.radius.full,
+    backgroundColor: '#f4584e',
+  },
+  headerLiveText: {
+    color: '#f4584e',
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   avatarRing: {
     width: 32,
@@ -870,6 +954,39 @@ const styles = StyleSheet.create({
 
   // ── Body layout ──
   body: { flex: 1 },
+
+  // ── Outcome probability tabs ──
+  outcomeTabsZone: {
+    flexDirection: 'row',
+    flexShrink: 0,
+    paddingHorizontal: tokens.spacing.md,
+    paddingBottom: tokens.spacing.sm,
+    gap: tokens.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+  },
+  outcomeTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: tokens.spacing.sm,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    gap: 2,
+  },
+  outcomeTabLabel: {
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  outcomeTabPct: {
+    fontSize: tokens.fontSize.sm,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+  },
 
   // ── Top zone ──
   topZone: { flexShrink: 0, padding: tokens.spacing.md },

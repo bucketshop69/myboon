@@ -351,6 +351,104 @@
       transition: width 0.3s;
     }
     .trend-mini-fill.low { background: var(--neg) }
+    .trend-cat {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 4px;
+    }
+    .trend-cat.cat-sports { color: var(--pos) }
+    .trend-cat.cat-crypto { color: #7b61ff }
+    .trend-cat.cat-politics { color: var(--a) }
+
+    /* ─── LIVE / STATUS BADGES ─── */
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--neg);
+      background: rgba(244,88,78,0.10);
+      border: 1px solid rgba(244,88,78,0.25);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .live-badge-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--neg);
+      animation: dot-pulse-live 1.2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse-live {
+      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(244,88,78,0.5) }
+      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(244,88,78,0.9) }
+    }
+    .upcoming-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 0.5px;
+      color: var(--mid);
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+
+    /* ─── MARKET IMAGE ─── */
+    .market-img {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--bg4);
+      flex-shrink: 0;
+      overflow: hidden;
+      object-fit: cover;
+    }
+
+    /* ─── CATEGORY BADGE (on cards) ─── */
+    .cat-badge {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .cat-badge.cat-crypto { color: #7b61ff; background: rgba(123,97,255,0.10) }
+    .cat-badge.cat-politics { color: var(--a); background: var(--a4) }
+    .cat-badge.cat-macro { color: #4ea8de; background: rgba(78,168,222,0.10) }
+    .cat-badge.cat-sports { color: var(--pos); background: var(--pos2) }
+    .cat-badge.cat-other { color: var(--mid); background: var(--bg3) }
+
+    /* ─── IPL-SPECIFIC (2-way, no draw) ─── */
+    .sport-outcomes-2way {
+      display: flex;
+      gap: 4px;
+    }
+    .outcome-pill-2way {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg3);
+      border: 1px solid var(--border0);
+      border-radius: 7px;
+      padding: 8px 4px;
+    }
+    .sport-vol {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      margin-top: 6px;
+    }
 
     /* ─── FILTER CHIPS ─── */
     .filter-row {
@@ -399,6 +497,23 @@
       font-family: var(--mono);
       font-size: 7.5px;
       color: var(--lo);
+    }
+    .section-see-all {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 0.5px;
+      color: var(--a);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      transition: opacity 0.15s;
+    }
+    .section-see-all:hover { opacity: 0.7 }
+    .section-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     /* ─── GEOPOLITICS CARD ─── */
@@ -1586,62 +1701,253 @@
           </div>
         </div>
 
-        <!-- trending strip -->
         <!-- filter chips -->
         <div class="filter-row">
           <div class="chip active">All</div>
-          <div class="chip">Geopolitics</div>
-          <div class="chip">EPL</div>
-          <div class="chip">UCL</div>
+          <div class="chip">Sports</div>
+          <div class="chip">Crypto</div>
+          <div class="chip">Politics</div>
+          <div class="chip">Macro</div>
         </div>
 
         <!-- scrollable list -->
         <div class="screen-scroll">
 
-          <!-- geopolitics section -->
+          <!-- ── LIVE SECTION ── -->
           <div class="section-hdr">
-            <span class="section-title">Geopolitics</span>
-            <span class="section-count">8 markets</span>
+            <span class="section-title" style="color:var(--neg)">Live Now</span>
           </div>
 
+          <!-- LIVE: IPL — Delhi vs Punjab (2-way, no draw) -->
+          <div class="sport-card" style="border-color:rgba(244,88,78,0.2)">
+            <div class="sport-meta">
+              <div class="live-badge">
+                <div class="live-badge-dot"></div>
+                LIVE
+              </div>
+              <span class="sport-league">IPL · Match 42</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Delhi Capitals</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Punjab Kings</div>
+            </div>
+            <div class="sport-outcomes-2way">
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Delhi</div>
+                <div class="outcome-pct win1">59%</div>
+              </div>
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Punjab</div>
+                <div class="outcome-pct win2">42%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $2.0M</div>
+          </div>
+
+          <!-- LIVE: EPL — Fulham vs Aston Villa (3-way) -->
+          <div class="sport-card" style="border-color:rgba(244,88,78,0.2)">
+            <div class="sport-meta">
+              <div class="live-badge">
+                <div class="live-badge-dot"></div>
+                LIVE
+              </div>
+              <span class="sport-league">EPL</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Fulham</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Aston Villa</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Fulham</div>
+                <div class="outcome-pct win1">99%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">1%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Villa</div>
+                <div class="outcome-pct win2">0%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $1.1M</div>
+          </div>
+
+          <!-- ── UPCOMING · EPL ── -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">EPL · Upcoming</span>
+            <div class="section-right">
+              <span class="section-count">6 matches</span>
+              <span class="section-see-all">See all <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <!-- UPCOMING: Liverpool vs Crystal Palace -->
+          <div class="sport-card">
+            <div class="sport-meta">
+              <div class="upcoming-badge">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Today · 14:00
+              </div>
+              <span class="sport-league">EPL</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Liverpool</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Crystal Palace</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Liverpool</div>
+                <div class="outcome-pct win1">62%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">21%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Palace</div>
+                <div class="outcome-pct win2">18%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $240K</div>
+          </div>
+
+          <!-- UPCOMING: Wolves vs Tottenham -->
+          <div class="sport-card">
+            <div class="sport-meta">
+              <div class="upcoming-badge">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Today · 14:00
+              </div>
+              <span class="sport-league">EPL</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Wolves</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Tottenham</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Wolves</div>
+                <div class="outcome-pct win2">21%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">22%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Spurs</div>
+                <div class="outcome-pct win1">59%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $519K</div>
+          </div>
+
+          <!-- ── UPCOMING · IPL ── -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">IPL · Upcoming</span>
+            <div class="section-right">
+              <span class="section-count">4 matches</span>
+              <span class="section-see-all">See all <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <!-- UPCOMING: IPL — Chennai vs Rajasthan (2-way) -->
+          <div class="sport-card">
+            <div class="sport-meta">
+              <div class="upcoming-badge">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Tomorrow · 14:00
+              </div>
+              <span class="sport-league">IPL · Match 43</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Chennai Super Kings</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Rajasthan Royals</div>
+            </div>
+            <div class="sport-outcomes-2way">
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Chennai</div>
+                <div class="outcome-pct win1">55%</div>
+              </div>
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Rajasthan</div>
+                <div class="outcome-pct win2">45%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $1.4M</div>
+          </div>
+
+          <!-- ── MARKETS SECTION ── -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">Markets</span>
+            <div class="section-right">
+              <span class="section-count">12 markets</span>
+              <span class="section-see-all">See all <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <!-- BINARY: China–Taiwan (politics) with image -->
           <div class="geo-card">
             <div class="geo-top">
-              <div class="geo-img">🇮🇷</div>
-              <div class="geo-question">US forces enter Iran by April 30?</div>
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/china-invade-taiwan.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-politics">Politics</span>
+                </div>
+                <div class="geo-question">Will China invade Taiwan by end of 2026?</div>
+              </div>
             </div>
             <div class="geo-bar-row">
               <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:62%"></div></div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:7%"></div></div>
               <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
             </div>
             <div class="geo-pcts">
-              <span class="pct-yes">62%</span>
-              <span class="vol-badge">$14.3M wk</span>
-              <span class="pct-no">38%</span>
+              <span class="pct-yes">7%</span>
+              <span class="vol-badge">$335K vol</span>
+              <span class="pct-no">93%</span>
             </div>
           </div>
 
+          <!-- BINARY: Russia–Ukraine ceasefire (politics) -->
           <div class="geo-card">
             <div class="geo-top">
-              <div class="geo-img">🕊️</div>
-              <div class="geo-question">US–Iran ceasefire by April 15?</div>
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/russia-ukraine-ceasefire.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-politics">Politics</span>
+                </div>
+                <div class="geo-question">Russia x Ukraine ceasefire by end of 2026?</div>
+              </div>
             </div>
             <div class="geo-bar-row">
               <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:44%"></div></div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:26%"></div></div>
               <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
             </div>
             <div class="geo-pcts">
-              <span class="pct-yes">44%</span>
-              <span class="vol-badge">$6.5M wk</span>
-              <span class="pct-no">56%</span>
+              <span class="pct-yes">26%</span>
+              <span class="vol-badge">$49K vol</span>
+              <span class="pct-no">74%</span>
             </div>
           </div>
 
+          <!-- BINARY: Bitcoin ATH (crypto) -->
           <div class="geo-card">
             <div class="geo-top">
-              <div class="geo-img">🇨🇳</div>
-              <div class="geo-question">Will China invade Taiwan before 2027?</div>
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+full+hd+logo+light.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-crypto">Crypto</span>
+                </div>
+                <div class="geo-question">Bitcoin all time high by December 31, 2026?</div>
+              </div>
             </div>
             <div class="geo-bar-row">
               <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
@@ -1650,97 +1956,54 @@
             </div>
             <div class="geo-pcts">
               <span class="pct-yes">18%</span>
-              <span class="vol-badge">$2.1M wk</span>
+              <span class="vol-badge">$11K vol</span>
               <span class="pct-no">82%</span>
             </div>
           </div>
 
-          <!-- sports section -->
-          <div class="section-hdr" style="margin-top:4px">
-            <span class="section-title">Champions League · UCL</span>
-            <span class="section-count">4 matches</span>
-          </div>
-
-          <div class="sport-card">
-            <div class="sport-meta">
-              <span class="sport-league">UCL · Semi-final</span>
-              <span class="sport-kick">Apr 7 · 21:00</span>
+          <!-- BINARY: US recession (macro) -->
+          <div class="geo-card">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/us-recession.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-macro">Macro</span>
+                </div>
+                <div class="geo-question">US recession by end of 2026?</div>
+              </div>
             </div>
-            <div class="sport-teams">
-              <div class="team-name">Real Madrid</div>
-              <div class="vs-badge">vs</div>
-              <div class="team-name right">Bayern Munich</div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:26%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
             </div>
-            <div class="sport-outcomes">
-              <div class="outcome-pill">
-                <div class="outcome-label">Madrid</div>
-                <div class="outcome-pct win1">47%</div>
-              </div>
-              <div class="outcome-pill">
-                <div class="outcome-label">Draw</div>
-                <div class="outcome-pct draw">24%</div>
-              </div>
-              <div class="outcome-pill">
-                <div class="outcome-label">Bayern</div>
-                <div class="outcome-pct win2">29%</div>
-              </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">26%</span>
+              <span class="vol-badge">$1.8K vol</span>
+              <span class="pct-no">74%</span>
             </div>
           </div>
 
-          <div class="sport-card">
-            <div class="sport-meta">
-              <span class="sport-league">UCL · Semi-final</span>
-              <span class="sport-kick">Apr 8 · 21:00</span>
-            </div>
-            <div class="sport-teams">
-              <div class="team-name">Arsenal</div>
-              <div class="vs-badge">vs</div>
-              <div class="team-name right">PSG</div>
-            </div>
-            <div class="sport-outcomes">
-              <div class="outcome-pill">
-                <div class="outcome-label">Arsenal</div>
-                <div class="outcome-pct win1">39%</div>
-              </div>
-              <div class="outcome-pill">
-                <div class="outcome-label">Draw</div>
-                <div class="outcome-pct draw">27%</div>
-              </div>
-              <div class="outcome-pill">
-                <div class="outcome-label">PSG</div>
-                <div class="outcome-pct win2">34%</div>
+          <!-- BINARY: ETH ATH (crypto) -->
+          <div class="geo-card" style="margin-bottom:16px">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/ethereum-logo.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-crypto">Crypto</span>
+                </div>
+                <div class="geo-question">Ethereum all time high by December 31, 2026?</div>
               </div>
             </div>
-          </div>
-
-          <div class="section-hdr" style="margin-top:4px">
-            <span class="section-title">Premier League · EPL</span>
-            <span class="section-count">3 matches</span>
-          </div>
-
-          <div class="sport-card" style="margin-bottom:16px">
-            <div class="sport-meta">
-              <span class="sport-league">EPL · GW31</span>
-              <span class="sport-kick">Apr 5 · 17:30</span>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:5%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
             </div>
-            <div class="sport-teams">
-              <div class="team-name">Man United</div>
-              <div class="vs-badge">vs</div>
-              <div class="team-name right">Arsenal</div>
-            </div>
-            <div class="sport-outcomes">
-              <div class="outcome-pill">
-                <div class="outcome-label">United</div>
-                <div class="outcome-pct win2">22%</div>
-              </div>
-              <div class="outcome-pill">
-                <div class="outcome-label">Draw</div>
-                <div class="outcome-pct draw">29%</div>
-              </div>
-              <div class="outcome-pill">
-                <div class="outcome-label">Arsenal</div>
-                <div class="outcome-pct win1">49%</div>
-              </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">5%</span>
+              <span class="vol-badge">$415 vol</span>
+              <span class="pct-no">95%</span>
             </div>
           </div>
 
@@ -1781,7 +2044,7 @@
          SCREEN 2: BINARY MARKET DETAIL
     ═══════════════════════════════════ -->
     <div class="screen-col">
-      <div class="screen-label">02 · Market Detail (Geopolitics)</div>
+      <div class="screen-label">02 · Market Detail (Binary)</div>
       <div class="phone">
         <!-- notch -->
         <!-- status bar -->
@@ -1807,7 +2070,7 @@
           <div class="back-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
-          <span class="detail-header-title">US forces enter Iran by April 30?</span>
+          <span class="detail-header-title">Will China invade Taiwan by end of 2026?</span>
           <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
             <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
           </div>
@@ -1818,11 +2081,17 @@
 
           <!-- TOP: info (eyes zone) -->
           <div class="detail-top-zone">
+            <!-- category + end date row -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 8px">
+              <span class="cat-badge cat-politics">Politics</span>
+              <span style="font-family:var(--mono);font-size:8px;color:var(--mid)">Ends Dec 31, 2026</span>
+            </div>
+
             <div class="spark-section">
               <div class="spark-top">
                 <div class="spark-price-row">
-                  <span class="spark-yes">62%</span>
-                  <span class="spark-change">▲ +3.1%</span>
+                  <span class="spark-yes" style="color:var(--neg)">7%</span>
+                  <span class="spark-change neg">▼ -1.2%</span>
                 </div>
                 <div class="spark-updated">
                   <div class="refresh-dot"></div>
@@ -1837,15 +2106,15 @@
                 <svg viewBox="0 0 343 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="sg1" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2"/>
-                      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+                      <stop offset="0%" stop-color="#f4584e" stop-opacity="0.2"/>
+                      <stop offset="100%" stop-color="#f4584e" stop-opacity="0"/>
                     </linearGradient>
                   </defs>
-                  <path d="M0 42 L14 40 L28 44 L43 41 L57 38 L71 36 L85 39 L100 35 L114 30 L128 32 L142 28 L157 25 L171 27 L185 22 L200 20 L214 23 L228 19 L242 21 L257 17 L271 14 L285 12 L300 10 L314 8 L328 9 L343 7 L343 64 L0 64 Z"
+                  <path d="M0 20 L14 22 L28 19 L43 23 L57 25 L71 24 L85 28 L100 30 L114 27 L128 32 L142 35 L157 33 L171 38 L185 40 L200 37 L214 42 L228 44 L242 41 L257 46 L271 48 L285 50 L300 52 L314 54 L328 53 L343 55 L343 64 L0 64 Z"
                     fill="url(#sg1)"/>
-                  <path d="M0 42 L14 40 L28 44 L43 41 L57 38 L71 36 L85 39 L100 35 L114 30 L128 32 L142 28 L157 25 L171 27 L185 22 L200 20 L214 23 L228 19 L242 21 L257 17 L271 14 L285 12 L300 10 L314 8 L328 9 L343 7"
-                    stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-                  <circle cx="343" cy="7" r="3" fill="#34c77b"/>
+                  <path d="M0 20 L14 22 L28 19 L43 23 L57 25 L71 24 L85 28 L100 30 L114 27 L128 32 L142 35 L157 33 L171 38 L185 40 L200 37 L214 42 L228 44 L242 41 L257 46 L271 48 L285 50 L300 52 L314 54 L328 53 L343 55"
+                    stroke="#f4584e" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+                  <circle cx="343" cy="55" r="3" fill="#f4584e"/>
                 </svg>
               </div>
             </div>
@@ -1871,48 +2140,44 @@
               <!-- stats -->
               <div class="dtab-panel" data-tab="stats">
                 <div class="stat-signal">
-                  <div class="stat-signal-title">Smart Money (Top 10 Wallets)</div>
+                  <div class="stat-signal-title">Market Sentiment</div>
                   <div class="stat-bar-row">
                     <div class="stat-bar-label yes-l">Yes</div>
                     <div class="stat-bar-track">
-                      <div class="stat-bar-fill yes-f" style="width:72%"></div>
+                      <div class="stat-bar-fill yes-f" style="width:7%"></div>
                     </div>
-                    <div class="stat-bar-pct yes-p">72%</div>
+                    <div class="stat-bar-pct yes-p">7%</div>
                   </div>
                   <div class="stat-bar-row">
                     <div class="stat-bar-label no-l">No</div>
                     <div class="stat-bar-track">
-                      <div class="stat-bar-fill no-f" style="width:28%"></div>
+                      <div class="stat-bar-fill no-f" style="width:93%"></div>
                     </div>
-                    <div class="stat-bar-pct no-p">28%</div>
+                    <div class="stat-bar-pct no-p">93%</div>
                   </div>
                 </div>
                 <div class="stat-metric-row">
                   <div class="stat-metric">
-                    <div class="stat-metric-val">3.2K</div>
-                    <div class="stat-metric-lbl">Traders</div>
-                  </div>
-                  <div class="stat-metric">
-                    <div class="stat-metric-val">$14.3M</div>
+                    <div class="stat-metric-val">$335K</div>
                     <div class="stat-metric-lbl">Volume</div>
                   </div>
                   <div class="stat-metric">
-                    <div class="stat-metric-val">$1.2M</div>
+                    <div class="stat-metric-val">$48K</div>
                     <div class="stat-metric-lbl">Liquidity</div>
                   </div>
                 </div>
                 <div class="stat-signal">
-                  <div class="stat-signal-title">24h Activity</div>
-                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">482 trades · 68% bought Yes</div>
-                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">$10 wins $16.12 if Yes · $10 wins $26.31 if No</div>
+                  <div class="stat-signal-title">Payout Calculator</div>
+                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">$10 wins $133.33 if Yes · $10 wins $10.75 if No</div>
+                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">Closes Dec 31, 2026</div>
                 </div>
               </div>
               <!-- rules -->
               <div class="dtab-panel" data-tab="rules">
                 <div class="rules-box">
                   <div class="rules-label">Resolution Criteria</div>
-                  <div class="rules-text">Resolves YES if US ground, air, or naval forces conduct confirmed offensive operations inside Iranian territory before April 30, 2026 UTC. Strikes on proxies do not count.</div>
-                  <div class="rules-meta">Source: Reuters, AP · Closes Apr 30, 2026</div>
+                  <div class="rules-text">This market will resolve to "Yes" if China (PRC) initiates a military invasion of Taiwan before January 1, 2027, 12:00 PM ET. Otherwise, this market will resolve to "No".</div>
+                  <div class="rules-meta">Source: Polymarket · Closes Dec 31, 2026</div>
                 </div>
               </div>
               <!-- feed -->
@@ -1939,12 +2204,12 @@
           <!-- BOTTOM: thumb zone (all clickable) -->
           <div class="detail-bottom-zone">
             <div class="binary-btns" style="display:flex;gap:8px;padding:0 12px 8px">
-              <div class="sel-btn yes-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('US forces enter Iran by April 30?','yes','62¢')">
-                <span class="sel-btn-pct" style="font-size:14px">62¢</span>
+              <div class="sel-btn yes-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('Will China invade Taiwan by end of 2026?','yes','7¢')">
+                <span class="sel-btn-pct" style="font-size:14px">7¢</span>
                 <span class="sel-btn-label" style="font-size:7px">Yes</span>
               </div>
-              <div class="sel-btn no-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('US forces enter Iran by April 30?','no','38¢')">
-                <span class="sel-btn-pct" style="font-size:14px">38¢</span>
+              <div class="sel-btn no-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('Will China invade Taiwan by end of 2026?','no','93¢')">
+                <span class="sel-btn-pct" style="font-size:14px">93¢</span>
                 <span class="sel-btn-label" style="font-size:7px">No</span>
               </div>
             </div>
@@ -1957,10 +2222,10 @@
           <div class="betslip" onclick="event.stopPropagation()">
             <div class="betslip-handle"></div>
             <div class="betslip-header">
-              <div class="betslip-title" id="bs2-title">US forces enter Iran?</div>
+              <div class="betslip-title" id="bs2-title">China invade Taiwan?</div>
               <div class="betslip-side yes-side" id="bs2-side">YES</div>
             </div>
-            <div class="betslip-selection" id="bs2-sub">Geopolitics · Binary Market</div>
+            <div class="betslip-selection" id="bs2-sub">Politics · Binary Market</div>
             <div class="betslip-field">
               <div class="betslip-field-label">Amount (USDC)</div>
               <input class="betslip-input" id="bs2-amount" type="text" value="50" oninput="updatePayout2()">
@@ -2040,7 +2305,10 @@
           <div class="back-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
-          <span class="detail-header-title">Real Madrid vs Bayern Munich</span>
+          <span class="detail-header-title">Liverpool vs Crystal Palace</span>
+          <div class="live-badge" style="font-size:7px;padding:2px 6px;border-radius:4px;display:flex;align-items:center;gap:3px;margin-left:6px;flex-shrink:0">
+            <div class="live-badge-dot"></div>LIVE
+          </div>
           <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
             <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
           </div>
@@ -2049,18 +2317,35 @@
         <!-- sport detail scroll -->
         <div class="detail-scroll">
 
-          <!-- TOP: info (eyes zone) -->
+          <!-- TOP: outcome tabs + sparkline -->
           <div class="detail-top-zone">
-            <!-- spark chart -->
+
+            <!-- outcome tabs -->
+            <div class="outcome-tabs">
+              <div class="outcome-tab active" onclick="selectOutcome(0)">
+                <div class="outcome-tab-label">Liverpool</div>
+                <div class="outcome-tab-pct">60.5%</div>
+              </div>
+              <div class="outcome-tab" onclick="selectOutcome(1)">
+                <div class="outcome-tab-label">Draw</div>
+                <div class="outcome-tab-pct">21.5%</div>
+              </div>
+              <div class="outcome-tab" onclick="selectOutcome(2)">
+                <div class="outcome-tab-label">C. Palace</div>
+                <div class="outcome-tab-pct">17.5%</div>
+              </div>
+            </div>
+
+            <!-- spark chart for selected outcome -->
             <div class="spark-section">
               <div class="spark-top">
                 <div class="spark-price-row">
-                  <span class="spark-yes">47%</span>
-                  <span class="spark-change">▲ +2.4%</span>
+                  <span class="spark-yes">60.5%</span>
+                  <span class="spark-change">▲ +4.1%</span>
                 </div>
                 <div class="spark-updated">
                   <div class="refresh-dot"></div>
-                  updated 12s ago
+                  updated 8s ago
                 </div>
               </div>
               <div class="spark-range-row">
@@ -2075,9 +2360,9 @@
                       <stop offset="100%" stop-color="#34c77b" stop-opacity="0"></stop>
                     </linearGradient>
                   </defs>
-                  <path d="M0 48 L14 46 L28 50 L43 45 L57 42 L71 44 L85 40 L100 38 L114 41 L128 36 L142 33 L157 35 L171 30 L185 28 L200 31 L214 26 L228 24 L242 27 L257 22 L271 19 L285 17 L300 15 L314 13 L328 14 L343 11 L343 64 L0 64 Z" fill="url(#sg2)"></path>
-                  <path d="M0 48 L14 46 L28 50 L43 45 L57 42 L71 44 L85 40 L100 38 L114 41 L128 36 L142 33 L157 35 L171 30 L185 28 L200 31 L214 26 L228 24 L242 27 L257 22 L271 19 L285 17 L300 15 L314 13 L328 14 L343 11" stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"></path>
-                  <circle cx="343" cy="11" r="3" fill="#34c77b"></circle>
+                  <path d="M0 52 L14 50 L28 48 L43 51 L57 46 L71 43 L85 45 L100 40 L114 38 L128 41 L142 35 L157 32 L171 30 L185 28 L200 26 L214 24 L228 22 L242 20 L257 18 L271 16 L285 14 L300 13 L314 11 L328 10 L343 8 L343 64 L0 64 Z" fill="url(#sg2)"></path>
+                  <path d="M0 52 L14 50 L28 48 L43 51 L57 46 L71 43 L85 45 L100 40 L114 38 L128 41 L142 35 L157 32 L171 30 L185 28 L200 26 L214 24 L228 22 L242 20 L257 18 L271 16 L285 14 L300 13 L314 11 L328 10 L343 8" stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"></path>
+                  <circle cx="343" cy="8" r="3" fill="#34c77b"></circle>
                 </svg>
               </div>
             </div>
@@ -2097,84 +2382,84 @@
               <div class="dtab-panel active" data-tab="position">
                 <div class="pos-card">
                   <div class="pos-card-header">
-                    <div class="pos-card-label">Real Madrid</div>
+                    <div class="pos-card-label">Liverpool</div>
                     <div class="pos-card-side yes">YES</div>
                   </div>
                   <div class="pos-card-grid">
                     <div class="pos-card-stat">
                       <div class="pos-card-stat-label">Shares</div>
-                      <div class="pos-card-stat-value">80</div>
+                      <div class="pos-card-stat-value">120</div>
                     </div>
                     <div class="pos-card-stat">
                       <div class="pos-card-stat-label">Avg Entry</div>
-                      <div class="pos-card-stat-value">41¢</div>
+                      <div class="pos-card-stat-value">52¢</div>
                     </div>
                     <div class="pos-card-stat">
                       <div class="pos-card-stat-label">P&L</div>
-                      <div class="pos-card-stat-value green">+$4.80</div>
+                      <div class="pos-card-stat-value green">+$10.20</div>
                     </div>
                   </div>
                   <div class="pos-card-grid" style="margin-top:6px">
                     <div class="pos-card-stat">
                       <div class="pos-card-stat-label">Cost</div>
-                      <div class="pos-card-stat-value">$32.80</div>
+                      <div class="pos-card-stat-value">$62.40</div>
                     </div>
                     <div class="pos-card-stat">
                       <div class="pos-card-stat-label">Current</div>
-                      <div class="pos-card-stat-value">47¢</div>
+                      <div class="pos-card-stat-value">60.5¢</div>
                     </div>
                     <div class="pos-card-stat">
                       <div class="pos-card-stat-label">Value</div>
-                      <div class="pos-card-stat-value green">$37.60</div>
+                      <div class="pos-card-stat-value green">$72.60</div>
                     </div>
                   </div>
-                  <button class="pos-card-cashout">Cash Out — $37.60</button>
+                  <button class="pos-card-cashout">Cash Out — $72.60</button>
                 </div>
               </div>
               <!-- stats -->
               <div class="dtab-panel" data-tab="stats">
                 <div class="stat-metric-row">
                   <div class="stat-metric">
-                    <div class="stat-metric-val">1.8K</div>
+                    <div class="stat-metric-val">1.2K</div>
                     <div class="stat-metric-lbl">Traders</div>
                   </div>
                   <div class="stat-metric">
-                    <div class="stat-metric-val">$4.1M</div>
+                    <div class="stat-metric-val">$822K</div>
                     <div class="stat-metric-lbl">Volume</div>
                   </div>
                   <div class="stat-metric">
-                    <div class="stat-metric-val">$820K</div>
+                    <div class="stat-metric-val">$210K</div>
                     <div class="stat-metric-lbl">Liquidity</div>
                   </div>
                 </div>
                 <div class="stat-signal">
                   <div class="stat-signal-title">Outcome Concentration</div>
                   <div class="stat-bar-row">
-                    <div class="stat-bar-label yes-l" style="width:50px;font-size:8px">Madrid</div>
+                    <div class="stat-bar-label yes-l" style="width:50px;font-size:8px">Liverpool</div>
                     <div class="stat-bar-track">
-                      <div class="stat-bar-fill yes-f" style="width:52%"></div>
+                      <div class="stat-bar-fill yes-f" style="width:60.5%"></div>
                     </div>
-                    <div class="stat-bar-pct yes-p">52%</div>
+                    <div class="stat-bar-pct yes-p">60.5%</div>
                   </div>
                   <div class="stat-bar-row">
                     <div class="stat-bar-label" style="width:50px;font-size:8px;color:var(--a)">Draw</div>
                     <div class="stat-bar-track">
-                      <div class="stat-bar-fill" style="width:18%;background:rgba(232,197,71,0.2);border-radius:4px"></div>
+                      <div class="stat-bar-fill" style="width:21.5%;background:rgba(232,197,71,0.2);border-radius:4px"></div>
                     </div>
-                    <div class="stat-bar-pct" style="color:var(--a)">18%</div>
+                    <div class="stat-bar-pct" style="color:var(--a)">21.5%</div>
                   </div>
                   <div class="stat-bar-row">
-                    <div class="stat-bar-label no-l" style="width:50px;font-size:8px">Bayern</div>
+                    <div class="stat-bar-label no-l" style="width:50px;font-size:8px">C. Palace</div>
                     <div class="stat-bar-track">
-                      <div class="stat-bar-fill no-f" style="width:30%"></div>
+                      <div class="stat-bar-fill no-f" style="width:17.5%"></div>
                     </div>
-                    <div class="stat-bar-pct no-p">30%</div>
+                    <div class="stat-bar-pct no-p">17.5%</div>
                   </div>
                 </div>
                 <div class="stat-signal">
                   <div class="stat-signal-title">24h Activity</div>
-                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">312 trades · Madrid Yes most traded</div>
-                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">Kick-off: Apr 7, 21:00 CET</div>
+                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">478 trades · Liverpool Yes most traded</div>
+                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">Kick-off: Apr 25, 11:30 UTC · LIVE</div>
                 </div>
               </div>
               <!-- rules -->
@@ -2182,25 +2467,25 @@
                 <div class="rules-box">
                   <div class="rules-label">Resolution Criteria</div>
                   <div class="rules-text">Each outcome resolves YES if the corresponding team wins (or if the match ends in a draw for the Draw market). Result based on 90 minutes + stoppage time. Extra time and penalties do not count.</div>
-                  <div class="rules-meta">Source: UEFA.com · Kick-off Apr 7, 2026 21:00 CET</div>
+                  <div class="rules-meta">Source: PremierLeague.com · Apr 25, 2026 11:30 UTC</div>
                 </div>
               </div>
               <!-- feed -->
               <div class="dtab-panel" data-tab="feed">
                 <div class="feed-card">
                   <div class="feed-card-source">PNL Intelligence</div>
-                  <div class="feed-card-text">Madrid unbeaten in 8 UCL matches since January. Vinicius Jr. confirmed fit after knee issue — market moved +3% on the news.</div>
+                  <div class="feed-card-text">Liverpool unbeaten at Anfield in 14 EPL matches. Salah on 19 goals this season — Palace conceded 3+ in last 2 away games.</div>
                   <div class="feed-card-time">1h ago</div>
                 </div>
                 <div class="feed-card">
                   <div class="feed-card-source">PNL Intelligence</div>
-                  <div class="feed-card-text">Bayern missing Musiala (hamstring) and Sane (illness). Kompany expected to play defensive 4-5-1. Draw market saw 40% volume spike.</div>
-                  <div class="feed-card-time">4h ago</div>
+                  <div class="feed-card-text">Crystal Palace missing Eze (knee) and Mitchell (thigh). Glasner likely to deploy low block 5-4-1 — Draw market saw 15% volume spike pre-match.</div>
+                  <div class="feed-card-time">3h ago</div>
                 </div>
                 <div class="feed-card">
                   <div class="feed-card-source">Market Signal</div>
-                  <div class="feed-card-text">Madrid Yes price: 34¢ → 47¢ in 48h. Largest single buy: 15K shares @ 44¢ from a wallet with 71% UCL win rate.</div>
-                  <div class="feed-card-time">8h ago</div>
+                  <div class="feed-card-text">Liverpool price jumped 56¢ → 60.5¢ after lineup announcement. Largest buy: 8K shares @ 57¢ from a wallet with 68% EPL win rate.</div>
+                  <div class="feed-card-time">45m ago</div>
                 </div>
               </div>
             </div>
@@ -2220,16 +2505,16 @@
 
               <div class="sel-row">
                 <div class="sel-info">
-                  <div class="sel-name">Real Madrid</div>
-                  <div class="sel-vol">$1.9M vol</div>
+                  <div class="sel-name">Liverpool</div>
+                  <div class="sel-vol">$498K vol</div>
                 </div>
                 <div class="sel-btns">
-                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Real Madrid','yes','47¢')">
-                    <span class="sel-btn-pct">47¢</span>
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Liverpool','yes','61')">
+                    <span class="sel-btn-pct">61¢</span>
                     <span class="sel-btn-label">Yes</span>
                   </div>
-                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Real Madrid','no','53¢')">
-                    <span class="sel-btn-pct">53¢</span>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Liverpool','no','39')">
+                    <span class="sel-btn-pct">39¢</span>
                     <span class="sel-btn-label">No</span>
                   </div>
                 </div>
@@ -2238,15 +2523,15 @@
               <div class="sel-row">
                 <div class="sel-info">
                   <div class="sel-name">Draw</div>
-                  <div class="sel-vol">$820K vol</div>
+                  <div class="sel-vol">$176K vol</div>
                 </div>
                 <div class="sel-btns">
-                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Draw','yes','24¢')">
-                    <span class="sel-btn-pct">24¢</span>
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Draw','yes','22')">
+                    <span class="sel-btn-pct">22¢</span>
                     <span class="sel-btn-label">Yes</span>
                   </div>
-                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Draw','no','76¢')">
-                    <span class="sel-btn-pct">76¢</span>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Draw','no','78')">
+                    <span class="sel-btn-pct">78¢</span>
                     <span class="sel-btn-label">No</span>
                   </div>
                 </div>
@@ -2254,16 +2539,16 @@
 
               <div class="sel-row">
                 <div class="sel-info">
-                  <div class="sel-name">Bayern Munich</div>
-                  <div class="sel-vol">$1.4M vol</div>
+                  <div class="sel-name">Crystal Palace</div>
+                  <div class="sel-vol">$148K vol</div>
                 </div>
                 <div class="sel-btns">
-                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Bayern Munich','yes','29¢')">
-                    <span class="sel-btn-pct">29¢</span>
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Crystal Palace','yes','18')">
+                    <span class="sel-btn-pct">18¢</span>
                     <span class="sel-btn-label">Yes</span>
                   </div>
-                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Bayern Munich','no','71¢')">
-                    <span class="sel-btn-pct">71¢</span>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Crystal Palace','no','82')">
+                    <span class="sel-btn-pct">82¢</span>
                     <span class="sel-btn-label">No</span>
                   </div>
                 </div>
@@ -2279,10 +2564,10 @@
           <div class="betslip" onclick="event.stopPropagation()">
             <div class="betslip-handle"></div>
             <div class="betslip-header">
-              <div class="betslip-title" id="bs3-title">Real Madrid</div>
+              <div class="betslip-title" id="bs3-title">Liverpool</div>
               <div class="betslip-side yes-side" id="bs3-side">YES</div>
             </div>
-            <div class="betslip-selection" id="bs3-sub">CL Semi-Final · Match Odds</div>
+            <div class="betslip-selection" id="bs3-sub">EPL · Match Odds · LIVE</div>
             <div class="betslip-field">
               <div class="betslip-field-label">Amount (USDC)</div>
               <input class="betslip-input" id="bs3-amount" type="text" value="50" oninput="updatePayout('bs3')">
@@ -2533,7 +2818,7 @@
 
             <div class="pf-pos-row">
               <span class="pf-side-badge yes">YES</span>
-              <span class="pf-pos-q">Real Madrid win vs Bayern Apr 7?</span>
+              <span class="pf-pos-q">Liverpool win vs C. Palace Apr 25?</span>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
                 <span class="pf-pos-pnl up">+$24.10</span>
                 <span class="pf-pos-entry">0.38→0.47</span>
@@ -2592,40 +2877,46 @@
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-family:var(--mono);font-size:10px;color:var(--mid)">
 
       <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
-        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 01 — List</div>
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 01 — Feed List</div>
         <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
-          <li>· Header: avatar ring (left) → title → wallet pill (address or Connect)</li>
-          <li>· Tap avatar → navigates to Profile screen (04)</li>
-          <li>· Trending strip — horizontal scroll, top 10 by volume</li>
-          <li>· Filter chips: All / Geopolitics / EPL / UCL</li>
-          <li>· Geo cards: emoji + question + YES/NO bar + vol</li>
-          <li>· Sport cards: league + kick-off + 3-way outcome pills</li>
+          <li>· Header: avatar ring (left) → title → wallet pill (right)</li>
+          <li>· Trending strip — horizontal scroll, top by volume, category color</li>
+          <li>· Filter chips: All / Sports / Crypto / Politics / Macro (dynamic from API)</li>
+          <li>· <b>Live Now</b> section first — pulsing red LIVE badge, border glow</li>
+          <li>· <b>Upcoming</b> section — clock icon + "Today 14:00" / "Tomorrow"</li>
+          <li>· <b>Markets</b> section — binary cards with API images + category badges</li>
+          <li>· IPL = 2-way outcomes (no draw), EPL = 3-way (with draw)</li>
+          <li>· Volume on every card. Sub-markets (halftime, exact score) filtered out</li>
+          <li>· Data source: unified <code>GET /predict/feed</code> endpoint</li>
         </ul>
       </div>
 
       <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
         <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 02 — Binary Detail</div>
         <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
-          <li>· Question + end date + volume in sub-header</li>
-          <li>· Sparkline card: current yes%, Δ change, "updated Xs ago"</li>
-          <li>· 1D / 1W range toggle (switches hourly → daily candles)</li>
-          <li>· SVG path chart — area fill + line stroke + dot at tip</li>
-          <li>· YES/NO bars side-by-side with token price ($0.62)</li>
-          <li>· Stats row: vol 7d, vol total, close date</li>
-          <li>· Resolution text + locked "Connect Wallet" CTA</li>
+          <li>· <b>Category badge</b> + end date row below header</li>
+          <li>· Sparkline: yes% + Δ change + "updated Xs ago" + 1D/1W toggle</li>
+          <li>· Red gradient when price is down, green when up</li>
+          <li>· Tabs: Position / Stats / Rules / Feed</li>
+          <li>· Stats: sentiment bar + volume + liquidity + payout calculator</li>
+          <li>· YES/NO buttons in thumb zone with cent price</li>
+          <li>· Bet slip: amount input + $10/$25/$50/$100 presets + payout</li>
+          <li>· Uses real API data (China-Taiwan, 7% YES)</li>
         </ul>
       </div>
 
       <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
         <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 03 — Sport Detail</div>
         <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
-          <li>· Match hero: league badge + kick-off + team emblems</li>
-          <li>· "Updated Xs ago" with live dot in hero row</li>
-          <li>· Outcome tabs: tap to switch sparkline to that token</li>
-          <li>· Sparkline shows selected outcome's price history</li>
-          <li>· Three-way bar chart: column height = probability</li>
-          <li>· Stats: 7d vol, kick-off date, market count</li>
-          <li>· Same locked CTA pattern as binary detail</li>
+          <li>· Match hero: EPL badge + LIVE badge (pulsing) + kick-off time + team emblems + volume</li>
+          <li>· Outcome tabs: 3-way (Liverpool / Draw / C. Palace) — tap to switch sparkline</li>
+          <li>· Sparkline shows selected outcome's price history + live refresh dot</li>
+          <li>· Three-way probability bars: column height = market odds (60.5% / 21.5% / 17.5%)</li>
+          <li>· Tabs: Position / Stats / Rules / Feed</li>
+          <li>· Stats: outcome concentration bars, 24h activity, traders/volume/liquidity</li>
+          <li>· 3 selections in thumb zone with Yes/No cent prices</li>
+          <li>· Bet slip: amount input + presets + payout calculator</li>
+          <li>· Uses real API data (Liverpool vs Crystal Palace, EPL, live)</li>
         </ul>
       </div>
 

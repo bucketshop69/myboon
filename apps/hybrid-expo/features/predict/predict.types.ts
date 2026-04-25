@@ -1,5 +1,57 @@
-export type PredictSport = 'epl' | 'ucl';
+export type PredictSport = 'epl' | 'ucl' | 'ipl';
 export type PredictFilter = 'All' | 'Geopolitics' | 'EPL' | 'UCL';
+
+// --- Unified feed types ---
+
+export type FeedItemStatus = 'live' | 'upcoming' | 'closed' | 'n/a';
+
+export interface FeedOutcome {
+  label: string;
+  price: number;
+  conditionId?: string;
+  clobTokenIds?: string[];
+}
+
+/** A multi-outcome match market (sports events with 2–3 outcomes). */
+export interface FeedItemMatch {
+  type: 'match';
+  slug: string;
+  title: string;
+  category: string;
+  sport: PredictSport;
+  tags: string[];
+  status: FeedItemStatus;
+  gameStartTime: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  image: string | null;
+  active: boolean;
+  volume: number;
+  outcomes: FeedOutcome[];
+}
+
+/** A binary yes/no prediction market. */
+export interface FeedItemBinary {
+  type: 'binary';
+  slug: string;
+  title: string;
+  category: string;
+  tags: string[];
+  status: FeedItemStatus;
+  image: string | null;
+  active: boolean;
+  volume: number;
+  price: number;
+  endDate: string | null;
+  outcomes: FeedOutcome[];
+}
+
+export type FeedItem = FeedItemMatch | FeedItemBinary;
+
+export interface FeedResponse {
+  items: FeedItem[];
+  categories: string[];
+}
 
 export interface TrendingMarket {
   slug: string;
@@ -69,6 +121,7 @@ export interface GeopoliticsMarketDetail {
   slug: string;
   question: string;
   description: string | null;
+  category: string | null;
   endDate: string | null;
   active: boolean | null;
   volume24h: number | null;
@@ -95,6 +148,7 @@ export interface SportMarketDetail {
   title: string;
   description: string | null;
   sport: PredictSport;
+  status: FeedItemStatus;
   startDate: string | null;
   endDate: string | null;
   image: string | null;

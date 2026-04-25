@@ -47,6 +47,21 @@ function formatSecondsAgo(isoStr: string): string {
   return `${Math.floor(diff / 60)}m ago`;
 }
 
+const CATEGORY_COLORS: Record<string, { text: string; bg: string }> = {
+  crypto:   { text: '#7b61ff', bg: 'rgba(123,97,255,0.10)' },
+  politics: { text: '#e8c547', bg: 'rgba(232,197,71,0.06)' },
+  macro:    { text: '#4ea8de', bg: 'rgba(78,168,222,0.10)' },
+  sports:   { text: '#34c77b', bg: 'rgba(52,199,123,0.12)' },
+};
+
+function categoryColor(cat: string): string {
+  return CATEGORY_COLORS[cat.toLowerCase()]?.text ?? semantic.text.dim;
+}
+
+function categoryBadgeStyle(cat: string): { backgroundColor: string } {
+  return { backgroundColor: CATEGORY_COLORS[cat.toLowerCase()]?.bg ?? 'rgba(255,255,255,0.06)' };
+}
+
 function buildSparkPath(points: PricePoint[], w: number, h: number): { linePath: string; areaPath: string } | null {
   if (points.length < 2) return null;
   const minT = points[0].t;
@@ -367,6 +382,22 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           <View style={styles.avatarInner} />
         </Pressable>
       </View>
+
+      {/* ── CATEGORY + END DATE ROW ── */}
+      {detail && (
+        <View style={styles.metaRow}>
+          {detail.category ? (
+            <View style={[styles.categoryBadge, categoryBadgeStyle(detail.category)]}>
+              <Text style={[styles.categoryBadgeText, { color: categoryColor(detail.category) }]}>
+                {detail.category.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={styles.endDateText}>
+            {formatDeadline(detail.endDate, detail.active)}
+          </Text>
+        </View>
+      )}
 
       {/* ── SESSION EXPIRED BANNER ── */}
       {sessionExpired && poly.isReady && (
@@ -895,6 +926,34 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: tokens.radius.full,
     backgroundColor: semantic.background.surfaceRaised,
+  },
+
+  // ── Category + end date row ──
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: semantic.border.muted,
+  },
+  categoryBadge: {
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 2,
+    borderRadius: tokens.radius.xs,
+  },
+  categoryBadgeText: {
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  endDateText: {
+    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs,
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
 
   // ── Body layout ──

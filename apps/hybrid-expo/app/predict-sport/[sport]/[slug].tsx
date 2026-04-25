@@ -4,7 +4,7 @@ import { PredictSportDetailScreen } from '@/features/predict/PredictSportDetailS
 import type { PredictSport } from '@/features/predict/predict.types';
 import { semantic, tokens } from '@/theme';
 
-const SPORTS: PredictSport[] = ['epl', 'ucl'];
+const SPORTS: PredictSport[] = ['epl', 'ucl', 'ipl'];
 
 export default function PredictSportDetailRoute() {
   const params = useLocalSearchParams<{ sport?: string; slug?: string }>();

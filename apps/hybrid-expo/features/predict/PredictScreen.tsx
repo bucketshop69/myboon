@@ -1,37 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
-import { fetchCuratedMarkets, fetchSportsMarkets } from '@/features/predict/predict.api';
-import type { GeopoliticsMarket, PredictFilter, SportMarket } from '@/features/predict/predict.types';
+import { fetchPredictFeed } from '@/features/predict/predict.api';
+import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 
-const FILTERS: PredictFilter[] = ['All', 'Geopolitics', 'EPL', 'UCL'];
-const BINARY_ROW_HEIGHT = 40;
-const SPORT_ROW_HEIGHT = 34;
+// ─── helpers ────────────────────────────────────────────────────────────────
 
-function formatPercent(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return '--';
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatDeadline(endDate: string | null, active: boolean | null): string {
-  if (!endDate) return active === false ? 'Closed' : 'Open';
-
-  const time = Date.parse(endDate);
-  if (Number.isNaN(time)) return active === false ? 'Closed' : 'Open';
-
-  const date = new Date(time);
-  const month = date.toLocaleString('en-US', { month: 'short' });
-  const day = date.getDate();
-  return `${active === false ? 'Ended' : 'Ends'} ${month} ${day}`;
-}
-
-function formatKickoff(isoDate: string | null): string {
+function formatGameTime(isoDate: string | null): string {
   if (!isoDate) return 'TBD';
   const time = Date.parse(isoDate);
   if (Number.isNaN(time)) return 'TBD';
@@ -42,101 +32,168 @@ function formatKickoff(isoDate: string | null): string {
   return `${month} ${day} · ${clock}`;
 }
 
-function BinaryMarketCard({ market, featured, onPress, formatOdds }: { market: GeopoliticsMarket; featured: boolean; onPress: () => void; formatOdds: (p: number | null) => string }) {
-  const fallbackNo = market.yesPrice !== null ? 1 - market.yesPrice : null;
-  const yesText = formatOdds(market.yesPrice);
-  const noText = formatOdds(market.noPrice ?? fallbackNo);
+function formatEndDate(endDate: string | null): string {
+  if (!endDate) return '';
+  const time = Date.parse(endDate);
+  if (Number.isNaN(time)) return '';
+  const date = new Date(time);
+  const month = date.toLocaleString('en-US', { month: 'short' });
+  const day = date.getDate();
+  return `Ends ${month} ${day}`;
+}
+
+// ─── category badge colors ───────────────────────────────────────────────────
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+  crypto: { bg: 'rgba(123, 97, 255, 0.15)', text: '#7b61ff' },
+  politics: { bg: 'rgba(232, 197, 71, 0.15)', text: '#e8c547' },
+  macro: { bg: 'rgba(78, 168, 222, 0.15)', text: '#4ea8de' },
+  sports: { bg: 'rgba(52, 199, 123, 0.15)', text: '#34c77b' },
+};
+
+function getCategoryColor(category: string): { bg: string; text: string } {
+  const key = category.toLowerCase();
+  return CATEGORY_COLORS[key] ?? { bg: semantic.predict.badgeGeoBg as string, text: semantic.text.accentDim as string };
+}
+
+// ─── sub-components ──────────────────────────────────────────────────────────
+
+function PulsingDot() {
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.2, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[styles.pulseDot, { opacity }]} />;
+}
+
+function LiveBadge() {
+  return (
+    <View style={styles.liveBadge}>
+      <PulsingDot />
+      <Text style={styles.liveBadgeText}>LIVE</Text>
+    </View>
+  );
+}
+
+
+function CategoryBadge({ category }: { category: string }) {
+  const colors = getCategoryColor(category);
+  return (
+    <View style={[styles.categoryBadge, { backgroundColor: colors.bg }]}>
+      <Text style={[styles.categoryBadgeText, { color: colors.text }]}>
+        {category.toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+// ─── binary market card ──────────────────────────────────────────────────────
+
+function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPress: () => void; formatOdds: (p: number | null) => string }) {
+  const yesPct = Math.round(item.price * 100);
+  const noPct = 100 - yesPct;
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.cardBase, featured && styles.cardFeatured, pressed && styles.cardPressed]}>
-      <View style={[styles.accentBar, featured && styles.accentBarFeatured]} />
-
-      <View style={styles.cardTop}>
-        <View style={styles.metaRow}>
-          <View style={styles.geoBadge}>
-            <Text style={styles.badgeTextGeo}>Geopolitics</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.binaryCard, pressed && styles.cardPressed]}>
+      {/* top row: image + category badge + question */}
+      <View style={styles.binaryTop}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.binaryImg} resizeMode="cover" />
+        ) : null}
+        <View style={{ flex: 1 }}>
+          <View style={styles.metaRow}>
+            <CategoryBadge category={item.category} />
           </View>
-          <Text style={styles.deadlineText}>{formatDeadline(market.endDate, market.active)}</Text>
-        </View>
-        <Text style={styles.questionText} numberOfLines={2}>
-          {market.question}
-        </Text>
-      </View>
-
-      <View style={styles.outcomesWrap}>
-        <View style={[styles.outcomeRow, { height: BINARY_ROW_HEIGHT }]}>
-          <View style={styles.outcomeLeft}>
-            <View style={[styles.outcomeTag, styles.outcomeTagYes]}>
-              <Text style={styles.outcomeTagYesText}>YES</Text>
-            </View>
-            <Text style={styles.outcomeLabel}>Yes</Text>
-          </View>
-          <Text style={styles.outcomePctYes}>{yesText}</Text>
-        </View>
-
-        <View style={[styles.outcomeRow, { height: BINARY_ROW_HEIGHT }]}>
-          <View style={styles.outcomeLeft}>
-            <View style={[styles.outcomeTag, styles.outcomeTagNo]}>
-              <Text style={styles.outcomeTagNoText}>NO</Text>
-            </View>
-            <Text style={styles.outcomeLabel}>No</Text>
-          </View>
-          <Text style={styles.outcomePctNo}>{noText}</Text>
+          <Text style={styles.questionText} numberOfLines={2}>{item.title}</Text>
         </View>
       </View>
 
-      <View style={styles.cardFoot}>
-        <Text style={styles.volText}>
-          Vol 24h <Text style={styles.volTextValue}>{formatUsdCompact(market.volume24h)}</Text>
-        </Text>
-        <Text style={styles.volText}>
-          Liq <Text style={styles.volTextValue}>{formatUsdCompact(market.liquidity)}</Text>
-        </Text>
+      {/* probability bar */}
+      <View style={styles.binaryBarRow}>
+        <Text style={styles.binaryBarLabel}>YES</Text>
+        <View style={styles.binaryBarTrack}>
+          <View style={[styles.binaryBarFillYes, { width: `${yesPct}%` }]} />
+        </View>
+        <Text style={styles.binaryBarLabel}>NO</Text>
+      </View>
+
+      {/* percentages + volume */}
+      <View style={styles.binaryPctRow}>
+        <Text style={styles.pctYes}>{formatOdds(item.price)}</Text>
+        <Text style={styles.volBadge}>{formatUsdCompact(item.volume)} vol</Text>
+        <Text style={styles.pctNo}>{formatOdds(1 - item.price)}</Text>
       </View>
     </Pressable>
   );
 }
 
-function SportMarketCard({ market, onPress, formatOdds }: { market: SportMarket; onPress: () => void; formatOdds: (p: number | null) => string }) {
-  const rankedOutcomes = [...market.outcomes]
-    .slice(0, 3)
-    .sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
-  const leadValue = rankedOutcomes[0]?.price ?? null;
+// ─── match card (epl / ipl) ──────────────────────────────────────────────────
+
+function shortTeamName(label: string): string {
+  // Strip "Draw (X vs Y)" to just "Draw", and shorten long team names
+  if (label.toLowerCase().startsWith('draw')) return 'Draw';
+  return label.replace(/\s*(FC|United|Wanderers|Hotspur|City)\b\.?/gi, '').trim();
+}
+
+function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress: () => void; formatOdds: (p: number | null) => string }) {
+  const isLive = item.status === 'live';
+  const hasDraw = item.outcomes.length >= 3;
+  // For display: first non-draw = team A, last non-draw = team B
+  const nonDraw = item.outcomes.filter((o) => !o.label.toLowerCase().startsWith('draw'));
+  const teamA = nonDraw[0]?.label ?? '';
+  const teamB = nonDraw[1]?.label ?? '';
+  const kickoff = item.gameStartTime ?? item.startDate;
+
+  // Outcome pills: IPL = 2 pills, EPL = 3 pills
+  const displayOutcomes = hasDraw
+    ? [item.outcomes[0], item.outcomes.find((o) => o.label.toLowerCase().startsWith('draw'))!, item.outcomes[item.outcomes.length - 1]]
+    : item.outcomes.slice(0, 2);
+
+  const pctColors = ['#34c77b', '#e8c547', '#D9534F']; // win1, draw, win2
+  const pctColors2Way = ['#34c77b', '#D9534F'];
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.cardBase, pressed && styles.cardPressed]}>
-      <View style={[styles.accentBar, styles.accentBarSport]} />
-
-      <View style={styles.cardTop}>
-        <View style={styles.metaRow}>
-          <View style={styles.sportBadge}>
-            <Text style={styles.badgeTextSport}>{market.sport.toUpperCase()}</Text>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.sportCard,
+        isLive && styles.sportCardLive,
+        pressed && styles.cardPressed,
+      ]}>
+      {/* meta row: status badge + league */}
+      <View style={styles.sportMeta}>
+        {isLive ? <LiveBadge /> : (
+          <View style={styles.upcomingBadgeInline}>
+            <Text style={styles.upcomingKickoff}>{formatGameTime(kickoff)}</Text>
           </View>
-          <Text style={styles.deadlineText}>{formatKickoff(market.endDate ?? market.startDate)}</Text>
-        </View>
-        <Text style={styles.questionText} numberOfLines={2}>
-          {market.title}
-        </Text>
+        )}
+        <Text style={styles.sportLeague}>{item.sport.toUpperCase()}</Text>
       </View>
 
-      <View style={styles.outcomesWrap}>
-        {rankedOutcomes.map((outcome) => {
-          const isDraw = outcome.label.toLowerCase().includes('draw');
-          const isLead = leadValue !== null && outcome.price === leadValue;
+      {/* teams row */}
+      <View style={styles.teamsRow}>
+        <Text style={styles.teamName} numberOfLines={1}>{shortTeamName(teamA)}</Text>
+        <Text style={styles.vsBadge}>vs</Text>
+        <Text style={[styles.teamName, styles.teamNameRight]} numberOfLines={1}>{shortTeamName(teamB)}</Text>
+      </View>
 
+      {/* outcome pills */}
+      <View style={styles.outcomePills}>
+        {displayOutcomes.map((outcome, idx) => {
+          const color = hasDraw ? pctColors[idx] : pctColors2Way[idx];
           return (
-            <View key={outcome.conditionId ?? outcome.label} style={[styles.outcomeRow, { height: SPORT_ROW_HEIGHT }]}>
-              <View style={styles.outcomeLeft}>
-                {isDraw ? (
-                  <View style={[styles.outcomeTag, styles.outcomeTagDraw]}>
-                    <Text style={styles.outcomeTagDrawText}>DRAW</Text>
-                  </View>
-                ) : null}
-                <Text style={[styles.outcomeLabel, !isLead && styles.outcomeLabelDim]} numberOfLines={1}>
-                  {outcome.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw')}
-                </Text>
-              </View>
-              <Text style={isLead ? styles.outcomePctLead : styles.outcomePctDim}>
+            <View key={outcome.conditionId ?? outcome.label} style={styles.outcomePill}>
+              <Text style={styles.outcomeLabel}>{shortTeamName(outcome.label)}</Text>
+              <Text style={[styles.outcomePct, { color }]}>
                 {formatOdds(outcome.price)}
               </Text>
             </View>
@@ -144,225 +201,323 @@ function SportMarketCard({ market, onPress, formatOdds }: { market: SportMarket;
         })}
       </View>
 
-      <View style={styles.cardFoot}>
-        <Text style={styles.volText}>
-          Vol 24h <Text style={styles.volTextValue}>{formatUsdCompact(market.volume24h)}</Text>
-        </Text>
-      </View>
+      {/* volume */}
+      <Text style={styles.sportVol}>Vol {formatUsdCompact(item.volume)}</Text>
     </Pressable>
   );
 }
 
+// ─── section header ───────────────────────────────────────────────────────────
+
+function SectionHeader({ label, count, unit = 'match', onSeeAll, isLive }: { label: string; count?: number; unit?: string; onSeeAll?: () => void; isLive?: boolean }) {
+  return (
+    <View style={styles.sectionLabelRow}>
+      <Text style={[styles.sectionLabel, isLive && { color: '#f4584e' }]}>{label}</Text>
+      <View style={styles.sectionRight}>
+        {count ? <Text style={styles.sectionCount}>{count} {count === 1 ? unit : `${unit}s`}</Text> : null}
+        {onSeeAll ? (
+          <Pressable onPress={onSeeAll} hitSlop={8}>
+            <Text style={styles.seeAllText}>See all →</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+// ─── main screen ─────────────────────────────────────────────────────────────
+
 export default function PredictScreen() {
   const router = useRouter();
   const { formatOdds } = useOddsFormat();
-  const [filter, setFilter] = useState<PredictFilter>('All');
-  const [geoMarkets, setGeoMarkets] = useState<GeopoliticsMarket[]>([]);
-  const [eplMarkets, setEplMarkets] = useState<SportMarket[]>([]);
-  const [uclMarkets, setUclMarkets] = useState<SportMarket[]>([]);
+  const insets = useSafeAreaInsets();
+
+  const [feedData, setFeedData] = useState<FeedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchText, setSearchText] = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
 
-  async function loadPredictData() {
+  async function loadFeed() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const [geo, epl, ucl] = await Promise.all([
-        fetchCuratedMarkets(),
-        fetchSportsMarkets('epl'),
-        fetchSportsMarkets('ucl'),
-      ]);
-
-      setGeoMarkets(geo);
-      setEplMarkets(epl);
-      setUclMarkets(ucl);
+      const data = await fetchPredictFeed();
+      setFeedData(data);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to load predict markets';
+      const message = error instanceof Error ? error.message : 'Unable to load predict feed';
       setErrorMessage(message);
-      setGeoMarkets([]);
-      setEplMarkets([]);
-      setUclMarkets([]);
+      setFeedData(null);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadPredictData();
+    void loadFeed();
   }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadPredictData();
+    await loadFeed();
     setRefreshing(false);
   }, []);
 
-  const query = searchText.trim().toLowerCase();
+  // Build chip list: "All" + only categories that have items
+  const chips = useMemo(() => {
+    if (!feedData) return ['All'];
+    const itemCats = new Set(feedData.items.map((i) => i.category.toLowerCase()));
+    const withItems = feedData.categories.filter((c) => itemCats.has(c.toLowerCase()));
+    return ['All', ...withItems];
+  }, [feedData]);
 
-  const sortedGeo = useMemo(() => {
-    const sorted = [...geoMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-    if (!query) return sorted;
-    return sorted.filter((m) => m.question.toLowerCase().includes(query));
-  }, [geoMarkets, query]);
+  // Filtered items based on selected category
+  const filteredItems = useMemo<FeedItem[]>(() => {
+    if (!feedData) return [];
+    if (activeCategory === 'All') return feedData.items;
+    return feedData.items.filter((item) =>
+      item.category.toLowerCase() === activeCategory.toLowerCase(),
+    );
+  }, [feedData, activeCategory]);
 
-  const sortedEpl = useMemo(() => {
-    const sorted = [...eplMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-    if (!query) return sorted;
-    return sorted.filter((m) => m.title.toLowerCase().includes(query) || m.outcomes.some((o) => o.label.toLowerCase().includes(query)));
-  }, [eplMarkets, query]);
+  // Derived sections (only used when "All" is selected)
+  const liveItems = useMemo(
+    () => feedData?.items.filter((item) => item.status === 'live') ?? [],
+    [feedData],
+  );
 
-  const sortedUcl = useMemo(() => {
-    const sorted = [...uclMarkets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-    if (!query) return sorted;
-    return sorted.filter((m) => m.title.toLowerCase().includes(query) || m.outcomes.some((o) => o.label.toLowerCase().includes(query)));
-  }, [uclMarkets, query]);
+  const eplUpcoming = useMemo(
+    () =>
+      feedData?.items.filter(
+        (item): item is FeedItemMatch =>
+          item.type === 'match' &&
+          item.sport === 'epl' &&
+          item.status === 'upcoming',
+      ) ?? [],
+    [feedData],
+  );
 
-  const insets = useSafeAreaInsets();
+  const iplUpcoming = useMemo(
+    () =>
+      feedData?.items.filter(
+        (item): item is FeedItemMatch =>
+          item.type === 'match' &&
+          item.sport === 'ipl' &&
+          item.status === 'upcoming',
+      ) ?? [],
+    [feedData],
+  );
+
+  const binaryItems = useMemo(
+    () =>
+      feedData?.items.filter((item): item is FeedItemBinary => item.type === 'binary') ?? [],
+    [feedData],
+  );
+
+  function navigateBinary(slug: string) {
+    router.push({ pathname: '/predict-market/[slug]', params: { slug } });
+  }
+
+  function navigateMatch(sport: string, slug: string) {
+    router.push({ pathname: '/predict-sport/[sport]/[slug]', params: { sport, slug } });
+  }
+
+  const isAllSelected = activeCategory === 'All';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* header */}
       <View style={styles.predictHeader}>
         <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
-          <View style={styles.avatarInner}><Text style={styles.avatarText}>B</Text></View>
+          <View style={styles.avatarInner}>
+            <Text style={styles.avatarText}>B</Text>
+          </View>
         </Pressable>
         <Text style={styles.predictTitle}>Predict</Text>
         <WalletHeaderButton />
       </View>
 
+      {/* category filter chips */}
       <View style={styles.filterStripShell}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterStrip}>
-          {FILTERS.map((value) => {
-            const active = value === filter;
+          {chips.map((chip) => {
+            const active = chip === activeCategory;
             return (
               <Pressable
-                key={value}
-                onPress={() => setFilter(value)}
+                key={chip}
+                onPress={() => setActiveCategory(chip)}
                 style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
-                <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{value}</Text>
+                <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{chip}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
       </View>
 
+      {/* feed scroll */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />
+        }>
+        {/* loading */}
         {loading ? (
           <View style={styles.stateCard}>
             <ActivityIndicator size="small" color={semantic.text.accent} />
-            <Text style={styles.stateText}>Loading predict markets...</Text>
+            <Text style={styles.stateText}>Loading markets...</Text>
           </View>
         ) : null}
 
+        {/* error */}
         {!loading && errorMessage ? (
           <View style={styles.stateCard}>
             <Text style={styles.stateTitle}>Predict unavailable</Text>
             <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable style={styles.retryButton} onPress={() => void loadPredictData()}>
+            <Pressable style={styles.retryButton} onPress={() => void loadFeed()}>
               <Text style={styles.retryButtonText}>Try Again</Text>
             </Pressable>
           </View>
         ) : null}
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'Geopolitics') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>Geopolitics · Active</Text>
-              <Text style={styles.sectionLabelRight}>{sortedGeo.length} markets</Text>
-            </View>
-            {sortedGeo.map((market, index) => (
-              <BinaryMarketCard
-                key={market.slug}
-                market={market}
-                featured={index === 0}
-                onPress={() => router.push({ pathname: '/predict-market/[slug]', params: { slug: market.slug } })}
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
+        {/* ── "All" sectioned layout ── */}
+        {!loading && !errorMessage && isAllSelected ? (
+          <>
+            {/* Live Now */}
+            {liveItems.length > 0 ? (
+              <View style={styles.sectionWrap}>
+                <SectionHeader label="Live Now" isLive />
+                {liveItems.map((item) =>
+                  item.type === 'binary' ? (
+                    <BinaryCard
+                      key={item.slug}
+                      item={item}
+                      onPress={() => navigateBinary(item.slug)}
+                      formatOdds={formatOdds}
+                    />
+                  ) : (
+                    <MatchCard
+                      key={item.slug}
+                      item={item}
+                      onPress={() => navigateMatch(item.sport, item.slug)}
+                      formatOdds={formatOdds}
+                    />
+                  ),
+                )}
+              </View>
+            ) : null}
+
+            {/* EPL Upcoming */}
+            {eplUpcoming.length > 0 ? (
+              <View style={styles.sectionWrap}>
+                <SectionHeader
+                  label="EPL · Upcoming"
+                  count={eplUpcoming.length}
+                  onSeeAll={() => setActiveCategory('sports')}
+                />
+                {eplUpcoming.map((item) => (
+                  <MatchCard
+                    key={item.slug}
+                    item={item}
+                    onPress={() => navigateMatch(item.sport, item.slug)}
+                    formatOdds={formatOdds}
+                  />
+                ))}
+              </View>
+            ) : null}
+
+            {/* IPL Upcoming */}
+            {iplUpcoming.length > 0 ? (
+              <View style={styles.sectionWrap}>
+                <SectionHeader
+                  label="IPL · Upcoming"
+                  count={iplUpcoming.length}
+                  onSeeAll={() => setActiveCategory('sports')}
+                />
+                {iplUpcoming.map((item) => (
+                  <MatchCard
+                    key={item.slug}
+                    item={item}
+                    onPress={() => navigateMatch(item.sport, item.slug)}
+                    formatOdds={formatOdds}
+                  />
+                ))}
+              </View>
+            ) : null}
+
+            {/* Markets (binary) */}
+            {binaryItems.length > 0 ? (
+              <View style={styles.sectionWrap}>
+                <SectionHeader
+                  label="Markets"
+                  count={binaryItems.length}
+                  unit="market"
+                />
+                {binaryItems.map((item) => (
+                  <BinaryCard
+                    key={item.slug}
+                    item={item}
+                    onPress={() => navigateBinary(item.slug)}
+                    formatOdds={formatOdds}
+                  />
+                ))}
+              </View>
+            ) : null}
+
+            {/* empty state */}
+            {liveItems.length === 0 && eplUpcoming.length === 0 && iplUpcoming.length === 0 && binaryItems.length === 0 ? (
+              <View style={styles.stateCard}>
+                <Text style={styles.stateTitle}>No markets</Text>
+                <Text style={styles.stateText}>Pull down to refresh.</Text>
+              </View>
+            ) : null}
+          </>
         ) : null}
 
-        {!loading && !errorMessage && (filter === 'All' || filter === 'EPL') ? (
+        {/* ── category-filtered flat list ── */}
+        {!loading && !errorMessage && !isAllSelected ? (
           <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>EPL · Matchday</Text>
-              <Text style={styles.sectionLabelRight}>{sortedEpl.length} fixtures</Text>
-            </View>
-            {sortedEpl.map((market) => (
-              <SportMarketCard
-                key={market.slug}
-                market={market}
-                onPress={() =>
-                  router.push({
-                    pathname: '/predict-sport/[sport]/[slug]',
-                    params: { sport: market.sport, slug: market.slug },
-                  })
-                }
-                formatOdds={formatOdds}
-              />
-            ))}
-          </View>
-        ) : null}
-
-        {!loading && !errorMessage && (filter === 'All' || filter === 'UCL') ? (
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.sectionLabel}>UCL · Fixtures</Text>
-              <Text style={styles.sectionLabelRight}>{sortedUcl.length} fixtures</Text>
-            </View>
-            {sortedUcl.map((market) => (
-              <SportMarketCard
-                key={market.slug}
-                market={market}
-                onPress={() =>
-                  router.push({
-                    pathname: '/predict-sport/[sport]/[slug]',
-                    params: { sport: market.sport, slug: market.slug },
-                  })
-                }
-                formatOdds={formatOdds}
-              />
-            ))}
+            <SectionHeader label={activeCategory} />
+            {filteredItems.length === 0 ? (
+              <View style={styles.stateCard}>
+                <Text style={styles.stateText}>No {activeCategory} markets available.</Text>
+              </View>
+            ) : null}
+            {filteredItems.map((item) =>
+              item.type === 'binary' ? (
+                <BinaryCard
+                  key={item.slug}
+                  item={item}
+                  onPress={() => navigateBinary(item.slug)}
+                  formatOdds={formatOdds}
+                />
+              ) : (
+                <MatchCard
+                  key={item.slug}
+                  item={item}
+                  onPress={() => navigateMatch(item.sport, item.slug)}
+                  formatOdds={formatOdds}
+                />
+              ),
+            )}
           </View>
         ) : null}
       </ScrollView>
-
-      {/* Bottom search bar */}
-      <View style={styles.searchBar}>
-        <MaterialIcons name="search" size={16} color={semantic.text.dim} />
-        <TextInput
-          style={styles.searchInput}
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder="Search markets..."
-          placeholderTextColor={semantic.text.faint}
-          autoCorrect={false}
-        />
-        {searchText.length > 0 && (
-          <Pressable onPress={() => setSearchText('')} hitSlop={8} style={styles.searchClear}>
-            <MaterialIcons name="close" size={14} color={semantic.text.dim} />
-          </Pressable>
-        )}
-      </View>
-
     </View>
   );
 }
+
+// ─── styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: semantic.background.screen,
   },
-  // ─── predict header ───
+  // ─── header ───
   predictHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -372,7 +527,8 @@ const styles = StyleSheet.create({
     borderBottomColor: semantic.border.muted,
   },
   avatarRing: {
-    width: 28, height: 28,
+    width: 28,
+    height: 28,
     borderRadius: 14,
     padding: 2,
     backgroundColor: 'transparent',
@@ -382,7 +538,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarInner: {
-    width: 20, height: 20,
+    width: 20,
+    height: 20,
     borderRadius: 10,
     backgroundColor: semantic.background.surfaceRaised,
     alignItems: 'center',
@@ -420,29 +577,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   filterChipOn: {
-    backgroundColor: semantic.text.accent,
-    borderColor: semantic.text.accent,
+    backgroundColor: 'rgba(232, 197, 71, 0.12)',
+    borderColor: 'rgba(232, 197, 71, 0.3)',
   },
   filterChipOff: {
-    backgroundColor: semantic.background.surfaceRaised,
-    borderColor: semantic.text.faint,
+    backgroundColor: semantic.background.surface,
+    borderColor: semantic.border.muted,
   },
   filterTextOn: {
-    color: semantic.background.screen,
-    fontSize: tokens.fontSize.xs,
+    color: '#e8c547',
+    fontSize: 9,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     fontFamily: 'monospace',
     fontWeight: '500',
   },
   filterTextOff: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.xs,
+    color: semantic.text.faint,
+    fontSize: 9,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     fontFamily: 'monospace',
     fontWeight: '500',
   },
+  // ─── feed ───
   feedContent: {
     paddingHorizontal: 14,
     paddingTop: tokens.spacing.sm,
@@ -452,10 +610,12 @@ const styles = StyleSheet.create({
   sectionWrap: {
     gap: 6,
   },
+  // ─── section header ───
   sectionLabelRow: {
     paddingVertical: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   sectionLabel: {
     color: semantic.text.faint,
@@ -464,222 +624,241 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontFamily: 'monospace',
   },
-  sectionLabelRight: {
+  sectionRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionCount: {
+    fontFamily: 'monospace',
+    fontSize: 8,
     color: semantic.text.faint,
-    fontSize: tokens.fontSize.xs,
-    letterSpacing: 0.8,
-    textTransform: 'lowercase',
+  },
+  seeAllText: {
+    color: '#e8c547',
+    fontSize: 8,
+    letterSpacing: 0.5,
     fontFamily: 'monospace',
   },
-  cardBase: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
-    position: 'relative',
-  },
+  // ─── shared ───
   cardPressed: {
     opacity: 0.9,
   },
-  cardFeatured: {
-    backgroundColor: '#252619',
-    borderColor: semantic.predict.cardFeatured,
-  },
-  accentBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: semantic.text.accentDim,
-    opacity: 0.7,
-  },
-  accentBarFeatured: {
-    backgroundColor: semantic.text.accent,
-    opacity: 1,
-  },
-  accentBarSport: {
-    backgroundColor: semantic.sentiment.positive,
-    opacity: 0.6,
-  },
-  cardTop: {
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-  },
   metaRow: {
-    marginBottom: 6,
+    marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  geoBadge: {
-    backgroundColor: semantic.predict.badgeGeoBg,
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  sportBadge: {
-    backgroundColor: semantic.predict.badgeSportBg,
-    borderRadius: tokens.radius.xs,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeTextGeo: {
-    color: semantic.text.accentDim,
-    fontSize: 8,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
-    fontWeight: '500',
-  },
-  badgeTextSport: {
-    color: semantic.sentiment.positive,
-    fontSize: 8,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
-    fontWeight: '500',
-  },
-  deadlineText: {
-    marginLeft: 'auto',
-    color: semantic.text.faint,
-    fontSize: 8,
-    letterSpacing: 0.6,
-    fontFamily: 'monospace',
-  },
   questionText: {
     color: semantic.text.primary,
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: -0.1,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '600',
   },
-  outcomesWrap: {
-    paddingHorizontal: 12,
-    gap: 2,
-  },
-  outcomeRow: {
-    backgroundColor: semantic.background.surfaceRaised,
+  // ─── badges ───
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     borderWidth: 1,
-    borderColor: semantic.predict.rowBorderSoft,
-    borderRadius: tokens.radius.sm,
+    borderColor: 'rgba(244, 88, 78, 0.25)',
+    backgroundColor: 'rgba(244, 88, 78, 0.10)',
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  pulseDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#f4584e',
+  },
+  liveBadgeText: {
+    color: '#f4584e',
+    fontSize: 7.5,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  categoryBadge: {
+    borderRadius: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  categoryBadgeText: {
+    fontSize: 7,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    fontFamily: 'monospace',
+    fontWeight: '500',
+  },
+  // ─── binary card (mockup: geo-card) ───
+  binaryCard: {
+    marginBottom: 8,
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 12,
+    padding: 12,
+  },
+  binaryTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  binaryImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: tokens.colors.lift,
+  },
+  binaryBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 7,
+  },
+  binaryBarLabel: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    width: 22,
+  },
+  binaryBarTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: tokens.colors.lift,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  binaryBarFillYes: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    backgroundColor: '#34c77b',
+    borderRadius: 2,
+  },
+  binaryPctRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
   },
-  outcomeLeft: {
+  pctYes: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#34c77b',
+  },
+  pctNo: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D9534F',
+  },
+  volBadge: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    backgroundColor: tokens.colors.surface,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  // ─── sport card (mockup: sport-card) ───
+  sportCard: {
+    marginHorizontal: 0,
+    marginBottom: 8,
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 12,
+    padding: 12,
+  },
+  sportCardLive: {
+    borderColor: 'rgba(244, 88, 78, 0.2)',
+  },
+  sportMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    flex: 1,
-    paddingRight: tokens.spacing.sm,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  outcomeTag: {
-    minWidth: 36,
-    borderRadius: tokens.radius.xs,
-    borderWidth: 1,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+  sportLeague: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  upcomingBadgeInline: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
   },
-  outcomeTagYes: {
-    backgroundColor: semantic.predict.outcomeYesBg,
-    borderColor: semantic.predict.outcomeYesBorder,
-  },
-  outcomeTagNo: {
-    backgroundColor: semantic.predict.outcomeNoBg,
-    borderColor: semantic.predict.outcomeNoBorder,
-  },
-  outcomeTagDraw: {
-    backgroundColor: semantic.predict.outcomeDrawBg,
-    borderColor: semantic.predict.outcomeDrawBorder,
-  },
-  outcomeTagYesText: {
-    color: semantic.sentiment.positive,
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
+  upcomingKickoff: {
     fontFamily: 'monospace',
-    fontWeight: '500',
+    fontSize: 8,
+    color: semantic.text.faint,
   },
-  outcomeTagNoText: {
-    color: semantic.sentiment.negative,
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
-    fontWeight: '500',
+  teamsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  outcomeTagDrawText: {
-    color: semantic.text.dim,
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
+  teamName: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: semantic.text.primary,
+  },
+  teamNameRight: {
+    textAlign: 'right',
+  },
+  vsBadge: {
     fontFamily: 'monospace',
-    fontWeight: '500',
+    fontSize: 9,
+    color: semantic.text.faint,
+    paddingHorizontal: 8,
+  },
+  outcomePills: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  outcomePill: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: tokens.colors.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   outcomeLabel: {
-    color: semantic.text.primary,
-    fontSize: 12,
-    fontWeight: '500',
-    flex: 1,
-  },
-  outcomeLabelDim: {
-    color: semantic.text.dim,
-  },
-  outcomePctYes: {
-    color: semantic.sentiment.positive,
-    fontSize: 24,
-    lineHeight: 24,
-    fontWeight: '700',
-    minWidth: 56,
-    textAlign: 'right',
-  },
-  outcomePctNo: {
-    color: semantic.sentiment.negative,
-    fontSize: 24,
-    lineHeight: 24,
-    fontWeight: '700',
-    minWidth: 56,
-    textAlign: 'right',
-  },
-  outcomePctLead: {
-    color: semantic.text.accent,
-    fontSize: 20,
-    lineHeight: 20,
-    fontWeight: '700',
-    minWidth: 56,
-    textAlign: 'right',
-  },
-  outcomePctDim: {
-    color: semantic.text.dim,
-    fontSize: 20,
-    lineHeight: 20,
-    fontWeight: '700',
-    minWidth: 56,
-    textAlign: 'right',
-  },
-  cardFoot: {
-    marginTop: 6,
-    paddingTop: 8,
-    paddingBottom: 11,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  volText: {
-    color: semantic.text.faint,
-    fontSize: 9,
-    letterSpacing: 0.7,
     fontFamily: 'monospace',
+    fontSize: 7,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+    marginBottom: 3,
   },
-  volTextValue: {
-    color: semantic.text.dim,
+  outcomePct: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
   },
+  sportVol: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    marginTop: 6,
+  },
+  // ─── state cards ───
   stateCard: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
@@ -711,31 +890,5 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontWeight: '700',
     textTransform: 'uppercase',
-  },
-  // ─── search bar ───
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-    backgroundColor: semantic.background.surface,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
-    color: semantic.text.primary,
-    padding: 0,
-  },
-  searchClear: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: semantic.background.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

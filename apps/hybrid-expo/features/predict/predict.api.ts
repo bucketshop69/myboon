@@ -1,4 +1,10 @@
 import type {
+  FeedItem,
+  FeedItemBinary,
+  FeedItemMatch,
+  FeedItemStatus,
+  FeedOutcome,
+  FeedResponse,
   GeopoliticsMarket,
   GeopoliticsMarketDetail,
   LivePrice,
@@ -138,6 +144,7 @@ function mapGeopoliticsMarketDetail(row: unknown): GeopoliticsMarketDetail | nul
     slug,
     question,
     description: typeof market.description === 'string' ? market.description : null,
+    category: typeof market.category === 'string' ? market.category : null,
     endDate: typeof market.endDate === 'string' ? market.endDate : null,
     active: typeof market.active === 'boolean' ? market.active : null,
     volume24h: toNumber(market.volume24hr ?? market.volume24h),
@@ -177,7 +184,10 @@ function mapSportMarketDetail(row: unknown): SportMarketDetail | null {
 
   const slug = typeof market.slug === 'string' ? market.slug : null;
   const title = typeof market.title === 'string' ? market.title : null;
-  const sport = market.sport === 'epl' || market.sport === 'ucl' ? market.sport : null;
+  const sport =
+    market.sport === 'epl' || market.sport === 'ucl' || market.sport === 'ipl'
+      ? (market.sport as PredictSport)
+      : null;
   if (!slug || !title || !sport) return null;
 
   const outcomesRaw = Array.isArray(market.outcomes) ? market.outcomes : [];
@@ -185,11 +195,18 @@ function mapSportMarketDetail(row: unknown): SportMarketDetail | null {
     .map(mapSportOutcomeDetail)
     .filter((outcome): outcome is SportOutcomeDetail => outcome !== null);
 
+  const rawStatus = typeof market.status === 'string' ? market.status : 'n/a';
+  const status: FeedItemStatus =
+    rawStatus === 'live' || rawStatus === 'upcoming' || rawStatus === 'closed'
+      ? rawStatus
+      : 'n/a';
+
   return {
     slug,
     title,
     description: typeof market.description === 'string' ? market.description : null,
     sport,
+    status,
     startDate: typeof market.startDate === 'string' ? market.startDate : null,
     endDate: typeof market.endDate === 'string' ? market.endDate : null,
     image: typeof market.image === 'string' ? market.image : null,
@@ -210,6 +227,10 @@ async function getJson(path: string): Promise<unknown> {
   return response.json();
 }
 
+/**
+ * @deprecated Use fetchPredictFeed() instead. This endpoint returns the old per-category
+ * curated markets list and will be removed once all screens migrate to the unified feed.
+ */
 export async function fetchCuratedMarkets(): Promise<GeopoliticsMarket[]> {
   const payload = await getJson('/predict/markets');
   if (!Array.isArray(payload)) throw new Error('Invalid markets response');
@@ -219,6 +240,10 @@ export async function fetchCuratedMarkets(): Promise<GeopoliticsMarket[]> {
     .filter((market): market is GeopoliticsMarket => market !== null);
 }
 
+/**
+ * @deprecated Use fetchPredictFeed() instead. This endpoint returns sport-specific markets
+ * and will be removed once all screens migrate to the unified feed.
+ */
 export async function fetchSportsMarkets(sport: PredictSport): Promise<SportMarket[]> {
   const payload = await getJson(`/predict/sports/${sport}`);
   if (!Array.isArray(payload)) throw new Error('Invalid sports response');
@@ -226,6 +251,112 @@ export async function fetchSportsMarkets(sport: PredictSport): Promise<SportMark
   return payload
     .map(mapSportMarket)
     .filter((market): market is SportMarket => market !== null);
+}
+
+const SLUG_BLOCKLIST = ['halftime', 'exact-score'];
+
+function isBlockedSlug(slug: string): boolean {
+  return SLUG_BLOCKLIST.some((term) => slug.includes(term));
+}
+
+function mapFeedOutcome(raw: unknown): FeedOutcome | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const label = typeof o.label === 'string' ? o.label : null;
+  const price = toNumber(o.price);
+  if (!label || price === null) return null;
+  return {
+    label,
+    price,
+    conditionId: typeof o.conditionId === 'string' ? o.conditionId : undefined,
+    clobTokenIds: Array.isArray(o.clobTokenIds)
+      ? (o.clobTokenIds as unknown[]).filter((t): t is string => typeof t === 'string')
+      : undefined,
+  };
+}
+
+function mapFeedItem(raw: unknown): FeedItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const item = raw as Record<string, unknown>;
+
+  const type = item.type;
+  const slug = typeof item.slug === 'string' ? item.slug : null;
+  if (!slug || isBlockedSlug(slug)) return null;
+
+  const title = typeof item.title === 'string' ? item.title : typeof item.question === 'string' ? item.question : null;
+  if (!title) return null;
+
+  const category = typeof item.category === 'string' ? item.category : 'other';
+  const tags = Array.isArray(item.tags)
+    ? (item.tags as unknown[]).filter((t): t is string => typeof t === 'string')
+    : [];
+  const status = typeof item.status === 'string' ? (item.status as FeedItemMatch['status']) : 'n/a';
+  const image = typeof item.image === 'string' ? item.image : null;
+  const active = item.active === true;
+  const volume = toNumber(item.volume) ?? 0;
+  const endDate = typeof item.endDate === 'string' ? item.endDate : null;
+
+  const outcomesRaw = Array.isArray(item.outcomes) ? item.outcomes : [];
+  const outcomes = outcomesRaw.map(mapFeedOutcome).filter((o): o is FeedOutcome => o !== null);
+
+  if (type === 'match') {
+    const sport = item.sport;
+    if (sport !== 'epl' && sport !== 'ucl' && sport !== 'ipl') return null;
+    const result: FeedItemMatch = {
+      type: 'match',
+      slug,
+      title,
+      category,
+      sport,
+      tags,
+      status,
+      gameStartTime: typeof item.gameStartTime === 'string' ? item.gameStartTime : null,
+      startDate: typeof item.startDate === 'string' ? item.startDate : null,
+      endDate,
+      image,
+      active,
+      volume,
+      outcomes,
+    };
+    return result;
+  }
+
+  if (type === 'binary') {
+    const price = toNumber(item.price) ?? toNumber(item.yesPrice) ?? 0;
+    const result: FeedItemBinary = {
+      type: 'binary',
+      slug,
+      title,
+      category,
+      tags,
+      status,
+      image,
+      active,
+      volume,
+      price,
+      endDate,
+      outcomes,
+    };
+    return result;
+  }
+
+  return null;
+}
+
+/** Fetch the unified predict feed from /predict/feed. Strips halftime and exact-score markets client-side. */
+export async function fetchPredictFeed(): Promise<FeedResponse> {
+  const payload = await getJson('/predict/feed');
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid feed response');
+  const p = payload as Record<string, unknown>;
+
+  const rawItems = Array.isArray(p.items) ? p.items : [];
+  const items = rawItems.map(mapFeedItem).filter((item): item is FeedItem => item !== null);
+
+  const categories = Array.isArray(p.categories)
+    ? (p.categories as unknown[]).filter((c): c is string => typeof c === 'string')
+    : [];
+
+  return { items, categories };
 }
 
 export async function fetchCuratedMarketDetail(slug: string): Promise<GeopoliticsMarketDetail> {
