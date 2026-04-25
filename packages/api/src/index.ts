@@ -430,6 +430,7 @@ app.get('/predict/history/:tokenId', async (c) => {
 const SPORT_SERIES: Record<string, string> = {
   epl: '10188',
   ucl: '10204',
+  ipl: '11213',
 }
 
 app.get('/predict/sports/:sport', async (c) => {
