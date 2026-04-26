@@ -1,6 +1,6 @@
 # myboon — Architecture & Product Vision
 
-> **Last updated:** 2026-04-21 · Covers commits through `1363fc8`
+> **Last updated:** 2026-04-26 · Covers commits through `5c07623`
 
 ## The Product
 
@@ -239,14 +239,27 @@ Hono server, runs on VPS alongside collectors and brain. All Polymarket calls pr
 
 **Predict endpoints (config-driven market collections — `src/curated.ts`):**
 
+- `GET /predict/feed` — unified feed: pinned binary markets + EPL + IPL matches. Params: `category`, `sport`, `limit`. Filters `-more-markets` and `-exact-score` slugs. IPL deduped by team+date (keeps higher volume). Sort: live → upcoming → binary by volume.
 - `GET /predict/markets` — curated geopolitics markets with live yes/no prices
 - `GET /predict/markets/:slug` — any valid Polymarket slug (no longer gated to curated list)
-- `GET /predict/sports/:sport` — dynamic sports market list (`epl`, `ucl`) with 3-way outcomes
+- `GET /predict/sports/:sport` — dynamic sports market list (`epl`, `ipl`) with 3-way outcomes
 - `GET /predict/sports/:sport/:slug` — full sports market detail with per-outcome best bid/ask
 - `GET /predict/history/:tokenId?interval=1m|5m|1h|1d` — 7-day price history (strict interval validation)
 - `POST /predict/order` — forward signed order to Polymarket CLOB
 - `GET /predict/orders/:address` — user open orders
 - `GET /predict/price/:tokenId` — best buy/sell price
+
+**Sports match status detection (#47):**
+
+Gamma API has a known bug where `active`/`closed` flags stay stale after sports matches end (rs-clob-client #199). `deriveMatchStatus()` uses multi-signal detection instead:
+
+1. `closed` flag — if Gamma eventually flips it
+2. `umaResolutionStatus` — `"proposed"` or `"resolved"` means outcome decided on-chain (UMA oracle)
+3. Outcome prices — any outcome ≥ 0.995 means market is effectively resolved
+4. Time elapsed — match can't be live after max duration (5h IPL T20, 3h EPL football)
+5. `gameStartTime` vs now — upcoming/live fallback
+
+Future: Sports WebSocket (`wss://sports-api.polymarket.com/ws`) for real-time match state — this is how Polymarket.com itself detects match end.
 
 **CLOB proxy endpoints (read-only + execution):**
 
@@ -374,3 +387,4 @@ Execution policy:
 | CLOB V2 over V1 | V1 deprecated by Polymarket. V2 SDK + preprod test markets for validation before mainnet. |
 | Local order signing over server-side | Phone signs orders locally with derived EVM key — server never touches private keys. Geo-proxy only forwards signed payloads. |
 | Gamma data-api for portfolio | Portfolio, activity, and position data served via Gamma's data-api (same infra as Polymarket frontend). More reliable than CLOB endpoints for read-heavy queries. |
+| Multi-signal match status over Gamma flags (#47) | Gamma's `active`/`closed` flags are stale for sports (confirmed bug rs-clob-client #199). Use UMA oracle status + price ≥0.995 + max match duration instead. Sports WebSocket is the authoritative source (future). |

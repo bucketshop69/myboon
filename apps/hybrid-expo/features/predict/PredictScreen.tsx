@@ -191,7 +191,7 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
         {displayOutcomes.map((outcome, idx) => {
           const color = hasDraw ? pctColors[idx] : pctColors2Way[idx];
           return (
-            <View key={outcome.conditionId ?? outcome.label} style={styles.outcomePill}>
+            <View key={`${outcome.conditionId}-${idx}`} style={styles.outcomePill}>
               <Text style={styles.outcomeLabel}>{shortTeamName(outcome.label)}</Text>
               <Text style={[styles.outcomePct, { color }]}>
                 {formatOdds(outcome.price)}
