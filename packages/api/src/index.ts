@@ -1145,14 +1145,35 @@ interface FeedItem {
   }[]
 }
 
-/** Derive match status from kickoff time. gameStartTime is actual kickoff, not market creation. */
-function deriveMatchStatus(gameStartTime: string | null | undefined, active: boolean, closed: boolean): 'live' | 'upcoming' | 'ended' {
+/** Derive match status from multiple signals (Gamma's active/closed flags are buggy for sports).
+ *  Priority order:
+ *  1. closed flag (if Gamma eventually flips it)
+ *  2. UMA oracle status — "proposed" or "resolved" means outcome is decided on-chain
+ *  3. Price signal — any outcome ≥0.995 means market is effectively resolved
+ *  4. Time elapsed — match can't be live after max duration (5h IPL, 3h EPL)
+ *  5. gameStartTime vs now — upcoming / live fallback */
+function deriveMatchStatus(
+  gameStartTime: string | null | undefined,
+  active: boolean,
+  closed: boolean,
+  outcomePrices: (number | null)[] = [],
+  sport?: string,
+  umaResolutionStatus?: string | null,
+): 'live' | 'upcoming' | 'ended' {
   if (closed) return 'ended'
+  // UMA oracle: proposed = outcome asserted (2h dispute window), resolved = finalized
+  if (umaResolutionStatus === 'proposed' || umaResolutionStatus === 'resolved') return 'ended'
+  // Price-based: ≥0.995 means decided (not 0.95 — comebacks happen up to ~0.96)
+  if (outcomePrices.some((p) => p !== null && p >= 0.995)) return 'ended'
   if (!gameStartTime) return active ? 'upcoming' : 'ended'
   const start = new Date(gameStartTime).getTime()
   const now = Date.now()
-  if (now >= start && active) return 'live'
   if (now < start) return 'upcoming'
+  // Time-based: match can't still be live after max duration
+  const hoursElapsed = (now - start) / (1000 * 60 * 60)
+  const maxDuration = sport === 'ipl' ? 5 : sport === 'epl' ? 3 : 4
+  if (hoursElapsed > maxDuration) return 'ended'
+  if (active) return 'live'
   return 'ended'
 }
 
@@ -1223,13 +1244,15 @@ app.get('/predict/feed', async (c) => {
         return events
           .filter((e) => {
             const slug = String(e.slug ?? '')
-            return slug.startsWith('epl-') && !slug.endsWith('-more-markets')
+            return slug.startsWith('epl-') && !slug.endsWith('-more-markets') && !slug.endsWith('-exact-score')
           })
           .map((e) => {
             const markets = (e.markets ?? []) as Record<string, unknown>[]
             const gameStart = String(markets[0]?.gameStartTime ?? e.startTime ?? '')
             const isActive = (e.active as boolean) ?? false
             const isClosed = (e.closed as boolean) ?? false
+            // UMA status from any market in the event (they share resolution)
+            const umaStatus = (markets.find((m) => m.umaResolutionStatus)?.umaResolutionStatus as string) ?? null
             const outcomes = markets.map((m) => {
               const outcomePrices = parseStringArray(m.outcomePrices)
               const clobTokenIds = parseStringArray(m.clobTokenIds)
@@ -1247,7 +1270,7 @@ app.get('/predict/feed', async (c) => {
               category: 'sports',
               sport: 'epl',
               tags: ['sports', 'epl'],
-              status: deriveMatchStatus(gameStart || null, isActive, isClosed),
+              status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), 'epl', umaStatus),
               gameStartTime: gameStart || null,
               startDate: (e.startDate as string) ?? null,
               endDate: (e.endDate as string) ?? null,
@@ -1308,6 +1331,7 @@ app.get('/predict/feed', async (c) => {
             const gameStart = String(mainMarket.gameStartTime ?? e.startTime ?? '')
             const isActive = (e.active as boolean) ?? false
             const isClosed = (e.closed as boolean) ?? false
+            const umaStatus = (mainMarket.umaResolutionStatus as string) ?? null
 
             return {
               type: 'match' as const,
@@ -1316,7 +1340,7 @@ app.get('/predict/feed', async (c) => {
               category: 'sports',
               sport: 'ipl',
               tags: ['sports', 'cricket', 'indian premier league'],
-              status: deriveMatchStatus(gameStart || null, isActive, isClosed),
+              status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), 'ipl', umaStatus),
               gameStartTime: gameStart || null,
               startDate: (e.startDate as string) ?? null,
               endDate: (e.endDate as string) ?? null,
