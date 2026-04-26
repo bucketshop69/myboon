@@ -41,17 +41,40 @@ export interface PolymarketWallet {
 }
 
 export function usePolymarketWallet(): PolymarketWallet {
-  const { connected, signMessage } = useWallet();
+  const { connected, address: solanaAddress, signMessage } = useWallet();
   const [polygonAddress, setPolygonAddress] = useState<string | null>(null);
   const [safeAddress, setSafeAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const evmSigner = useEvmSigner();
+  const prevSolanaAddress = useRef<string | null>(null);
 
-  // Load stored addresses on mount (public info only)
+  // Storage keys scoped to the current Solana wallet
+  const scopedKey = solanaAddress ? `${STORAGE_KEY}:${solanaAddress}` : null;
+  const scopedSafeKey = solanaAddress ? `${SAFE_STORAGE_KEY}:${solanaAddress}` : null;
+
+  // Load stored addresses when Solana wallet connects/changes; clear when disconnected
   useEffect(() => {
+    // Wallet disconnected or address changed — clear stale Polymarket state
+    if (!connected || !solanaAddress) {
+      setPolygonAddress(null);
+      setSafeAddress(null);
+      setIsLoading(false);
+      prevSolanaAddress.current = null;
+      return;
+    }
+
+    // Same wallet, already loaded — skip
+    if (prevSolanaAddress.current === solanaAddress) return;
+    prevSolanaAddress.current = solanaAddress;
+
+    // New wallet connected — load its stored addresses (if any)
+    setIsLoading(true);
+    setPolygonAddress(null);
+    setSafeAddress(null);
+
     Promise.all([
-      AsyncStorage.getItem(STORAGE_KEY),
-      AsyncStorage.getItem(SAFE_STORAGE_KEY),
+      AsyncStorage.getItem(`${STORAGE_KEY}:${solanaAddress}`),
+      AsyncStorage.getItem(`${SAFE_STORAGE_KEY}:${solanaAddress}`),
     ])
       .then(([storedEoa, storedSafe]) => {
         if (storedEoa) setPolygonAddress(storedEoa);
@@ -59,7 +82,7 @@ export function usePolymarketWallet(): PolymarketWallet {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [connected, solanaAddress]);
 
   const enable = useCallback(async () => {
     if (!connected || !signMessage) {
@@ -93,30 +116,30 @@ export function usePolymarketWallet(): PolymarketWallet {
       setPolygonAddress(data.polygonAddress);
       setSafeAddress(data.safeAddress ?? null);
 
-      // Persist addresses locally (public info only, not the private key)
-      await AsyncStorage.setItem(STORAGE_KEY, data.polygonAddress);
-      if (data.safeAddress) {
-        await AsyncStorage.setItem(SAFE_STORAGE_KEY, data.safeAddress);
+      // Persist addresses locally (public info only, scoped to Solana wallet)
+      if (scopedKey) await AsyncStorage.setItem(scopedKey, data.polygonAddress);
+      if (data.safeAddress && scopedSafeKey) {
+        await AsyncStorage.setItem(scopedSafeKey, data.safeAddress);
       }
     } catch (err) {
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [connected, signMessage]);
+  }, [connected, signMessage, scopedKey, scopedSafeKey]);
 
   const disable = useCallback(() => {
     // Clear server session
     if (polygonAddress) {
       fetchWithTimeout(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
     }
-    // Clear local storage
-    AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
-    AsyncStorage.removeItem(SAFE_STORAGE_KEY).catch(() => {});
+    // Clear local storage (scoped to current Solana wallet)
+    if (scopedKey) AsyncStorage.removeItem(scopedKey).catch(() => {});
+    if (scopedSafeKey) AsyncStorage.removeItem(scopedSafeKey).catch(() => {});
     setPolygonAddress(null);
     setSafeAddress(null);
     // EVM key in useEvmSigner ref will be GC'd when component unmounts
-  }, [polygonAddress]);
+  }, [polygonAddress, scopedKey, scopedSafeKey]);
 
   /** Sign order locally — phone holds the key, VPS just proxies the signed order */
   const signOrder = useCallback(async (params: OrderParams): Promise<SignedOrderV2> => {
