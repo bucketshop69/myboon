@@ -17,7 +17,9 @@ import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
+import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { useDrawer } from '@/components/drawer/DrawerProvider';
 import { semantic, tokens } from '@/theme';
 
 function truncate(addr: string, start = 6, end = 4): string {
@@ -40,8 +42,10 @@ function formatPnl(value: number): string {
 export default function PredictProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { connected, address: solanaAddress } = useWallet();
+  const { connected, address: solanaAddress, source } = useWallet();
+  const privy = usePrivyWallet();
   const poly = usePolymarketWallet();
+  const { open: openDrawer } = useDrawer();
   const [busy, setBusy] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -245,21 +249,32 @@ export default function PredictProfileScreen() {
             {connected && (
               <View style={styles.connectedChip}>
                 <View style={styles.connectedDot} />
-                <Text style={styles.connectedText}>Connected</Text>
+                <Text style={styles.connectedText}>
+                  {source === 'privy' ? 'Passkey' : 'Connected'}
+                </Text>
               </View>
             )}
           </View>
 
-          {!isEnabled && !poly.isLoading && (
+          {!isEnabled && !poly.isLoading && !connected && (
+            <Pressable
+              onPress={openDrawer}
+              style={styles.passkeyCta}
+            >
+              <MaterialIcons name="login" size={14} color={tokens.colors.backgroundDark} />
+              <Text style={styles.passkeyCtaText}>Sign In</Text>
+            </Pressable>
+          )}
+          {!isEnabled && !poly.isLoading && connected && (
             <Pressable
               onPress={handleOpenAccount}
-              disabled={busy || !connected}
-              style={[styles.openAccountBtn, (busy || !connected) && styles.btnDisabled]}
+              disabled={busy}
+              style={[styles.passkeyCta, busy && styles.btnDisabled]}
             >
               {busy ? (
                 <ActivityIndicator color={tokens.colors.backgroundDark} size="small" />
               ) : (
-                <Text style={styles.openAccountBtnText}>Open{'\n'}Account</Text>
+                <Text style={styles.passkeyCtaText}>Open Account</Text>
               )}
             </Pressable>
           )}
@@ -647,24 +662,23 @@ const styles = StyleSheet.create({
     color: tokens.colors.viridian,
   },
 
-  // Open Account button
-  openAccountBtn: {
+  // Auth CTA
+  passkeyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: tokens.colors.primary,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  openAccountBtnText: {
+  passkeyCtaText: {
     color: tokens.colors.backgroundDark,
     fontSize: 8,
     fontWeight: '700',
     fontFamily: 'monospace',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    textAlign: 'center',
-    lineHeight: 12,
   },
   accountActiveBadge: {
     flexDirection: 'row',

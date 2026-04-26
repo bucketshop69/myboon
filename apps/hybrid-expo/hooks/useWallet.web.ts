@@ -63,5 +63,6 @@ export function useWallet() {
     signTransaction: signTransaction ?? (async () => { throw new Error('signTransaction not supported'); }),
     signAndSendTransaction: handleSignAndSendTransaction,
     connection,
+    source: 'mwa' as const,
   };
 }

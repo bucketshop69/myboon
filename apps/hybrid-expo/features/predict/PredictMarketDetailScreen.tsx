@@ -20,6 +20,7 @@ import { fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetch
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
@@ -131,6 +132,7 @@ const TABS: { key: Tab; label: string }[] = [
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const privy = usePrivyWallet();
   const { width: screenWidth } = useWindowDimensions();
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -845,11 +847,29 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           {!poly.isReady ? (
             <Pressable
               style={[styles.confirmBtn, styles.confirmBtnAuth]}
-              onPress={() => { void poly.enable(); }}>
+              onPress={async () => {
+                try {
+                  if (!privy.isPrivyUser) {
+                    try {
+                      console.log('[Privy:BetSlip] Attempting passkey login...');
+                      await privy.loginWithPasskey();
+                    } catch (e) {
+                      console.log('[Privy:BetSlip] Login failed, trying signup:', e);
+                      await privy.signupWithPasskey();
+                    }
+                  }
+                  await poly.enable();
+                } catch (err) {
+                  console.error('[Privy:BetSlip] Error:', err);
+                }
+              }}>
               {poly.isLoading ? (
                 <ActivityIndicator size="small" color={semantic.text.primary} />
               ) : (
-                <Text style={styles.confirmBtnText}>Open Account to Trade</Text>
+                <>
+                  <MaterialIcons name="fingerprint" size={14} color={semantic.text.primary} style={{ marginRight: 4 }} />
+                  <Text style={styles.confirmBtnText}>Create Account</Text>
+                </>
               )}
             </Pressable>
           ) : orderResult === 'success' ? (
@@ -1527,6 +1547,7 @@ const styles = StyleSheet.create({
   confirmBtnYes: { backgroundColor: semantic.sentiment.positive },
   confirmBtnNo: { backgroundColor: semantic.sentiment.negative },
   confirmBtnAuth: {
+    flexDirection: 'row',
     backgroundColor: semantic.background.surfaceRaised,
     borderWidth: 1,
     borderColor: semantic.border.muted,

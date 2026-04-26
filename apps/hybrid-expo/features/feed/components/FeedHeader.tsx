@@ -1,5 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
+import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { semantic, tokens } from '@/theme';
 
 export function FeedHeader() {
@@ -10,7 +10,7 @@ export function FeedHeader() {
         style={styles.logo}
         resizeMode="contain"
       />
-      <WalletHeaderButton />
+      <AvatarTrigger />
     </View>
   );
 }

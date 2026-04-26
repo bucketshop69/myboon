@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
+import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -328,13 +328,9 @@ export default function PredictScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* header */}
       <View style={styles.predictHeader}>
-        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
-          <View style={styles.avatarInner}>
-            <Text style={styles.avatarText}>B</Text>
-          </View>
-        </Pressable>
+        <AvatarTrigger />
         <Text style={styles.predictTitle}>Predict</Text>
-        <WalletHeaderButton />
+        <View style={{ width: 30 }} />
       </View>
 
       {/* category filter chips */}
@@ -525,31 +521,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,
-  },
-  avatarRing: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    padding: 2,
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: semantic.text.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInner: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: semantic.background.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: semantic.text.primary,
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
   },
   predictTitle: {
     flex: 1,

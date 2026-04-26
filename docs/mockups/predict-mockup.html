@@ -1,0 +1,3018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Predict — Mockup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --bg0: #080806;
+      --bg1: #0f0f0c;
+      --bg2: #141410;
+      --bg3: #1a1a15;
+      --bg4: #21211a;
+      --bg5: #292920;
+      --border0: rgba(255,255,255,0.04);
+      --border1: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.13);
+      --a:  #e8c547;
+      --a2: #c9a630;
+      --a3: rgba(232,197,71,0.12);
+      --a4: rgba(232,197,71,0.06);
+      --pos:  #34c77b;
+      --pos2: rgba(52,199,123,0.12);
+      --neg:  #f4584e;
+      --neg2: rgba(244,88,78,0.10);
+      --hi:  #ede8d5;
+      --mid: #6b6850;
+      --lo:  #35342a;
+      --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
+      --sans: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+
+    body {
+      background: var(--bg0);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px 80px;
+      font-family: var(--sans);
+      gap: 0;
+    }
+
+    /* ─── FLOW LABEL ─── */
+    .flow-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 3.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 1320px;
+    }
+    .flow-label::before, .flow-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border0);
+    }
+
+    /* ─── SCREENS ROW ─── */
+    .screens-row {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .screen-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .screen-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+
+    /* ─── PHONE SHELL ─── */
+    .phone {
+      width: 375px;
+      height: 812px;
+      background: var(--bg1);
+      border-radius: 50px;
+      border: 1px solid var(--border1);
+      box-shadow:
+        0 0 0 8px #0b0b09,
+        0 0 0 9px rgba(255,255,255,0.04),
+        0 60px 100px rgba(0,0,0,0.85);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 110px; height: 30px;
+      background: #0b0b09;
+      border-radius: 0 0 22px 22px;
+      z-index: 200;
+    }
+
+    /* ─── STATUS BAR ─── */
+    .status-bar {
+      height: 46px;
+      padding: 16px 22px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+      position: relative;
+    }
+    .st-time {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -0.2px;
+    }
+    .st-icons { display: flex; gap: 5px; align-items: center }
+    .signal-bar { width: 3px; background: var(--hi); border-radius: 1px }
+
+    /* ─── NAV BAR ─── */
+    .nav-bar {
+      height: 68px;
+      background: rgba(15,15,12,0.95);
+      border-top: 1px solid var(--border1);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-around;
+      padding-top: 11px;
+      flex-shrink: 0;
+      backdrop-filter: blur(16px);
+      position: relative;
+      z-index: 50;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      padding: 0 12px;
+      transition: opacity 0.15s;
+    }
+    .nav-icon {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0.3;
+    }
+    .nav-icon.active { opacity: 1 }
+    .nav-icon svg { width: 18px; height: 18px }
+    .nav-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .nav-label.active { color: var(--a2) }
+    .nav-dot {
+      width: 4px; height: 4px;
+      background: var(--a);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(232,197,71,0.6);
+      margin-top: -3px;
+      animation: dot-pulse 2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse {
+      0%,100% { box-shadow: 0 0 4px rgba(232,197,71,0.5) }
+      50%      { box-shadow: 0 0 12px rgba(232,197,71,0.9), 0 0 24px rgba(232,197,71,0.4) }
+    }
+
+    /* ─── SCROLLABLE CONTENT ─── */
+    .screen-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    .screen-scroll::-webkit-scrollbar { display: none }
+
+    /* ════════════════════════════════
+       SCREEN 1 — PREDICT LIST
+    ════════════════════════════════ */
+
+    .predict-header {
+      padding: 8px 16px 10px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .predict-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .wallet-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .wallet-pill:hover { border-color: var(--border2) }
+    .wallet-dot {
+      width: 6px; height: 6px;
+      background: var(--pos);
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(52,199,123,0.5);
+    }
+    .wallet-addr {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--hi);
+      letter-spacing: 0.5px;
+    }
+    .wallet-connect-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: transparent;
+      border: 1px solid var(--a);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .wallet-connect-text {
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--a);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* ─── TRENDING STRIP ─── */
+    .trending-section {
+      padding: 12px 0 0;
+      border-bottom: 1px solid var(--border0);
+    }
+    .trending-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      padding: 0 16px 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trending-label svg { opacity: 0.5 }
+    .trending-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 0 16px 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .trending-scroll::-webkit-scrollbar { display: none }
+    .trend-card {
+      flex-shrink: 0;
+      width: 140px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .trend-card:hover {
+      border-color: var(--border2);
+      background: var(--bg3);
+    }
+    .trend-card.hot { border-color: rgba(232,197,71,0.2) }
+    .trend-q {
+      font-family: var(--sans);
+      font-size: 10px;
+      color: var(--hi);
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 8px;
+      min-height: 27px;
+    }
+    .trend-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .yes-pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--pos2);
+      color: var(--pos);
+    }
+    .yes-pill.low {
+      background: var(--neg2);
+      color: var(--neg);
+    }
+    .trend-vol {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+    }
+    .trend-mini-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--border0);
+    }
+    .trend-mini-fill {
+      height: 100%;
+      background: var(--pos);
+      border-radius: 1px;
+      transition: width 0.3s;
+    }
+    .trend-mini-fill.low { background: var(--neg) }
+    .trend-cat {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 4px;
+    }
+    .trend-cat.cat-sports { color: var(--pos) }
+    .trend-cat.cat-crypto { color: #7b61ff }
+    .trend-cat.cat-politics { color: var(--a) }
+
+    /* ─── LIVE / STATUS BADGES ─── */
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--neg);
+      background: rgba(244,88,78,0.10);
+      border: 1px solid rgba(244,88,78,0.25);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .live-badge-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--neg);
+      animation: dot-pulse-live 1.2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse-live {
+      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(244,88,78,0.5) }
+      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(244,88,78,0.9) }
+    }
+    .upcoming-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 0.5px;
+      color: var(--mid);
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+
+    /* ─── MARKET IMAGE ─── */
+    .market-img {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--bg4);
+      flex-shrink: 0;
+      overflow: hidden;
+      object-fit: cover;
+    }
+
+    /* ─── CATEGORY BADGE (on cards) ─── */
+    .cat-badge {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .cat-badge.cat-crypto { color: #7b61ff; background: rgba(123,97,255,0.10) }
+    .cat-badge.cat-politics { color: var(--a); background: var(--a4) }
+    .cat-badge.cat-macro { color: #4ea8de; background: rgba(78,168,222,0.10) }
+    .cat-badge.cat-sports { color: var(--pos); background: var(--pos2) }
+    .cat-badge.cat-other { color: var(--mid); background: var(--bg3) }
+
+    /* ─── IPL-SPECIFIC (2-way, no draw) ─── */
+    .sport-outcomes-2way {
+      display: flex;
+      gap: 4px;
+    }
+    .outcome-pill-2way {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg3);
+      border: 1px solid var(--border0);
+      border-radius: 7px;
+      padding: 8px 4px;
+    }
+    .sport-vol {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      margin-top: 6px;
+    }
+
+    /* ─── FILTER CHIPS ─── */
+    .filter-row {
+      display: flex;
+      gap: 6px;
+      padding: 10px 16px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-row::-webkit-scrollbar { display: none }
+    .chip {
+      flex-shrink: 0;
+      font-family: var(--mono);
+      font-size: 8.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--border1);
+      color: var(--mid);
+      background: var(--bg2);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip.active {
+      background: var(--a3);
+      border-color: rgba(232,197,71,0.3);
+      color: var(--a);
+    }
+
+    /* ─── SECTION HEADER ─── */
+    .section-hdr {
+      padding: 10px 16px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-title {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .section-count {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+    }
+    .section-see-all {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 0.5px;
+      color: var(--a);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      transition: opacity 0.15s;
+    }
+    .section-see-all:hover { opacity: 0.7 }
+    .section-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ─── GEOPOLITICS CARD ─── */
+    .geo-card {
+      margin: 0 12px 8px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .geo-card:hover {
+      border-color: var(--border2);
+      background: var(--bg3);
+    }
+    .geo-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .geo-img {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--bg4);
+      flex-shrink: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .geo-question {
+      flex: 1;
+      font-family: var(--sans);
+      font-size: 11.5px;
+      color: var(--hi);
+      line-height: 1.4;
+    }
+    .geo-bar-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 7px;
+    }
+    .geo-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--bg4);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .geo-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      border-radius: 2px;
+    }
+    .yes-fill { background: var(--pos) }
+    .no-fill { background: var(--neg); right: 0; left: auto }
+    .geo-pcts {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pct-yes {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--pos);
+    }
+    .pct-no {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--neg);
+    }
+    .vol-badge {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      background: var(--bg3);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    /* ─── SPORT CARD ─── */
+    .sport-card {
+      margin: 0 12px 8px;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .sport-card:hover {
+      border-color: var(--border2);
+      background: var(--bg3);
+    }
+    .sport-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .sport-league {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .sport-kick {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+    }
+    .sport-teams {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .team-name {
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--hi);
+      flex: 1;
+    }
+    .team-name.right { text-align: right }
+    .vs-badge {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--lo);
+      padding: 0 8px;
+    }
+    .sport-outcomes {
+      display: flex;
+      gap: 4px;
+    }
+    .outcome-pill {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg3);
+      border: 1px solid var(--border0);
+      border-radius: 7px;
+      padding: 6px 4px;
+    }
+    .outcome-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 3px;
+    }
+    .outcome-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .outcome-pct.win1 { color: var(--pos) }
+    .outcome-pct.draw { color: var(--a) }
+    .outcome-pct.win2 { color: var(--neg) }
+
+    /* ─── PROFILE HEADER BUTTON ─── */
+    .profile-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .profile-avatar-ring {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e8c547 0%, #34c77b 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-avatar-inner {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* ════════════════════════════════
+       SCREEN 4 — PROFILE
+    ════════════════════════════════ */
+    .profile-screen-scroll { flex: 1; overflow-y: auto; overflow-x: hidden }
+    .profile-screen-scroll::-webkit-scrollbar { display: none }
+
+    .profile-identity {
+      padding: 16px 16px 14px;
+      border-bottom: 1px solid var(--border0);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .profile-avatar-lg {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e8c547 0%, #34c77b 100%);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .profile-avatar-lg-inner {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .profile-identity-info { flex: 1 }
+    .profile-handle {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      margin-bottom: 3px;
+    }
+    .profile-addr-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .profile-addr {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--mid);
+      letter-spacing: 0.3px;
+    }
+    .copy-icon {
+      opacity: 0.35;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .profile-wc-chip {
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(52,199,123,0.10);
+      border: 1px solid rgba(52,199,123,0.22);
+      border-radius: 4px;
+      padding: 2px 7px;
+      margin-top: 5px;
+      width: fit-content;
+    }
+    .profile-wc-dot {
+      width: 4px; height: 4px;
+      background: var(--pos);
+      border-radius: 50%;
+      animation: dot-pulse 2s infinite;
+    }
+    .profile-wc-text {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      color: var(--pos);
+    }
+
+    .profile-equity-card {
+      margin: 12px 16px 0;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .profile-equity-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+      border-bottom: 1px solid var(--border0);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .pf-eq-item { display: flex; flex-direction: column; gap: 3px }
+    .pf-eq-item:nth-child(2) { text-align: center }
+    .pf-eq-item:last-child { text-align: right }
+    .pf-eq-label {
+      font-family: var(--mono);
+      font-size: 6.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .pf-eq-val {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .pf-eq-val.pos { color: var(--pos) }
+    .pf-eq-val.neg { color: var(--neg) }
+    .pf-assets-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+      margin-bottom: 6px;
+    }
+    .pf-asset-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .pf-asset-row + .pf-asset-row { border-top: 1px solid var(--border0) }
+    .pf-asset-name {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--mid);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pf-asset-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .pf-asset-amount {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .pf-asset-usd {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      text-align: right;
+    }
+
+    .profile-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin: 12px 16px 0;
+    }
+    .pf-stat-card {
+      background: var(--bg2);
+      border: 1px solid var(--border0);
+      border-radius: 8px;
+      padding: 9px 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .pf-stat-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .pf-stat-val {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--hi);
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+    }
+    .pf-stat-val.pos { color: var(--pos) }
+    .pf-stat-val.neg { color: var(--neg) }
+
+    .profile-chart-card {
+      margin: 12px 16px 0;
+      background: var(--bg2);
+      border: 1px solid var(--border0);
+      border-radius: 8px;
+      padding: 10px 12px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pf-chart-title {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .pf-chart-axis {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+    .pf-chart-tick {
+      font-family: var(--mono);
+      font-size: 6.5px;
+      color: var(--lo);
+    }
+
+    .profile-positions-section {
+      margin: 12px 16px 16px;
+    }
+    .pf-pos-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .pf-pos-title {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .pf-pos-count {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+    }
+    .pf-pos-row {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 9px 11px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+    .pf-side-badge {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .pf-side-badge.yes { background: var(--pos2); color: var(--pos) }
+    .pf-side-badge.no  { background: var(--neg2); color: var(--neg) }
+    .pf-pos-q {
+      flex: 1;
+      font-size: 9.5px;
+      color: var(--hi);
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .pf-pos-pnl {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .pf-pos-pnl.up { color: var(--pos) }
+    .pf-pos-pnl.dn { color: var(--neg) }
+    .pf-pos-entry {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+      flex-shrink: 0;
+    }
+
+    /* ════════════════════════════════
+       SCREEN 2 — BINARY MARKET DETAIL
+    ════════════════════════════════ */
+
+    .detail-header {
+      height: 44px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+    }
+    .back-btn {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .back-btn svg { width: 12px; height: 12px; color: var(--hi) }
+    .detail-header-title {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      flex: 1;
+    }
+    .poly-badge {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--a);
+      background: var(--a4);
+      border: 1px solid rgba(232,197,71,0.15);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+
+    .detail-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; padding: 10px 12px 0 }
+    .detail-scroll::-webkit-scrollbar { display: none }
+
+    .detail-header-sub {
+      padding: 10px 16px 12px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+    }
+    .detail-question {
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--hi);
+      line-height: 1.4;
+      margin-bottom: 3px;
+    }
+    .detail-end {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--mid);
+    }
+
+    .detail-body { padding: 14px 16px }
+
+    /* ─── SPARKLINE SECTION ─── */
+    .spark-section {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .spark-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .spark-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .spark-yes {
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--pos);
+    }
+    .spark-change {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--pos);
+    }
+    .spark-change.neg { color: var(--neg) }
+    .spark-updated {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--lo);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .refresh-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--pos);
+      animation: dot-pulse 2s ease-in-out infinite;
+    }
+    .spark-range-row {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .range-chip {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border1);
+      color: var(--mid);
+      background: var(--bg3);
+      cursor: pointer;
+    }
+    .range-chip.active {
+      background: var(--a4);
+      border-color: rgba(232,197,71,0.25);
+      color: var(--a);
+    }
+    .spark-chart {
+      width: 100%;
+      height: 64px;
+      position: relative;
+    }
+    .spark-chart svg {
+      width: 100%;
+      height: 100%;
+    }
+    .spark-skeleton {
+      width: 100%;
+      height: 64px;
+      background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 6px;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0 }
+      100% { background-position: -200% 0 }
+    }
+
+    /* ─── YES/NO BARS ─── */
+    .odds-section {
+      margin-bottom: 12px;
+    }
+    .odds-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .odds-bar-wrap {
+      flex: 1;
+    }
+    .odds-bar-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .odds-bar-label.yes { color: var(--pos) }
+    .odds-bar-label.no  { color: var(--neg) }
+    .odds-bar-track {
+      height: 28px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+    .odds-bar-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+    }
+    .odds-bar-fill.yes-bar { background: rgba(52,199,123,0.15) }
+    .odds-bar-fill.no-bar  { background: rgba(244,88,78,0.12) }
+    .odds-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .odds-pct.yes-c { color: var(--pos) }
+    .odds-pct.no-c  { color: var(--neg) }
+
+    /* ─── STATS ROW ─── */
+    .stats-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .stat-box {
+      flex: 1;
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* ─── DESCRIPTION ─── */
+    .desc-box {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .desc-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 8px;
+    }
+    .desc-text {
+      font-size: 11.5px;
+      color: var(--mid);
+      line-height: 1.55;
+    }
+
+    /* ─── CTA ─── */
+    .trade-cta {
+      padding: 0 16px 12px;
+    }
+    .cta-btn {
+      width: 100%;
+      height: 44px;
+      border-radius: 11px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .cta-btn-text {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .cta-lock {
+      font-size: 12px;
+    }
+
+    /* ════════════════════════════════
+       SCREEN 3 — SPORT DETAIL
+    ════════════════════════════════ */
+
+    .match-hero {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border0);
+    }
+    .match-league-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .match-league-badge {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--a);
+      background: var(--a4);
+      border: 1px solid rgba(232,197,71,0.15);
+      border-radius: 4px;
+      padding: 2px 7px;
+    }
+    .match-kick-off {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+    }
+    .match-teams-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .match-team {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .match-team-badge {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--bg4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .match-team-name {
+      font-family: var(--sans);
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--hi);
+      text-align: center;
+    }
+    .match-vs {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--lo);
+      padding: 0 6px;
+    }
+    .match-vol-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .match-vol-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .match-vol-value {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      color: var(--hi);
+    }
+
+    /* ─── OUTCOME TABS ─── */
+    .outcome-tabs {
+      display: flex;
+      padding: 10px 16px 0;
+      gap: 0;
+      border-bottom: 1px solid var(--border0);
+    }
+    .outcome-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 4px 8px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      position: relative;
+    }
+    .outcome-tab.active { border-bottom-color: var(--a) }
+    .outcome-tab-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .outcome-tab.active .outcome-tab-label { color: var(--a) }
+    .outcome-tab-pct {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .outcome-tab.active .outcome-tab-pct { color: var(--hi) }
+    .outcome-tab:not(.active) .outcome-tab-pct { color: var(--lo) }
+
+    /* ─── SPORT SPARK SECTION ─── */
+    .sport-spark {
+      padding: 12px 16px 0;
+    }
+    .sport-spark-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ─── THREE-WAY BARS ─── */
+    .threeway-section {
+      padding: 12px 16px 0;
+    }
+    .threeway-label {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 8px;
+    }
+    .threeway-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .tw-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .tw-name {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+    .tw-track {
+      height: 40px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+    }
+    .tw-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      border-radius: 6px 6px 0 0;
+    }
+    .tw-fill.team1 { background: rgba(52,199,123,0.2) }
+    .tw-fill.draw  { background: rgba(232,197,71,0.15) }
+    .tw-fill.team2 { background: rgba(244,88,78,0.15) }
+    .tw-pct {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      padding-bottom: 4px;
+    }
+    .tw-pct.c1 { color: var(--pos) }
+    .tw-pct.cd { color: var(--a) }
+    .tw-pct.c2 { color: var(--neg) }
+
+    /* ─── 3-ZONE LAYOUT ─── */
+    .detail-top-zone { flex-shrink: 0 }
+    .detail-mid-zone { flex: 1; min-height: 60px; display: flex; flex-direction: column }
+    .detail-bottom-zone { flex-shrink: 0; padding-bottom: 4px }
+
+    /* ─── DETAIL TABS ─── */
+    .dtab-bar {
+      display: flex; gap: 4px; padding: 8px 0 6px;
+      border-bottom: 1px solid var(--border0); flex-shrink: 0;
+    }
+    .dtab {
+      font-family: var(--mono); font-size: 8px; letter-spacing: 0.8px;
+      color: var(--mid); padding: 4px 10px; border-radius: 6px;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+      background: transparent; border: 1px solid transparent;
+    }
+    .dtab:hover { color: var(--hi) }
+    .dtab.active { color: var(--a); background: var(--a3); border-color: rgba(232,197,71,0.15) }
+    .dtab-content { flex: 1; overflow-y: auto; padding: 8px 0 }
+    .dtab-content::-webkit-scrollbar { display: none }
+    .dtab-panel { display: none }
+    .dtab-panel.active { display: block }
+
+    /* position tab */
+    .pos-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 16px; text-align: center; gap: 8px; min-height: 80px;
+    }
+    .pos-empty-icon { font-size: 20px; opacity: 0.3 }
+    .pos-empty-text { font-family: var(--mono); font-size: 9px; color: var(--lo); letter-spacing: 0.5px }
+    .pos-card {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .pos-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px }
+    .pos-card-side {
+      font-family: var(--mono); font-size: 8px; font-weight: 700; letter-spacing: 1px;
+      padding: 2px 7px; border-radius: 4px;
+    }
+    .pos-card-side.yes { color: var(--pos); background: rgba(52,199,123,0.12) }
+    .pos-card-side.no  { color: var(--neg); background: rgba(244,88,78,0.10) }
+    .pos-card-label { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--hi) }
+    .pos-card-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+    }
+    .pos-card-stat { display: flex; flex-direction: column; gap: 1px }
+    .pos-card-stat-label { font-family: var(--mono); font-size: 7px; color: var(--mid); letter-spacing: 0.5px }
+    .pos-card-stat-value { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--hi) }
+    .pos-card-stat-value.green { color: var(--pos) }
+    .pos-card-stat-value.red { color: var(--neg) }
+    .pos-card-cashout {
+      margin-top: 8px; width: 100%; height: 30px; border-radius: 7px; border: 1px solid var(--border1);
+      background: var(--bg3); font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: var(--hi); cursor: pointer; letter-spacing: 0.5px;
+    }
+    .pos-card-cashout:hover { border-color: var(--a); color: var(--a) }
+
+    /* stats tab */
+    .stat-signal {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .stat-signal-title {
+      font-family: var(--mono); font-size: 7.5px; letter-spacing: 1px;
+      color: var(--mid); margin-bottom: 8px; text-transform: uppercase;
+    }
+    .stat-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px }
+    .stat-bar-label { font-family: var(--mono); font-size: 9px; font-weight: 700; width: 28px; text-align: right }
+    .stat-bar-label.yes-l { color: var(--pos) }
+    .stat-bar-label.no-l { color: var(--neg) }
+    .stat-bar-track { flex: 1; height: 14px; background: var(--bg3); border-radius: 4px; overflow: hidden; position: relative; display: flex }
+    .stat-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s }
+    .stat-bar-fill.yes-f { background: rgba(52,199,123,0.25) }
+    .stat-bar-fill.no-f { background: rgba(244,88,78,0.2) }
+    .stat-bar-pct { font-family: var(--mono); font-size: 8px; font-weight: 700; width: 30px }
+    .stat-bar-pct.yes-p { color: var(--pos) }
+    .stat-bar-pct.no-p { color: var(--neg) }
+    .stat-metric-row { display: flex; gap: 6px; margin-bottom: 8px }
+    .stat-metric {
+      flex: 1; background: var(--bg2); border: 1px solid var(--border1);
+      border-radius: 8px; padding: 8px; text-align: center;
+    }
+    .stat-metric-val { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--hi) }
+    .stat-metric-lbl { font-family: var(--mono); font-size: 7px; color: var(--mid); letter-spacing: 0.5px; margin-top: 2px }
+
+    /* rules tab */
+    .rules-box {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .rules-label { font-family: var(--mono); font-size: 7.5px; letter-spacing: 1px; color: var(--mid); text-transform: uppercase; margin-bottom: 6px }
+    .rules-text { font-family: var(--sans); font-size: 10px; color: var(--hi); line-height: 1.5 }
+    .rules-meta { font-family: var(--mono); font-size: 8px; color: var(--mid); margin-top: 6px }
+
+    /* feed tab */
+    .feed-card {
+      background: var(--bg2); border: 1px solid var(--border1); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .feed-card-source { font-family: var(--mono); font-size: 7px; color: var(--a); letter-spacing: 0.5px; margin-bottom: 4px }
+    .feed-card-text { font-family: var(--sans); font-size: 10px; color: var(--hi); line-height: 1.5 }
+    .feed-card-time { font-family: var(--mono); font-size: 7px; color: var(--lo); margin-top: 5px }
+
+    /* ─── SELECTION ODDS ROWS ─── */
+    .exchange-section { padding: 10px 12px 0 }
+    .exchange-header-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 4px; padding: 0 2px;
+    }
+    .exchange-sel-label {
+      font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--mid);
+    }
+    .exchange-col-hints {
+      display: flex; gap: 44px;
+      font-family: var(--mono); font-size: 7px; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .exchange-col-hints .hint-yes { color: var(--pos) }
+    .exchange-col-hints .hint-no  { color: var(--neg) }
+    .sel-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 2px; border-bottom: 1px solid var(--border0);
+    }
+    .sel-row:last-child { border-bottom: none }
+    .sel-info { flex: 1; min-width: 0 }
+    .sel-name {
+      font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--hi);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sel-vol { font-family: var(--mono); font-size: 8px; color: var(--mid); margin-top: 1px }
+    .sel-btns { display: flex; gap: 4px; flex-shrink: 0 }
+    .sel-btn {
+      width: 52px; height: 34px; border-radius: 6px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1px; cursor: pointer; transition: opacity 0.12s, transform 0.1s; border: none;
+    }
+    .sel-btn:hover { opacity: 0.85 }
+    .sel-btn:active { transform: scale(0.96) }
+    .sel-btn.yes-btn { background: rgba(52,199,123,0.15) }
+    .sel-btn.no-btn  { background: rgba(244,88,78,0.12) }
+    .sel-btn-pct { font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1 }
+    .sel-btn.yes-btn .sel-btn-pct { color: var(--pos) }
+    .sel-btn.no-btn .sel-btn-pct  { color: var(--neg) }
+    .sel-btn-label { font-family: var(--mono); font-size: 6.5px; letter-spacing: 0.8px; text-transform: uppercase; line-height: 1 }
+    .sel-btn.yes-btn .sel-btn-label { color: rgba(52,199,123,0.6) }
+    .sel-btn.no-btn .sel-btn-label  { color: rgba(244,88,78,0.5) }
+
+    /* ─── BET SLIP MODAL ─── */
+    .betslip-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+      z-index: 50; display: none; align-items: flex-end;
+      border-radius: 40px; overflow: hidden;
+    }
+    .betslip-overlay.show { display: flex }
+    .betslip {
+      width: 100%; background: var(--bg1); border-top: 1px solid var(--border1);
+      border-radius: 16px 16px 0 0; padding: 14px 16px 20px;
+    }
+    .betslip-handle { width: 32px; height: 3px; background: var(--border1); border-radius: 3px; margin: 0 auto 12px }
+    .betslip-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
+    .betslip-title { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--hi) }
+    .betslip-side { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px }
+    .betslip-side.yes-side { color: var(--pos); background: rgba(52,199,123,0.12) }
+    .betslip-side.no-side  { color: var(--neg); background: rgba(244,88,78,0.10) }
+    .betslip-selection { font-family: var(--sans); font-size: 11px; color: var(--mid); margin-bottom: 14px }
+    .betslip-field { margin-bottom: 12px }
+    .betslip-field-label { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--mid); margin-bottom: 5px }
+    .betslip-input {
+      width: 100%; height: 36px; background: var(--bg3); border: 1px solid var(--border1);
+      border-radius: 8px; font-family: var(--mono); font-size: 14px; font-weight: 700;
+      color: var(--hi); padding: 0 12px; box-sizing: border-box; outline: none;
+    }
+    .betslip-input:focus { border-color: var(--a) }
+    .betslip-quick-amounts { display: flex; gap: 6px; margin-bottom: 14px }
+    .betslip-quick {
+      flex: 1; height: 26px; background: var(--bg3); border: 1px solid var(--border0);
+      border-radius: 6px; font-family: var(--mono); font-size: 9px; color: var(--mid);
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .betslip-quick:hover { border-color: var(--border1); color: var(--hi) }
+    .betslip-summary { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid var(--border0); margin-bottom: 12px }
+    .betslip-summary-label { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--mid) }
+    .betslip-summary-value { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--pos) }
+    .betslip-confirm {
+      width: 100%; height: 40px; border-radius: 10px; border: none;
+      font-family: var(--sans); font-size: 13px; font-weight: 700; color: #0b0b09;
+      cursor: pointer; transition: opacity 0.12s;
+    }
+    .betslip-confirm:hover { opacity: 0.9 }
+    .betslip-confirm.yes-confirm { background: var(--pos) }
+    .betslip-confirm.no-confirm  { background: var(--neg) }
+  </style>
+</head>
+<body>
+
+  <div class="flow-label">Predict — UI Mockup · Issue #061</div>
+
+  <div class="screens-row">
+
+    <!-- ═══════════════════════════════════
+         SCREEN 1: PREDICT LIST
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">01 · List Screen</div>
+      <div class="phone">
+        <!-- notch -->
+        <!-- status bar -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div class="predict-header">
+          <div class="profile-avatar-ring" style="width:28px;height:28px;cursor:pointer">
+            <div class="profile-avatar-inner">B</div>
+          </div>
+          <span class="predict-title" style="flex:1;text-align:center">Predict</span>
+          <div class="wallet-pill">
+            <div class="wallet-dot"></div>
+            <span class="wallet-addr">7xKp···m3Qr</span>
+          </div>
+        </div>
+
+        <!-- filter chips -->
+        <div class="filter-row">
+          <div class="chip active">All</div>
+          <div class="chip">Sports</div>
+          <div class="chip">Crypto</div>
+          <div class="chip">Politics</div>
+          <div class="chip">Macro</div>
+        </div>
+
+        <!-- scrollable list -->
+        <div class="screen-scroll">
+
+          <!-- ── LIVE SECTION ── -->
+          <div class="section-hdr">
+            <span class="section-title" style="color:var(--neg)">Live Now</span>
+          </div>
+
+          <!-- LIVE: IPL — Delhi vs Punjab (2-way, no draw) -->
+          <div class="sport-card" style="border-color:rgba(244,88,78,0.2)">
+            <div class="sport-meta">
+              <div class="live-badge">
+                <div class="live-badge-dot"></div>
+                LIVE
+              </div>
+              <span class="sport-league">IPL · Match 42</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Delhi Capitals</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Punjab Kings</div>
+            </div>
+            <div class="sport-outcomes-2way">
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Delhi</div>
+                <div class="outcome-pct win1">59%</div>
+              </div>
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Punjab</div>
+                <div class="outcome-pct win2">42%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $2.0M</div>
+          </div>
+
+          <!-- LIVE: EPL — Fulham vs Aston Villa (3-way) -->
+          <div class="sport-card" style="border-color:rgba(244,88,78,0.2)">
+            <div class="sport-meta">
+              <div class="live-badge">
+                <div class="live-badge-dot"></div>
+                LIVE
+              </div>
+              <span class="sport-league">EPL</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Fulham</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Aston Villa</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Fulham</div>
+                <div class="outcome-pct win1">99%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">1%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Villa</div>
+                <div class="outcome-pct win2">0%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $1.1M</div>
+          </div>
+
+          <!-- ── UPCOMING · EPL ── -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">EPL · Upcoming</span>
+            <div class="section-right">
+              <span class="section-count">6 matches</span>
+              <span class="section-see-all">See all <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <!-- UPCOMING: Liverpool vs Crystal Palace -->
+          <div class="sport-card">
+            <div class="sport-meta">
+              <div class="upcoming-badge">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Today · 14:00
+              </div>
+              <span class="sport-league">EPL</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Liverpool</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Crystal Palace</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Liverpool</div>
+                <div class="outcome-pct win1">62%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">21%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Palace</div>
+                <div class="outcome-pct win2">18%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $240K</div>
+          </div>
+
+          <!-- UPCOMING: Wolves vs Tottenham -->
+          <div class="sport-card">
+            <div class="sport-meta">
+              <div class="upcoming-badge">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Today · 14:00
+              </div>
+              <span class="sport-league">EPL</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Wolves</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Tottenham</div>
+            </div>
+            <div class="sport-outcomes">
+              <div class="outcome-pill">
+                <div class="outcome-label">Wolves</div>
+                <div class="outcome-pct win2">21%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Draw</div>
+                <div class="outcome-pct draw">22%</div>
+              </div>
+              <div class="outcome-pill">
+                <div class="outcome-label">Spurs</div>
+                <div class="outcome-pct win1">59%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $519K</div>
+          </div>
+
+          <!-- ── UPCOMING · IPL ── -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">IPL · Upcoming</span>
+            <div class="section-right">
+              <span class="section-count">4 matches</span>
+              <span class="section-see-all">See all <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <!-- UPCOMING: IPL — Chennai vs Rajasthan (2-way) -->
+          <div class="sport-card">
+            <div class="sport-meta">
+              <div class="upcoming-badge">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Tomorrow · 14:00
+              </div>
+              <span class="sport-league">IPL · Match 43</span>
+            </div>
+            <div class="sport-teams">
+              <div class="team-name">Chennai Super Kings</div>
+              <div class="vs-badge">vs</div>
+              <div class="team-name right">Rajasthan Royals</div>
+            </div>
+            <div class="sport-outcomes-2way">
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Chennai</div>
+                <div class="outcome-pct win1">55%</div>
+              </div>
+              <div class="outcome-pill-2way">
+                <div class="outcome-label">Rajasthan</div>
+                <div class="outcome-pct win2">45%</div>
+              </div>
+            </div>
+            <div class="sport-vol">Vol $1.4M</div>
+          </div>
+
+          <!-- ── MARKETS SECTION ── -->
+          <div class="section-hdr" style="margin-top:4px">
+            <span class="section-title">Markets</span>
+            <div class="section-right">
+              <span class="section-count">12 markets</span>
+              <span class="section-see-all">See all <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6"/></svg></span>
+            </div>
+          </div>
+
+          <!-- BINARY: China–Taiwan (politics) with image -->
+          <div class="geo-card">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/china-invade-taiwan.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-politics">Politics</span>
+                </div>
+                <div class="geo-question">Will China invade Taiwan by end of 2026?</div>
+              </div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:7%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">7%</span>
+              <span class="vol-badge">$335K vol</span>
+              <span class="pct-no">93%</span>
+            </div>
+          </div>
+
+          <!-- BINARY: Russia–Ukraine ceasefire (politics) -->
+          <div class="geo-card">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/russia-ukraine-ceasefire.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-politics">Politics</span>
+                </div>
+                <div class="geo-question">Russia x Ukraine ceasefire by end of 2026?</div>
+              </div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:26%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">26%</span>
+              <span class="vol-badge">$49K vol</span>
+              <span class="pct-no">74%</span>
+            </div>
+          </div>
+
+          <!-- BINARY: Bitcoin ATH (crypto) -->
+          <div class="geo-card">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+full+hd+logo+light.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-crypto">Crypto</span>
+                </div>
+                <div class="geo-question">Bitcoin all time high by December 31, 2026?</div>
+              </div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:18%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">18%</span>
+              <span class="vol-badge">$11K vol</span>
+              <span class="pct-no">82%</span>
+            </div>
+          </div>
+
+          <!-- BINARY: US recession (macro) -->
+          <div class="geo-card">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/us-recession.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-macro">Macro</span>
+                </div>
+                <div class="geo-question">US recession by end of 2026?</div>
+              </div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:26%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">26%</span>
+              <span class="vol-badge">$1.8K vol</span>
+              <span class="pct-no">74%</span>
+            </div>
+          </div>
+
+          <!-- BINARY: ETH ATH (crypto) -->
+          <div class="geo-card" style="margin-bottom:16px">
+            <div class="geo-top">
+              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/ethereum-logo.jpg" alt="" onerror="this.style.display='none'">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span class="cat-badge cat-crypto">Crypto</span>
+                </div>
+                <div class="geo-question">Ethereum all time high by December 31, 2026?</div>
+              </div>
+            </div>
+            <div class="geo-bar-row">
+              <div style="font-family:var(--mono);font-size:8px;color:var(--pos);width:22px">YES</div>
+              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:5%"></div></div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--neg);width:22px;text-align:right">NO</div>
+            </div>
+            <div class="geo-pcts">
+              <span class="pct-yes">5%</span>
+              <span class="vol-badge">$415 vol</span>
+              <span class="pct-no">95%</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         SCREEN 2: BINARY MARKET DETAIL
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">02 · Market Detail (Binary)</div>
+      <div class="phone">
+        <!-- notch -->
+        <!-- status bar -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- detail header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Will China invade Taiwan by end of 2026?</span>
+          <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
+            <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
+          </div>
+        </div>
+
+        <!-- detail scroll -->
+        <div class="detail-scroll">
+
+          <!-- TOP: info (eyes zone) -->
+          <div class="detail-top-zone">
+            <!-- category + end date row -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 8px">
+              <span class="cat-badge cat-politics">Politics</span>
+              <span style="font-family:var(--mono);font-size:8px;color:var(--mid)">Ends Dec 31, 2026</span>
+            </div>
+
+            <div class="spark-section">
+              <div class="spark-top">
+                <div class="spark-price-row">
+                  <span class="spark-yes" style="color:var(--neg)">7%</span>
+                  <span class="spark-change neg">▼ -1.2%</span>
+                </div>
+                <div class="spark-updated">
+                  <div class="refresh-dot"></div>
+                  updated 8s ago
+                </div>
+              </div>
+              <div class="spark-range-row">
+                <div class="range-chip active">1D</div>
+                <div class="range-chip">1W</div>
+              </div>
+              <div class="spark-chart">
+                <svg viewBox="0 0 343 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="sg1" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#f4584e" stop-opacity="0.2"/>
+                      <stop offset="100%" stop-color="#f4584e" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M0 20 L14 22 L28 19 L43 23 L57 25 L71 24 L85 28 L100 30 L114 27 L128 32 L142 35 L157 33 L171 38 L185 40 L200 37 L214 42 L228 44 L242 41 L257 46 L271 48 L285 50 L300 52 L314 54 L328 53 L343 55 L343 64 L0 64 Z"
+                    fill="url(#sg1)"/>
+                  <path d="M0 20 L14 22 L28 19 L43 23 L57 25 L71 24 L85 28 L100 30 L114 27 L128 32 L142 35 L157 33 L171 38 L185 40 L200 37 L214 42 L228 44 L242 41 L257 46 L271 48 L285 50 L300 52 L314 54 L328 53 L343 55"
+                    stroke="#f4584e" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+                  <circle cx="343" cy="55" r="3" fill="#f4584e"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- MIDDLE: tabs -->
+          <div class="detail-mid-zone" id="mid2">
+            <div class="dtab-bar">
+              <div class="dtab active" onclick="switchTab('mid2','position')">Position</div>
+              <div class="dtab" onclick="switchTab('mid2','stats')">Stats</div>
+              <div class="dtab" onclick="switchTab('mid2','rules')">Rules</div>
+              <div class="dtab" onclick="switchTab('mid2','feed')">Feed</div>
+            </div>
+            <div class="dtab-content">
+              <!-- position (empty) -->
+              <div class="dtab-panel active" data-tab="position">
+                <div class="pos-empty">
+                  <div class="pos-empty-icon">&#9898;</div>
+                  <div class="pos-empty-text">No positions yet</div>
+                  <div class="pos-empty-text" style="color:var(--mid)">Trade below to open a position</div>
+                </div>
+              </div>
+              <!-- stats -->
+              <div class="dtab-panel" data-tab="stats">
+                <div class="stat-signal">
+                  <div class="stat-signal-title">Market Sentiment</div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label yes-l">Yes</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill yes-f" style="width:7%"></div>
+                    </div>
+                    <div class="stat-bar-pct yes-p">7%</div>
+                  </div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label no-l">No</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill no-f" style="width:93%"></div>
+                    </div>
+                    <div class="stat-bar-pct no-p">93%</div>
+                  </div>
+                </div>
+                <div class="stat-metric-row">
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$335K</div>
+                    <div class="stat-metric-lbl">Volume</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$48K</div>
+                    <div class="stat-metric-lbl">Liquidity</div>
+                  </div>
+                </div>
+                <div class="stat-signal">
+                  <div class="stat-signal-title">Payout Calculator</div>
+                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">$10 wins $133.33 if Yes · $10 wins $10.75 if No</div>
+                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">Closes Dec 31, 2026</div>
+                </div>
+              </div>
+              <!-- rules -->
+              <div class="dtab-panel" data-tab="rules">
+                <div class="rules-box">
+                  <div class="rules-label">Resolution Criteria</div>
+                  <div class="rules-text">This market will resolve to "Yes" if China (PRC) initiates a military invasion of Taiwan before January 1, 2027, 12:00 PM ET. Otherwise, this market will resolve to "No".</div>
+                  <div class="rules-meta">Source: Polymarket · Closes Dec 31, 2026</div>
+                </div>
+              </div>
+              <!-- feed -->
+              <div class="dtab-panel" data-tab="feed">
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">US carrier group USS Eisenhower repositioned to Strait of Hormuz. Market jumped 8% in 4 hours. Third naval deployment this quarter.</div>
+                  <div class="feed-card-time">2h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">Iranian foreign minister cancelled Vienna talks. Diplomatic channel closure historically correlates with 15-20% price moves in conflict markets.</div>
+                  <div class="feed-card-time">6h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">Whale Alert</div>
+                  <div class="feed-card-text">0x7a2f...8e1c bought 42K Yes shares @ $0.58 ($24.3K). This wallet is 4-for-4 on geopolitics markets this year.</div>
+                  <div class="feed-card-time">11h ago</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTTOM: thumb zone (all clickable) -->
+          <div class="detail-bottom-zone">
+            <div class="binary-btns" style="display:flex;gap:8px;padding:0 12px 8px">
+              <div class="sel-btn yes-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('Will China invade Taiwan by end of 2026?','yes','7¢')">
+                <span class="sel-btn-pct" style="font-size:14px">7¢</span>
+                <span class="sel-btn-label" style="font-size:7px">Yes</span>
+              </div>
+              <div class="sel-btn no-btn" style="flex:1;height:44px;border-radius:10px" onclick="openBetSlip2('Will China invade Taiwan by end of 2026?','no','93¢')">
+                <span class="sel-btn-pct" style="font-size:14px">93¢</span>
+                <span class="sel-btn-label" style="font-size:7px">No</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- bet slip overlay (screen 2) -->
+        <div class="betslip-overlay" id="betslip2" onclick="closeBetSlip(event,'betslip2')">
+          <div class="betslip" onclick="event.stopPropagation()">
+            <div class="betslip-handle"></div>
+            <div class="betslip-header">
+              <div class="betslip-title" id="bs2-title">China invade Taiwan?</div>
+              <div class="betslip-side yes-side" id="bs2-side">YES</div>
+            </div>
+            <div class="betslip-selection" id="bs2-sub">Politics · Binary Market</div>
+            <div class="betslip-field">
+              <div class="betslip-field-label">Amount (USDC)</div>
+              <input class="betslip-input" id="bs2-amount" type="text" value="50" oninput="updatePayout2()">
+            </div>
+            <div class="betslip-quick-amounts">
+              <div class="betslip-quick" onclick="setAmount2(10)">$10</div>
+              <div class="betslip-quick" onclick="setAmount2(25)">$25</div>
+              <div class="betslip-quick" onclick="setAmount2(50)">$50</div>
+              <div class="betslip-quick" onclick="setAmount2(100)">$100</div>
+            </div>
+            <div class="betslip-summary">
+              <span class="betslip-summary-label">Potential payout</span>
+              <span class="betslip-summary-value" id="bs2-payout">$80.64</span>
+            </div>
+            <div class="betslip-confirm yes-confirm" id="bs2-confirm" onclick="closeBetSlip(null,'betslip2')">Confirm Yes — $50</div>
+          </div>
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         SCREEN 3: SPORT MATCH DETAIL
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">03 · Market Detail (Sport)</div>
+      <div class="phone">
+        <!-- notch -->
+        <!-- status bar -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- detail header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Liverpool vs Crystal Palace</span>
+          <div class="live-badge" style="font-size:7px;padding:2px 6px;border-radius:4px;display:flex;align-items:center;gap:3px;margin-left:6px;flex-shrink:0">
+            <div class="live-badge-dot"></div>LIVE
+          </div>
+          <div class="profile-avatar-ring" style="width:26px;height:26px;cursor:pointer;margin-left:auto">
+            <div class="profile-avatar-inner" style="width:20px;height:20px;font-size:8px">B</div>
+          </div>
+        </div>
+
+        <!-- sport detail scroll -->
+        <div class="detail-scroll">
+
+          <!-- TOP: outcome tabs + sparkline -->
+          <div class="detail-top-zone">
+
+            <!-- outcome tabs -->
+            <div class="outcome-tabs">
+              <div class="outcome-tab active" onclick="selectOutcome(0)">
+                <div class="outcome-tab-label">Liverpool</div>
+                <div class="outcome-tab-pct">60.5%</div>
+              </div>
+              <div class="outcome-tab" onclick="selectOutcome(1)">
+                <div class="outcome-tab-label">Draw</div>
+                <div class="outcome-tab-pct">21.5%</div>
+              </div>
+              <div class="outcome-tab" onclick="selectOutcome(2)">
+                <div class="outcome-tab-label">C. Palace</div>
+                <div class="outcome-tab-pct">17.5%</div>
+              </div>
+            </div>
+
+            <!-- spark chart for selected outcome -->
+            <div class="spark-section">
+              <div class="spark-top">
+                <div class="spark-price-row">
+                  <span class="spark-yes">60.5%</span>
+                  <span class="spark-change">▲ +4.1%</span>
+                </div>
+                <div class="spark-updated">
+                  <div class="refresh-dot"></div>
+                  updated 8s ago
+                </div>
+              </div>
+              <div class="spark-range-row">
+                <div class="range-chip active">1D</div>
+                <div class="range-chip">1W</div>
+              </div>
+              <div class="spark-chart">
+                <svg viewBox="0 0 343 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2"></stop>
+                      <stop offset="100%" stop-color="#34c77b" stop-opacity="0"></stop>
+                    </linearGradient>
+                  </defs>
+                  <path d="M0 52 L14 50 L28 48 L43 51 L57 46 L71 43 L85 45 L100 40 L114 38 L128 41 L142 35 L157 32 L171 30 L185 28 L200 26 L214 24 L228 22 L242 20 L257 18 L271 16 L285 14 L300 13 L314 11 L328 10 L343 8 L343 64 L0 64 Z" fill="url(#sg2)"></path>
+                  <path d="M0 52 L14 50 L28 48 L43 51 L57 46 L71 43 L85 45 L100 40 L114 38 L128 41 L142 35 L157 32 L171 30 L185 28 L200 26 L214 24 L228 22 L242 20 L257 18 L271 16 L285 14 L300 13 L314 11 L328 10 L343 8" stroke="#34c77b" stroke-width="1.5" fill="none" stroke-linejoin="round"></path>
+                  <circle cx="343" cy="8" r="3" fill="#34c77b"></circle>
+                </svg>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- MIDDLE: tabs -->
+          <div class="detail-mid-zone" id="mid3">
+            <div class="dtab-bar">
+              <div class="dtab active" onclick="switchTab('mid3','position')">Position</div>
+              <div class="dtab" onclick="switchTab('mid3','stats')">Stats</div>
+              <div class="dtab" onclick="switchTab('mid3','rules')">Rules</div>
+              <div class="dtab" onclick="switchTab('mid3','feed')">Feed</div>
+            </div>
+            <div class="dtab-content">
+              <!-- position (with real position) -->
+              <div class="dtab-panel active" data-tab="position">
+                <div class="pos-card">
+                  <div class="pos-card-header">
+                    <div class="pos-card-label">Liverpool</div>
+                    <div class="pos-card-side yes">YES</div>
+                  </div>
+                  <div class="pos-card-grid">
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Shares</div>
+                      <div class="pos-card-stat-value">120</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Avg Entry</div>
+                      <div class="pos-card-stat-value">52¢</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">P&L</div>
+                      <div class="pos-card-stat-value green">+$10.20</div>
+                    </div>
+                  </div>
+                  <div class="pos-card-grid" style="margin-top:6px">
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Cost</div>
+                      <div class="pos-card-stat-value">$62.40</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Current</div>
+                      <div class="pos-card-stat-value">60.5¢</div>
+                    </div>
+                    <div class="pos-card-stat">
+                      <div class="pos-card-stat-label">Value</div>
+                      <div class="pos-card-stat-value green">$72.60</div>
+                    </div>
+                  </div>
+                  <button class="pos-card-cashout">Cash Out — $72.60</button>
+                </div>
+              </div>
+              <!-- stats -->
+              <div class="dtab-panel" data-tab="stats">
+                <div class="stat-metric-row">
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">1.2K</div>
+                    <div class="stat-metric-lbl">Traders</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$822K</div>
+                    <div class="stat-metric-lbl">Volume</div>
+                  </div>
+                  <div class="stat-metric">
+                    <div class="stat-metric-val">$210K</div>
+                    <div class="stat-metric-lbl">Liquidity</div>
+                  </div>
+                </div>
+                <div class="stat-signal">
+                  <div class="stat-signal-title">Outcome Concentration</div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label yes-l" style="width:50px;font-size:8px">Liverpool</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill yes-f" style="width:60.5%"></div>
+                    </div>
+                    <div class="stat-bar-pct yes-p">60.5%</div>
+                  </div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label" style="width:50px;font-size:8px;color:var(--a)">Draw</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill" style="width:21.5%;background:rgba(232,197,71,0.2);border-radius:4px"></div>
+                    </div>
+                    <div class="stat-bar-pct" style="color:var(--a)">21.5%</div>
+                  </div>
+                  <div class="stat-bar-row">
+                    <div class="stat-bar-label no-l" style="width:50px;font-size:8px">C. Palace</div>
+                    <div class="stat-bar-track">
+                      <div class="stat-bar-fill no-f" style="width:17.5%"></div>
+                    </div>
+                    <div class="stat-bar-pct no-p">17.5%</div>
+                  </div>
+                </div>
+                <div class="stat-signal">
+                  <div class="stat-signal-title">24h Activity</div>
+                  <div style="font-family:var(--mono);font-size:9px;color:var(--hi)">478 trades · Liverpool Yes most traded</div>
+                  <div style="font-family:var(--mono);font-size:8px;color:var(--mid);margin-top:3px">Kick-off: Apr 25, 11:30 UTC · LIVE</div>
+                </div>
+              </div>
+              <!-- rules -->
+              <div class="dtab-panel" data-tab="rules">
+                <div class="rules-box">
+                  <div class="rules-label">Resolution Criteria</div>
+                  <div class="rules-text">Each outcome resolves YES if the corresponding team wins (or if the match ends in a draw for the Draw market). Result based on 90 minutes + stoppage time. Extra time and penalties do not count.</div>
+                  <div class="rules-meta">Source: PremierLeague.com · Apr 25, 2026 11:30 UTC</div>
+                </div>
+              </div>
+              <!-- feed -->
+              <div class="dtab-panel" data-tab="feed">
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">Liverpool unbeaten at Anfield in 14 EPL matches. Salah on 19 goals this season — Palace conceded 3+ in last 2 away games.</div>
+                  <div class="feed-card-time">1h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">PNL Intelligence</div>
+                  <div class="feed-card-text">Crystal Palace missing Eze (knee) and Mitchell (thigh). Glasner likely to deploy low block 5-4-1 — Draw market saw 15% volume spike pre-match.</div>
+                  <div class="feed-card-time">3h ago</div>
+                </div>
+                <div class="feed-card">
+                  <div class="feed-card-source">Market Signal</div>
+                  <div class="feed-card-text">Liverpool price jumped 56¢ → 60.5¢ after lineup announcement. Largest buy: 8K shares @ 57¢ from a wallet with 68% EPL win rate.</div>
+                  <div class="feed-card-time">45m ago</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTTOM: thumb zone (all clickable) -->
+          <div class="detail-bottom-zone">
+            <!-- selection odds with Yes/No buttons -->
+            <div class="exchange-section">
+              <div class="exchange-header-row">
+                <div class="exchange-sel-label">3 Selections</div>
+                <div class="exchange-col-hints">
+                  <span class="hint-yes">Yes</span>
+                  <span class="hint-no">No</span>
+                </div>
+              </div>
+
+              <div class="sel-row">
+                <div class="sel-info">
+                  <div class="sel-name">Liverpool</div>
+                  <div class="sel-vol">$498K vol</div>
+                </div>
+                <div class="sel-btns">
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Liverpool','yes','61')">
+                    <span class="sel-btn-pct">61¢</span>
+                    <span class="sel-btn-label">Yes</span>
+                  </div>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Liverpool','no','39')">
+                    <span class="sel-btn-pct">39¢</span>
+                    <span class="sel-btn-label">No</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sel-row">
+                <div class="sel-info">
+                  <div class="sel-name">Draw</div>
+                  <div class="sel-vol">$176K vol</div>
+                </div>
+                <div class="sel-btns">
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Draw','yes','22')">
+                    <span class="sel-btn-pct">22¢</span>
+                    <span class="sel-btn-label">Yes</span>
+                  </div>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Draw','no','78')">
+                    <span class="sel-btn-pct">78¢</span>
+                    <span class="sel-btn-label">No</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sel-row">
+                <div class="sel-info">
+                  <div class="sel-name">Crystal Palace</div>
+                  <div class="sel-vol">$148K vol</div>
+                </div>
+                <div class="sel-btns">
+                  <div class="sel-btn yes-btn" onclick="openBetSlip(this,'Crystal Palace','yes','18')">
+                    <span class="sel-btn-pct">18¢</span>
+                    <span class="sel-btn-label">Yes</span>
+                  </div>
+                  <div class="sel-btn no-btn" onclick="openBetSlip(this,'Crystal Palace','no','82')">
+                    <span class="sel-btn-pct">82¢</span>
+                    <span class="sel-btn-label">No</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- bet slip overlay -->
+        <div class="betslip-overlay" id="betslip3" onclick="closeBetSlip(event,'betslip3')">
+          <div class="betslip" onclick="event.stopPropagation()">
+            <div class="betslip-handle"></div>
+            <div class="betslip-header">
+              <div class="betslip-title" id="bs3-title">Liverpool</div>
+              <div class="betslip-side yes-side" id="bs3-side">YES</div>
+            </div>
+            <div class="betslip-selection" id="bs3-sub">EPL · Match Odds · LIVE</div>
+            <div class="betslip-field">
+              <div class="betslip-field-label">Amount (USDC)</div>
+              <input class="betslip-input" id="bs3-amount" type="text" value="50" oninput="updatePayout('bs3')">
+            </div>
+            <div class="betslip-quick-amounts">
+              <div class="betslip-quick" onclick="setAmount('bs3',10)">$10</div>
+              <div class="betslip-quick" onclick="setAmount('bs3',25)">$25</div>
+              <div class="betslip-quick" onclick="setAmount('bs3',50)">$50</div>
+              <div class="betslip-quick" onclick="setAmount('bs3',100)">$100</div>
+            </div>
+            <div class="betslip-summary">
+              <span class="betslip-summary-label">Potential payout</span>
+              <span class="betslip-summary-value" id="bs3-payout">$106.38</span>
+            </div>
+            <div class="betslip-confirm yes-confirm" id="bs3-confirm" onclick="closeBetSlip(null,'betslip3')">Confirm Yes — $50</div>
+          </div>
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         SCREEN 4: PROFILE
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">04 · Profile Screen</div>
+      <div class="phone">
+        <!-- notch -->
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Profile</span>
+          <!-- settings icon -->
+          <div class="back-btn" style="background:transparent;border-color:transparent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6b6850" stroke-width="1.5" width="16" height="16">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- profile scroll -->
+        <div class="profile-screen-scroll">
+
+          <!-- identity -->
+          <div class="profile-identity">
+            <div class="profile-avatar-lg">
+              <div class="profile-avatar-lg-inner">B</div>
+            </div>
+            <div class="profile-identity-info">
+              <div class="profile-handle">bucketshop69</div>
+              <div class="profile-addr-row">
+                <span class="profile-addr">7xKp···m3Qr</span>
+                <svg class="copy-icon" width="10" height="10" viewBox="0 0 12 12" fill="none">
+                  <rect x="1" y="3" width="7" height="8" rx="1" stroke="#ede8d5" stroke-width="1.1"/>
+                  <path d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9" stroke="#ede8d5" stroke-width="1.1"/>
+                </svg>
+              </div>
+              <div class="profile-wc-chip">
+                <div class="profile-wc-dot"></div>
+                <span class="profile-wc-text">Connected</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- equity card -->
+          <div class="profile-equity-card">
+            <div class="profile-equity-row">
+              <div class="pf-eq-item">
+                <span class="pf-eq-label">Portfolio</span>
+                <span class="pf-eq-val">$1,840</span>
+              </div>
+              <div class="pf-eq-item">
+                <span class="pf-eq-label">Unrealised</span>
+                <span class="pf-eq-val pos">+$84.70</span>
+              </div>
+              <div class="pf-eq-item">
+                <span class="pf-eq-label">Cash</span>
+                <span class="pf-eq-val">$1,192</span>
+              </div>
+            </div>
+            <!-- assets -->
+            <div class="pf-assets-label">Holdings</div>
+            <div class="pf-asset-row">
+              <div class="pf-asset-name">
+                <div class="pf-asset-dot" style="background:#9945ff"></div>
+                USDC (Solana)
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <div class="pf-asset-amount">1,192.00</div>
+                <div class="pf-asset-usd">$1,192.00</div>
+              </div>
+            </div>
+            <div class="pf-asset-row">
+              <div class="pf-asset-name">
+                <div class="pf-asset-dot" style="background:#34c77b"></div>
+                Open Positions
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <div class="pf-asset-amount">4 markets</div>
+                <div class="pf-asset-usd">$648.00 cost</div>
+              </div>
+            </div>
+            <div class="pf-asset-row">
+              <div class="pf-asset-name">
+                <div class="pf-asset-dot" style="background:#e8c547"></div>
+                SOL
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <div class="pf-asset-amount">0.41</div>
+                <div class="pf-asset-usd">~$68.04</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- stats grid -->
+          <div class="profile-stats-grid">
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Net PnL</span>
+              <span class="pf-stat-val pos">+$142</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Realised PnL</span>
+              <span class="pf-stat-val pos">+$57</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Win Rate</span>
+              <span class="pf-stat-val pos">63%</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Markets traded</span>
+              <span class="pf-stat-val">17</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Avg winner</span>
+              <span class="pf-stat-val pos">+$28</span>
+            </div>
+            <div class="pf-stat-card">
+              <span class="pf-stat-label">Avg loser</span>
+              <span class="pf-stat-val neg">−$9</span>
+            </div>
+          </div>
+
+          <!-- cumulative P&L chart -->
+          <div class="profile-chart-card">
+            <span class="pf-chart-title">Cumulative P&amp;L</span>
+            <svg width="100%" height="72" viewBox="0 0 343 72" fill="none" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="cpnlG" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#34c77b" stop-opacity="0.2"/>
+                  <stop offset="100%" stop-color="#34c77b" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="cpnlGN" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#f4584e" stop-opacity="0"/>
+                  <stop offset="100%" stop-color="#f4584e" stop-opacity="0.18"/>
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="45" x2="343" y2="45" stroke="#1a1a15" stroke-width="0.8"/>
+              <!-- loss zone (early) -->
+              <path d="M0,45 L30,47 L60,50 L90,58 L110,65 L130,62 L150,55 L170,58 L185,60 L200,55 L210,50 L220,45 L220,72 L0,72 Z"
+                fill="url(#cpnlGN)" opacity="0.6"/>
+              <!-- gain zone (recovery + growth) -->
+              <path d="M210,45 L230,40 L255,34 L275,28 L300,20 L320,14 L343,8 L343,45 L210,45 Z"
+                fill="url(#cpnlG)"/>
+              <!-- line -->
+              <path d="M0,45 L30,47 L60,50 L90,58 L110,65 L130,62 L150,55 L170,58 L185,60 L200,55 L210,50 L220,45 L230,40 L255,34 L275,28 L300,20 L320,14 L343,8"
+                stroke="#34c77b" stroke-width="1.4" fill="none" stroke-linejoin="round"/>
+              <circle cx="343" cy="8" r="2.5" fill="#34c77b"/>
+            </svg>
+            <div class="pf-chart-axis">
+              <span class="pf-chart-tick">Jan</span>
+              <span class="pf-chart-tick">Feb</span>
+              <span class="pf-chart-tick">Mar</span>
+              <span class="pf-chart-tick">Apr</span>
+            </div>
+          </div>
+
+          <!-- active positions list -->
+          <div class="profile-positions-section">
+            <div class="pf-pos-header">
+              <span class="pf-pos-title">Open Positions</span>
+              <span class="pf-pos-count">4 active</span>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge yes">YES</span>
+              <span class="pf-pos-q">US forces enter Iran by Apr 30?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl up">+$48.40</span>
+                <span class="pf-pos-entry">0.41→0.62</span>
+              </div>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge no">NO</span>
+              <span class="pf-pos-q">China invades Taiwan before 2027?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl up">+$22.10</span>
+                <span class="pf-pos-entry">0.76→0.82</span>
+              </div>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge yes">YES</span>
+              <span class="pf-pos-q">Liverpool win vs C. Palace Apr 25?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl up">+$24.10</span>
+                <span class="pf-pos-entry">0.38→0.47</span>
+              </div>
+            </div>
+
+            <div class="pf-pos-row">
+              <span class="pf-side-badge no">NO</span>
+              <span class="pf-pos-q">US–Iran ceasefire by April 7?</span>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                <span class="pf-pos-pnl dn">−$9.80</span>
+                <span class="pf-pos-entry">0.62→0.56</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- nav bar -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg>
+            </div>
+            <div class="nav-label">Feed</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </div>
+            <div class="nav-label">Predict</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="nav-label">Trade</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <div class="nav-label active">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── ANNOTATIONS ─── -->
+  <div style="margin-top:40px;width:100%;max-width:1320px">
+    <div class="flow-label">Annotations · Issue #061</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-family:var(--mono);font-size:10px;color:var(--mid)">
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 01 — Feed List</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Header: avatar ring (left) → title → wallet pill (right)</li>
+          <li>· Trending strip — horizontal scroll, top by volume, category color</li>
+          <li>· Filter chips: All / Sports / Crypto / Politics / Macro (dynamic from API)</li>
+          <li>· <b>Live Now</b> section first — pulsing red LIVE badge, border glow</li>
+          <li>· <b>Upcoming</b> section — clock icon + "Today 14:00" / "Tomorrow"</li>
+          <li>· <b>Markets</b> section — binary cards with API images + category badges</li>
+          <li>· IPL = 2-way outcomes (no draw), EPL = 3-way (with draw)</li>
+          <li>· Volume on every card. Sub-markets (halftime, exact score) filtered out</li>
+          <li>· Data source: unified <code>GET /predict/feed</code> endpoint</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 02 — Binary Detail</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· <b>Category badge</b> + end date row below header</li>
+          <li>· Sparkline: yes% + Δ change + "updated Xs ago" + 1D/1W toggle</li>
+          <li>· Red gradient when price is down, green when up</li>
+          <li>· Tabs: Position / Stats / Rules / Feed</li>
+          <li>· Stats: sentiment bar + volume + liquidity + payout calculator</li>
+          <li>· YES/NO buttons in thumb zone with cent price</li>
+          <li>· Bet slip: amount input + $10/$25/$50/$100 presets + payout</li>
+          <li>· Uses real API data (China-Taiwan, 7% YES)</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 03 — Sport Detail</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Match hero: EPL badge + LIVE badge (pulsing) + kick-off time + team emblems + volume</li>
+          <li>· Outcome tabs: 3-way (Liverpool / Draw / C. Palace) — tap to switch sparkline</li>
+          <li>· Sparkline shows selected outcome's price history + live refresh dot</li>
+          <li>· Three-way probability bars: column height = market odds (60.5% / 21.5% / 17.5%)</li>
+          <li>· Tabs: Position / Stats / Rules / Feed</li>
+          <li>· Stats: outcome concentration bars, 24h activity, traders/volume/liquidity</li>
+          <li>· 3 selections in thumb zone with Yes/No cent prices</li>
+          <li>· Bet slip: amount input + presets + payout calculator</li>
+          <li>· Uses real API data (Liverpool vs Crystal Palace, EPL, live)</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border1);border-radius:10px;padding:14px">
+        <div style="color:var(--a);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Screen 04 — Profile</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;line-height:1.5">
+          <li>· Identity: avatar ring + handle + truncated address + copy</li>
+          <li>· Connected wallet chip with live dot</li>
+          <li>· Portfolio card: total value, unrealised P&amp;L, cash</li>
+          <li>· Holdings: USDC, open positions cost basis, SOL</li>
+          <li>· Stats grid 2×3: net PnL, realised, win rate, markets, avg winner/loser</li>
+          <li>· Cumulative P&amp;L SVG — starts negative, recovers and grows</li>
+          <li>· Open Positions list — side badge, question, P&amp;L, entry→current</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+function openBetSlip(btn, selection, side, price) {
+  var overlay = document.getElementById('betslip3');
+  var title = document.getElementById('bs3-title');
+  var sideEl = document.getElementById('bs3-side');
+  var confirm = document.getElementById('bs3-confirm');
+  var amountEl = document.getElementById('bs3-amount');
+  title.textContent = selection;
+  var cents = parseInt(price);
+  var priceNum = cents / 100;
+  sideEl.textContent = side.toUpperCase();
+  sideEl.className = 'betslip-side ' + (side === 'yes' ? 'yes-side' : 'no-side');
+  confirm.className = 'betslip-confirm ' + (side === 'yes' ? 'yes-confirm' : 'no-confirm');
+  overlay.dataset.price = priceNum;
+  overlay.dataset.side = side;
+  var amount = parseFloat(amountEl.value) || 50;
+  var payout = (amount / priceNum).toFixed(2);
+  document.getElementById('bs3-payout').textContent = '$' + payout;
+  confirm.textContent = 'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+  overlay.classList.add('show');
+}
+function closeBetSlip(e, id) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById(id).classList.remove('show');
+}
+function setAmount(prefix, val) {
+  document.getElementById(prefix + '-amount').value = val;
+  updatePayout(prefix);
+}
+function updatePayout(prefix) {
+  var overlay = document.getElementById('betslip3');
+  var amount = parseFloat(document.getElementById(prefix + '-amount').value) || 0;
+  var price = parseFloat(overlay.dataset.price) || 0.5;
+  var side = overlay.dataset.side || 'yes';
+  var payout = price > 0 ? (amount / price).toFixed(2) : '0.00';
+  document.getElementById(prefix + '-payout').textContent = '$' + payout;
+  document.getElementById(prefix + '-confirm').textContent =
+    'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+}
+function openBetSlip2(selection, side, price) {
+  var overlay = document.getElementById('betslip2');
+  document.getElementById('bs2-title').textContent = selection;
+  var cents = parseInt(price);
+  var priceNum = cents / 100;
+  var sideEl = document.getElementById('bs2-side');
+  sideEl.textContent = side.toUpperCase();
+  sideEl.className = 'betslip-side ' + (side === 'yes' ? 'yes-side' : 'no-side');
+  var confirm = document.getElementById('bs2-confirm');
+  confirm.className = 'betslip-confirm ' + (side === 'yes' ? 'yes-confirm' : 'no-confirm');
+  overlay.dataset.price = priceNum;
+  overlay.dataset.side = side;
+  var amount = parseFloat(document.getElementById('bs2-amount').value) || 50;
+  document.getElementById('bs2-payout').textContent = '$' + (amount / priceNum).toFixed(2);
+  confirm.textContent = 'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+  overlay.classList.add('show');
+}
+function setAmount2(val) {
+  document.getElementById('bs2-amount').value = val;
+  updatePayout2();
+}
+function updatePayout2() {
+  var overlay = document.getElementById('betslip2');
+  var amount = parseFloat(document.getElementById('bs2-amount').value) || 0;
+  var price = parseFloat(overlay.dataset.price) || 0.5;
+  var side = overlay.dataset.side || 'yes';
+  document.getElementById('bs2-payout').textContent = '$' + (price > 0 ? (amount / price).toFixed(2) : '0.00');
+  document.getElementById('bs2-confirm').textContent =
+    'Confirm ' + side.charAt(0).toUpperCase() + side.slice(1) + ' — $' + amount;
+}
+function switchTab(containerId, tabName) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var tabs = container.querySelectorAll('.dtab');
+  var panels = container.querySelectorAll('.dtab-panel');
+  tabs.forEach(function(t) { t.classList.toggle('active', t.textContent.toLowerCase() === tabName) });
+  panels.forEach(function(p) { p.classList.toggle('active', p.dataset.tab === tabName) });
+}
+</script>
+</body>
+</html>

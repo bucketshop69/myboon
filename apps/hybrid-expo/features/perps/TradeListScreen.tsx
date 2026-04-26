@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
-import { WalletHeaderButton } from '@/components/wallet/WalletHeaderButton';
+import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import {
   fetchPerpsMarkets,
   formatChange,
@@ -113,13 +113,9 @@ export function TradeListScreen() {
         <>
           {/* Header — matches Predict pattern */}
           <View style={styles.tradeHeader}>
-            <Pressable onPress={() => setView('profile')} style={styles.avatarRing}>
-              <View style={styles.avatarInner}>
-                <MaterialIcons name="person" size={12} color={semantic.text.primary} />
-              </View>
-            </Pressable>
+            <AvatarTrigger />
             <Text style={styles.tradeTitle}>Trade</Text>
-            <WalletHeaderButton />
+            <View style={{ width: 30 }} />
           </View>
 
           {/* Markets table */}
@@ -227,23 +223,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: semantic.border.muted,
-  },
-  avatarRing: {
-    width: 28, height: 28,
-    borderRadius: 14,
-    padding: 2,
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: semantic.text.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInner: {
-    width: 20, height: 20,
-    borderRadius: 10,
-    backgroundColor: semantic.background.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   tradeTitle: {
     flex: 1,

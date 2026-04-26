@@ -11,7 +11,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "xyz.myboon.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "associatedDomains": [
+        "webcredentials:myboon.tech"
+      ]
     },
     "android": {
       "package": "xyz.myboon.app",
@@ -40,7 +43,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#1A1A1A"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Predict Detail v2 — Seamless</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --bg0: #080806;
+      --bg1: #0f0f0c;
+      --bg2: #141410;
+      --bg3: #1a1a15;
+      --bg4: #21211a;
+      --bg5: #292920;
+      --border0: rgba(255,255,255,0.04);
+      --border1: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.13);
+      --a:  #e8c547;
+      --a2: #c9a630;
+      --a3: rgba(232,197,71,0.12);
+      --a4: rgba(232,197,71,0.06);
+      --pos:  #34c77b;
+      --pos2: rgba(52,199,123,0.12);
+      --neg:  #f4584e;
+      --neg2: rgba(244,88,78,0.10);
+      --hi:  #ede8d5;
+      --mid: #6b6850;
+      --lo:  #35342a;
+      --soft: #1e1d16;
+      --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
+      --sans: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+
+    body {
+      background: var(--bg0);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px 80px;
+      font-family: var(--sans);
+    }
+
+    .flow-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 3.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 900px;
+    }
+    .flow-label::before, .flow-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border0);
+    }
+
+    .screens-row {
+      display: flex;
+      gap: 32px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .screen-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .screen-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+
+    /* ─── PHONE SHELL ─── */
+    .phone {
+      width: 375px;
+      height: 812px;
+      background: var(--bg0);
+      border-radius: 50px;
+      border: 1px solid var(--border1);
+      box-shadow:
+        0 0 0 8px #0b0b09,
+        0 0 0 9px rgba(255,255,255,0.04),
+        0 60px 100px rgba(0,0,0,0.85);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 110px; height: 30px;
+      background: #0b0b09;
+      border-radius: 0 0 22px 22px;
+      z-index: 200;
+    }
+
+    /* ─── STATUS BAR ─── */
+    .status-bar {
+      height: 46px;
+      padding: 16px 22px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+      position: relative;
+    }
+    .st-time {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -0.2px;
+    }
+    .st-icons { display: flex; gap: 5px; align-items: center }
+    .signal-bar { width: 3px; background: var(--hi); border-radius: 1px }
+
+    /* ─── NAV BAR ─── */
+    .nav-bar {
+      height: 68px;
+      background: var(--soft);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-around;
+      padding-top: 11px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 50;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      padding: 0 12px;
+    }
+    .nav-icon {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0.3;
+    }
+    .nav-icon.active { opacity: 1 }
+    .nav-icon svg { width: 18px; height: 18px }
+    .nav-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .nav-label.active { color: var(--a2) }
+    .nav-dot {
+      width: 4px; height: 4px;
+      background: var(--a);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(232,197,71,0.6);
+      margin-top: -3px;
+      animation: dot-pulse 2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse {
+      0%,100% { box-shadow: 0 0 4px rgba(232,197,71,0.5) }
+      50%      { box-shadow: 0 0 12px rgba(232,197,71,0.9), 0 0 24px rgba(232,197,71,0.4) }
+    }
+
+    /* ─── HEADER ─── */
+    .detail-header {
+      height: 44px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .back-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+      border: none;
+    }
+    .back-btn svg { width: 12px; height: 12px; color: var(--hi) }
+    .detail-header-title {
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--hi);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--neg);
+      flex-shrink: 0;
+    }
+    .live-badge-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--neg);
+      animation: dot-pulse-live 1.2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse-live {
+      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(244,88,78,0.5) }
+      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(244,88,78,0.9) }
+    }
+    .header-end {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+      flex-shrink: 0;
+    }
+    .profile-avatar-ring {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e8c547 0%, #34c77b 100%);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .profile-avatar-inner {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+
+    /* ══════════════════════════════════
+       DARK ZONE — chart lives here
+       seamless, no borders, just data
+    ══════════════════════════════════ */
+    .dark-zone {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0 20px;
+      position: relative;
+      min-height: 0;
+    }
+
+    .chart-price-block {
+      padding: 8px 0 0;
+    }
+    .chart-price {
+      font-family: var(--mono);
+      font-size: 38px;
+      font-weight: 700;
+      color: var(--hi);
+      line-height: 1;
+      letter-spacing: -2px;
+    }
+    .chart-sub-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .chart-change {
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .chart-change.up { color: var(--pos) }
+    .chart-change.down { color: var(--neg) }
+    .chart-tag {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+    }
+    .refresh-dot {
+      display: inline-block;
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--pos);
+      animation: dot-pulse 2s ease-in-out infinite;
+      margin-right: 3px;
+    }
+
+    .chart-range-row {
+      display: flex;
+      gap: 4px;
+      padding: 10px 0 6px;
+    }
+    .range-chip {
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      color: var(--lo);
+      background: transparent;
+      cursor: pointer;
+      border: none;
+    }
+    .range-chip.active {
+      background: rgba(255,255,255,0.06);
+      color: var(--hi);
+    }
+
+    /* chart canvas — no borders, just lines */
+    .chart-canvas {
+      flex: 1;
+      min-height: 120px;
+      position: relative;
+    }
+    .chart-canvas svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* outcome legend labels floating on chart */
+    .chart-legend {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .chart-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .chart-legend-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .chart-legend-name {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.5px;
+    }
+    .chart-legend-pct {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    /* outcome tabs (sport) — minimal, no borders */
+    .outcome-tabs-minimal {
+      display: flex;
+      gap: 16px;
+      padding: 6px 0 0;
+    }
+    .otm {
+      cursor: pointer;
+      padding: 4px 0;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .otm.active { border-bottom-color: var(--a) }
+    .otm-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.5px;
+      color: var(--lo);
+    }
+    .otm.active .otm-label { color: var(--mid) }
+    .otm-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--lo);
+    }
+    .otm.active .otm-pct { color: var(--hi) }
+
+    /* ══════════════════════════════════
+       SOFT ZONE — bottom card
+       rises from the dark with big radius
+    ══════════════════════════════════ */
+    .soft-zone {
+      background: var(--soft);
+      border-radius: 24px 24px 0 0;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      z-index: 45; /* above numpad so odds stay visible */
+    }
+
+    /* stats strip — seamless in the soft zone */
+    .stats-strip {
+      display: flex;
+      padding: 16px 20px 12px;
+    }
+    .stats-strip-item {
+      flex: 1;
+      text-align: center;
+    }
+    .stats-strip-val {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--hi);
+      line-height: 1;
+    }
+    .stats-strip-lbl {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-top: 3px;
+    }
+
+    /* thin separator */
+    .sep {
+      height: 1px;
+      background: var(--border0);
+      margin: 0 20px;
+    }
+
+    /* ─── ODDS SECTION (lifts up on tap) ─── */
+    .odds-section {
+      padding: 10px 20px;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* binary yes/no */
+    .binary-btns {
+      display: flex;
+      gap: 8px;
+    }
+    .bn-btn {
+      flex: 1;
+      height: 54px;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    .bn-btn:active { transform: scale(0.97) }
+    .bn-btn.yes { background: rgba(52,199,123,0.12) }
+    .bn-btn.no  { background: rgba(244,88,78,0.10) }
+    .bn-btn.yes.selected { background: rgba(52,199,123,0.22); box-shadow: 0 0 0 1px rgba(52,199,123,0.3) }
+    .bn-btn.no.selected  { background: rgba(244,88,78,0.18); box-shadow: 0 0 0 1px rgba(244,88,78,0.3) }
+    .bn-btn-price {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .bn-btn.yes .bn-btn-price { color: var(--pos) }
+    .bn-btn.no .bn-btn-price  { color: var(--neg) }
+    .bn-btn-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .bn-btn.yes .bn-btn-label { color: rgba(52,199,123,0.5) }
+    .bn-btn.no .bn-btn-label  { color: rgba(244,88,78,0.4) }
+
+    /* sport selections */
+    .sel-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 0;
+    }
+    .sel-row + .sel-row { border-top: 1px solid var(--border0) }
+    .sel-info { flex: 1; min-width: 0 }
+    .sel-name {
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--hi);
+    }
+    .sel-vol {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      margin-top: 1px;
+    }
+    .sel-btns { display: flex; gap: 4px; flex-shrink: 0 }
+    .sel-btn {
+      width: 56px; height: 38px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.12s;
+    }
+    .sel-btn:active { transform: scale(0.96) }
+    .sel-btn.yes-btn { background: rgba(52,199,123,0.12) }
+    .sel-btn.no-btn  { background: rgba(244,88,78,0.10) }
+    .sel-btn.yes-btn.selected { background: rgba(52,199,123,0.22); box-shadow: 0 0 0 1px rgba(52,199,123,0.3) }
+    .sel-btn.no-btn.selected  { background: rgba(244,88,78,0.18); box-shadow: 0 0 0 1px rgba(244,88,78,0.3) }
+    .sel-btn-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .sel-btn.yes-btn .sel-btn-pct { color: var(--pos) }
+    .sel-btn.no-btn .sel-btn-pct  { color: var(--neg) }
+    .sel-btn-label {
+      font-family: var(--mono);
+      font-size: 6.5px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    .sel-btn.yes-btn .sel-btn-label { color: rgba(52,199,123,0.5) }
+    .sel-btn.no-btn .sel-btn-label  { color: rgba(244,88,78,0.4) }
+
+    .sel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 2px;
+    }
+    .sel-header-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1px;
+      color: var(--mid);
+    }
+    .sel-header-hints {
+      display: flex; gap: 32px;
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .sel-header-hints .h-yes { color: var(--pos) }
+    .sel-header-hints .h-no  { color: var(--neg) }
+
+    /* ══════════════════════════════════
+       NUMPAD — z-index layer that rises
+       up from behind the soft-zone,
+       covering the chart. Not a modal.
+    ══════════════════════════════════ */
+    .numpad-zone {
+      position: absolute;
+      left: 0; right: 0;
+      bottom: 68px; /* above nav bar */
+      z-index: 40;
+      background: var(--soft);
+      border-radius: 24px 24px 0 0;
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 0 20px;
+      pointer-events: none;
+    }
+    .numpad-zone.open {
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .numpad-inner {
+      padding: 4px 0 6px;
+    }
+
+    .numpad-amount-display {
+      text-align: center;
+      padding: 4px 0 8px;
+    }
+    .numpad-currency {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--lo);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .numpad-amount-val {
+      font-family: var(--mono);
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -1px;
+      line-height: 1.1;
+    }
+
+    .numpad-quick-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .numpad-quick {
+      flex: 1;
+      height: 26px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: none;
+      transition: all 0.1s;
+    }
+    .numpad-quick:active { background: rgba(255,255,255,0.08); color: var(--hi) }
+
+    .numpad-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 5px;
+    }
+    .numpad-key {
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--hi);
+      cursor: pointer;
+      transition: all 0.08s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .numpad-key:active {
+      background: rgba(255,255,255,0.10);
+      transform: scale(0.95);
+    }
+    .numpad-key.del {
+      font-size: 16px;
+      color: var(--mid);
+    }
+
+    .numpad-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0 2px;
+    }
+    .numpad-payout-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.5px;
+      color: var(--mid);
+    }
+    .numpad-payout-val {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--pos);
+    }
+
+    .numpad-confirm {
+      width: 100%;
+      height: 44px;
+      border-radius: 14px;
+      border: none;
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 700;
+      color: #0b0b09;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: opacity 0.12s;
+    }
+    .numpad-confirm:active { opacity: 0.85 }
+    .numpad-confirm.yes { background: var(--pos) }
+    .numpad-confirm.no  { background: var(--neg) }
+
+  </style>
+</head>
+<body>
+
+  <div class="flow-label">Predict Detail v2 — Seamless Chart + Inline Numpad</div>
+
+  <div class="screens-row">
+
+    <!-- ═══════════════════════════════════
+         SCREEN 02v2: BINARY MARKET DETAIL
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">02 v2 · Binary Detail</div>
+      <div class="phone" id="phone-binary">
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">China invade Taiwan by 2026?</span>
+          <span class="header-end">Dec 31</span>
+        </div>
+
+        <!-- DARK ZONE — chart -->
+        <div class="dark-zone">
+          <div class="chart-price-block">
+            <div class="chart-price" style="color:var(--neg)">7<span style="font-size:22px">%</span></div>
+            <div class="chart-sub-row">
+              <span class="chart-change down">&#9660; 1.2%</span>
+              <span class="chart-tag"><span class="refresh-dot"></span>8s ago</span>
+            </div>
+          </div>
+
+          <div class="chart-range-row">
+            <div class="range-chip active">1D</div>
+            <div class="range-chip">1W</div>
+            <div class="range-chip">1M</div>
+            <div class="range-chip">ALL</div>
+          </div>
+
+          <!-- multi-line chart: Yes (green) + No (red/gray) overlaid -->
+          <div class="chart-canvas">
+            <!-- legend at end of lines -->
+            <div class="chart-legend" style="right:8px;top:12px">
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background:var(--neg)"></div>
+                <span class="chart-legend-name" style="color:var(--neg)">Yes</span>
+                <span class="chart-legend-pct" style="color:var(--neg)">7%</span>
+              </div>
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background:var(--pos)"></div>
+                <span class="chart-legend-name" style="color:var(--pos)">No</span>
+                <span class="chart-legend-pct" style="color:var(--pos)">93%</span>
+              </div>
+            </div>
+            <svg viewBox="0 0 343 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- No line (93%, near top — green, dominant) -->
+              <path d="M0 22 C20 24, 50 20, 80 18 C110 16, 140 20, 170 22 C200 18, 230 16, 260 20 C280 22, 310 18, 343 16"
+                stroke="var(--pos)" stroke-width="1.8" fill="none" stroke-linejoin="round" opacity="0.7"/>
+              <!-- Yes line (7%, near bottom — red, low) -->
+              <path d="M0 138 C20 136, 50 140, 80 142 C110 144, 140 140, 170 138 C200 142, 230 144, 260 140 C280 138, 310 142, 343 144"
+                stroke="var(--neg)" stroke-width="1.8" fill="none" stroke-linejoin="round" opacity="0.7"/>
+              <!-- current dots -->
+              <circle cx="343" cy="16" r="3" fill="var(--pos)"/>
+              <circle cx="343" cy="144" r="3" fill="var(--neg)"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- SOFT ZONE — rises from below -->
+        <div class="soft-zone" id="soft-binary">
+          <div class="stats-strip">
+            <div class="stats-strip-item">
+              <div class="stats-strip-val">$335K</div>
+              <div class="stats-strip-lbl">Volume</div>
+            </div>
+            <div class="stats-strip-item">
+              <div class="stats-strip-val">$48K</div>
+              <div class="stats-strip-lbl">Liquidity</div>
+            </div>
+            <div class="stats-strip-item">
+              <div class="stats-strip-val">892</div>
+              <div class="stats-strip-lbl">Traders</div>
+            </div>
+          </div>
+          <div class="sep"></div>
+
+          <!-- odds section -->
+          <div class="odds-section" id="odds-binary">
+            <div class="binary-btns">
+              <div class="bn-btn yes" id="bn-b-yes" onclick="tapOdd('binary','China invade Taiwan?','yes',7)">
+                <span class="bn-btn-price">7&#162;</span>
+                <span class="bn-btn-label">Yes</span>
+              </div>
+              <div class="bn-btn no" id="bn-b-no" onclick="tapOdd('binary','China invade Taiwan?','no',93)">
+                <span class="bn-btn-price">93&#162;</span>
+                <span class="bn-btn-label">No</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- NUMPAD — absolute layer, rises over chart -->
+        <div class="numpad-zone" id="numpad-binary">
+          <div class="numpad-inner">
+            <div class="numpad-amount-display">
+              <div class="numpad-currency">USDC</div>
+              <div class="numpad-amount-val" id="np-b-amount">50</div>
+            </div>
+            <div class="numpad-quick-row">
+              <div class="numpad-quick" onclick="npSet('b','10')">$10</div>
+              <div class="numpad-quick" onclick="npSet('b','25')">$25</div>
+              <div class="numpad-quick" onclick="npSet('b','50')">$50</div>
+              <div class="numpad-quick" onclick="npSet('b','100')">$100</div>
+            </div>
+            <div class="numpad-grid">
+              <div class="numpad-key" onclick="npKey('b','1')">1</div>
+              <div class="numpad-key" onclick="npKey('b','2')">2</div>
+              <div class="numpad-key" onclick="npKey('b','3')">3</div>
+              <div class="numpad-key" onclick="npKey('b','4')">4</div>
+              <div class="numpad-key" onclick="npKey('b','5')">5</div>
+              <div class="numpad-key" onclick="npKey('b','6')">6</div>
+              <div class="numpad-key" onclick="npKey('b','7')">7</div>
+              <div class="numpad-key" onclick="npKey('b','8')">8</div>
+              <div class="numpad-key" onclick="npKey('b','9')">9</div>
+              <div class="numpad-key" onclick="npKey('b','.')">.</div>
+              <div class="numpad-key" onclick="npKey('b','0')">0</div>
+              <div class="numpad-key del" onclick="npDel('b')">&#9003;</div>
+            </div>
+            <div class="numpad-footer">
+              <span class="numpad-payout-label">Potential payout</span>
+              <span class="numpad-payout-val" id="np-b-payout">$714.29</span>
+            </div>
+            <button class="numpad-confirm yes" id="np-b-confirm" onclick="tapOdd('binary',null,null,null)">Confirm Yes &#8212; $50</button>
+          </div>
+        </div>
+
+        <div class="nav-bar">
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
+          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════
+         SCREEN 03v2: SPORT MATCH DETAIL
+    ═══════════════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">03 v2 · Sport Detail</div>
+      <div class="phone" id="phone-sport">
+        <div class="status-bar">
+          <span class="st-time">9:41</span>
+          <div class="st-icons">
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <div class="signal-bar" style="height:4px"></div>
+              <div class="signal-bar" style="height:6px"></div>
+              <div class="signal-bar" style="height:9px"></div>
+              <div class="signal-bar" style="height:11px"></div>
+            </div>
+            <svg width="14" height="10" fill="none" style="margin-left:3px">
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div class="detail-header">
+          <div class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </div>
+          <span class="detail-header-title">Liverpool vs Crystal Palace</span>
+          <div class="live-badge">
+            <div class="live-badge-dot"></div>LIVE
+          </div>
+        </div>
+
+        <!-- DARK ZONE — chart -->
+        <div class="dark-zone">
+          <div class="chart-price-block">
+            <div class="chart-price" style="color:var(--pos)">60.5<span style="font-size:22px">%</span></div>
+            <div class="chart-sub-row">
+              <span class="chart-change up">&#9650; 4.1%</span>
+              <span class="chart-tag">Liverpool</span>
+              <span class="chart-tag" style="margin-left:auto"><span class="refresh-dot"></span>8s ago</span>
+            </div>
+          </div>
+
+          <div class="chart-range-row">
+            <div class="range-chip active">1D</div>
+            <div class="range-chip">1W</div>
+            <div class="range-chip">1M</div>
+            <div class="range-chip">ALL</div>
+          </div>
+
+          <!-- 3-way chart: all outcomes overlaid -->
+          <div class="chart-canvas">
+            <!-- legend floating -->
+            <div class="chart-legend" style="right:8px;top:6px">
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background:var(--pos)"></div>
+                <span class="chart-legend-name" style="color:var(--pos)">Liverpool</span>
+                <span class="chart-legend-pct" style="color:var(--pos)">60.5%</span>
+              </div>
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background:var(--a)"></div>
+                <span class="chart-legend-name" style="color:var(--a)">Draw</span>
+                <span class="chart-legend-pct" style="color:var(--a)">21.5%</span>
+              </div>
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background:var(--neg)"></div>
+                <span class="chart-legend-name" style="color:var(--neg)">C. Palace</span>
+                <span class="chart-legend-pct" style="color:var(--neg)">17.5%</span>
+              </div>
+            </div>
+            <svg viewBox="0 0 343 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Liverpool (green, 60.5% — starts ~50%, rises) -->
+              <path d="M0 80 C15 78, 30 76, 50 74 C70 72, 90 75, 110 70 C130 66, 150 68, 170 62 C190 56, 210 52, 230 48 C250 44, 270 40, 290 36 C310 34, 330 30, 343 28"
+                stroke="var(--pos)" stroke-width="2" fill="none" stroke-linejoin="round"/>
+              <!-- Draw (gold, 21.5% — relatively flat middle) -->
+              <path d="M0 112 C15 110, 30 114, 50 112 C70 116, 90 114, 110 118 C130 116, 150 120, 170 118 C190 120, 210 122, 230 120 C250 122, 270 120, 290 124 C310 122, 330 124, 343 122"
+                stroke="var(--a)" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity="0.7"/>
+              <!-- C. Palace (red, 17.5% — starts higher, drops) -->
+              <path d="M0 96 C15 98, 30 100, 50 102 C70 100, 90 104, 110 106 C130 108, 150 106, 170 110 C190 112, 210 114, 230 116 C250 118, 270 120, 290 126 C310 128, 330 130, 343 132"
+                stroke="var(--neg)" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity="0.7"/>
+              <!-- dots at end -->
+              <circle cx="343" cy="28" r="3" fill="var(--pos)"/>
+              <circle cx="343" cy="122" r="2.5" fill="var(--a)" opacity="0.7"/>
+              <circle cx="343" cy="132" r="2.5" fill="var(--neg)" opacity="0.7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- SOFT ZONE -->
+        <div class="soft-zone" id="soft-sport">
+          <div class="stats-strip">
+            <div class="stats-strip-item">
+              <div class="stats-strip-val">$822K</div>
+              <div class="stats-strip-lbl">Volume</div>
+            </div>
+            <div class="stats-strip-item">
+              <div class="stats-strip-val">$210K</div>
+              <div class="stats-strip-lbl">Liquidity</div>
+            </div>
+            <div class="stats-strip-item">
+              <div class="stats-strip-val">1.2K</div>
+              <div class="stats-strip-lbl">Traders</div>
+            </div>
+          </div>
+          <div class="sep"></div>
+
+          <!-- odds section -->
+          <div class="odds-section" id="odds-sport">
+            <div class="sel-header">
+              <span class="sel-header-label">3 Selections</span>
+              <div class="sel-header-hints">
+                <span class="h-yes">Yes</span>
+                <span class="h-no">No</span>
+              </div>
+            </div>
+            <div class="sel-row">
+              <div class="sel-info">
+                <div class="sel-name">Liverpool</div>
+                <div class="sel-vol">$498K vol</div>
+              </div>
+              <div class="sel-btns">
+                <div class="sel-btn yes-btn" onclick="tapOdd('sport','Liverpool','yes',61)">
+                  <span class="sel-btn-pct">61&#162;</span>
+                  <span class="sel-btn-label">Yes</span>
+                </div>
+                <div class="sel-btn no-btn" onclick="tapOdd('sport','Liverpool','no',39)">
+                  <span class="sel-btn-pct">39&#162;</span>
+                  <span class="sel-btn-label">No</span>
+                </div>
+              </div>
+            </div>
+            <div class="sel-row">
+              <div class="sel-info">
+                <div class="sel-name">Draw</div>
+                <div class="sel-vol">$176K vol</div>
+              </div>
+              <div class="sel-btns">
+                <div class="sel-btn yes-btn" onclick="tapOdd('sport','Draw','yes',22)">
+                  <span class="sel-btn-pct">22&#162;</span>
+                  <span class="sel-btn-label">Yes</span>
+                </div>
+                <div class="sel-btn no-btn" onclick="tapOdd('sport','Draw','no',78)">
+                  <span class="sel-btn-pct">78&#162;</span>
+                  <span class="sel-btn-label">No</span>
+                </div>
+              </div>
+            </div>
+            <div class="sel-row">
+              <div class="sel-info">
+                <div class="sel-name">Crystal Palace</div>
+                <div class="sel-vol">$148K vol</div>
+              </div>
+              <div class="sel-btns">
+                <div class="sel-btn yes-btn" onclick="tapOdd('sport','Crystal Palace','yes',18)">
+                  <span class="sel-btn-pct">18&#162;</span>
+                  <span class="sel-btn-label">Yes</span>
+                </div>
+                <div class="sel-btn no-btn" onclick="tapOdd('sport','Crystal Palace','no',82)">
+                  <span class="sel-btn-pct">82&#162;</span>
+                  <span class="sel-btn-label">No</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- NUMPAD — absolute layer, rises over chart -->
+        <div class="numpad-zone" id="numpad-sport">
+          <div class="numpad-inner">
+            <div class="numpad-amount-display">
+              <div class="numpad-currency">USDC</div>
+              <div class="numpad-amount-val" id="np-s-amount">50</div>
+            </div>
+            <div class="numpad-quick-row">
+              <div class="numpad-quick" onclick="npSet('s','10')">$10</div>
+              <div class="numpad-quick" onclick="npSet('s','25')">$25</div>
+              <div class="numpad-quick" onclick="npSet('s','50')">$50</div>
+              <div class="numpad-quick" onclick="npSet('s','100')">$100</div>
+            </div>
+            <div class="numpad-grid">
+              <div class="numpad-key" onclick="npKey('s','1')">1</div>
+              <div class="numpad-key" onclick="npKey('s','2')">2</div>
+              <div class="numpad-key" onclick="npKey('s','3')">3</div>
+              <div class="numpad-key" onclick="npKey('s','4')">4</div>
+              <div class="numpad-key" onclick="npKey('s','5')">5</div>
+              <div class="numpad-key" onclick="npKey('s','6')">6</div>
+              <div class="numpad-key" onclick="npKey('s','7')">7</div>
+              <div class="numpad-key" onclick="npKey('s','8')">8</div>
+              <div class="numpad-key" onclick="npKey('s','9')">9</div>
+              <div class="numpad-key" onclick="npKey('s','.')">.</div>
+              <div class="numpad-key" onclick="npKey('s','0')">0</div>
+              <div class="numpad-key del" onclick="npDel('s')">&#9003;</div>
+            </div>
+            <div class="numpad-footer">
+              <span class="numpad-payout-label">Potential payout</span>
+              <span class="numpad-payout-val" id="np-s-payout">$81.97</span>
+            </div>
+            <button class="numpad-confirm yes" id="np-s-confirm" onclick="tapOdd('sport',null,null,null)">Confirm Yes &#8212; $50</button>
+          </div>
+        </div>
+
+        <div class="nav-bar">
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
+          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+var npState = {
+  b: { amount: '50', price: 0.07, side: 'yes', open: false, selection: '' },
+  s: { amount: '50', price: 0.61, side: 'yes', open: false, selection: '' }
+};
+
+function tapOdd(screen, selection, side, cents) {
+  var prefix = screen === 'binary' ? 'b' : 's';
+  var state = npState[prefix];
+  var numpadEl = document.getElementById('numpad-' + screen);
+
+  // if already open and tapping same thing or confirm (null) — close
+  if (state.open && (selection === null || (selection === state.selection && side === state.side))) {
+    numpadEl.classList.remove('open');
+    state.open = false;
+    clearSelected(screen);
+    return;
+  }
+
+  // set state
+  state.price = cents / 100;
+  state.side = side;
+  state.selection = selection;
+  state.amount = '50';
+  state.open = true;
+
+  // highlight selected button
+  clearSelected(screen);
+  if (screen === 'binary') {
+    var btnId = 'bn-b-' + side;
+    document.getElementById(btnId).classList.add('selected');
+  } else {
+    // find the clicked btn and highlight it
+    var allBtns = document.querySelectorAll('#odds-sport .sel-btn');
+    allBtns.forEach(function(b) {
+      var onclick = b.getAttribute('onclick');
+      if (onclick && onclick.indexOf("'" + selection + "'") !== -1 && onclick.indexOf("'" + side + "'") !== -1) {
+        b.classList.add('selected');
+      }
+    });
+  }
+
+  // update confirm button color
+  var confirmEl = document.getElementById('np-' + prefix + '-confirm');
+  confirmEl.className = 'numpad-confirm ' + side;
+
+  npRender(prefix);
+  numpadEl.classList.add('open');
+}
+
+function clearSelected(screen) {
+  var container = document.getElementById(screen === 'binary' ? 'odds-binary' : 'odds-sport');
+  container.querySelectorAll('.selected').forEach(function(el) {
+    el.classList.remove('selected');
+  });
+}
+
+function npKey(prefix, key) {
+  var state = npState[prefix];
+  if (key === '.' && state.amount.indexOf('.') !== -1) return;
+  if (state.amount === '0' && key !== '.') {
+    state.amount = key;
+  } else {
+    var dotIdx = state.amount.indexOf('.');
+    if (dotIdx !== -1 && state.amount.length - dotIdx > 2) return;
+    if (state.amount.length >= 7) return;
+    state.amount += key;
+  }
+  npRender(prefix);
+}
+
+function npDel(prefix) {
+  var state = npState[prefix];
+  if (state.amount.length <= 1) {
+    state.amount = '0';
+  } else {
+    state.amount = state.amount.slice(0, -1);
+  }
+  npRender(prefix);
+}
+
+function npSet(prefix, val) {
+  npState[prefix].amount = val;
+  npRender(prefix);
+}
+
+function npRender(prefix) {
+  var state = npState[prefix];
+  var amount = parseFloat(state.amount) || 0;
+  var payout = state.price > 0 ? (amount / state.price) : 0;
+
+  document.getElementById('np-' + prefix + '-amount').textContent = state.amount;
+  document.getElementById('np-' + prefix + '-payout').textContent = '$' + payout.toFixed(2);
+
+  var confirmEl = document.getElementById('np-' + prefix + '-confirm');
+  var sideLabel = state.side.charAt(0).toUpperCase() + state.side.slice(1);
+  confirmEl.textContent = 'Confirm ' + sideLabel + ' \u2014 $' + amount;
+}
+</script>
+</body>
+</html>

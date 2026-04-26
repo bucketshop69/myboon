@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wallet Drawer — Mockup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --bg0: #080806;
+      --bg1: #0f0f0c;
+      --bg2: #141410;
+      --bg3: #1a1a15;
+      --bg4: #21211a;
+      --bg5: #292920;
+      --border0: rgba(255,255,255,0.04);
+      --border1: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.13);
+      --a:  #c7b770;
+      --a2: #8A7A50;
+      --a3: rgba(199,183,112,0.12);
+      --a4: rgba(199,183,112,0.06);
+      --pos:  #4A8C6F;
+      --pos2: rgba(74,140,111,0.12);
+      --neg:  #D9534F;
+      --neg2: rgba(217,83,79,0.10);
+      --hi:  #D0CAA8;
+      --mid: #9b9580;
+      --lo:  #5c5a50;
+      --xlo: #3d3b33;
+      --ground: #222318;
+      --surface: #2C2D1F;
+      --lift: #333424;
+      --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
+      --sans: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+
+    body {
+      background: var(--bg0);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px 80px;
+      font-family: var(--sans);
+      gap: 48px;
+    }
+
+    /* ─── FLOW LABEL ─── */
+    .flow-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 3.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 1320px;
+    }
+    .flow-label::before, .flow-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border0);
+    }
+
+    /* ─── SCREENS ROW ─── */
+    .screens-row {
+      display: flex;
+      gap: 32px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .screen-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .screen-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+    .screen-label span {
+      display: block;
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      color: var(--lo);
+      margin-top: 3px;
+    }
+
+    /* ─── PHONE SHELL ─── */
+    .phone {
+      width: 375px;
+      height: 812px;
+      background: var(--bg1);
+      border-radius: 50px;
+      border: 1px solid var(--border1);
+      box-shadow:
+        0 0 0 8px #0b0b09,
+        0 0 0 9px rgba(255,255,255,0.04),
+        0 60px 100px rgba(0,0,0,0.85);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 110px; height: 30px;
+      background: #0b0b09;
+      border-radius: 0 0 22px 22px;
+      z-index: 200;
+    }
+
+    /* ─── STATUS BAR ─── */
+    .status-bar {
+      height: 46px;
+      padding: 16px 22px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+      position: relative;
+    }
+    .st-time {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -0.2px;
+    }
+    .st-icons { display: flex; gap: 5px; align-items: center }
+    .signal-bar { width: 3px; background: var(--hi); border-radius: 1px }
+
+    /* ─── NAV BAR ─── */
+    .nav-bar {
+      height: 68px;
+      background: rgba(15,15,12,0.95);
+      border-top: 1px solid var(--border1);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-around;
+      padding-top: 11px;
+      flex-shrink: 0;
+      backdrop-filter: blur(16px);
+      position: relative;
+      z-index: 50;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .nav-icon {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0.3;
+    }
+    .nav-icon.active { opacity: 1 }
+    .nav-icon svg { width: 18px; height: 18px }
+    .nav-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .nav-label.active { color: var(--a) }
+    .nav-dot {
+      width: 4px; height: 4px;
+      background: var(--a);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(199,183,112,0.6);
+      margin-top: -3px;
+    }
+
+    /* ─── SCROLLABLE CONTENT ─── */
+    .screen-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    .screen-scroll::-webkit-scrollbar { display: none }
+
+    /* ════════════════════════════════
+       HEADER — NEW AVATAR PATTERN
+    ════════════════════════════════ */
+    .app-header {
+      padding: 8px 16px 10px;
+      border-bottom: 1px solid var(--border0);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .avatar-trigger {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      position: relative;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .avatar-trigger:hover { opacity: 0.85 }
+
+    .avatar-ring {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      border: 1.5px solid var(--a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .avatar-ring.disconnected {
+      border-color: var(--lo);
+      border-style: dashed;
+    }
+    .avatar-inner {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--bg4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .avatar-letter {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--a);
+    }
+    .avatar-icon {
+      font-size: 12px;
+      color: var(--lo);
+    }
+    .avatar-dot {
+      position: absolute;
+      top: -1px; right: -1px;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--pos);
+      border: 2px solid var(--bg1);
+      box-shadow: 0 0 6px rgba(74,140,111,0.5);
+    }
+
+    .header-title {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+
+    .header-action {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lo);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: color 0.15s;
+    }
+    .header-action:hover { color: var(--mid) }
+
+    /* ════════════════════════════════
+       DRAWER OVERLAY
+    ════════════════════════════════ */
+    .drawer-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      backdrop-filter: blur(2px);
+    }
+
+    .drawer-panel {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      width: 280px;
+      background: var(--bg1);
+      border-right: 1px solid var(--border1);
+      z-index: 101;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .drawer-header {
+      padding: 58px 20px 20px;
+      border-bottom: 1px solid var(--border0);
+    }
+
+    .drawer-avatar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .drawer-avatar {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: 2px solid var(--a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .drawer-avatar-inner {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: var(--bg4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .drawer-avatar-letter {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--a);
+    }
+
+    .drawer-identity {
+      flex: 1;
+      min-width: 0;
+    }
+    .drawer-address {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--hi);
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .copy-icon {
+      font-size: 10px;
+      color: var(--lo);
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+    .copy-icon:hover { color: var(--mid) }
+
+    .drawer-auth-method {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 5px;
+    }
+    .auth-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--pos);
+      box-shadow: 0 0 6px rgba(74,140,111,0.4);
+    }
+    .auth-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--pos);
+    }
+
+    /* ─── DRAWER MENU ─── */
+    .drawer-menu {
+      flex: 1;
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+
+    .drawer-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 20px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .drawer-menu-item:hover {
+      background: var(--a4);
+    }
+    .drawer-menu-item:active {
+      background: var(--a3);
+    }
+
+    .menu-icon {
+      width: 20px; height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      color: var(--lo);
+    }
+    .menu-label {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--hi);
+      letter-spacing: 0.5px;
+    }
+    .menu-chevron {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--lo);
+    }
+
+    .menu-divider {
+      height: 1px;
+      background: var(--border0);
+      margin: 6px 20px;
+    }
+
+    .drawer-menu-item.danger .menu-icon,
+    .drawer-menu-item.danger .menu-label {
+      color: var(--neg);
+    }
+
+    /* ─── PROTOCOL SUMMARY CARDS ─── */
+    .protocol-section {
+      padding: 16px 20px;
+      flex: 1;
+    }
+    .protocol-section-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--lo);
+      margin-bottom: 10px;
+    }
+    .protocol-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .protocol-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 12px;
+      background: var(--bg3);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .protocol-card:hover {
+      border-color: var(--border2);
+      background: var(--bg4);
+    }
+    .protocol-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .protocol-icon.sol { background: rgba(153,69,255,0.12); }
+    .protocol-icon.predict { background: var(--pos2); }
+    .protocol-icon.trade { background: var(--a4); }
+    .protocol-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .protocol-name {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      color: var(--hi);
+    }
+    .protocol-sub {
+      font-family: var(--mono);
+      font-size: 7px;
+      color: var(--lo);
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+    .protocol-value {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -0.2px;
+    }
+    .protocol-chevron {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--lo);
+      margin-left: 2px;
+    }
+    .protocol-card-inactive {
+      opacity: 0.5;
+    }
+    .protocol-card-inactive .protocol-value {
+      font-size: 8px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+
+    /* ─── DRAWER FOOTER ─── */
+    .drawer-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border0);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .drawer-disconnect {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      padding: 4px 0;
+      transition: opacity 0.15s;
+    }
+    .drawer-disconnect:hover { opacity: 0.8; }
+    .drawer-disconnect-icon {
+      font-size: 11px;
+      color: var(--neg);
+    }
+    .drawer-disconnect-text {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--neg);
+    }
+    .drawer-version {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--xlo);
+      text-align: center;
+    }
+
+    /* ════════════════════════════════
+       DISCONNECTED STATE — DRAWER
+    ════════════════════════════════ */
+    .drawer-connect-state {
+      padding: 58px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .drawer-connect-avatar {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      border: 2px dashed var(--lo);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .drawer-connect-avatar-inner {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: var(--lo);
+    }
+    .drawer-connect-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      text-align: center;
+    }
+    .drawer-connect-sub {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--lo);
+      text-align: center;
+      line-height: 1.6;
+      letter-spacing: 0.3px;
+      max-width: 220px;
+    }
+
+    .connect-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 12px;
+      background: var(--a);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .connect-btn:hover { opacity: 0.9 }
+    .connect-btn-icon { font-size: 16px; }
+    .connect-btn-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--bg0);
+    }
+
+    .connect-btn-secondary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 10px;
+      background: transparent;
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .connect-btn-secondary:hover { border-color: var(--mid) }
+    .connect-btn-secondary-text {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+
+    /* ════════════════════════════════
+       FEED CARDS (simplified)
+    ════════════════════════════════ */
+    .feed-card {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border0);
+    }
+    .feed-category {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--a2);
+      background: var(--a4);
+      padding: 2px 8px;
+      border-radius: 3px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+    .feed-text {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--hi);
+      line-height: 1.55;
+      letter-spacing: 0.1px;
+    }
+    .feed-meta {
+      margin-top: 8px;
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── CHANGE NOTE ─── */
+    .change-note {
+      background: rgba(199,183,112,0.08);
+      border: 1px solid rgba(199,183,112,0.18);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--a);
+      letter-spacing: 0.5px;
+      line-height: 1.8;
+      max-width: 420px;
+      text-align: left;
+    }
+    .change-note strong { color: var(--a); font-weight: 700 }
+
+    /* ─── ANNOTATION ARROWS ─── */
+    .annotation {
+      position: absolute;
+      font-family: var(--mono);
+      font-size: 7.5px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--a2);
+      pointer-events: none;
+      z-index: 300;
+    }
+    .annotation::before {
+      content: '';
+      position: absolute;
+      background: var(--a2);
+      border-radius: 1px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="flow-label">wallet drawer  &#8212;  side panel pattern</div>
+
+  <!-- ═══ CHANGE NOTES ═══ -->
+  <div class="change-note">
+    <strong>WHAT CHANGED:</strong> Wallet pill removed from every header. Replaced with avatar icon (top-left).<br>
+    <strong>CONNECTED:</strong> Gold ring + letter + green dot. Tap opens drawer from left.<br>
+    <strong>DISCONNECTED:</strong> Dashed ring + lock icon. Tap opens drawer with auth options.<br>
+    <strong>AUTH:</strong> Email (primary, lowest friction) &#8594; Passkey (biometric) &#8594; Solana Wallet (MWA/Phantom).<br>
+    <strong>MFA:</strong> Privy MFA enabled for transactions. Auth is login; MFA triggers at trade time.<br>
+    <strong>DRAWER (v2):</strong> Identity + protocol summary cards + Disconnect at footer. Each card = glanceable headline number, taps to full profile.<br>
+    <strong>PROTOCOLS:</strong> Wallet (SOL + SPL), Predict (Polymarket), Trade (Pacifica perps), Swap (Jupiter). Future protocols just add a card.<br>
+    <strong>WHY:</strong> 280px too narrow for positions/orders. Cards = "how much do I have everywhere" glance. Full-screen profiles = deep dive.
+  </div>
+
+  <div class="screens-row">
+
+    <!-- ══════════════════════════
+         SCREEN 1 — FEED (CONNECTED, DRAWER CLOSED)
+    ══════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">
+        Feed &#8212; Connected
+        <span>avatar replaces wallet pill</span>
+      </div>
+      <div class="phone">
+        <div class="status-bar">
+          <div class="st-time">9:41</div>
+          <div class="st-icons">
+            <div class="signal-bar" style="height:6px"></div>
+            <div class="signal-bar" style="height:9px"></div>
+            <div class="signal-bar" style="height:12px"></div>
+            <div class="signal-bar" style="height:15px"></div>
+            <svg width="16" height="10" style="margin-left:3px"><rect x="0" y="1" width="12" height="8" rx="1.5" stroke="var(--hi)" stroke-width="1" fill="none"/><rect x="2" y="3" width="7" height="4" rx="0.5" fill="var(--pos)"/><rect x="12.5" y="3.5" width="2" height="3" rx="0.5" fill="var(--hi)"/></svg>
+          </div>
+        </div>
+
+        <!-- NEW HEADER WITH AVATAR -->
+        <div class="app-header">
+          <div class="avatar-trigger">
+            <div class="avatar-ring">
+              <div class="avatar-inner">
+                <span class="avatar-letter">B</span>
+              </div>
+            </div>
+            <div class="avatar-dot"></div>
+          </div>
+          <div class="header-title">Feed</div>
+        </div>
+
+        <div class="screen-scroll">
+          <div class="feed-card">
+            <div class="feed-category">iran</div>
+            <div class="feed-text">Trump signals diplomatic opening with Iran as nuclear talks resume. Polymarket odds shift 12% toward deal completion.</div>
+            <div class="feed-meta">2h ago</div>
+          </div>
+          <div class="feed-card">
+            <div class="feed-category">crypto</div>
+            <div class="feed-text">Whale cluster detected: 3 tracked wallets bought YES on BTC &gt;$100k by June. Combined $240k in 90 minutes.</div>
+            <div class="feed-meta">4h ago</div>
+          </div>
+          <div class="feed-card">
+            <div class="feed-category">epl</div>
+            <div class="feed-text">Arsenal 2.1x to win at Emirates. Smart money flowing to draw at 3.4x. Volume spike 40min before kickoff.</div>
+            <div class="feed-meta">5h ago</div>
+          </div>
+          <div class="feed-card">
+            <div class="feed-category">macro</div>
+            <div class="feed-text">Fed rate cut probability jumped to 68% after soft CPI print. Bond market already pricing June move.</div>
+            <div class="feed-meta">6h ago</div>
+          </div>
+          <div class="feed-card">
+            <div class="feed-category">ucl</div>
+            <div class="feed-text">PSG vs Inter — sharp action on Under 2.5 goals. Historical trend supports low-scoring leg.</div>
+            <div class="feed-meta">8h ago</div>
+          </div>
+        </div>
+
+        <!-- NAV BAR -->
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--a)" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <span class="nav-label active">Feed</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            </div>
+            <span class="nav-label">Predict</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><path d="M17 3L21 7L17 11M7 21L3 17L7 13"/><path d="M21 7H9M3 17H15"/></svg>
+            </div>
+            <span class="nav-label">Swap</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17"/><polyline points="16,7 22,7 22,13"/></svg>
+            </div>
+            <span class="nav-label">Trade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════
+         SCREEN 2 — DRAWER OPEN (CONNECTED)
+    ══════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">
+        Drawer &#8212; Connected
+        <span>identity + protocol summaries + disconnect</span>
+      </div>
+      <div class="phone">
+        <div class="status-bar">
+          <div class="st-time">9:41</div>
+          <div class="st-icons">
+            <div class="signal-bar" style="height:6px"></div>
+            <div class="signal-bar" style="height:9px"></div>
+            <div class="signal-bar" style="height:12px"></div>
+            <div class="signal-bar" style="height:15px"></div>
+            <svg width="16" height="10" style="margin-left:3px"><rect x="0" y="1" width="12" height="8" rx="1.5" stroke="var(--hi)" stroke-width="1" fill="none"/><rect x="2" y="3" width="7" height="4" rx="0.5" fill="var(--pos)"/><rect x="12.5" y="3.5" width="2" height="3" rx="0.5" fill="var(--hi)"/></svg>
+          </div>
+        </div>
+
+        <!-- OVERLAY -->
+        <div class="drawer-overlay"></div>
+
+        <!-- DRAWER PANEL -->
+        <div class="drawer-panel">
+          <div class="drawer-header">
+            <div class="drawer-avatar-row">
+              <div class="drawer-avatar">
+                <div class="drawer-avatar-inner">
+                  <span class="drawer-avatar-letter">B</span>
+                </div>
+              </div>
+              <div class="drawer-identity">
+                <div class="drawer-address">
+                  7moW···PVCi
+                  <span class="copy-icon" title="Copy">&#x2398;</span>
+                </div>
+                <div class="drawer-auth-method">
+                  <div class="auth-dot"></div>
+                  <span class="auth-label">Connected via Email</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PROTOCOL SUMMARY CARDS -->
+          <div class="protocol-section">
+            <div class="protocol-section-label">Accounts</div>
+            <div class="protocol-cards">
+
+              <!-- SOL Wallet -->
+              <div class="protocol-card">
+                <div class="protocol-icon sol">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9945FF" stroke-width="2.5" stroke-linecap="round"><path d="M4 17h14l2-2"/><path d="M4 12h14"/><path d="M4 7h14l2 2"/></svg>
+                </div>
+                <div class="protocol-info">
+                  <div class="protocol-name">Wallet</div>
+                  <div class="protocol-sub">SOL + SPL tokens</div>
+                </div>
+                <div class="protocol-value">12.4 SOL</div>
+                <span class="protocol-chevron">&#x203A;</span>
+              </div>
+
+              <!-- Predict (Polymarket) -->
+              <div class="protocol-card">
+                <div class="protocol-icon predict">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pos)" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                </div>
+                <div class="protocol-info">
+                  <div class="protocol-name">Predict</div>
+                  <div class="protocol-sub">3 positions</div>
+                </div>
+                <div class="protocol-value">$847</div>
+                <span class="protocol-chevron">&#x203A;</span>
+              </div>
+
+              <!-- Trade (Pacifica) -->
+              <div class="protocol-card">
+                <div class="protocol-icon trade">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--a)" stroke-width="2.5" stroke-linecap="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17"/><polyline points="16,7 22,7 22,13"/></svg>
+                </div>
+                <div class="protocol-info">
+                  <div class="protocol-name">Trade</div>
+                  <div class="protocol-sub">Perps &#183; Pacifica</div>
+                </div>
+                <div class="protocol-value">$1,204</div>
+                <span class="protocol-chevron">&#x203A;</span>
+              </div>
+
+              <!-- Swap (not yet activated — example) -->
+              <div class="protocol-card protocol-card-inactive">
+                <div class="protocol-icon" style="background:rgba(255,255,255,0.04)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--lo)" stroke-width="2.5" stroke-linecap="round"><path d="M17 3L21 7L17 11M7 21L3 17L7 13"/><path d="M21 7H9M3 17H15"/></svg>
+                </div>
+                <div class="protocol-info">
+                  <div class="protocol-name">Swap</div>
+                  <div class="protocol-sub">Jupiter &#183; SPL</div>
+                </div>
+                <div class="protocol-value">Not active</div>
+                <span class="protocol-chevron">&#x203A;</span>
+              </div>
+
+            </div>
+          </div>
+
+          <div class="drawer-footer">
+            <div class="drawer-disconnect">
+              <span class="drawer-disconnect-icon">&#x23FB;</span>
+              <span class="drawer-disconnect-text">Disconnect</span>
+            </div>
+            <div class="drawer-version">myboon v0.1.0</div>
+          </div>
+        </div>
+
+        <!-- NAV BAR (behind overlay) -->
+        <div class="nav-bar" style="opacity: 0.3">
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--a)" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </div>
+            <span class="nav-label active">Feed</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            </div>
+            <span class="nav-label">Predict</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><path d="M17 3L21 7L17 11M7 21L3 17L7 13"/><path d="M21 7H9M3 17H15"/></svg>
+            </div>
+            <span class="nav-label">Swap</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17"/><polyline points="16,7 22,7 22,13"/></svg>
+            </div>
+            <span class="nav-label">Trade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════
+         SCREEN 3 — DRAWER OPEN (DISCONNECTED)
+    ══════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">
+        Drawer &#8212; Disconnected
+        <span>email &#8594; passkey &#8594; wallet (3 auth paths)</span>
+      </div>
+      <div class="phone">
+        <div class="status-bar">
+          <div class="st-time">9:41</div>
+          <div class="st-icons">
+            <div class="signal-bar" style="height:6px"></div>
+            <div class="signal-bar" style="height:9px"></div>
+            <div class="signal-bar" style="height:12px"></div>
+            <div class="signal-bar" style="height:15px"></div>
+            <svg width="16" height="10" style="margin-left:3px"><rect x="0" y="1" width="12" height="8" rx="1.5" stroke="var(--hi)" stroke-width="1" fill="none"/><rect x="2" y="3" width="7" height="4" rx="0.5" fill="var(--pos)"/><rect x="12.5" y="3.5" width="2" height="3" rx="0.5" fill="var(--hi)"/></svg>
+          </div>
+        </div>
+
+        <!-- OVERLAY -->
+        <div class="drawer-overlay"></div>
+
+        <!-- DRAWER PANEL — DISCONNECTED -->
+        <div class="drawer-panel">
+          <div class="drawer-connect-state">
+            <div class="drawer-connect-avatar">
+              <div class="drawer-connect-avatar-inner">&#x1F512;</div>
+            </div>
+            <div class="drawer-connect-title">Sign In</div>
+            <div class="drawer-connect-sub">
+              Trade, predict, and track your portfolio. MFA secures every transaction.
+            </div>
+
+            <!-- EMAIL — primary, lowest friction -->
+            <div style="width:100%;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;gap:10px">
+                <div style="font-family:var(--mono);font-size:12px;color:var(--lo)">&#x2709;</div>
+                <div style="flex:1;font-family:var(--mono);font-size:11px;color:var(--lo);letter-spacing:0.3px">you@email.com</div>
+              </div>
+              <div class="connect-btn">
+                <span class="connect-btn-text">Continue with Email</span>
+              </div>
+            </div>
+
+            <!-- OR divider -->
+            <div style="display:flex;align-items:center;gap:10px;width:100%;margin:2px 0">
+              <div style="flex:1;height:1px;background:var(--border1)"></div>
+              <div style="font-family:var(--mono);font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--lo)">or</div>
+              <div style="flex:1;height:1px;background:var(--border1)"></div>
+            </div>
+
+            <!-- PASSKEY -->
+            <div class="connect-btn-secondary" style="gap:8px">
+              <span style="font-size:14px">&#x1F91D;</span>
+              <span class="connect-btn-secondary-text">Sign in with Passkey</span>
+            </div>
+
+            <!-- SOLANA WALLET -->
+            <div class="connect-btn-secondary" style="gap:8px">
+              <span style="font-size:14px">&#x1F4B0;</span>
+              <span class="connect-btn-secondary-text">Solana Wallet</span>
+            </div>
+
+            <!-- MFA note -->
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+              <div style="font-size:10px">&#x1F512;</div>
+              <div style="font-family:var(--mono);font-size:8px;color:var(--lo);letter-spacing:0.5px;line-height:1.5">MFA required for transactions</div>
+            </div>
+          </div>
+
+          <div style="margin-top:auto"></div>
+          <div class="drawer-footer">
+            <div class="drawer-version">myboon v0.1.0</div>
+          </div>
+        </div>
+
+        <!-- NAV BAR (behind overlay) -->
+        <div class="nav-bar" style="opacity: 0.3">
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--a)" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </div>
+            <span class="nav-label active">Feed</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            </div>
+            <span class="nav-label">Predict</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><path d="M17 3L21 7L17 11M7 21L3 17L7 13"/><path d="M21 7H9M3 17H15"/></svg>
+            </div>
+            <span class="nav-label">Swap</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17"/><polyline points="16,7 22,7 22,13"/></svg>
+            </div>
+            <span class="nav-label">Trade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════
+         SCREEN 4 — PREDICT HEADER (CONNECTED)
+    ══════════════════════════ -->
+    <div class="screen-col">
+      <div class="screen-label">
+        Predict &#8212; Header
+        <span>same avatar, tab-specific actions freed up</span>
+      </div>
+      <div class="phone">
+        <div class="status-bar">
+          <div class="st-time">9:41</div>
+          <div class="st-icons">
+            <div class="signal-bar" style="height:6px"></div>
+            <div class="signal-bar" style="height:9px"></div>
+            <div class="signal-bar" style="height:12px"></div>
+            <div class="signal-bar" style="height:15px"></div>
+            <svg width="16" height="10" style="margin-left:3px"><rect x="0" y="1" width="12" height="8" rx="1.5" stroke="var(--hi)" stroke-width="1" fill="none"/><rect x="2" y="3" width="7" height="4" rx="0.5" fill="var(--pos)"/><rect x="12.5" y="3.5" width="2" height="3" rx="0.5" fill="var(--hi)"/></svg>
+          </div>
+        </div>
+
+        <div class="app-header">
+          <div class="avatar-trigger">
+            <div class="avatar-ring">
+              <div class="avatar-inner">
+                <span class="avatar-letter">B</span>
+              </div>
+            </div>
+            <div class="avatar-dot"></div>
+          </div>
+          <div class="header-title">Predict</div>
+          <div class="header-action">&#x1F50D;</div>
+        </div>
+
+        <!-- Category pills -->
+        <div style="display:flex;gap:6px;padding:8px 16px;overflow-x:auto;flex-shrink:0;border-bottom:1px solid var(--border0)">
+          <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.8px;color:var(--a);background:var(--a4);border:1px solid rgba(199,183,112,0.25);border-radius:12px;padding:4px 12px;white-space:nowrap">All</div>
+          <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.8px;color:var(--lo);background:var(--bg3);border:1px solid var(--border1);border-radius:12px;padding:4px 12px;white-space:nowrap">Crypto</div>
+          <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.8px;color:var(--lo);background:var(--bg3);border:1px solid var(--border1);border-radius:12px;padding:4px 12px;white-space:nowrap">Sports</div>
+          <div style="font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.8px;color:var(--lo);background:var(--bg3);border:1px solid var(--border1);border-radius:12px;padding:4px 12px;white-space:nowrap">Politics</div>
+        </div>
+
+        <div class="screen-scroll">
+          <!-- Market cards -->
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border0)">
+            <div style="font-family:var(--sans);font-size:13px;color:var(--hi);line-height:1.5;margin-bottom:10px">Will BTC exceed $100K by June 2026?</div>
+            <div style="display:flex;gap:8px">
+              <div style="flex:1;background:var(--pos2);border:1px solid rgba(74,140,111,0.2);border-radius:8px;padding:8px 12px;text-align:center">
+                <div style="font-family:var(--mono);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--pos);margin-bottom:3px">Yes</div>
+                <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--pos)">62&#162;</div>
+              </div>
+              <div style="flex:1;background:var(--neg2);border:1px solid rgba(217,83,79,0.2);border-radius:8px;padding:8px 12px;text-align:center">
+                <div style="font-family:var(--mono);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--neg);margin-bottom:3px">No</div>
+                <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--neg)">38&#162;</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border0)">
+            <div style="font-family:var(--sans);font-size:13px;color:var(--hi);line-height:1.5;margin-bottom:10px">US-Iran nuclear deal by December 2026?</div>
+            <div style="display:flex;gap:8px">
+              <div style="flex:1;background:var(--pos2);border:1px solid rgba(74,140,111,0.2);border-radius:8px;padding:8px 12px;text-align:center">
+                <div style="font-family:var(--mono);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--pos);margin-bottom:3px">Yes</div>
+                <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--pos)">34&#162;</div>
+              </div>
+              <div style="flex:1;background:var(--neg2);border:1px solid rgba(217,83,79,0.2);border-radius:8px;padding:8px 12px;text-align:center">
+                <div style="font-family:var(--mono);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--neg);margin-bottom:3px">No</div>
+                <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--neg)">66&#162;</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border0)">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <div style="font-family:var(--mono);font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--pos);background:var(--pos2);padding:2px 6px;border-radius:3px">LIVE</div>
+              <div style="font-family:var(--mono);font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--lo)">EPL</div>
+            </div>
+            <div style="font-family:var(--sans);font-size:13px;color:var(--hi);line-height:1.5;margin-bottom:10px">Arsenal vs Chelsea</div>
+            <div style="display:flex;gap:6px">
+              <div style="flex:1;background:var(--a4);border:1px solid rgba(199,183,112,0.15);border-radius:8px;padding:6px 8px;text-align:center">
+                <div style="font-family:var(--mono);font-size:7px;color:var(--lo);margin-bottom:2px">ARS</div>
+                <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--a)">2.1x</div>
+              </div>
+              <div style="flex:1;background:var(--a4);border:1px solid rgba(199,183,112,0.15);border-radius:8px;padding:6px 8px;text-align:center">
+                <div style="font-family:var(--mono);font-size:7px;color:var(--lo);margin-bottom:2px">Draw</div>
+                <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--a)">3.4x</div>
+              </div>
+              <div style="flex:1;background:var(--a4);border:1px solid rgba(199,183,112,0.15);border-radius:8px;padding:6px 8px;text-align:center">
+                <div style="font-family:var(--mono);font-size:7px;color:var(--lo);margin-bottom:2px">CHE</div>
+                <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--a)">3.8x</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </div>
+            <span class="nav-label">Feed</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--a)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            </div>
+            <div class="nav-dot"></div>
+            <span class="nav-label active">Predict</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><path d="M17 3L21 7L17 11M7 21L3 17L7 13"/><path d="M21 7H9M3 17H15"/></svg>
+            </div>
+            <span class="nav-label">Swap</span>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="2" stroke-linecap="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17"/><polyline points="16,7 22,7 22,13"/></svg>
+            </div>
+            <span class="nav-label">Trade</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
