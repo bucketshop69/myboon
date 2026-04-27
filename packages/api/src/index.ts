@@ -103,6 +103,53 @@ async function clobFetch(path: string, options?: RequestInit): Promise<Response>
   return fetch(`${CLOB_BASE}/${path}`, options)
 }
 
+// --- live price cache (background poll) ---
+// Polls CLOB /midpoints every 5s for all active outcome tokens.
+// Feed handler reads from this map instead of Gamma's stale outcomePrices.
+
+const livePrices = new Map<string, number>()       // tokenId → midpoint price
+const activeTokenIds = new Set<string>()            // YES token IDs to poll
+const PRICE_POLL_INTERVAL_MS = 5_000
+
+/** Register token IDs for live price polling. Called when feed builds its item list. */
+function registerTokenIds(tokenIds: string[]): void {
+  for (const id of tokenIds) {
+    if (id) activeTokenIds.add(id)
+  }
+}
+
+/** Get live price for a token, or null if not yet polled. */
+function getLivePrice(tokenId: string): number | null {
+  return livePrices.get(tokenId) ?? null
+}
+
+async function pollLivePrices(): Promise<void> {
+  if (activeTokenIds.size === 0) return
+  try {
+    const ids = [...activeTokenIds].join(',')
+    const res = await clobFetch(`midpoints?token_ids=${encodeURIComponent(ids)}`)
+    if (!res.ok) {
+      console.error(`[api] CLOB /midpoints poll failed: ${res.status}`)
+      return
+    }
+    const data = await res.json() as Record<string, string>
+    for (const [tokenId, priceStr] of Object.entries(data)) {
+      const price = parseFloat(priceStr)
+      if (Number.isFinite(price)) {
+        livePrices.set(tokenId, price)
+      }
+    }
+  } catch (err) {
+    console.error('[api] CLOB /midpoints poll error:', err instanceof Error ? err.message : err)
+  }
+}
+
+// Start background polling
+setInterval(pollLivePrices, PRICE_POLL_INTERVAL_MS)
+// Also poll once on startup (after a short delay so the first feed request can seed token IDs)
+setTimeout(pollLivePrices, 2_000)
+console.log(`[api] Live price polling started (every ${PRICE_POLL_INTERVAL_MS / 1000}s)`)
+
 function parseStringArray(input: unknown): string[] {
   if (Array.isArray(input)) {
     return input.filter((value): value is string => typeof value === 'string')
@@ -1364,6 +1411,32 @@ app.get('/predict/feed', async (c) => {
         items.push(...r.value)
       } else {
         console.error(`[api] /predict/feed — ${sourceNames[i]} failed:`, r.reason)
+      }
+    }
+
+    // --- Register tokens & override stale Gamma prices with live CLOB midpoints ---
+    for (const item of items) {
+      if (item.type === 'match' && item.outcomes) {
+        for (const outcome of item.outcomes) {
+          const yesTokenId = outcome.clobTokenIds?.[0]
+          if (yesTokenId) {
+            registerTokenIds([yesTokenId])
+            const live = getLivePrice(yesTokenId)
+            if (live !== null) outcome.price = live
+          }
+        }
+      } else if (item.type === 'binary' && item.clobTokenIds) {
+        const [yesToken, noToken] = item.clobTokenIds
+        if (yesToken) {
+          registerTokenIds([yesToken])
+          const live = getLivePrice(yesToken)
+          if (live !== null) item.yesPrice = live
+        }
+        if (noToken) {
+          registerTokenIds([noToken])
+          const live = getLivePrice(noToken)
+          if (live !== null) item.noPrice = live
+        }
       }
     }
 
