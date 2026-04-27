@@ -72,7 +72,7 @@ async function supabaseFetch(path: string): Promise<Response> {
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com'
 const DATA_API_BASE = 'https://data-api.polymarket.com'
-const CLOB_BASE = process.env.CLOB_HOST || 'https://clob-v2.polymarket.com'
+const CLOB_BASE = process.env.CLOB_HOST || 'https://clob.polymarket.com'
 
 // --- TTL cache for Gamma API responses ---
 const CACHE_TTL_MS = 60_000 // 60 seconds
