@@ -412,6 +412,24 @@ app.get('/predict/markets/:slug', async (c) => {
       },
     )
 
+    // Override outcomePrices with live CLOB midpoints when available
+    const mkt = data as Record<string, unknown>
+    const mktTokenIds = parseStringArray(mkt.clobTokenIds ?? mkt.clob_token_ids)
+    if (mktTokenIds.length >= 1) {
+      registerTokenIds(mktTokenIds)
+      const liveYes = getLivePrice(mktTokenIds[0])
+      const liveNo = mktTokenIds[1] ? getLivePrice(mktTokenIds[1]) : null
+      if (liveYes !== null || liveNo !== null) {
+        const currentPrices = parseStringArray(mkt.outcomePrices)
+        mkt.outcomePrices = JSON.stringify([
+          String(liveYes ?? currentPrices[0] ?? '0'),
+          String(liveNo ?? currentPrices[1] ?? '0'),
+        ])
+        if (liveYes !== null) mkt.bestBid = liveYes
+        if (liveNo !== null) mkt.bestAsk = liveNo
+      }
+    }
+
     return c.json(data)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -725,6 +743,20 @@ app.get('/predict/sports/:sport/:slug', async (c) => {
       },
     )
 
+    // Override stale prices with live CLOB midpoints
+    const detailObj = detail as Record<string, unknown>
+    const detailOutcomes = detailObj.outcomes as { price: number | null; clobTokenIds: string[] }[] | undefined
+    if (detailOutcomes) {
+      for (const outcome of detailOutcomes) {
+        const yesToken = outcome.clobTokenIds?.[0]
+        if (yesToken) {
+          registerTokenIds([yesToken])
+          const live = getLivePrice(yesToken)
+          if (live !== null) outcome.price = live
+        }
+      }
+    }
+
     return c.json(detail)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -768,6 +800,31 @@ app.get('/predict/price/:tokenId', async (c) => {
     return c.json({ tokenId, buy, sell })
   } catch (err) {
     console.error(`[api] Unexpected error in GET /predict/price/${tokenId}:`, err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// GET /predict/book/:tokenId
+// Returns the full orderbook (bids + asks) for a token from CLOB.
+// Used by the trade screen to show depth chart and best bid/ask.
+app.get('/predict/book/:tokenId', async (c) => {
+  const tokenId = c.req.param('tokenId')
+
+  if (!tokenId || tokenId.trim() === '') {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  try {
+    const res = await clobFetch(`book?token_id=${encodeURIComponent(tokenId)}`)
+    if (!res.ok) {
+      console.error(`[api] CLOB /book error ${res.status} for ${tokenId}`)
+      return c.json({ error: 'Failed to fetch orderbook' }, 502)
+    }
+
+    const data = await res.json() as Record<string, unknown>
+    return c.json(data)
+  } catch (err) {
+    console.error(`[api] Unexpected error in GET /predict/book/${tokenId}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
