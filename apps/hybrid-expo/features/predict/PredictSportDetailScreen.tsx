@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   PanResponder,
   Pressable,
@@ -15,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchSportMarketDetail, fetchPriceHistory, fetchOrderbook } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
+import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
@@ -74,6 +77,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
+  const [submitting, setSubmitting] = useState(false);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -207,6 +211,76 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     setNumpadOpen(false);
     setSelectedOutcomeIdx(null);
     setSelectedSide(null);
+  }
+
+  async function submitOrder() {
+    if (!detail || selectedOutcomeIdx === null || !selectedSide || submitting) return;
+    const amount = parseFloat(numpadAmount);
+    if (!amount || amount <= 0) return;
+
+    const outcome = sortedOutcomes[selectedOutcomeIdx];
+    if (!outcome) return;
+
+    // For "yes" buy the yes token (clobTokenIds[0]), for "no" buy the no token (clobTokenIds[1])
+    const tokenID = selectedSide === 'yes' ? outcome.clobTokenIds[0] : outcome.clobTokenIds[1];
+    if (!tokenID) {
+      Alert.alert('Error', 'No token ID for this outcome');
+      return;
+    }
+
+    const price = selectedSide === 'yes' ? outcome.price : (outcome.price !== null ? 1 - outcome.price : null);
+    if (!price || price <= 0 || price >= 1) {
+      Alert.alert('Error', 'Invalid price');
+      return;
+    }
+
+    // Ensure wallet is enabled and EVM signer is derived
+    if (!poly.canSignLocally) {
+      try {
+        await poly.enable();
+      } catch (err: any) {
+        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+
+      const exchangeAddress = detail.negRisk
+        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+        : V2_CONTRACTS.CTF_EXCHANGE;
+
+      const signedOrder = await poly.signOrder({
+        tokenID,
+        price,
+        size: Math.floor((amount / price) * 100) / 100,
+        side: 'BUY',
+        exchangeAddress,
+      });
+
+      const res = await fetchWithTimeout(`${resolveApiBaseUrl()}/clob/order/signed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polygonAddress: poly.polygonAddress,
+          signedOrder,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || 'Order failed');
+      }
+
+      const label = outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
+      Alert.alert('Order placed', `${selectedSide.toUpperCase()} ${label} $${amount} @ ${Math.round(price * 100)}\u00A2`);
+      collapseNumpad();
+    } catch (err: any) {
+      Alert.alert('Order failed', err.message || 'Unknown error');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const numpadPrice = (() => {
@@ -388,7 +462,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               price={numpadPrice}
               amount={numpadAmount}
               onAmountChange={setNumpadAmount}
-              onConfirm={() => { /* CLOB v2 pending */ }}
+              onConfirm={() => { void submitOrder(); }}
+              submitting={submitting}
+              disabled={!poly.isReady}
             />
           </Animated.View>
         </View>

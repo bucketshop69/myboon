@@ -9,6 +9,10 @@ interface InlineNumpadProps {
   amount: string;
   onAmountChange: (amount: string) => void;
   onConfirm: () => void;
+  /** Whether an order is currently being submitted */
+  submitting?: boolean;
+  /** Whether the confirm button should be disabled (e.g. wallet not ready) */
+  disabled?: boolean;
 }
 
 const QUICK_AMOUNTS = ['10', '25', '50', '100'];
@@ -27,7 +31,7 @@ function numpadDel(current: string): string {
   return current.slice(0, -1);
 }
 
-export function InlineNumpad({ visible, side, price, amount, onAmountChange, onConfirm }: InlineNumpadProps) {
+export function InlineNumpad({ visible, side, price, amount, onAmountChange, onConfirm, submitting = false, disabled = false }: InlineNumpadProps) {
   const heightAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -84,13 +88,13 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
           <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
         </View>
 
-        {/* Confirm button — disabled, waiting for CLOB v2 */}
+        {/* Confirm button */}
         <Pressable
-          style={[styles.confirmBtn, isYes ? styles.confirmYes : styles.confirmNo, styles.confirmDisabled]}
-          disabled
+          style={[styles.confirmBtn, isYes ? styles.confirmYes : styles.confirmNo, (disabled || submitting || amountNum <= 0) && styles.confirmDisabled]}
+          disabled={disabled || submitting || amountNum <= 0}
           onPress={onConfirm}>
           <Text style={styles.confirmText}>
-            Confirm {sideLabel} {'\u2014'} ${amountNum}
+            {submitting ? 'Placing order\u2026' : `Confirm ${sideLabel} \u2014 $${amountNum}`}
           </Text>
         </Pressable>
       </View>

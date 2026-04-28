@@ -18,22 +18,22 @@
 
 import { Hono } from 'hono'
 import { Wallet, utils, providers } from 'ethers'
-import { ClobClient, SignatureTypeV2, Side, Chain } from '@polymarket/clob-client-v2'
+import { ClobClient, SignatureTypeV2, Chain } from '@polymarket/clob-client-v2'
 import type { ApiKeyCreds } from '@polymarket/clob-client-v2'
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
 import { deriveSafe } from '@polymarket/builder-relayer-client/dist/builder/derive'
 import { BuilderConfig as RelayerBuilderConfig } from '@polymarket/builder-signing-sdk'
 import { encodeFunctionData, maxUint256 } from 'viem'
 
-// V2 preprod until cutover (April 22, 2026), then switch to production
-const CLOB_HOST = process.env.CLOB_HOST || 'https://clob-v2.polymarket.com'
+// V2 is live on production URL after April 28 cutover
+const CLOB_HOST = process.env.CLOB_HOST || 'https://clob.polymarket.com'
 const RELAYER_URL = 'https://relayer-v2.polymarket.com'
 const CHAIN_ID = 137 // Polygon mainnet
 const POLYGON_RPC = process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com'
 const polygonProvider = new providers.JsonRpcProvider(POLYGON_RPC)
 
-// Builder code for V2 orders (public, no HMAC needed)
-const BUILDER_CODE = '019d669d-3447-78c6-8c77-c2f403474b94'
+// Builder code for V2 orders (public bytes32, no HMAC needed)
+const BUILDER_CODE = '0xda0aa9e10ba50d0077e25e94cf9e4d9ef749821528acf6fc758df962d67b63ed'
 
 // Gnosis Safe factory on Polygon (used for deterministic Safe address derivation)
 const SAFE_FACTORY = '0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b'
@@ -85,8 +85,8 @@ const relayerBuilderConfig = (builderKey && builderSecret && builderPassphrase)
     })
   : undefined
 
-// Builder code disabled — Polymarket UI not yet updated for V2 builder codes
-// const clobBuilderConfig: ClobBuilderConfig = { builderCode: BUILDER_CODE }
+// V2 builder config — just a builderCode, no HMAC
+const clobBuilderConfig = { builderCode: BUILDER_CODE }
 
 // --- USDC.e balance check + auto-wrap helper ---
 
@@ -207,7 +207,7 @@ function getClient(session: ClobSession): ClobClient {
     creds: session.creds,
     signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
     funderAddress: session.safeAddress,
-    // builderConfig: clobBuilderConfig,  // disabled until builder code format resolved
+    builderConfig: clobBuilderConfig,
   })
 }
 
@@ -328,68 +328,6 @@ clobRoutes.post('/auth', async (c) => {
 })
 
 /**
- * POST /clob/order
- * Body: { polygonAddress, tokenID, price, amount, side }
- *
- * polygonAddress is the EOA address (returned from /clob/auth).
- * Server signs the order with the EOA key and submits via builder CLOB client.
- */
-clobRoutes.post('/order', async (c) => {
-  let body: {
-    polygonAddress?: string
-    tokenID?: string
-    price?: number
-    amount?: number
-    size?: number
-    side?: 'BUY' | 'SELL'
-  }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Bad request' }, 400)
-  }
-
-  const { polygonAddress, tokenID, price, amount, side } = body
-
-  if (!polygonAddress || !tokenID || price == null || !side) {
-    return c.json({ error: 'Missing required fields: polygonAddress, tokenID, price, side' }, 400)
-  }
-
-  if (price <= 0 || price >= 1) {
-    return c.json({ error: 'Price must be between 0 and 1 (exclusive)' }, 400)
-  }
-
-  const size = amount != null ? Math.floor((amount / price) * 100) / 100 : body.size
-  if (!size || size <= 0) {
-    return c.json({ error: 'Missing or invalid amount/size' }, 400)
-  }
-
-  const session = sessions.get(polygonAddress.toLowerCase())
-  if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
-  }
-
-  try {
-    const client = getClient(session)
-
-    const signedOrder = await client.createOrder({
-      tokenID,
-      price,
-      size,
-      side: side === 'BUY' ? Side.BUY : Side.SELL,
-    })
-
-    const result = await client.postOrder(signedOrder)
-
-    console.log(`[clob] Order placed for ${polygonAddress}: ${side} $${amount ?? size} @ ${price} (${size} shares)`)
-    return c.json(result)
-  } catch (err: any) {
-    console.error('[clob] Order failed:', err.message || err)
-    return c.json({ error: 'Order failed', detail: err.message }, 500)
-  }
-})
-
-/**
  * POST /clob/order/signed
  * Body: { polygonAddress, signedOrder }
  *
@@ -418,6 +356,13 @@ clobRoutes.post('/order/signed', async (c) => {
   try {
     const client = getClient(session)
     const result = await client.postOrder(signedOrder)
+
+    // SDK may swallow errors and return an error object instead of throwing
+    if (result?.error || result?.status === 'error') {
+      const detail = result.error || result.message || JSON.stringify(result)
+      console.error(`[clob] CLOB rejected order for ${polygonAddress}:`, detail)
+      return c.json({ error: 'Order rejected by CLOB', detail }, 400)
+    }
 
     console.log(`[clob] Signed order posted for ${polygonAddress}: ${signedOrder.side} (local signing)`)
     return c.json(result)

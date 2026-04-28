@@ -54,10 +54,11 @@ export function usePolymarketWallet(): PolymarketWallet {
 
   // Load stored addresses when Solana wallet connects/changes; clear when disconnected
   useEffect(() => {
-    // Wallet disconnected or address changed — clear stale Polymarket state
+    // Wallet disconnected or address changed — clear everything
     if (!connected || !solanaAddress) {
       setPolygonAddress(null);
       setSafeAddress(null);
+      evmSigner.clear();
       setIsLoading(false);
       prevSolanaAddress.current = null;
       return;
@@ -67,10 +68,11 @@ export function usePolymarketWallet(): PolymarketWallet {
     if (prevSolanaAddress.current === solanaAddress) return;
     prevSolanaAddress.current = solanaAddress;
 
-    // New wallet connected — load its stored addresses (if any)
+    // New wallet connected — clear old state, load stored addresses (if any)
     setIsLoading(true);
     setPolygonAddress(null);
     setSafeAddress(null);
+    evmSigner.clear();
 
     Promise.all([
       AsyncStorage.getItem(`${STORAGE_KEY}:${solanaAddress}`),
@@ -138,8 +140,9 @@ export function usePolymarketWallet(): PolymarketWallet {
     if (scopedSafeKey) AsyncStorage.removeItem(scopedSafeKey).catch(() => {});
     setPolygonAddress(null);
     setSafeAddress(null);
-    // EVM key in useEvmSigner ref will be GC'd when component unmounts
-  }, [polygonAddress, scopedKey, scopedSafeKey]);
+    // Wipe EVM key from memory
+    evmSigner.clear();
+  }, [polygonAddress, scopedKey, scopedSafeKey, evmSigner]);
 
   /** Sign order locally — phone holds the key, VPS just proxies the signed order */
   const signOrder = useCallback(async (params: OrderParams): Promise<SignedOrderV2> => {

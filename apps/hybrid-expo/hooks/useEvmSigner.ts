@@ -42,8 +42,8 @@ const CTF_EXCHANGE_V2_ORDER_TYPES = {
   ],
 };
 
-// Builder code (public, no secret) — UUID as bytes32
-const BUILDER_CODE = '0x019d669d344778c68c77c2f403474b9400000000000000000000000000000000';
+// Builder code (public bytes32, from Builder Profile)
+const BUILDER_CODE = '0xda0aa9e10ba50d0077e25e94cf9e4d9ef749821528acf6fc758df962d67b63ed';
 const BYTES32_ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 // Signature type for Gnosis Safe
@@ -223,9 +223,16 @@ export function useEvmSigner() {
     };
   }, []);
 
+  const clear = useCallback(() => {
+    walletRef.current = null;
+    setReady(false);
+    setEoaAddr(null);
+  }, []);
+
   return {
     deriveFromSignature,
     signOrder,
+    clear,
     isReady: ready,
     eoaAddress: eoaAddr,
   };

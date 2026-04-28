@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   PanResponder,
   Pressable,
@@ -16,6 +17,8 @@ import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory, fetchOrd
 import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
+import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
+import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
@@ -69,6 +72,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [numpadOpen, setNumpadOpen] = useState(false);
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
+  const [submitting, setSubmitting] = useState(false);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -187,6 +191,75 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   function collapseNumpad() {
     setNumpadOpen(false);
     setSelectedSide(null);
+  }
+
+  async function submitOrder() {
+    if (!detail || !selectedSide || submitting) return;
+    const amount = parseFloat(numpadAmount);
+    if (!amount || amount <= 0) return;
+
+    // Resolve token ID: yes = clobTokenIds[0], no = clobTokenIds[1]
+    const tokenID = selectedSide === 'yes' ? detail.clobTokenIds[0] : detail.clobTokenIds[1];
+    if (!tokenID) {
+      Alert.alert('Error', 'No token ID for this outcome');
+      return;
+    }
+
+    // Price: what the user is buying at
+    const price = selectedSide === 'yes'
+      ? (yesPrice ?? detail.outcomePrices[0])
+      : (noPrice ?? detail.outcomePrices[1]);
+    if (!price || price <= 0 || price >= 1) {
+      Alert.alert('Error', 'Invalid price');
+      return;
+    }
+
+    // Ensure wallet is enabled and EVM signer is derived
+    if (!poly.canSignLocally) {
+      try {
+        await poly.enable();
+      } catch (err: any) {
+        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+
+      const exchangeAddress = detail.negRisk
+        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+        : V2_CONTRACTS.CTF_EXCHANGE;
+
+      const signedOrder = await poly.signOrder({
+        tokenID,
+        price,
+        size: Math.floor((amount / price) * 100) / 100,
+        side: 'BUY',
+        exchangeAddress,
+      });
+
+      const res = await fetchWithTimeout(`${resolveApiBaseUrl()}/clob/order/signed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polygonAddress: poly.polygonAddress,
+          signedOrder,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || 'Order failed');
+      }
+
+      Alert.alert('Order placed', `${selectedSide.toUpperCase()} $${amount} @ ${Math.round(price * 100)}\u00A2`);
+      collapseNumpad();
+    } catch (err: any) {
+      Alert.alert('Order failed', err.message || 'Unknown error');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const chartWidth = screenWidth - 40;
@@ -320,7 +393,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               price={selectedSide === 'no' ? (noPrice ?? 0.5) : (yesPrice ?? 0.5)}
               amount={numpadAmount}
               onAmountChange={setNumpadAmount}
-              onConfirm={() => { /* CLOB v2 pending */ }}
+              onConfirm={() => { void submitOrder(); }}
+              submitting={submitting}
+              disabled={!poly.isReady && !privy.connected}
             />
           </Animated.View>
         </View>
