@@ -158,3 +158,15 @@ export interface SportMarketDetail {
   liquidity: number | null;
   outcomes: SportOutcomeDetail[];
 }
+
+export interface OrderbookLevel {
+  price: number;
+  size: number;
+}
+
+export interface Orderbook {
+  bids: OrderbookLevel[];
+  asks: OrderbookLevel[];
+  lastPrice: number | null;
+  spread: number | null;
+}

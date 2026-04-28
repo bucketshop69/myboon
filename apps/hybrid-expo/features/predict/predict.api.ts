@@ -656,3 +656,30 @@ export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' =
     .filter((pt) => pt.t > 0);
   return { history };
 }
+
+export async function fetchOrderbook(tokenId: string): Promise<import('./predict.types').Orderbook> {
+  const payload = await getJson(`/predict/book/${encodeURIComponent(tokenId)}`);
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid orderbook response');
+  const p = payload as Record<string, unknown>;
+
+  function parseLevels(raw: unknown): import('./predict.types').OrderbookLevel[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((lv): lv is Record<string, unknown> => !!lv && typeof lv === 'object')
+      .map((lv) => ({
+        price: toNumber(lv.price) ?? 0,
+        size: toNumber(lv.size) ?? 0,
+      }))
+      .filter((lv) => lv.price > 0 && lv.size > 0);
+  }
+
+  const bids = parseLevels(p.bids);
+  const asks = parseLevels(p.asks);
+
+  const bestBid = bids.length > 0 ? Math.max(...bids.map((b) => b.price)) : null;
+  const bestAsk = asks.length > 0 ? Math.min(...asks.map((a) => a.price)) : null;
+  const spread = bestBid !== null && bestAsk !== null ? Math.abs(bestAsk - bestBid) : null;
+  const lastPrice = toNumber(p.last_trade_price) ?? toNumber(p.last_price) ?? toNumber(p.lastPrice) ?? bestBid;
+
+  return { bids, asks, lastPrice, spread };
+}

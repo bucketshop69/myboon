@@ -1,40 +1,37 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
-  Animated,
   ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
+  Animated,
+  PanResponder,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
-import { fetchSportMarketDetail, fetchPriceHistory, fetchClobBalance, fetchOpenOrders, fetchMarketPositions, placeBet } from '@/features/predict/predict.api';
-import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
-import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail } from '@/features/predict/predict.types';
+import { fetchSportMarketDetail, fetchPriceHistory, fetchOrderbook } from '@/features/predict/predict.api';
+import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
-import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
+import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
+import { OrderbookView } from '@/features/predict/components/OrderbookView';
+import { StatsStrip } from '@/features/predict/components/StatsStrip';
+import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
   slug: string;
 }
 
-type Interval = '1h' | '1d';
-type Tab = 'position' | 'stats' | 'rules' | 'feed';
+type Interval = '5m' | '1h' | '1d';
+type ActiveView = 'chart' | 'orderbook';
+
+const SOFT_COLLAPSED = 280; // handle + stats + ~3 selection rows
+const SOFT_EXPANDED = 720;
 
 function formatKickoff(isoDate: string | null): string {
   if (!isoDate) return 'TBD';
@@ -44,63 +41,8 @@ function formatKickoff(isoDate: string | null): string {
   const month = date.toLocaleString('en-US', { month: 'short' });
   const day = date.getDate();
   const clock = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${month} ${day} · ${clock}`;
+  return `${month} ${day} \u00B7 ${clock}`;
 }
-
-function buildSparkPath(points: PricePoint[], w: number, h: number): { linePath: string; areaPath: string } | null {
-  if (points.length < 2) return null;
-  const minT = points[0].t;
-  const maxT = points[points.length - 1].t;
-  const rangeT = maxT - minT || 1;
-  const prices = points.map((p) => p.p);
-  const minP = Math.min(...prices);
-  const maxP = Math.max(...prices);
-  const rangeP = maxP - minP || 0.01;
-  const pad = 4;
-  const coords = points.map((pt) => ({
-    x: ((pt.t - minT) / rangeT) * (w - pad * 2) + pad,
-    y: h - pad - ((pt.p - minP) / rangeP) * (h - pad * 2),
-  }));
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L${coords[coords.length - 1].x.toFixed(1)},${h} L${coords[0].x.toFixed(1)},${h} Z`;
-  return { linePath, areaPath };
-}
-
-function Sparkline({ points, width, height, color }: { points: PricePoint[]; width: number; height: number; color: string }) {
-  const paths = buildSparkPath(points, width, height);
-  if (!paths) return <View style={{ width, height, backgroundColor: semantic.background.surfaceRaised, borderRadius: 6 }} />;
-
-  const last = points[points.length - 1];
-  const prices = points.map((p) => p.p);
-  const minP = Math.min(...prices);
-  const maxP = Math.max(...prices);
-  const rangeP = maxP - minP || 0.01;
-  const rangeT = (points[points.length - 1].t - points[0].t) || 1;
-  const pad = 4;
-  const lx = ((last.t - points[0].t) / rangeT) * (width - pad * 2) + pad;
-  const ly = height - pad - ((last.p - minP) / rangeP) * (height - pad * 2);
-
-  return (
-    <Svg width={width} height={height}>
-      <Defs>
-        <LinearGradient id="sportSg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor={color} stopOpacity={0.2} />
-          <Stop offset="100%" stopColor={color} stopOpacity={0} />
-        </LinearGradient>
-      </Defs>
-      <Path d={paths.areaPath} fill="url(#sportSg)" />
-      <Path d={paths.linePath} stroke={color} strokeWidth={1.5} fill="none" strokeLinejoin="round" />
-      <Circle cx={lx} cy={ly} r={3} fill={color} />
-    </Svg>
-  );
-}
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'position', label: 'Position' },
-  { key: 'stats', label: 'Stats' },
-  { key: 'rules', label: 'Rules' },
-  { key: 'feed', label: 'Feed' },
-];
 
 function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
   if (outcome.label.toLowerCase().includes('draw')) return semantic.text.accent;
@@ -111,104 +53,46 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const router = useRouter();
   const poly = usePolymarketWallet();
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  // Market data
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Chart data
   const [interval, setInterval] = useState<Interval>('1h');
-  const [history, setHistory] = useState<PricePoint[]>([]);
+  const [seriesData, setSeriesData] = useState<PricePoint[][]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('position');
+  const [activeView, setActiveView] = useState<ActiveView>('chart');
+  const [orderbook, setOrderbook] = useState<Orderbook | null>(null);
+  const [orderbookLoading, setOrderbookLoading] = useState(false);
+  const [obOutcomeIdx, setObOutcomeIdx] = useState(0);
 
-  // Sparkline tracks which outcome index
-  const [sparkOutcomeIdx, setSparkOutcomeIdx] = useState(0);
+  // Numpad state
+  const [numpadOpen, setNumpadOpen] = useState(false);
+  const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
+  const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
+  const [numpadAmount, setNumpadAmount] = useState('50');
 
-  // Bet slip state
-  const [betSlipVisible, setBetSlipVisible] = useState(false);
-  const [betSlipSide, setBetSlipSide] = useState<'yes' | 'no'>('yes');
-  const [betSlipLabel, setBetSlipLabel] = useState('');
-  const [betSlipOutcome, setBetSlipOutcome] = useState('');
-  const [betSlipTokenID, setBetSlipTokenID] = useState<string | null>(null);
-  const [betSlipPrice, setBetSlipPrice] = useState(0.5);
-  const [betSlipAmount, setBetSlipAmount] = useState(0);
+  // Soft zone animation
+  const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
 
-  // Order submission state
-  const [orderLoading, setOrderLoading] = useState(false);
-  const [orderResult, setOrderResult] = useState<'success' | 'error' | null>(null);
-  const [orderError, setOrderError] = useState<string | null>(null);
+  // Drag gesture — swipe down to collapse numpad
+  const dragResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 40) collapseNumpad();
+      },
+    })
+  ).current;
 
-  // CLOB balance
-  const [clobBalance, setClobBalance] = useState<number | null>(null);
+  // Live badge pulse
+  const livePulse = useRef(new Animated.Value(1)).current;
 
-  // Open orders + filled positions for this market
-  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
-  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
-
-  const loadOrdersAndPositions = useCallback(() => {
-    if (!poly.polygonAddress) return;
-    const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
-    fetchOpenOrders(poly.polygonAddress).then(setOpenOrders).catch(() => setOpenOrders([]));
-    fetchMarketPositions(gammaAddr, slug).then(setMarketPositions).catch(() => setMarketPositions([]));
-  }, [poly.polygonAddress, poly.safeAddress, slug]);
-
-  useEffect(() => {
-    if (poly.polygonAddress && detail) loadOrdersAndPositions();
-  }, [poly.polygonAddress, detail, loadOrdersAndPositions]);
-
-  // Track keyboard visibility
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
-
-  async function loadDetail() {
-    setLoading(true);
-    setErrorMessage(null);
-    try {
-      const next = await fetchSportMarketDetail(sport, slug);
-      setDetail(next);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to load fixture');
-      setDetail(null);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function onRefresh() {
-    setRefreshing(true);
-    try {
-      const next = await fetchSportMarketDetail(sport, slug);
-      setDetail(next);
-      loadOrdersAndPositions();
-    } catch { /* silent */ }
-    setRefreshing(false);
-  }
-
-  async function loadHistory(outcome: SportOutcomeDetail, iv: Interval) {
-    const tokenId = outcome.clobTokenIds[0];
-    if (!tokenId) { setHistory([]); return; }
-    setHistoryLoading(true);
-    try {
-      const result = await fetchPriceHistory(tokenId, iv);
-      setHistory(result.history);
-    } catch {
-      setHistory([]);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  useEffect(() => { void loadDetail(); }, [slug, sport]);
-
-  useEffect(() => {
-    if (!detail?.outcomes[sparkOutcomeIdx]) return;
-    void loadHistory(detail.outcomes[sparkOutcomeIdx], interval);
-  }, [detail, sparkOutcomeIdx, interval]);
-
-  // Sort outcomes: lead team first, draw in middle
+  // Sort outcomes: lead first, draw in middle
   const sortedOutcomes = detail
     ? [...detail.outcomes].sort((a, b) => {
         const aIsDraw = a.label.toLowerCase().includes('draw');
@@ -218,20 +102,63 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         return (b.price ?? -1) - (a.price ?? -1);
       })
     : [];
-
   const leadPrice = sortedOutcomes[0]?.price ?? null;
-  const sparkOutcome = sortedOutcomes[sparkOutcomeIdx] ?? null;
-  const sparkColor = sparkOutcome
-    ? outcomeColor(sparkOutcome, sparkOutcome.price === leadPrice)
-    : semantic.sentiment.positive;
 
-  const isUp = history.length >= 2 ? history[history.length - 1].p >= history[0].p : true;
+  async function loadDetail() {
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      setDetail(await fetchSportMarketDetail(sport, slug));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load fixture');
+      setDetail(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  // The displayed sparkline price is the current outcome's price
-  const sparkPct = sparkOutcome?.price !== null ? Math.round((sparkOutcome?.price ?? 0) * 100) : null;
+  async function loadHistory(outcomes: SportOutcomeDetail[], iv: Interval) {
+    setHistoryLoading(true);
+    try {
+      const results = await Promise.all(
+        outcomes.map((o) => {
+          const tokenId = o.clobTokenIds[0];
+          if (!tokenId) return Promise.resolve({ history: [] });
+          return fetchPriceHistory(tokenId, iv);
+        })
+      );
+      setSeriesData(results.map((r) => r.history));
+    } catch {
+      setSeriesData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
-  // Pulsing animation for the LIVE header badge
-  const livePulse = useRef(new Animated.Value(1)).current;
+  async function loadOrderbook(outcomeIdx: number) {
+    const tokenId = sortedOutcomes[outcomeIdx]?.clobTokenIds[0];
+    if (!tokenId) return;
+    setOrderbookLoading(true);
+    try {
+      setOrderbook(await fetchOrderbook(tokenId));
+    } catch {
+      setOrderbook(null);
+    } finally {
+      setOrderbookLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadDetail(); }, [slug, sport]);
+
+  useEffect(() => {
+    if (sortedOutcomes.length > 0) void loadHistory(sortedOutcomes, interval);
+  }, [detail, interval]);
+
+  useEffect(() => {
+    if (activeView === 'orderbook' && sortedOutcomes.length > 0) void loadOrderbook(obOutcomeIdx);
+  }, [activeView, detail, obOutcomeIdx]);
+
+  // LIVE pulse
   useEffect(() => {
     if (detail?.status !== 'live') return;
     const loop = Animated.loop(
@@ -244,115 +171,72 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     return () => loop.stop();
   }, [detail?.status, livePulse]);
 
-  const openBetSlip = useCallback((outcome: SportOutcomeDetail, side: 'yes' | 'no') => {
-    const price = side === 'yes' ? (outcome.price ?? 0.5) : (1 - (outcome.price ?? 0.5));
-    setBetSlipSide(side);
-    setBetSlipLabel(side.toUpperCase());
-    setBetSlipOutcome(outcome.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw'));
-    setBetSlipTokenID(outcome.clobTokenIds[side === 'yes' ? 0 : 1] ?? outcome.clobTokenIds[0] ?? null);
-    setBetSlipPrice(price);
-    setBetSlipAmount(0);
-    setOrderResult(null);
-    setOrderError(null);
-    setBetSlipVisible(true);
+  // Animate soft zone
+  useEffect(() => {
+    Animated.timing(softZoneAnim, {
+      toValue: numpadOpen ? SOFT_EXPANDED : SOFT_COLLAPSED,
+      duration: 350,
+      useNativeDriver: false,
+    }).start();
+  }, [numpadOpen, softZoneAnim]);
 
-    if (poly.polygonAddress) {
-      fetchClobBalance(poly.polygonAddress).then((b) => {
-        if (b) setClobBalance(b.balance);
-      });
-    }
-  }, [poly.polygonAddress]);
+  // Build chart series
+  const chartSeries = sortedOutcomes.map((outcome, i) => {
+    const isLead = leadPrice !== null && outcome.price === leadPrice;
+    return {
+      points: seriesData[i] ?? [],
+      color: outcomeColor(outcome, isLead),
+      label: outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label,
+    };
+  });
 
-  async function submitOrder() {
-    if (!poly.polygonAddress || !betSlipTokenID) return;
-
-    if (betSlipAmount <= 0) {
-      setOrderResult('error');
-      setOrderError('Enter an amount');
+  function tapOdd(outcomeIdx: number, side: 'yes' | 'no') {
+    if (numpadOpen && selectedOutcomeIdx === outcomeIdx && selectedSide === side) {
+      setNumpadOpen(false);
+      setSelectedOutcomeIdx(null);
+      setSelectedSide(null);
       return;
     }
-    if (clobBalance !== null && betSlipAmount > clobBalance) {
-      setOrderResult('error');
-      setOrderError(`Insufficient balance ($${clobBalance.toFixed(2)} available)`);
-      return;
-    }
-
-    setOrderLoading(true);
-    setOrderResult(null);
-    setOrderError(null);
-
-    try {
-      // Local signing: phone signs EIP-712, server just proxies
-      const exchangeAddress = detail?.negRisk
-        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
-        : V2_CONTRACTS.CTF_EXCHANGE;
-      const size = Math.floor((betSlipAmount / betSlipPrice) * 100) / 100;
-
-      let signedOrder: unknown = undefined;
-      if (poly.canSignLocally) {
-        signedOrder = await poly.signOrder({
-          tokenID: betSlipTokenID,
-          price: betSlipPrice,
-          size,
-          side: 'BUY',
-          exchangeAddress,
-        });
-      }
-
-      const result = await placeBet({
-        polygonAddress: poly.polygonAddress,
-        tokenID: betSlipTokenID,
-        price: betSlipPrice,
-        amount: betSlipAmount,
-        side: 'BUY',
-        signedOrder,
-      });
-
-      if (result.success) {
-        setOrderResult('success');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        // Refresh orders, positions, balance
-        loadOrdersAndPositions();
-        if (poly.polygonAddress) {
-          fetchClobBalance(poly.polygonAddress).then((b) => { if (b) setClobBalance(b.balance); });
-        }
-      } else {
-        setOrderResult('error');
-        setOrderError(result.error ?? 'Order failed');
-      }
-    } catch (err) {
-      setOrderResult('error');
-      setOrderError(err instanceof Error ? err.message : 'Order failed');
-    } finally {
-      setOrderLoading(false);
-    }
+    setSelectedOutcomeIdx(outcomeIdx);
+    setSelectedSide(side);
+    setNumpadAmount('50');
+    setNumpadOpen(true);
   }
 
-  const payout = betSlipPrice > 0 ? betSlipAmount / betSlipPrice : 0;
+  function collapseNumpad() {
+    setNumpadOpen(false);
+    setSelectedOutcomeIdx(null);
+    setSelectedSide(null);
+  }
 
-  const insets = useSafeAreaInsets();
+  const numpadPrice = (() => {
+    if (selectedOutcomeIdx === null || selectedSide === null) return 0.5;
+    const outcome = sortedOutcomes[selectedOutcomeIdx];
+    if (!outcome?.price) return 0.5;
+    return selectedSide === 'yes' ? outcome.price : 1 - outcome.price;
+  })();
+
+  const chartWidth = screenWidth - 40;
+  const chartHeight = 180;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* ── HEADER BAR ── */}
+      {/* ── HEADER ── */}
       <View style={styles.headerBar}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={16} color={semantic.text.primary} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={2}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
             {detail?.title ?? 'Loading...'}
           </Text>
-          {detail?.status === 'live' && (
-            <View style={styles.headerLiveBadge}>
-              <Animated.View style={[styles.headerLiveDot, { opacity: livePulse }]} />
-              <Text style={styles.headerLiveText}>LIVE</Text>
-            </View>
-          )}
         </View>
-        <Pressable onPress={() => router.push('/predict-profile')} style={styles.avatarRing}>
-          <View style={styles.avatarInner} />
-        </Pressable>
+        {detail?.status === 'live' && (
+          <View style={styles.liveBadge}>
+            <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
+            <Text style={styles.liveText}>LIVE</Text>
+          </View>
+        )}
       </View>
 
       {/* ── LOADING / ERROR ── */}
@@ -371,506 +255,144 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         </View>
       ) : detail ? (
         <View style={styles.body}>
-
-          {/* ── TOP ZONE: SPARKLINE CARD ── */}
-          <View style={styles.topZone}>
-            <View style={styles.sparkCard}>
-              <View style={styles.sparkTopRow}>
-                <View>
-                  <Text style={[styles.bigPrice, { color: sparkColor }]}>
-                    {sparkPct !== null ? `${sparkPct}%` : '--'}
-                  </Text>
-                  <Text style={styles.sparkOutcomeName} numberOfLines={1}>
-                    {sparkOutcome?.label.replace(/^Draw\s*\((.*)\)$/i, 'Draw') ?? ''}
-                  </Text>
-                </View>
-                <View style={styles.sparkRightCol}>
-                  <View style={styles.liveBadge}>
-                    <View style={[styles.liveDot, { backgroundColor: sparkColor }]} />
-                    <Text style={styles.liveText}>live</Text>
-                  </View>
-                  <View style={styles.intervalRow}>
-                    {(['1h', '1d'] as Interval[]).map((iv) => (
-                      <Pressable
-                        key={iv}
-                        onPress={() => setInterval(iv)}
-                        style={[styles.intervalChip, interval === iv && styles.intervalChipActive]}>
-                        <Text style={[styles.intervalText, interval === iv && styles.intervalTextActive]}>
-                          {iv === '1h' ? '1H' : '1D'}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              </View>
-
-              {/* Outcome selector pills for sparkline */}
-              <View style={styles.sparkOutcomeRow}>
-                {sortedOutcomes.map((outcome, i) => {
-                  const isDraw = outcome.label.toLowerCase().includes('draw');
-                  const label = isDraw ? 'Draw' : outcome.label;
-                  return (
-                    <Pressable
-                      key={`${outcome.conditionId ?? outcome.label}-${i}`}
-                      onPress={() => setSparkOutcomeIdx(i)}
-                      style={[styles.sparkOutcomeChip, sparkOutcomeIdx === i && styles.sparkOutcomeChipActive]}>
-                      <Text
-                        style={[styles.sparkOutcomeChipText, sparkOutcomeIdx === i && styles.sparkOutcomeChipTextActive]}
-                        numberOfLines={1}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={styles.chartArea}>
-                {historyLoading ? (
-                  <View style={styles.chartSkeleton} />
-                ) : history.length >= 2 ? (
-                  <Sparkline points={history} width={screenWidth - 64} height={64} color={sparkColor} />
-                ) : (
-                  <View style={[styles.chartSkeleton, { opacity: 0.4 }]} />
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* ── OUTCOME PROBABILITY TABS ── */}
-          <View style={styles.outcomeTabsZone}>
-            {sortedOutcomes.map((outcome, i) => {
-              const isDraw = outcome.label.toLowerCase().includes('draw');
-              const pct = outcome.price !== null ? Math.round(outcome.price * 100) : null;
-              const isLead = leadPrice !== null && outcome.price === leadPrice;
-              const color = outcomeColor(outcome, isLead);
-              // Short label: "Draw" for draw, otherwise truncate to first word / team name
-              const shortLabel = isDraw
-                ? 'Draw'
-                : (outcome.label.split(/\s+/)[0] ?? outcome.label);
-              const isActive = sparkOutcomeIdx === i;
-              return (
+          {/* ══ DARK ZONE ══ */}
+          <View style={[styles.darkZone, { paddingBottom: SOFT_COLLAPSED }]}>
+            {/* Range chips + view toggle */}
+            <View style={styles.chipRow}>
+              {activeView === 'chart' && (['5m', '1h', '1d'] as Interval[]).map((iv) => (
                 <Pressable
-                  key={`${outcome.conditionId ?? outcome.label}-${i}`}
-                  onPress={() => setSparkOutcomeIdx(i)}
-                  style={[
-                    styles.outcomeTab,
-                    isActive && { borderColor: color, backgroundColor: `${color}18` },
-                  ]}>
-                  <Text
-                    style={[styles.outcomeTabLabel, { color: isActive ? color : semantic.text.dim }]}
-                    numberOfLines={1}>
-                    {shortLabel}
-                  </Text>
-                  <Text style={[styles.outcomeTabPct, { color: isActive ? color : semantic.text.faint }]}>
-                    {pct !== null ? `${pct}%` : '--'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* ── MID ZONE: TABS ── */}
-          <View style={styles.midZone}>
-            {/* Tab bar */}
-            <View style={styles.tabBar}>
-              {TABS.map((tab) => (
-                <Pressable
-                  key={tab.key}
-                  onPress={() => setActiveTab(tab.key)}
-                  style={[styles.tabChip, activeTab === tab.key && styles.tabChipActive]}>
-                  <Text style={[styles.tabChipText, activeTab === tab.key && styles.tabChipTextActive]}>
-                    {tab.label}
+                  key={iv}
+                  style={[styles.rangeChip, interval === iv && styles.rangeChipActive]}
+                  onPress={() => setInterval(iv)}>
+                  <Text style={[styles.rangeChipText, interval === iv && styles.rangeChipTextActive]}>
+                    {iv === '5m' ? '5M' : iv === '1h' ? '1H' : '1D'}
                   </Text>
                 </Pressable>
               ))}
+              <View style={styles.toggleIcons}>
+                <Pressable
+                  style={[styles.toggleBtn, activeView === 'chart' && styles.toggleBtnActive]}
+                  onPress={() => setActiveView('chart')}>
+                  <MaterialIcons name="show-chart" size={14} color={activeView === 'chart' ? semantic.text.primary : semantic.text.faint} />
+                </Pressable>
+                <Pressable
+                  style={[styles.toggleBtn, activeView === 'orderbook' && styles.toggleBtnActive]}
+                  onPress={() => setActiveView('orderbook')}>
+                  <MaterialIcons name="view-list" size={14} color={activeView === 'orderbook' ? semantic.text.primary : semantic.text.faint} />
+                </Pressable>
+              </View>
             </View>
 
-            {/* Tab content */}
-            <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.tabContentInner}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
-
-              {/* POSITION TAB */}
-              {activeTab === 'position' ? (
-                <View style={{ gap: 12 }}>
-                  {/* Open Orders */}
-                  {openOrders.length > 0 && (
-                    <View>
-                      <Text style={styles.posSecTitle}>Open Orders</Text>
-                      {openOrders.map((o) => {
-                        const sizeNum = parseFloat(o.original_size) || 0;
-                        const matched = parseFloat(o.size_matched) || 0;
-                        const priceNum = parseFloat(o.price) || 0;
-                        const cost = sizeNum * priceNum;
-                        const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
-                        return (
-                          <View key={o.id} style={styles.orderCard}>
-                            <View style={styles.orderCardTop}>
-                              <View style={[styles.orderSideBadge, o.side === 'BUY' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-                                <Text style={[styles.orderSideBadgeText, { color: o.side === 'BUY' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
-                                  {o.side}
-                                </Text>
-                              </View>
-                              <Text style={styles.orderOutcome} numberOfLines={1}>{o.outcome || '--'}</Text>
-                              <Text style={styles.orderStatus}>{o.status}</Text>
-                            </View>
-                            <View style={styles.orderCardStats}>
-                              <View>
-                                <Text style={styles.orderStatLabel}>Price</Text>
-                                <Text style={styles.orderStatVal}>{Math.round(priceNum * 100)}¢</Text>
-                              </View>
-                              <View>
-                                <Text style={styles.orderStatLabel}>Shares</Text>
-                                <Text style={styles.orderStatVal}>{sizeNum.toFixed(2)}</Text>
-                              </View>
-                              <View>
-                                <Text style={styles.orderStatLabel}>Cost</Text>
-                                <Text style={styles.orderStatVal}>${cost.toFixed(2)}</Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={styles.orderStatLabel}>Filled</Text>
-                                <Text style={styles.orderStatVal}>{fillPct}%</Text>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-
-                  {/* Filled Positions */}
-                  {marketPositions.length > 0 && (
-                    <View>
-                      <Text style={styles.posSecTitle}>Positions</Text>
-                      {marketPositions.map((p, i) => {
-                        const pnl = p.cashPnl ?? 0;
-                        const isUp = pnl >= 0;
-                        return (
-                          <View key={`${p.conditionId}-${p.outcomeIndex}-${i}`} style={styles.orderCard}>
-                            <View style={styles.orderCardTop}>
-                              <View style={[styles.orderSideBadge, p.outcome === 'No' ? styles.sideBadgeNo : styles.sideBadgeYes]}>
-                                <Text style={[styles.orderSideBadgeText, { color: p.outcome === 'No' ? semantic.sentiment.negative : semantic.sentiment.positive }]}>
-                                  {p.outcome?.toUpperCase() ?? 'YES'}
-                                </Text>
-                              </View>
-                              <Text style={styles.orderOutcome} numberOfLines={1}>{p.title || p.slug || '—'}</Text>
-                              <Text style={[styles.orderPnl, isUp ? styles.pnlUp : styles.pnlDown]}>
-                                {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-                              </Text>
-                            </View>
-                            <View style={styles.orderCardStats}>
-                              <View>
-                                <Text style={styles.orderStatLabel}>Shares</Text>
-                                <Text style={styles.orderStatVal}>{(p.size ?? 0).toFixed(2)}</Text>
-                              </View>
-                              <View>
-                                <Text style={styles.orderStatLabel}>Avg Entry</Text>
-                                <Text style={styles.orderStatVal}>{(p.avgPrice ?? 0).toFixed(2)}</Text>
-                              </View>
-                              <View>
-                                <Text style={styles.orderStatLabel}>Current</Text>
-                                <Text style={styles.orderStatVal}>{(p.curPrice ?? 0).toFixed(2)}</Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={styles.orderStatLabel}>Value</Text>
-                                <Text style={styles.orderStatVal}>${(p.currentValue ?? 0).toFixed(2)}</Text>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-
-                  {/* Empty state */}
-                  {openOrders.length === 0 && marketPositions.length === 0 && (
-                    <View style={styles.emptyState}>
-                      <MaterialIcons name="show-chart" size={32} color={semantic.text.faint} />
-                      <Text style={styles.emptyTitle}>No positions yet</Text>
-                      <Text style={styles.emptyBody}>Trade below to open a position</Text>
-                    </View>
-                  )}
-                </View>
-              ) : null}
-
-              {/* STATS TAB */}
-              {activeTab === 'stats' ? (
-                <View style={styles.tabSection}>
-                  {/* Metric row */}
-                  <View style={styles.metricRow}>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricLabel}>Traders</Text>
-                      <Text style={styles.metricValue}>--</Text>
-                    </View>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricLabel}>Volume</Text>
-                      <Text style={styles.metricValue}>{formatUsdCompact(detail.volume24h)}</Text>
-                    </View>
-                    <View style={styles.metricBox}>
-                      <Text style={styles.metricLabel}>Liquidity</Text>
-                      <Text style={styles.metricValue}>{formatUsdCompact(detail.liquidity)}</Text>
-                    </View>
+            {/* Chart or Orderbook */}
+            <View style={styles.viewContainer}>
+              {activeView === 'chart' ? (
+                historyLoading ? (
+                  <View style={styles.chartSkeleton}>
+                    <ActivityIndicator size="small" color={semantic.text.faint} />
                   </View>
-
-                  {/* Outcome concentration */}
-                  <View style={styles.statsCard}>
-                    <Text style={styles.cardLabel}>Outcome Concentration</Text>
-                    {sortedOutcomes.map((outcome, i) => {
-                      const isDraw = outcome.label.toLowerCase().includes('draw');
-                      const isLead = leadPrice !== null && outcome.price === leadPrice;
-                      const color = outcomeColor(outcome, isLead);
-                      const pct = outcome.price !== null ? Math.round(outcome.price * 100) : 0;
+                ) : (
+                  <MultiLineChart
+                    series={chartSeries}
+                    width={chartWidth}
+                    height={chartHeight}
+                  />
+                )
+              ) : (
+                <View style={styles.obWrap}>
+                  {/* Outcome tabs for orderbook */}
+                  <View style={styles.obOutcomeTabs}>
+                    {sortedOutcomes.map((o, i) => {
+                      const isDraw = o.label.toLowerCase().includes('draw');
+                      const label = isDraw ? 'Draw' : o.label;
                       return (
-                        <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={styles.concBar}>
-                          <View style={styles.concBarHeader}>
-                            <Text style={[styles.concBarLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
-                              {isDraw ? 'Draw' : outcome.label}
-                            </Text>
-                            <Text style={[styles.concBarPct, { color }]}>{pct}%</Text>
-                          </View>
-                          <View style={styles.concTrack}>
-                            <View style={[styles.concFill, { width: `${pct}%`, backgroundColor: color, opacity: isLead ? 0.25 : 0.15 }]} />
-                          </View>
-                        </View>
+                        <Pressable
+                          key={`${o.conditionId ?? o.label}-${i}`}
+                          style={[styles.obOutcomeTab, obOutcomeIdx === i && styles.obOutcomeTabActive]}
+                          onPress={() => setObOutcomeIdx(i)}>
+                          <Text style={[styles.obOutcomeTabText, obOutcomeIdx === i && styles.obOutcomeTabTextActive]} numberOfLines={1}>
+                            {label}
+                          </Text>
+                        </Pressable>
                       );
                     })}
                   </View>
-
-                  {/* 24h Activity */}
-                  <View style={styles.statsCard}>
-                    <Text style={styles.cardLabel}>24h Activity</Text>
-                    <View style={styles.activityRow}>
-                      <View style={styles.activityItem}>
-                        <Text style={styles.activityKey}>Kick-off</Text>
-                        <Text style={styles.activityVal}>{formatKickoff(detail.startDate)}</Text>
-                      </View>
-                      <View style={styles.activityItem}>
-                        <Text style={styles.activityKey}>Markets</Text>
-                        <Text style={styles.activityVal}>{detail.outcomes.length}</Text>
-                      </View>
-                    </View>
-                  </View>
+                  <OrderbookView book={orderbook} loading={orderbookLoading} />
                 </View>
-              ) : null}
-
-              {/* RULES TAB */}
-              {activeTab === 'rules' ? (
-                <View style={styles.tabSection}>
-                  <View style={styles.statsCard}>
-                    <Text style={styles.cardLabel}>Resolution Criteria</Text>
-                    <Text style={styles.rulesText}>
-                      {detail.description ?? 'No resolution criteria provided.'}
-                    </Text>
-                    <View style={styles.rulesMeta}>
-                      <Text style={styles.rulesMetaItem}>Source: Polymarket</Text>
-                      <Text style={styles.rulesMetaItem}>{formatKickoff(detail.endDate)}</Text>
-                    </View>
-                  </View>
-                </View>
-              ) : null}
-
-              {/* FEED TAB */}
-              {activeTab === 'feed' ? (
-                <View style={styles.tabSection}>
-                  {[
-                    { source: 'Smart Money Alert', text: 'Sharp money rotating into the home team — $8K YES at 58¢', time: '2m ago' },
-                    { source: 'Market Signal', text: 'Draw probability dropped 4% after team news update', time: '22m ago' },
-                    { source: 'Whale Watch', text: 'Top 3 traders net long home team by $19K', time: '1h ago' },
-                  ].map((item, i) => (
-                    <View key={i} style={styles.feedCard}>
-                      <View style={styles.feedCardHeader}>
-                        <Text style={styles.feedSource}>{item.source}</Text>
-                        <Text style={styles.feedTime}>{item.time}</Text>
-                      </View>
-                      <Text style={styles.feedText}>{item.text}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-
-            </ScrollView>
+              )}
+            </View>
           </View>
 
-          {/* ── BOTTOM ZONE: OUTCOME SELECTION ROWS ── */}
-          <View style={styles.bottomZone}>
-            {sortedOutcomes.map((outcome, i) => {
-              const isDraw = outcome.label.toLowerCase().includes('draw');
-              const isLead = leadPrice !== null && outcome.price === leadPrice;
-              const label = isDraw ? 'Draw' : outcome.label;
-              const yesCents = outcome.price !== null ? Math.round(outcome.price * 100) : null;
-              const noCents = outcome.price !== null ? Math.round((1 - outcome.price) * 100) : null;
-              return (
-                <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={styles.outcomeRow}>
-                  <View style={styles.outcomeMeta}>
-                    <Text style={[styles.outcomeLabel, { color: isLead ? semantic.text.primary : semantic.text.dim }]} numberOfLines={1}>
-                      {label}
-                    </Text>
-                    <Text style={styles.outcomeVol}>{formatUsdCompact(outcome.volume24h)} vol</Text>
-                  </View>
-                  <View style={styles.outcomeBtns}>
-                    <Pressable
-                      style={styles.outcomeBtnYes}
-                      onPress={() => openBetSlip(outcome, 'yes')}>
-                      <Text style={styles.outcomeBtnYesLabel}>YES</Text>
-                      <Text style={styles.outcomeBtnYesPrice}>{yesCents !== null ? `${yesCents}¢` : '--'}</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.outcomeBtnNo}
-                      onPress={() => openBetSlip(outcome, 'no')}>
-                      <Text style={styles.outcomeBtnNoLabel}>NO</Text>
-                      <Text style={styles.outcomeBtnNoPrice}>{noCents !== null ? `${noCents}¢` : '--'}</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+          {/* ══ SOFT ZONE ══ */}
+          <Animated.View style={[styles.softZone, { maxHeight: softZoneAnim }]}>
+            {/* Drag handle */}
+            <View style={styles.dragHandle} {...dragResponder.panHandlers}>
+              <Pressable onPress={collapseNumpad}>
+                <View style={styles.dragHandlePill} />
+              </Pressable>
+            </View>
 
+            {/* Stats strip */}
+            <StatsStrip stats={[
+              { value: formatUsdCompact(detail.volume24h), label: 'Volume' },
+              { value: formatUsdCompact(detail.liquidity), label: 'Liquidity' },
+              { value: '--', label: 'Traders' },
+            ]} />
+
+            {/* Separator */}
+            <View style={styles.separator} />
+
+            {/* Selection rows */}
+            <View style={styles.oddsSection}>
+              <View style={styles.selHeader}>
+                <Text style={styles.selHeaderLabel}>{sortedOutcomes.length} Selections</Text>
+                <View style={styles.selHeaderHints}>
+                  <Text style={styles.selHintYes}>Yes</Text>
+                  <Text style={styles.selHintNo}>No</Text>
+                </View>
+              </View>
+              {sortedOutcomes.map((outcome, i) => {
+                const isDraw = outcome.label.toLowerCase().includes('draw');
+                const label = isDraw ? 'Draw' : outcome.label;
+                const yesCents = outcome.price !== null ? Math.round(outcome.price * 100) : null;
+                const noCents = outcome.price !== null ? Math.round((1 - outcome.price) * 100) : null;
+                const isSelected = (side: 'yes' | 'no') => selectedOutcomeIdx === i && selectedSide === side;
+                return (
+                  <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={[styles.selRow, i > 0 && styles.selRowBorder]}>
+                    <View style={styles.selInfo}>
+                      <Text style={styles.selName} numberOfLines={1}>{label}</Text>
+                      <Text style={styles.selVol}>{formatUsdCompact(outcome.volume24h)} vol</Text>
+                    </View>
+                    <View style={styles.selBtns}>
+                      <Pressable
+                        style={[styles.selBtn, styles.selBtnYes, isSelected('yes') && styles.selBtnYesSelected]}
+                        onPress={() => tapOdd(i, 'yes')}>
+                        <Text style={styles.selBtnYesPct}>{yesCents !== null ? `${yesCents}\u00A2` : '--'}</Text>
+                        <Text style={styles.selBtnYesLabel}>Yes</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.selBtn, styles.selBtnNo, isSelected('no') && styles.selBtnNoSelected]}
+                        onPress={() => tapOdd(i, 'no')}>
+                        <Text style={styles.selBtnNoPct}>{noCents !== null ? `${noCents}\u00A2` : '--'}</Text>
+                        <Text style={styles.selBtnNoLabel}>No</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Inline numpad */}
+            <InlineNumpad
+              visible={numpadOpen}
+              side={selectedSide ?? 'yes'}
+              price={numpadPrice}
+              amount={numpadAmount}
+              onAmountChange={setNumpadAmount}
+              onConfirm={() => { /* CLOB v2 pending */ }}
+            />
+          </Animated.View>
         </View>
       ) : null}
-
-      {/* ── BET SLIP BOTTOM SHEET ── */}
-      <Modal
-        visible={betSlipVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { Keyboard.dismiss(); setBetSlipVisible(false); }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}>
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => {
-            if (keyboardOpen) {
-              Keyboard.dismiss();
-            } else {
-              setBetSlipVisible(false);
-            }
-          }}
-        />
-        <View style={styles.betSlip}>
-          <View style={styles.betSlipHandle} />
-          <View style={styles.betSlipHeader}>
-            <View style={styles.betSlipTitleCol}>
-              <Text style={styles.betSlipOutcome}>{betSlipOutcome}</Text>
-              <Text style={styles.betSlipTitle}>{detail?.title ?? ''}</Text>
-            </View>
-            <View style={[styles.sideBadge, betSlipSide === 'yes' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-              <Text style={[styles.sideBadgeText, { color: betSlipSide === 'yes' ? semantic.sentiment.positive : semantic.sentiment.negative }]}>
-                {betSlipLabel}
-              </Text>
-            </View>
-          </View>
-
-          {/* Balance + Entry price row */}
-          <View style={styles.betSlipRow}>
-            <View>
-              <Text style={styles.betSlipMetaLabel}>Balance</Text>
-              <Text style={styles.betSlipMetaValue}>
-                {clobBalance !== null ? `$${clobBalance.toFixed(2)}` : '--'}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.betSlipMetaLabel}>Entry price</Text>
-              <Text style={styles.betSlipMetaValue}>{Math.round(betSlipPrice * 100)}¢</Text>
-            </View>
-          </View>
-
-          {/* Amount input */}
-          <View style={styles.amountWrap}>
-            <View style={styles.amountLabelRow}>
-              <Text style={styles.amountLabel}>Amount</Text>
-              {clobBalance !== null && clobBalance > 0 && (
-                <Pressable onPress={() => setBetSlipAmount(Math.floor(clobBalance * 100) / 100)}>
-                  <Text style={styles.maxBtn}>MAX</Text>
-                </Pressable>
-              )}
-            </View>
-            <View style={styles.amountInputRow}>
-              <Text style={styles.amountDollar}>$</Text>
-              <TextInput
-                style={styles.amountInput}
-                keyboardType="numeric"
-                value={betSlipAmount > 0 ? betSlipAmount.toString() : ''}
-                placeholder="0.00"
-                placeholderTextColor={semantic.text.faint}
-                onChangeText={(v) => {
-                  if (v === '') { setBetSlipAmount(0); return; }
-                  const n = parseFloat(v);
-                  if (!Number.isNaN(n)) setBetSlipAmount(n);
-                }}
-              />
-            </View>
-          </View>
-
-          {/* Payout row */}
-          <View style={styles.payoutRow}>
-            <View>
-              <Text style={styles.betSlipMetaLabel}>Est. Payout</Text>
-              <Text style={[styles.betSlipMetaValue, { color: semantic.sentiment.positive }]}>
-                ${payout.toFixed(2)}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.betSlipMetaLabel}>Shares</Text>
-              <Text style={styles.betSlipMetaValue}>
-                {betSlipPrice > 0 ? (betSlipAmount / betSlipPrice).toFixed(2) : '0'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Order result feedback */}
-          {orderResult === 'success' ? (
-            <View style={styles.orderFeedback}>
-              <MaterialIcons name="check-circle" size={18} color={semantic.sentiment.positive} />
-              <Text style={[styles.orderFeedbackText, { color: semantic.sentiment.positive }]}>
-                Order placed
-              </Text>
-            </View>
-          ) : orderResult === 'error' ? (
-            <View style={styles.orderFeedback}>
-              <MaterialIcons name="error-outline" size={18} color={semantic.sentiment.negative} />
-              <Text style={[styles.orderFeedbackText, { color: semantic.sentiment.negative }]}>
-                {orderError ?? 'Order failed'}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Confirm / Auth button */}
-          {!poly.isReady ? (
-            <Pressable
-              style={[styles.confirmBtn, styles.confirmBtnAuth]}
-              onPress={() => { void poly.enable(); }}>
-              {poly.isLoading ? (
-                <ActivityIndicator size="small" color={semantic.text.primary} />
-              ) : (
-                <Text style={styles.confirmBtnText}>Open Account to Trade</Text>
-              )}
-            </Pressable>
-          ) : orderResult === 'success' ? (
-            <Pressable
-              style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
-              onPress={() => setBetSlipVisible(false)}>
-              <Text style={styles.confirmBtnText}>Done</Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              style={[styles.confirmBtn, betSlipSide === 'yes' ? styles.confirmBtnYes : styles.confirmBtnNo]}
-              disabled={orderLoading}
-              onPress={() => { void submitOrder(); }}>
-              {orderLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.confirmBtnText}>
-                  Confirm {betSlipLabel} — ${betSlipAmount > 0 ? betSlipAmount : '0'}
-                </Text>
-              )}
-            </Pressable>
-          )}
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
     </View>
   );
 }
@@ -880,728 +402,51 @@ const styles = StyleSheet.create({
 
   // ── Header ──
   headerBar: {
+    height: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-    gap: tokens.spacing.sm,
+    paddingHorizontal: 20,
+    gap: 10,
+    flexShrink: 0,
   },
   backBtn: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: tokens.colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
     flexShrink: 0,
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
+  headerCenter: { flex: 1 },
   headerTitle: {
     color: semantic.text.primary,
-    fontSize: tokens.fontSize.xxs,
+    fontSize: 11,
+    fontWeight: '600',
     fontFamily: 'monospace',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
-  headerLiveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(244,88,78,0.25)',
-    backgroundColor: 'rgba(244,88,78,0.10)',
-  },
-  headerLiveDot: {
-    width: 5,
-    height: 5,
-    borderRadius: tokens.radius.full,
-    backgroundColor: '#f4584e',
-  },
-  headerLiveText: {
-    color: '#f4584e',
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  avatarRing: {
-    width: 32,
-    height: 32,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1.5,
-    borderColor: semantic.text.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  avatarInner: {
-    width: 24,
-    height: 24,
-    borderRadius: tokens.radius.full,
-    backgroundColor: semantic.background.surfaceRaised,
-  },
-
-  // ── Body layout ──
-  body: { flex: 1 },
-
-  // ── Outcome probability tabs ──
-  outcomeTabsZone: {
-    flexDirection: 'row',
-    flexShrink: 0,
-    paddingHorizontal: tokens.spacing.md,
-    paddingBottom: tokens.spacing.sm,
-    gap: tokens.spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  outcomeTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surface,
-    gap: 2,
-  },
-  outcomeTabLabel: {
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  outcomeTabPct: {
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-  },
-
-  // ── Top zone ──
-  topZone: { flexShrink: 0, padding: tokens.spacing.md },
-  sparkCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.sm,
-  },
-  sparkTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  bigPrice: {
-    fontSize: tokens.fontSize.lg,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    lineHeight: 28,
-  },
-  sparkOutcomeName: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    marginTop: 2,
-  },
-  sparkRightCol: {
-    alignItems: 'flex-end',
-    gap: tokens.spacing.xs,
   },
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.xs,
+    gap: 4,
+    flexShrink: 0,
   },
   liveDot: {
     width: 5,
     height: 5,
-    borderRadius: tokens.radius.full,
+    borderRadius: 3,
+    backgroundColor: semantic.sentiment.negative,
   },
   liveText: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-  intervalRow: { flexDirection: 'row', gap: tokens.spacing.xs },
-  intervalChip: {
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surfaceRaised,
-  },
-  intervalChipActive: {
-    backgroundColor: 'rgba(232,197,71,0.12)',
-    borderColor: 'rgba(232,197,71,0.15)',
-  },
-  intervalText: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-  },
-  intervalTextActive: { color: semantic.text.accent },
-  sparkOutcomeRow: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xs,
-    flexWrap: 'wrap',
-  },
-  sparkOutcomeChip: {
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surfaceRaised,
-  },
-  sparkOutcomeChipActive: {
-    backgroundColor: 'rgba(232,197,71,0.10)',
-    borderColor: 'rgba(232,197,71,0.2)',
-  },
-  sparkOutcomeChipText: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-  sparkOutcomeChipTextActive: { color: semantic.text.accent },
-  chartArea: { height: 64 },
-  chartSkeleton: {
-    flex: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: semantic.background.surfaceRaised,
-  },
-
-  // ── Mid zone ──
-  midZone: {
-    flex: 1,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-    gap: tokens.spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-    flexShrink: 0,
-  },
-  tabChip: {
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.xs,
-    borderRadius: tokens.radius.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  tabChipActive: {
-    backgroundColor: 'rgba(232,197,71,0.12)',
-    borderColor: 'rgba(232,197,71,0.15)',
-  },
-  tabChipText: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  tabChipTextActive: { color: semantic.text.accent },
-  tabContent: { flex: 1 },
-  tabContentInner: { padding: tokens.spacing.md, gap: tokens.spacing.sm, paddingBottom: tokens.spacing.xl },
-
-  // ── Empty state ──
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: tokens.spacing.xl,
-    gap: tokens.spacing.sm,
-  },
-  emptyTitle: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.md,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
-  emptyBody: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    textAlign: 'center',
-  },
-
-  // ── Position tab ──
-  posSecTitle: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-    marginBottom: 6,
-  },
-  orderCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 6,
-    gap: 8,
-  },
-  orderCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  orderSideBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 3,
-  },
-  orderSideBadgeText: {
-    fontFamily: 'monospace',
-    fontSize: 7.5,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  orderOutcome: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: 10,
-    color: semantic.text.primary,
-  },
-  orderStatus: {
-    fontFamily: 'monospace',
-    fontSize: 7.5,
-    color: semantic.text.faint,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  orderPnl: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  pnlUp: { color: semantic.sentiment.positive },
-  pnlDown: { color: semantic.sentiment.negative },
-  orderCardStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  orderStatLabel: {
     fontFamily: 'monospace',
     fontSize: 7,
-    color: semantic.text.faint,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 1,
-  },
-  orderStatVal: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-    color: semantic.text.primary,
-    fontWeight: '600',
-  },
-
-  // ── Stats tab ──
-  tabSection: { gap: tokens.spacing.sm },
-  statsCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.sm,
-  },
-  cardLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  metricRow: { flexDirection: 'row', gap: tokens.spacing.xs },
-  metricBox: {
-    flex: 1,
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.sm,
-    padding: tokens.spacing.sm,
-  },
-  metricLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
+    fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  metricValue: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-  },
-  concBar: { gap: 4 },
-  concBarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  concBarLabel: {
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    flex: 1,
-  },
-  concBarPct: {
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-  },
-  concTrack: {
-    height: 8,
-    backgroundColor: semantic.background.surfaceRaised,
-    borderRadius: tokens.radius.full,
-    overflow: 'hidden',
-  },
-  concFill: {
-    height: '100%',
-    borderRadius: tokens.radius.full,
-  },
-  activityRow: { flexDirection: 'row', gap: tokens.spacing.xl },
-  activityItem: { gap: 4 },
-  activityKey: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  activityVal: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
-
-  // ── Rules tab ──
-  rulesText: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.sm,
-    lineHeight: 18,
-  },
-  rulesMeta: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xl,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-    paddingTop: tokens.spacing.sm,
-  },
-  rulesMetaItem: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-
-  // ── Feed tab ──
-  feedCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    padding: tokens.spacing.md,
-    gap: tokens.spacing.xs,
-  },
-  feedCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  feedSource: {
-    color: semantic.text.accent,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  feedTime: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-  feedText: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.sm,
-    lineHeight: 18,
-  },
-
-  // ── Bottom zone: Sport outcome rows ──
-  bottomZone: {
-    flexShrink: 0,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-    paddingHorizontal: tokens.spacing.md,
-    paddingTop: tokens.spacing.sm,
-    paddingBottom: tokens.spacing.xs,
-    gap: tokens.spacing.xs,
-  },
-  outcomeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  outcomeMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  outcomeLabel: {
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
-  outcomeVol: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-  },
-  outcomeBtns: {
-    flexDirection: 'row',
-    gap: tokens.spacing.xs,
-  },
-  outcomeBtnYes: {
-    width: 56,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    backgroundColor: 'rgba(52,199,123,0.15)',
-    borderColor: 'rgba(52,199,123,0.3)',
-    alignItems: 'center',
-    gap: 1,
-  },
-  outcomeBtnYesLabel: {
-    color: semantic.sentiment.positive,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  outcomeBtnYesPrice: {
-    color: semantic.sentiment.positive,
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-  },
-  outcomeBtnNo: {
-    width: 56,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    backgroundColor: 'rgba(244,88,78,0.12)',
-    borderColor: 'rgba(244,88,78,0.25)',
-    alignItems: 'center',
-    gap: 1,
-  },
-  outcomeBtnNoLabel: {
     color: semantic.sentiment.negative,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  outcomeBtnNoPrice: {
-    color: semantic.sentiment.negative,
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
   },
 
-  // ── Bet slip ──
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  betSlip: {
-    backgroundColor: semantic.background.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: semantic.border.muted,
-    padding: tokens.spacing.lg,
-    gap: tokens.spacing.md,
-    paddingBottom: 40,
-  },
-  betSlipHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: tokens.radius.full,
-    backgroundColor: semantic.border.muted,
-    alignSelf: 'center',
-    marginBottom: tokens.spacing.xs,
-  },
-  betSlipHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.sm,
-  },
-  betSlipTitleCol: {
-    flex: 1,
-    gap: 3,
-  },
-  betSlipOutcome: {
-    color: semantic.text.accent,
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  betSlipTitle: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    lineHeight: 17,
-  },
-  sideBadge: {
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.xxs,
-    borderRadius: tokens.radius.xs,
-    borderWidth: 1,
-    flexShrink: 0,
-  },
-  sideBadgeYes: {
-    backgroundColor: 'rgba(52,199,123,0.12)',
-    borderColor: 'rgba(52,199,123,0.3)',
-  },
-  sideBadgeNo: {
-    backgroundColor: 'rgba(244,88,78,0.12)',
-    borderColor: 'rgba(244,88,78,0.3)',
-  },
-  sideBadgeText: {
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  betSlipRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  betSlipMetaLabel: {
-    color: semantic.text.dim,
-    fontSize: 8,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  betSlipMetaValue: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-  },
-  amountWrap: { gap: tokens.spacing.xs },
-  amountLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  amountLabel: {
-    color: semantic.text.dim,
-    fontSize: 8,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  maxBtn: {
-    color: tokens.colors.primary,
-    fontSize: 8,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.sm,
-    paddingHorizontal: tokens.spacing.md,
-  },
-  amountDollar: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.md,
-    fontFamily: 'monospace',
-    marginRight: tokens.spacing.xs,
-  },
-  amountInput: {
-    flex: 1,
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.md,
-    fontFamily: 'monospace',
-    paddingVertical: tokens.spacing.sm,
-  },
-  payoutRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingTop: tokens.spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
-  },
-  orderFeedback: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: tokens.spacing.xs,
-  },
-  orderFeedbackText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '700',
-  },
-  confirmBtn: {
-    height: 48,
-    borderRadius: tokens.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmBtnYes: { backgroundColor: semantic.sentiment.positive },
-  confirmBtnNo: { backgroundColor: semantic.sentiment.negative },
-  confirmBtnAuth: {
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-  },
-  confirmBtnText: {
-    color: '#fff',
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-
-  // ── Loading / error states ──
+  // ── States ──
   stateWrap: {
     flex: 1,
     alignItems: 'center',
@@ -1622,7 +467,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.spacing.md,
     paddingVertical: tokens.spacing.sm,
     borderRadius: tokens.radius.xs,
-    alignSelf: 'center',
   },
   retryText: {
     color: semantic.background.screen,
@@ -1630,5 +474,209 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     fontWeight: '700',
+  },
+
+  // ── Body ──
+  body: { flex: 1, position: 'relative' },
+
+  // ── Dark zone ──
+  darkZone: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 10,
+  },
+  rangeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rangeChipActive: { backgroundColor: tokens.colors.surface },
+  rangeChipText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1,
+    color: semantic.text.faint,
+  },
+  rangeChipTextActive: { color: semantic.text.primary },
+  toggleIcons: {
+    flexDirection: 'row',
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  toggleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleBtnActive: { backgroundColor: tokens.colors.surface },
+  viewContainer: { flex: 1, minHeight: 0 },
+  chartSkeleton: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Orderbook wrapper ──
+  obWrap: { flex: 1 },
+  obOutcomeTabs: {
+    flexDirection: 'row',
+    gap: 16,
+    paddingBottom: 6,
+  },
+  obOutcomeTab: {
+    paddingVertical: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  obOutcomeTabActive: {
+    borderBottomColor: semantic.text.accent,
+  },
+  obOutcomeTabText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 0.5,
+    color: semantic.text.faint,
+  },
+  obOutcomeTabTextActive: { color: semantic.text.dim },
+
+  // ── Soft zone ──
+  softZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: tokens.colors.ground,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
+  dragHandle: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandlePill: {
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: semantic.text.faint,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: semantic.predict.rowBorderSoft,
+    marginHorizontal: 20,
+  },
+
+  // ── Selection rows ──
+  oddsSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  selHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 2,
+  },
+  selHeaderLabel: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1,
+    color: semantic.text.dim,
+  },
+  selHeaderHints: {
+    flexDirection: 'row',
+    gap: 32,
+  },
+  selHintYes: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: semantic.sentiment.positive,
+  },
+  selHintNo: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: semantic.sentiment.negative,
+  },
+  selRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 9,
+  },
+  selRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: semantic.predict.rowBorderSoft,
+  },
+  selInfo: { flex: 1, minWidth: 0 },
+  selName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: semantic.text.primary,
+  },
+  selVol: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.dim,
+    marginTop: 1,
+  },
+  selBtns: { flexDirection: 'row', gap: 8, flexShrink: 0 },
+  selBtn: {
+    width: 58,
+    height: 42,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  selBtnYes: { backgroundColor: semantic.predict.outcomeYesBg },
+  selBtnNo: { backgroundColor: semantic.predict.outcomeNoBg },
+  selBtnYesSelected: {
+    backgroundColor: 'rgba(74,140,111,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.35)',
+  },
+  selBtnNoSelected: {
+    backgroundColor: 'rgba(217,83,79,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.35)',
+  },
+  selBtnYesPct: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
+    color: semantic.sentiment.positive,
+    lineHeight: 14,
+  },
+  selBtnYesLabel: {
+    fontFamily: 'monospace',
+    fontSize: 6.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(74,140,111,0.55)',
+  },
+  selBtnNoPct: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
+    color: semantic.sentiment.negative,
+    lineHeight: 14,
+  },
+  selBtnNoLabel: {
+    fontFamily: 'monospace',
+    fontSize: 6.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(217,83,79,0.45)',
   },
 });

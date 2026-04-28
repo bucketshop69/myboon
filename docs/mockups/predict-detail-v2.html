@@ -8,27 +8,31 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
 
     :root {
-      --bg0: #080806;
-      --bg1: #0f0f0c;
-      --bg2: #141410;
-      --bg3: #1a1a15;
-      --bg4: #21211a;
-      --bg5: #292920;
-      --border0: rgba(255,255,255,0.04);
-      --border1: rgba(255,255,255,0.08);
-      --border2: rgba(255,255,255,0.13);
-      --a:  #e8c547;
-      --a2: #c9a630;
-      --a3: rgba(232,197,71,0.12);
-      --a4: rgba(232,197,71,0.06);
-      --pos:  #34c77b;
-      --pos2: rgba(52,199,123,0.12);
-      --neg:  #f4584e;
-      --neg2: rgba(244,88,78,0.10);
-      --hi:  #ede8d5;
-      --mid: #6b6850;
-      --lo:  #35342a;
-      --soft: #1e1d16;
+      /* backgrounds — from semantic.ts / tokens.ts */
+      --bg0: #131209;       /* page bg — darker than screen for phone shell contrast */
+      --bg1: #1d1c15;       /* semantic.background.screen (tokens.backgroundDark) */
+      --bg2: #222318;       /* semantic.background.surface (tokens.ground) */
+      --bg3: #2C2D1F;       /* semantic.background.surfaceRaised (tokens.surface) */
+      --bg4: #333424;       /* semantic.background.lift (tokens.lift) */
+      --bg5: #3b3c2c;
+      --border0: rgba(48,47,32,0.35);   /* semantic.predict.rowBorderSoft */
+      --border1: rgba(208,202,168,0.10);
+      --border2: rgba(208,202,168,0.16);
+      /* accent — muted earthy gold */
+      --a:  #c7b770;        /* tokens.primary */
+      --a2: #8A7A50;        /* tokens.primaryDim */
+      --a3: rgba(199,183,112,0.12);
+      --a4: rgba(199,183,112,0.06);
+      /* pos/neg — subdued viridian & vermillion */
+      --pos:  #4A8C6F;      /* tokens.viridian */
+      --pos2: rgba(74,140,111,0.12);
+      --neg:  #D9534F;      /* tokens.vermillion */
+      --neg2: rgba(217,83,79,0.12);
+      /* text — bone tones */
+      --hi:  #D0CAA8;       /* tokens.bone */
+      --mid: #9b9580;       /* tokens.textDim */
+      --lo:  #5c5a50;       /* tokens.textFaint */
+      --soft: #222318;      /* tokens.ground — same as bg2, darker than surface */
       --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
       --sans: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
     }
@@ -91,11 +95,11 @@
     .phone {
       width: 375px;
       height: 812px;
-      background: var(--bg0);
+      background: var(--bg1);
       border-radius: 50px;
       border: 1px solid var(--border1);
       box-shadow:
-        0 0 0 8px #0b0b09,
+        0 0 0 8px #131209,
         0 0 0 9px rgba(255,255,255,0.04),
         0 60px 100px rgba(0,0,0,0.85);
       overflow: hidden;
@@ -111,7 +115,7 @@
       top: 0; left: 50%;
       transform: translateX(-50%);
       width: 110px; height: 30px;
-      background: #0b0b09;
+      background: #131209;
       border-radius: 0 0 22px 22px;
       z-index: 200;
     }
@@ -146,7 +150,8 @@
       justify-content: space-around;
       padding-top: 11px;
       flex-shrink: 0;
-      position: relative;
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
       z-index: 50;
     }
     .nav-item {
@@ -176,13 +181,13 @@
       width: 4px; height: 4px;
       background: var(--a);
       border-radius: 50%;
-      box-shadow: 0 0 8px rgba(232,197,71,0.6);
+      box-shadow: 0 0 8px rgba(199,183,112,0.6);
       margin-top: -3px;
       animation: dot-pulse 2s ease-in-out infinite;
     }
     @keyframes dot-pulse {
-      0%,100% { box-shadow: 0 0 4px rgba(232,197,71,0.5) }
-      50%      { box-shadow: 0 0 12px rgba(232,197,71,0.9), 0 0 24px rgba(232,197,71,0.4) }
+      0%,100% { box-shadow: 0 0 4px rgba(199,183,112,0.5) }
+      50%      { box-shadow: 0 0 12px rgba(199,183,112,0.9), 0 0 24px rgba(199,183,112,0.4) }
     }
 
     /* ─── HEADER ─── */
@@ -197,7 +202,7 @@
     .back-btn {
       width: 28px; height: 28px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.06);
+      background: var(--bg3);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -235,8 +240,8 @@
       animation: dot-pulse-live 1.2s ease-in-out infinite;
     }
     @keyframes dot-pulse-live {
-      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(244,88,78,0.5) }
-      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(244,88,78,0.9) }
+      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(217,83,79,0.5) }
+      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(217,83,79,0.9) }
     }
     .header-end {
       font-family: var(--mono);
@@ -247,7 +252,7 @@
     .profile-avatar-ring {
       width: 26px; height: 26px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #e8c547 0%, #34c77b 100%);
+      background: linear-gradient(135deg, #c7b770 0%, #4A8C6F 100%);
       display: flex; align-items: center; justify-content: center;
       cursor: pointer;
       flex-shrink: 0;
@@ -274,71 +279,144 @@
       padding: 0 20px;
       position: relative;
       min-height: 0;
+      padding-bottom: 68px; /* space for nav */
     }
 
-    .chart-price-block {
-      padding: 8px 0 0;
-    }
-    .chart-price {
-      font-family: var(--mono);
-      font-size: 38px;
-      font-weight: 700;
-      color: var(--hi);
-      line-height: 1;
-      letter-spacing: -2px;
-    }
-    .chart-sub-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 4px;
-    }
-    .chart-change {
-      font-family: var(--mono);
-      font-size: 11px;
-    }
-    .chart-change.up { color: var(--pos) }
-    .chart-change.down { color: var(--neg) }
-    .chart-tag {
-      font-family: var(--mono);
-      font-size: 8px;
-      color: var(--lo);
-    }
-    .refresh-dot {
-      display: inline-block;
-      width: 4px; height: 4px;
-      border-radius: 50%;
-      background: var(--pos);
-      animation: dot-pulse 2s ease-in-out infinite;
-      margin-right: 3px;
-    }
 
     .chart-range-row {
       display: flex;
+      align-items: center;
       gap: 4px;
       padding: 10px 0 6px;
     }
+    .chart-toggle-icons {
+      display: flex;
+      gap: 4px;
+      margin-left: auto;
+    }
+    .chart-toggle-btn {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: transparent;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--lo);
+      transition: all 0.15s;
+    }
+    .chart-toggle-btn.active {
+      background: var(--bg3);
+      color: var(--hi);
+    }
+    .chart-toggle-btn svg { width: 14px; height: 14px }
+
+    /* ─── ORDER BOOK ─── */
+    .orderbook {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      font-family: var(--mono);
+      font-size: 9px;
+      overflow: hidden;
+    }
+    .orderbook.active { display: flex }
+    .chart-canvas.active { display: flex }
+    .chart-canvas:not(.active) { display: none }
+
+    .ob-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      padding: 6px 0 4px;
+      color: var(--mid);
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .ob-header span:nth-child(2) { text-align: center }
+    .ob-header span:last-child { text-align: right }
+
+    .ob-asks, .ob-bids {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ob-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      padding: 3px 0;
+      position: relative;
+      align-items: center;
+      z-index: 0;
+    }
+    .ob-row .ob-price { font-weight: 700; font-size: 10px; position: relative; z-index: 1 }
+    .ob-row .ob-shares { text-align: center; color: var(--mid); font-size: 10px; position: relative; z-index: 1 }
+    .ob-row .ob-total { text-align: right; color: var(--mid); font-size: 10px; position: relative; z-index: 1 }
+    .ob-row.ask .ob-price { color: var(--neg) }
+    .ob-row.bid .ob-price { color: var(--pos) }
+
+    /* depth fill behind rows */
+    .ob-row::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0; right: 0;
+      border-radius: 3px;
+      z-index: -1;
+    }
+    .ob-row.ask::before { background: rgba(217,83,79,0.08); width: var(--depth, 50%) }
+    .ob-row.bid::before { background: rgba(74,140,111,0.08); width: var(--depth, 50%) }
+
+    .ob-spread {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-top: 1px solid var(--border0);
+      border-bottom: 1px solid var(--border0);
+      margin: 2px 0;
+    }
+    .ob-spread-label {
+      font-size: 8px;
+      color: var(--mid);
+    }
+    .ob-spread-val {
+      font-size: 9px;
+      color: var(--hi);
+    }
+
     .range-chip {
       font-family: var(--mono);
-      font-size: 7.5px;
+      font-size: 8px;
       letter-spacing: 1px;
-      padding: 3px 10px;
+      padding: 8px 14px;
       border-radius: 20px;
       color: var(--lo);
       background: transparent;
       cursor: pointer;
       border: none;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
     }
     .range-chip.active {
-      background: rgba(255,255,255,0.06);
+      background: var(--bg3);
       color: var(--hi);
+    }
+
+    /* shared container for chart + orderbook */
+    .view-container {
+      flex: 1;
+      min-height: 0;
+      position: relative;
     }
 
     /* chart canvas — no borders, just lines */
     .chart-canvas {
-      flex: 1;
-      min-height: 120px;
-      position: relative;
+      position: absolute;
+      inset: 0;
     }
     .chart-canvas svg {
       width: 100%;
@@ -408,18 +486,41 @@
     .soft-zone {
       background: var(--soft);
       border-radius: 24px 24px 0 0;
-      flex-shrink: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      position: relative;
-      z-index: 45; /* above numpad so odds stay visible */
+      /* pinned to bottom, grows upward over chart */
+      position: absolute;
+      left: 0; right: 0;
+      bottom: 68px; /* above nav */
+      z-index: 45;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* drag handle pill — universal bottom-sheet affordance */
+    .drag-handle {
+      display: flex;
+      justify-content: center;
+      padding: 10px 0 2px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .drag-handle-pill {
+      width: 32px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--lo);
+      transition: background 0.15s, width 0.15s;
+    }
+    .drag-handle:active .drag-handle-pill {
+      background: var(--mid);
+      width: 40px;
     }
 
     /* stats strip — seamless in the soft zone */
     .stats-strip {
       display: flex;
-      padding: 16px 20px 12px;
+      padding: 8px 20px 12px;
     }
     .stats-strip-item {
       flex: 1;
@@ -473,10 +574,10 @@
       transition: all 0.15s;
     }
     .bn-btn:active { transform: scale(0.97) }
-    .bn-btn.yes { background: rgba(52,199,123,0.12) }
-    .bn-btn.no  { background: rgba(244,88,78,0.10) }
-    .bn-btn.yes.selected { background: rgba(52,199,123,0.22); box-shadow: 0 0 0 1px rgba(52,199,123,0.3) }
-    .bn-btn.no.selected  { background: rgba(244,88,78,0.18); box-shadow: 0 0 0 1px rgba(244,88,78,0.3) }
+    .bn-btn.yes { background: rgba(74,140,111,0.14) }
+    .bn-btn.no  { background: rgba(217,83,79,0.12) }
+    .bn-btn.yes.selected { background: rgba(74,140,111,0.25); box-shadow: 0 0 0 1px rgba(74,140,111,0.35) }
+    .bn-btn.no.selected  { background: rgba(217,83,79,0.20); box-shadow: 0 0 0 1px rgba(217,83,79,0.35) }
     .bn-btn-price {
       font-family: var(--mono);
       font-size: 18px;
@@ -491,8 +592,8 @@
       letter-spacing: 1.5px;
       text-transform: uppercase;
     }
-    .bn-btn.yes .bn-btn-label { color: rgba(52,199,123,0.5) }
-    .bn-btn.no .bn-btn-label  { color: rgba(244,88,78,0.4) }
+    .bn-btn.yes .bn-btn-label { color: rgba(74,140,111,0.55) }
+    .bn-btn.no .bn-btn-label  { color: rgba(217,83,79,0.45) }
 
     /* sport selections */
     .sel-row {
@@ -515,9 +616,9 @@
       color: var(--mid);
       margin-top: 1px;
     }
-    .sel-btns { display: flex; gap: 4px; flex-shrink: 0 }
+    .sel-btns { display: flex; gap: 8px; flex-shrink: 0 }
     .sel-btn {
-      width: 56px; height: 38px;
+      width: 58px; height: 42px;
       border-radius: 10px;
       display: flex;
       flex-direction: column;
@@ -529,10 +630,10 @@
       transition: all 0.12s;
     }
     .sel-btn:active { transform: scale(0.96) }
-    .sel-btn.yes-btn { background: rgba(52,199,123,0.12) }
-    .sel-btn.no-btn  { background: rgba(244,88,78,0.10) }
-    .sel-btn.yes-btn.selected { background: rgba(52,199,123,0.22); box-shadow: 0 0 0 1px rgba(52,199,123,0.3) }
-    .sel-btn.no-btn.selected  { background: rgba(244,88,78,0.18); box-shadow: 0 0 0 1px rgba(244,88,78,0.3) }
+    .sel-btn.yes-btn { background: rgba(74,140,111,0.14) }
+    .sel-btn.no-btn  { background: rgba(217,83,79,0.12) }
+    .sel-btn.yes-btn.selected { background: rgba(74,140,111,0.25); box-shadow: 0 0 0 1px rgba(74,140,111,0.35) }
+    .sel-btn.no-btn.selected  { background: rgba(217,83,79,0.20); box-shadow: 0 0 0 1px rgba(217,83,79,0.35) }
     .sel-btn-pct {
       font-family: var(--mono);
       font-size: 12px;
@@ -547,8 +648,8 @@
       letter-spacing: 0.8px;
       text-transform: uppercase;
     }
-    .sel-btn.yes-btn .sel-btn-label { color: rgba(52,199,123,0.5) }
-    .sel-btn.no-btn .sel-btn-label  { color: rgba(244,88,78,0.4) }
+    .sel-btn.yes-btn .sel-btn-label { color: rgba(74,140,111,0.55) }
+    .sel-btn.no-btn .sel-btn-label  { color: rgba(217,83,79,0.45) }
 
     .sel-header {
       display: flex;
@@ -573,25 +674,19 @@
     .sel-header-hints .h-no  { color: var(--neg) }
 
     /* ══════════════════════════════════
-       NUMPAD — z-index layer that rises
-       up from behind the soft-zone,
-       covering the chart. Not a modal.
+       NUMPAD — expands in-place below odds.
+       Soft-zone grows over chart (z-index),
+       chart stays put underneath.
     ══════════════════════════════════ */
     .numpad-zone {
-      position: absolute;
-      left: 0; right: 0;
-      bottom: 68px; /* above nav bar */
-      z-index: 40;
-      background: var(--soft);
-      border-radius: 24px 24px 0 0;
-      transform: translateY(100%);
-      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       padding: 0 20px;
-      pointer-events: none;
+      background: var(--soft);
     }
     .numpad-zone.open {
-      transform: translateY(0);
-      pointer-events: auto;
+      max-height: 500px;
     }
 
     .numpad-inner {
@@ -625,11 +720,11 @@
     }
     .numpad-quick {
       flex: 1;
-      height: 26px;
-      background: rgba(255,255,255,0.04);
+      height: 36px;
+      background: var(--bg4);
       border-radius: 8px;
       font-family: var(--mono);
-      font-size: 9px;
+      font-size: 10px;
       color: var(--mid);
       display: flex;
       align-items: center;
@@ -638,7 +733,7 @@
       border: none;
       transition: all 0.1s;
     }
-    .numpad-quick:active { background: rgba(255,255,255,0.08); color: var(--hi) }
+    .numpad-quick:active { background: var(--bg5); color: var(--hi) }
 
     .numpad-grid {
       display: grid;
@@ -648,7 +743,7 @@
     .numpad-key {
       height: 44px;
       border-radius: 12px;
-      background: rgba(255,255,255,0.04);
+      background: var(--bg4);
       border: none;
       display: flex;
       align-items: center;
@@ -662,7 +757,7 @@
       -webkit-tap-highlight-color: transparent;
     }
     .numpad-key:active {
-      background: rgba(255,255,255,0.10);
+      background: var(--bg5);
       transform: scale(0.95);
     }
     .numpad-key.del {
@@ -697,7 +792,7 @@
       font-family: var(--sans);
       font-size: 14px;
       font-weight: 700;
-      color: #0b0b09;
+      color: #131209;
       cursor: pointer;
       margin-top: 6px;
       transition: opacity 0.12s;
@@ -705,6 +800,38 @@
     .numpad-confirm:active { opacity: 0.85 }
     .numpad-confirm.yes { background: var(--pos) }
     .numpad-confirm.no  { background: var(--neg) }
+
+    /* ─── Y-AXIS LABELS ─── */
+    .chart-y-axis {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 4px 0;
+      pointer-events: none;
+    }
+    .chart-y-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      color: var(--lo);
+      line-height: 1;
+    }
+
+    /* ─── REDUCED MOTION ─── */
+    @media (prefers-reduced-motion: reduce) {
+      .live-badge-dot,
+      .nav-dot {
+        animation: none;
+      }
+      .numpad-zone,
+      .soft-zone,
+      .sel-btn,
+      .bn-btn,
+      .numpad-key {
+        transition: none;
+      }
+    }
 
   </style>
 </head>
@@ -730,9 +857,9 @@
               <div class="signal-bar" style="height:11px"></div>
             </div>
             <svg width="14" height="10" fill="none" style="margin-left:3px">
-              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
-              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
-              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#D0CAA8" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#D0CAA8"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#D0CAA8"/>
             </svg>
           </div>
         </div>
@@ -740,7 +867,7 @@
         <!-- header -->
         <div class="detail-header">
           <div class="back-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
           <span class="detail-header-title">China invade Taiwan by 2026?</span>
           <span class="header-end">Dec 31</span>
@@ -748,52 +875,76 @@
 
         <!-- DARK ZONE — chart -->
         <div class="dark-zone">
-          <div class="chart-price-block">
-            <div class="chart-price" style="color:var(--neg)">7<span style="font-size:22px">%</span></div>
-            <div class="chart-sub-row">
-              <span class="chart-change down">&#9660; 1.2%</span>
-              <span class="chart-tag"><span class="refresh-dot"></span>8s ago</span>
-            </div>
-          </div>
-
           <div class="chart-range-row">
             <div class="range-chip active">1D</div>
             <div class="range-chip">1W</div>
             <div class="range-chip">1M</div>
             <div class="range-chip">ALL</div>
-          </div>
-
-          <!-- multi-line chart: Yes (green) + No (red/gray) overlaid -->
-          <div class="chart-canvas">
-            <!-- legend at end of lines -->
-            <div class="chart-legend" style="right:8px;top:12px">
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background:var(--neg)"></div>
-                <span class="chart-legend-name" style="color:var(--neg)">Yes</span>
-                <span class="chart-legend-pct" style="color:var(--neg)">7%</span>
+            <div class="chart-toggle-icons">
+              <!-- line chart icon -->
+              <div class="chart-toggle-btn active" onclick="toggleView(this,'binary')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 8 13 13 9 9 2 16"/></svg>
               </div>
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background:var(--pos)"></div>
-                <span class="chart-legend-name" style="color:var(--pos)">No</span>
-                <span class="chart-legend-pct" style="color:var(--pos)">93%</span>
+              <!-- order book icon -->
+              <div class="chart-toggle-btn" onclick="toggleView(this,'binary')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="14" y2="6"/><line x1="3" y1="10" x2="11" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/><line x1="3" y1="18" x2="13" y2="18"/></svg>
               </div>
             </div>
-            <svg viewBox="0 0 343 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- No line (93%, near top — green, dominant) -->
-              <path d="M0 22 C20 24, 50 20, 80 18 C110 16, 140 20, 170 22 C200 18, 230 16, 260 20 C280 22, 310 18, 343 16"
-                stroke="var(--pos)" stroke-width="1.8" fill="none" stroke-linejoin="round" opacity="0.7"/>
-              <!-- Yes line (7%, near bottom — red, low) -->
-              <path d="M0 138 C20 136, 50 140, 80 142 C110 144, 140 140, 170 138 C200 142, 230 144, 260 140 C280 138, 310 142, 343 144"
-                stroke="var(--neg)" stroke-width="1.8" fill="none" stroke-linejoin="round" opacity="0.7"/>
-              <!-- current dots -->
-              <circle cx="343" cy="16" r="3" fill="var(--pos)"/>
-              <circle cx="343" cy="144" r="3" fill="var(--neg)"/>
-            </svg>
+          </div>
+
+          <div class="view-container">
+            <!-- multi-line chart: Yes (green) + No (red/gray) overlaid -->
+            <div class="chart-canvas active" id="chart-binary">
+              <div class="chart-y-axis">
+                <span class="chart-y-label">100%</span>
+                <span class="chart-y-label">50%</span>
+                <span class="chart-y-label">0%</span>
+              </div>
+              <svg viewBox="0 0 343 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- No line (93%, near top — green, dominant) -->
+                <path d="M0 22 C20 24, 50 20, 80 18 C110 16, 140 20, 170 22 C200 18, 230 16, 260 20 C280 22, 310 18, 343 16"
+                  stroke="var(--pos)" stroke-width="1.8" fill="none" stroke-linejoin="round" opacity="0.7"/>
+                <!-- Yes line (7%, near bottom — red, low) -->
+                <path d="M0 138 C20 136, 50 140, 80 142 C110 144, 140 140, 170 138 C200 142, 230 144, 260 140 C280 138, 310 142, 343 144"
+                  stroke="var(--neg)" stroke-width="1.8" fill="none" stroke-linejoin="round" opacity="0.7"/>
+                <!-- current dots -->
+                <circle cx="343" cy="16" r="3" fill="var(--pos)"/>
+                <circle cx="343" cy="144" r="3" fill="var(--neg)"/>
+              </svg>
+            </div>
+
+            <!-- order book (YES side) -->
+            <div class="orderbook" id="ob-binary">
+              <div class="ob-header">
+                <span>Price</span>
+                <span>Shares</span>
+                <span>Total</span>
+              </div>
+              <div class="ob-asks">
+                <div class="ob-row ask" style="--depth:40%"><div class="ob-price">5.8&#162;</div><div class="ob-shares">200.00</div><div class="ob-total">$132.50</div></div>
+                <div class="ob-row ask" style="--depth:35%"><div class="ob-price">5.7&#162;</div><div class="ob-shares">100.00</div><div class="ob-total">$120.90</div></div>
+                <div class="ob-row ask" style="--depth:80%"><div class="ob-price">5.0&#162;</div><div class="ob-shares">2,121.00</div><div class="ob-total">$115.20</div></div>
+                <div class="ob-row ask" style="--depth:20%"><div class="ob-price">4.6&#162;</div><div class="ob-shares">199.00</div><div class="ob-total">$9.15</div></div>
+              </div>
+              <div class="ob-spread">
+                <span class="ob-spread-label">Last: 4.0&#162;</span>
+                <span class="ob-spread-val">Spread: 0.5&#162;</span>
+              </div>
+              <div class="ob-bids">
+                <div class="ob-row bid" style="--depth:25%"><div class="ob-price">4.1&#162;</div><div class="ob-shares">255.00</div><div class="ob-total">$10.46</div></div>
+                <div class="ob-row bid" style="--depth:70%"><div class="ob-price">4.0&#162;</div><div class="ob-shares">1,030.00</div><div class="ob-total">$51.66</div></div>
+                <div class="ob-row bid" style="--depth:30%"><div class="ob-price">3.9&#162;</div><div class="ob-shares">200.00</div><div class="ob-total">$59.46</div></div>
+                <div class="ob-row bid" style="--depth:30%"><div class="ob-price">3.8&#162;</div><div class="ob-shares">200.00</div><div class="ob-total">$67.06</div></div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- SOFT ZONE — rises from below -->
         <div class="soft-zone" id="soft-binary">
+          <div class="drag-handle" onclick="collapseNumpad('binary')">
+            <div class="drag-handle-pill"></div>
+          </div>
           <div class="stats-strip">
             <div class="stats-strip-item">
               <div class="stats-strip-val">$335K</div>
@@ -824,48 +975,47 @@
             </div>
           </div>
 
-        </div>
-
-        <!-- NUMPAD — absolute layer, rises over chart -->
-        <div class="numpad-zone" id="numpad-binary">
-          <div class="numpad-inner">
-            <div class="numpad-amount-display">
-              <div class="numpad-currency">USDC</div>
-              <div class="numpad-amount-val" id="np-b-amount">50</div>
+          <!-- numpad expands here -->
+          <div class="numpad-zone" id="numpad-binary">
+            <div class="numpad-inner">
+              <div class="numpad-amount-display">
+                <div class="numpad-currency">USDC</div>
+                <div class="numpad-amount-val" id="np-b-amount">50</div>
+              </div>
+              <div class="numpad-quick-row">
+                <div class="numpad-quick" onclick="npSet('b','10')">$10</div>
+                <div class="numpad-quick" onclick="npSet('b','25')">$25</div>
+                <div class="numpad-quick" onclick="npSet('b','50')">$50</div>
+                <div class="numpad-quick" onclick="npSet('b','100')">$100</div>
+              </div>
+              <div class="numpad-grid">
+                <div class="numpad-key" onclick="npKey('b','1')">1</div>
+                <div class="numpad-key" onclick="npKey('b','2')">2</div>
+                <div class="numpad-key" onclick="npKey('b','3')">3</div>
+                <div class="numpad-key" onclick="npKey('b','4')">4</div>
+                <div class="numpad-key" onclick="npKey('b','5')">5</div>
+                <div class="numpad-key" onclick="npKey('b','6')">6</div>
+                <div class="numpad-key" onclick="npKey('b','7')">7</div>
+                <div class="numpad-key" onclick="npKey('b','8')">8</div>
+                <div class="numpad-key" onclick="npKey('b','9')">9</div>
+                <div class="numpad-key" onclick="npKey('b','.')">.</div>
+                <div class="numpad-key" onclick="npKey('b','0')">0</div>
+                <div class="numpad-key del" onclick="npDel('b')">&#9003;</div>
+              </div>
+              <div class="numpad-footer">
+                <span class="numpad-payout-label">Potential payout</span>
+                <span class="numpad-payout-val" id="np-b-payout">$714.29</span>
+              </div>
+              <button class="numpad-confirm yes" id="np-b-confirm" onclick="tapOdd('binary',null,null,null)">Confirm Yes &#8212; $50</button>
             </div>
-            <div class="numpad-quick-row">
-              <div class="numpad-quick" onclick="npSet('b','10')">$10</div>
-              <div class="numpad-quick" onclick="npSet('b','25')">$25</div>
-              <div class="numpad-quick" onclick="npSet('b','50')">$50</div>
-              <div class="numpad-quick" onclick="npSet('b','100')">$100</div>
-            </div>
-            <div class="numpad-grid">
-              <div class="numpad-key" onclick="npKey('b','1')">1</div>
-              <div class="numpad-key" onclick="npKey('b','2')">2</div>
-              <div class="numpad-key" onclick="npKey('b','3')">3</div>
-              <div class="numpad-key" onclick="npKey('b','4')">4</div>
-              <div class="numpad-key" onclick="npKey('b','5')">5</div>
-              <div class="numpad-key" onclick="npKey('b','6')">6</div>
-              <div class="numpad-key" onclick="npKey('b','7')">7</div>
-              <div class="numpad-key" onclick="npKey('b','8')">8</div>
-              <div class="numpad-key" onclick="npKey('b','9')">9</div>
-              <div class="numpad-key" onclick="npKey('b','.')">.</div>
-              <div class="numpad-key" onclick="npKey('b','0')">0</div>
-              <div class="numpad-key del" onclick="npDel('b')">&#9003;</div>
-            </div>
-            <div class="numpad-footer">
-              <span class="numpad-payout-label">Potential payout</span>
-              <span class="numpad-payout-val" id="np-b-payout">$714.29</span>
-            </div>
-            <button class="numpad-confirm yes" id="np-b-confirm" onclick="tapOdd('binary',null,null,null)">Confirm Yes &#8212; $50</button>
           </div>
         </div>
 
         <div class="nav-bar">
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
-          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
+          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#c7b770" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
         </div>
       </div>
     </div>
@@ -887,9 +1037,9 @@
               <div class="signal-bar" style="height:11px"></div>
             </div>
             <svg width="14" height="10" fill="none" style="margin-left:3px">
-              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#ede8d5" stroke-width="1.2"/>
-              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#ede8d5"/>
-              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#ede8d5"/>
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#D0CAA8" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#D0CAA8"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#D0CAA8"/>
             </svg>
           </div>
         </div>
@@ -897,7 +1047,7 @@
         <!-- header -->
         <div class="detail-header">
           <div class="back-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
           <span class="detail-header-title">Liverpool vs Crystal Palace</span>
           <div class="live-badge">
@@ -907,62 +1057,80 @@
 
         <!-- DARK ZONE — chart -->
         <div class="dark-zone">
-          <div class="chart-price-block">
-            <div class="chart-price" style="color:var(--pos)">60.5<span style="font-size:22px">%</span></div>
-            <div class="chart-sub-row">
-              <span class="chart-change up">&#9650; 4.1%</span>
-              <span class="chart-tag">Liverpool</span>
-              <span class="chart-tag" style="margin-left:auto"><span class="refresh-dot"></span>8s ago</span>
-            </div>
-          </div>
-
           <div class="chart-range-row">
             <div class="range-chip active">1D</div>
             <div class="range-chip">1W</div>
             <div class="range-chip">1M</div>
             <div class="range-chip">ALL</div>
-          </div>
-
-          <!-- 3-way chart: all outcomes overlaid -->
-          <div class="chart-canvas">
-            <!-- legend floating -->
-            <div class="chart-legend" style="right:8px;top:6px">
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background:var(--pos)"></div>
-                <span class="chart-legend-name" style="color:var(--pos)">Liverpool</span>
-                <span class="chart-legend-pct" style="color:var(--pos)">60.5%</span>
+            <div class="chart-toggle-icons">
+              <!-- line chart icon -->
+              <div class="chart-toggle-btn active" onclick="toggleView(this,'sport')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 8 13 13 9 9 2 16"/></svg>
               </div>
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background:var(--a)"></div>
-                <span class="chart-legend-name" style="color:var(--a)">Draw</span>
-                <span class="chart-legend-pct" style="color:var(--a)">21.5%</span>
-              </div>
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background:var(--neg)"></div>
-                <span class="chart-legend-name" style="color:var(--neg)">C. Palace</span>
-                <span class="chart-legend-pct" style="color:var(--neg)">17.5%</span>
+              <!-- order book icon -->
+              <div class="chart-toggle-btn" onclick="toggleView(this,'sport')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="14" y2="6"/><line x1="3" y1="10" x2="11" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/><line x1="3" y1="18" x2="13" y2="18"/></svg>
               </div>
             </div>
-            <svg viewBox="0 0 343 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Liverpool (green, 60.5% — starts ~50%, rises) -->
-              <path d="M0 80 C15 78, 30 76, 50 74 C70 72, 90 75, 110 70 C130 66, 150 68, 170 62 C190 56, 210 52, 230 48 C250 44, 270 40, 290 36 C310 34, 330 30, 343 28"
-                stroke="var(--pos)" stroke-width="2" fill="none" stroke-linejoin="round"/>
-              <!-- Draw (gold, 21.5% — relatively flat middle) -->
-              <path d="M0 112 C15 110, 30 114, 50 112 C70 116, 90 114, 110 118 C130 116, 150 120, 170 118 C190 120, 210 122, 230 120 C250 122, 270 120, 290 124 C310 122, 330 124, 343 122"
-                stroke="var(--a)" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity="0.7"/>
-              <!-- C. Palace (red, 17.5% — starts higher, drops) -->
-              <path d="M0 96 C15 98, 30 100, 50 102 C70 100, 90 104, 110 106 C130 108, 150 106, 170 110 C190 112, 210 114, 230 116 C250 118, 270 120, 290 126 C310 128, 330 130, 343 132"
-                stroke="var(--neg)" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity="0.7"/>
-              <!-- dots at end -->
-              <circle cx="343" cy="28" r="3" fill="var(--pos)"/>
-              <circle cx="343" cy="122" r="2.5" fill="var(--a)" opacity="0.7"/>
-              <circle cx="343" cy="132" r="2.5" fill="var(--neg)" opacity="0.7"/>
-            </svg>
+          </div>
+
+          <div class="view-container">
+            <!-- 3-way chart: all outcomes overlaid -->
+            <div class="chart-canvas active" id="chart-sport">
+              <div class="chart-y-axis">
+                <span class="chart-y-label">100%</span>
+                <span class="chart-y-label">50%</span>
+                <span class="chart-y-label">0%</span>
+              </div>
+              <svg viewBox="0 0 343 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Liverpool (green, 60.5% — starts ~50%, rises) -->
+                <path d="M0 80 C15 78, 30 76, 50 74 C70 72, 90 75, 110 70 C130 66, 150 68, 170 62 C190 56, 210 52, 230 48 C250 44, 270 40, 290 36 C310 34, 330 30, 343 28"
+                  stroke="var(--pos)" stroke-width="2" fill="none" stroke-linejoin="round"/>
+                <!-- Draw (gold, 21.5% — relatively flat middle) -->
+                <path d="M0 112 C15 110, 30 114, 50 112 C70 116, 90 114, 110 118 C130 116, 150 120, 170 118 C190 120, 210 122, 230 120 C250 122, 270 120, 290 124 C310 122, 330 124, 343 122"
+                  stroke="var(--a)" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity="0.7"/>
+                <!-- C. Palace (red, 17.5% — starts higher, drops) -->
+                <path d="M0 96 C15 98, 30 100, 50 102 C70 100, 90 104, 110 106 C130 108, 150 106, 170 110 C190 112, 210 114, 230 116 C250 118, 270 120, 290 126 C310 128, 330 130, 343 132"
+                  stroke="var(--neg)" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity="0.7"/>
+                <!-- dots at end -->
+                <circle cx="343" cy="28" r="3" fill="var(--pos)"/>
+                <circle cx="343" cy="122" r="2.5" fill="var(--a)" opacity="0.7"/>
+                <circle cx="343" cy="132" r="2.5" fill="var(--neg)" opacity="0.7"/>
+              </svg>
+            </div>
+
+            <!-- order book (Liverpool selected) -->
+            <div class="orderbook" id="ob-sport">
+              <div class="ob-header">
+                <span>Price</span>
+                <span>Shares</span>
+                <span>Total</span>
+              </div>
+              <div class="ob-asks">
+                <div class="ob-row ask" style="--depth:45%"><div class="ob-price">63.2&#162;</div><div class="ob-shares">450.00</div><div class="ob-total">$284.40</div></div>
+                <div class="ob-row ask" style="--depth:60%"><div class="ob-price">62.5&#162;</div><div class="ob-shares">800.00</div><div class="ob-total">$500.00</div></div>
+                <div class="ob-row ask" style="--depth:90%"><div class="ob-price">62.0&#162;</div><div class="ob-shares">1,200.00</div><div class="ob-total">$744.00</div></div>
+                <div class="ob-row ask" style="--depth:30%"><div class="ob-price">61.5&#162;</div><div class="ob-shares">350.00</div><div class="ob-total">$215.25</div></div>
+              </div>
+              <div class="ob-spread">
+                <span class="ob-spread-label">Last: 61.0&#162;</span>
+                <span class="ob-spread-val">Spread: 0.5&#162;</span>
+              </div>
+              <div class="ob-bids">
+                <div class="ob-row bid" style="--depth:95%"><div class="ob-price">61.0&#162;</div><div class="ob-shares">1,500.00</div><div class="ob-total">$915.00</div></div>
+                <div class="ob-row bid" style="--depth:50%"><div class="ob-price">60.5&#162;</div><div class="ob-shares">620.00</div><div class="ob-total">$375.10</div></div>
+                <div class="ob-row bid" style="--depth:70%"><div class="ob-price">60.0&#162;</div><div class="ob-shares">900.00</div><div class="ob-total">$540.00</div></div>
+                <div class="ob-row bid" style="--depth:35%"><div class="ob-price">59.5&#162;</div><div class="ob-shares">400.00</div><div class="ob-total">$238.00</div></div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- SOFT ZONE -->
         <div class="soft-zone" id="soft-sport">
+          <div class="drag-handle" onclick="collapseNumpad('sport')">
+            <div class="drag-handle-pill"></div>
+          </div>
           <div class="stats-strip">
             <div class="stats-strip-item">
               <div class="stats-strip-val">$822K</div>
@@ -1038,48 +1206,47 @@
             </div>
           </div>
 
-        </div>
-
-        <!-- NUMPAD — absolute layer, rises over chart -->
-        <div class="numpad-zone" id="numpad-sport">
-          <div class="numpad-inner">
-            <div class="numpad-amount-display">
-              <div class="numpad-currency">USDC</div>
-              <div class="numpad-amount-val" id="np-s-amount">50</div>
+          <!-- numpad expands here -->
+          <div class="numpad-zone" id="numpad-sport">
+            <div class="numpad-inner">
+              <div class="numpad-amount-display">
+                <div class="numpad-currency">USDC</div>
+                <div class="numpad-amount-val" id="np-s-amount">50</div>
+              </div>
+              <div class="numpad-quick-row">
+                <div class="numpad-quick" onclick="npSet('s','10')">$10</div>
+                <div class="numpad-quick" onclick="npSet('s','25')">$25</div>
+                <div class="numpad-quick" onclick="npSet('s','50')">$50</div>
+                <div class="numpad-quick" onclick="npSet('s','100')">$100</div>
+              </div>
+              <div class="numpad-grid">
+                <div class="numpad-key" onclick="npKey('s','1')">1</div>
+                <div class="numpad-key" onclick="npKey('s','2')">2</div>
+                <div class="numpad-key" onclick="npKey('s','3')">3</div>
+                <div class="numpad-key" onclick="npKey('s','4')">4</div>
+                <div class="numpad-key" onclick="npKey('s','5')">5</div>
+                <div class="numpad-key" onclick="npKey('s','6')">6</div>
+                <div class="numpad-key" onclick="npKey('s','7')">7</div>
+                <div class="numpad-key" onclick="npKey('s','8')">8</div>
+                <div class="numpad-key" onclick="npKey('s','9')">9</div>
+                <div class="numpad-key" onclick="npKey('s','.')">.</div>
+                <div class="numpad-key" onclick="npKey('s','0')">0</div>
+                <div class="numpad-key del" onclick="npDel('s')">&#9003;</div>
+              </div>
+              <div class="numpad-footer">
+                <span class="numpad-payout-label">Potential payout</span>
+                <span class="numpad-payout-val" id="np-s-payout">$81.97</span>
+              </div>
+              <button class="numpad-confirm yes" id="np-s-confirm" onclick="tapOdd('sport',null,null,null)">Confirm Yes &#8212; $50</button>
             </div>
-            <div class="numpad-quick-row">
-              <div class="numpad-quick" onclick="npSet('s','10')">$10</div>
-              <div class="numpad-quick" onclick="npSet('s','25')">$25</div>
-              <div class="numpad-quick" onclick="npSet('s','50')">$50</div>
-              <div class="numpad-quick" onclick="npSet('s','100')">$100</div>
-            </div>
-            <div class="numpad-grid">
-              <div class="numpad-key" onclick="npKey('s','1')">1</div>
-              <div class="numpad-key" onclick="npKey('s','2')">2</div>
-              <div class="numpad-key" onclick="npKey('s','3')">3</div>
-              <div class="numpad-key" onclick="npKey('s','4')">4</div>
-              <div class="numpad-key" onclick="npKey('s','5')">5</div>
-              <div class="numpad-key" onclick="npKey('s','6')">6</div>
-              <div class="numpad-key" onclick="npKey('s','7')">7</div>
-              <div class="numpad-key" onclick="npKey('s','8')">8</div>
-              <div class="numpad-key" onclick="npKey('s','9')">9</div>
-              <div class="numpad-key" onclick="npKey('s','.')">.</div>
-              <div class="numpad-key" onclick="npKey('s','0')">0</div>
-              <div class="numpad-key del" onclick="npDel('s')">&#9003;</div>
-            </div>
-            <div class="numpad-footer">
-              <span class="numpad-payout-label">Potential payout</span>
-              <span class="numpad-payout-val" id="np-s-payout">$81.97</span>
-            </div>
-            <button class="numpad-confirm yes" id="np-s-confirm" onclick="tapOdd('sport',null,null,null)">Confirm Yes &#8212; $50</button>
           </div>
         </div>
 
         <div class="nav-bar">
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
-          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#e8c547" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ede8d5" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
+          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#c7b770" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
         </div>
       </div>
     </div>
@@ -1087,6 +1254,26 @@
   </div>
 
 <script>
+// ─── Chart / Orderbook toggle ───
+function toggleView(btnEl, screen) {
+  var rangeRow = btnEl.closest('.chart-range-row');
+  var toggleBtns = rangeRow.querySelectorAll('.chart-toggle-btn');
+  var chartEl = document.getElementById('chart-' + screen);
+  var obEl = document.getElementById('ob-' + screen);
+  var isChart = btnEl === toggleBtns[0];
+
+  toggleBtns.forEach(function(b) { b.classList.remove('active') });
+  btnEl.classList.add('active');
+
+  if (isChart) {
+    chartEl.classList.add('active');
+    obEl.classList.remove('active');
+  } else {
+    chartEl.classList.remove('active');
+    obEl.classList.add('active');
+  }
+}
+
 var npState = {
   b: { amount: '50', price: 0.07, side: 'yes', open: false, selection: '' },
   s: { amount: '50', price: 0.61, side: 'yes', open: false, selection: '' }
@@ -1134,6 +1321,16 @@ function tapOdd(screen, selection, side, cents) {
 
   npRender(prefix);
   numpadEl.classList.add('open');
+}
+
+function collapseNumpad(screen) {
+  var prefix = screen === 'binary' ? 'b' : 's';
+  var state = npState[prefix];
+  if (!state.open) return;
+  var numpadEl = document.getElementById('numpad-' + screen);
+  numpadEl.classList.remove('open');
+  state.open = false;
+  clearSelected(screen);
 }
 
 function clearSelected(screen) {
