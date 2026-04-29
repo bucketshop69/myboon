@@ -20,6 +20,9 @@ import { useWallet } from '@/hooks/useWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
+import { PerfStrip } from '@/features/predict/profile/PerfStrip';
+import { RedeemableSection } from '@/features/predict/profile/RedeemableSection';
+import { EmptyPortfolio } from '@/features/predict/profile/EmptyPortfolio';
 import { semantic, tokens } from '@/theme';
 
 function truncate(addr: string, start = 6, end = 4): string {
@@ -91,6 +94,7 @@ export default function PredictProfileScreen() {
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
       fetchActivity(gammaAddr).catch(() => []),
     ]);
+    if (__DEV__) console.log('[Profile] portfolio:', JSON.stringify(portfolioData, null, 2));
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
     setTradeHistory(activityData);
@@ -168,22 +172,9 @@ export default function PredictProfileScreen() {
     }
   }, [connected, poly, loadPortfolio]);
 
-  const handleDisable = useCallback(() => {
-    Alert.alert(
-      'Disable Predictions?',
-      'This will remove your derived Polymarket wallet. Your positions are safe on-chain.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disable',
-          style: 'destructive',
-          onPress: () => void poly.disable(),
-        },
-      ],
-    );
-  }, [poly]);
 
   const positions = portfolio?.positions ?? [];
+  const redeemablePositions = portfolio?.redeemablePositions ?? [];
   const portfolioValue = portfolio?.portfolioValue;
   const totalPnl = portfolio?.summary.totalPnl ?? 0;
 
@@ -304,6 +295,9 @@ export default function PredictProfileScreen() {
         {/* ── Enabled: real portfolio ── */}
         {isEnabled && !portfolioLoading && (
           <>
+            {/* Performance strip */}
+            <PerfStrip positions={positions} />
+
             {/* Equity card */}
             <View style={styles.equityCard}>
               <View style={styles.equityRow}>
@@ -400,16 +394,30 @@ export default function PredictProfileScreen() {
                 <Text style={styles.posCount}>{positions.length} active</Text>
               </View>
               {positions.length === 0 && openOrders.length === 0 && (
-                <View style={styles.emptyCard}>
-                  <MaterialIcons name="show-chart" size={24} color={semantic.text.faint} />
-                  <Text style={styles.emptyText}>No positions or orders</Text>
-                </View>
+                <EmptyPortfolio
+                  hasBalance={(cashBalance ?? 0) > 0}
+                  onDeposit={() => setDepositOpen(true)}
+                />
               )}
               {positions.map((p: PortfolioPosition, i: number) => {
                 const pnl = p.cashPnl ?? 0;
                 const isUp = pnl >= 0;
                 return (
-                  <View key={`${p.conditionId}-${p.outcomeIndex}-${i}`} style={styles.posRow}>
+                  <Pressable
+                    key={`${p.conditionId}-${p.outcomeIndex}-${i}`}
+                    style={styles.posRow}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/predict-position/[conditionId]',
+                        params: {
+                          conditionId: p.conditionId,
+                          slug: p.slug,
+                          outcomeIndex: String(p.outcomeIndex),
+                        },
+                      })
+                    }
+                    accessibilityLabel={`View position: ${p.title}`}
+                  >
                     <View
                       style={[
                         styles.sideBadge,
@@ -436,10 +444,14 @@ export default function PredictProfileScreen() {
                         {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
                       </Text>
                     </View>
-                  </View>
+                    <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
+                  </Pressable>
                 );
               })}
             </View>
+
+            {/* Redeemable Positions */}
+            <RedeemableSection positions={redeemablePositions} />
 
             {/* Trade History */}
             {tradeHistory.length > 0 && (
@@ -472,31 +484,6 @@ export default function PredictProfileScreen() {
               </View>
             )}
 
-            {/* Addresses + disable */}
-            <View style={styles.addressesSection}>
-              <Text style={styles.sectionLabel}>ADDRESSES</Text>
-              {solanaAddress && (
-                <View style={styles.addressRow}>
-                  <Text style={styles.chainLabel}>SOL</Text>
-                  <Text style={styles.addressMono}>{truncate(solanaAddress)}</Text>
-                </View>
-              )}
-              {poly.polygonAddress && (
-                <View style={styles.addressRow}>
-                  <Text style={styles.chainLabel}>EOA</Text>
-                  <Text style={styles.addressMono}>{truncate(poly.polygonAddress)}</Text>
-                </View>
-              )}
-              {poly.safeAddress && (
-                <View style={styles.addressRow}>
-                  <Text style={styles.chainLabel}>SAFE</Text>
-                  <Text style={styles.addressMono}>{truncate(poly.safeAddress)}</Text>
-                </View>
-              )}
-              <Pressable onPress={handleDisable} style={styles.disableBtn}>
-                <Text style={styles.disableBtnText}>Disable Predictions</Text>
-              </Pressable>
-            </View>
           </>
         )}
       </ScrollView>
@@ -911,52 +898,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Addresses section
-  addressesSection: {
-    marginHorizontal: tokens.spacing.lg,
-    marginTop: 16,
-    marginBottom: 8,
-    gap: tokens.spacing.sm,
-  },
-  sectionLabel: {
-    fontFamily: 'monospace',
-    fontSize: 7.5,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  chainLabel: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    fontWeight: '700',
-    color: tokens.colors.primary,
-    width: 36,
-  },
-  addressMono: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    color: semantic.text.dim,
-  },
-  disableBtn: {
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    paddingVertical: 8,
-    borderRadius: tokens.radius.sm,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  disableBtnText: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-  },
 
   // Color helpers
   posText: { color: tokens.colors.viridian },

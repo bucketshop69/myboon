@@ -50,8 +50,6 @@ export function usePrivyWallet(): PrivyWalletState {
   const wallet = walletConnected ? solanaWallet.wallets?.[0] ?? null : null;
   const address = wallet?.address ?? null;
 
-  console.log('[PrivyWallet] status:', solanaWallet.status, 'authenticated:', authenticated, 'address:', address);
-
   // Auto-create embedded wallet if authenticated but wallet not yet created.
   // creatingRef stays true after attempt (success or fail) to prevent retry loops.
   const creatingRef = useRef(false);

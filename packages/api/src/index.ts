@@ -967,10 +967,11 @@ app.get('/predict/portfolio/:address', async (c) => {
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    // Fetch value, positions, and profile in parallel
-    const [valueRes, posRes, profileRes] = await Promise.allSettled([
+    // Fetch value, positions, redeemable positions, and profile in parallel
+    const [valueRes, posRes, redeemableRes, profileRes] = await Promise.allSettled([
       dataApiFetch(`value?user=${encodeURIComponent(address)}`),
-      dataApiFetch(`positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT_VALUE&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
@@ -988,9 +989,26 @@ app.get('/predict/portfolio/:address', async (c) => {
 
     // Parse positions
     let positions: unknown[] = []
-    if (posRes.status === 'fulfilled' && posRes.value.ok) {
-      const body = await posRes.value.json() as unknown
-      positions = Array.isArray(body) ? body : []
+    console.log(`[api] posRes status: ${posRes.status}`)
+    if (posRes.status === 'fulfilled') {
+      console.log(`[api] posRes http status: ${posRes.value.status} ok: ${posRes.value.ok}`)
+      try {
+        const raw = await posRes.value.text()
+        console.log(`[api] raw positions for ${address}:`, raw.slice(0, 500))
+        const body = JSON.parse(raw) as unknown
+        positions = Array.isArray(body) ? body : []
+      } catch (parseErr) {
+        console.error(`[api] positions parse error:`, parseErr)
+      }
+    } else {
+      console.log(`[api] positions rejected:`, posRes.reason)
+    }
+
+    // Parse redeemable positions
+    let redeemablePositions: unknown[] = []
+    if (redeemableRes.status === 'fulfilled' && redeemableRes.value.ok) {
+      const body = await redeemableRes.value.json() as unknown
+      redeemablePositions = Array.isArray(body) ? body : []
     }
 
     // Parse profile
@@ -1012,6 +1030,7 @@ app.get('/predict/portfolio/:address', async (c) => {
       address,
       portfolioValue: portfolioValue !== null ? Math.round(portfolioValue * 100) / 100 : null,
       positions,
+      redeemablePositions,
       profile: profile ? {
         name: profile.name ?? profile.pseudonym ?? null,
         bio: profile.bio ?? null,

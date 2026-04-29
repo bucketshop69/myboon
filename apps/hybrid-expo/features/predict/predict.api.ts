@@ -538,6 +538,7 @@ export async function fetchClobBalance(polygonAddress: string): Promise<ClobBala
 
 export interface PortfolioPosition {
   proxyWallet: string;
+  /** Token ID — used as tokenID for sell orders */
   asset: string;
   conditionId: string;
   size: number;
@@ -553,12 +554,15 @@ export interface PortfolioPosition {
   outcomeIndex: number;
   icon: string | null;
   endDate: string | null;
+  /** Whether this market uses the neg-risk exchange contract */
+  negativeRisk: boolean;
 }
 
 export interface PortfolioData {
   address: string;
   portfolioValue: number | null;
   positions: PortfolioPosition[];
+  redeemablePositions: PortfolioPosition[];
   profile: {
     name: string | null;
     bio: string | null;
@@ -579,6 +583,7 @@ export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioD
     address: typeof p.address === 'string' ? p.address : polygonAddress,
     portfolioValue: toNumber(p.portfolioValue),
     positions: Array.isArray(p.positions) ? (p.positions as PortfolioPosition[]) : [],
+    redeemablePositions: Array.isArray(p.redeemablePositions) ? (p.redeemablePositions as PortfolioPosition[]) : [],
     profile: p.profile as PortfolioData['profile'] ?? null,
     summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0 },
   };
