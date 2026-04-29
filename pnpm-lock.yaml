@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@polymarket/clob-client-v2':
-    hash: 13873940d7fe347dff34048654f8b5f9793fa0b70feaaaa659effd5ac4c25c76
+    hash: 64bc3591f81fd08003967775b43ce9cdc11ee919d0f107de4b532e95d6c463d1
     path: patches/@polymarket__clob-client-v2.patch
 
 importers:
@@ -279,7 +279,7 @@ importers:
         version: 1.0.0
       '@polymarket/clob-client-v2':
         specifier: ^1.0.0
-        version: 1.0.0(patch_hash=13873940d7fe347dff34048654f8b5f9793fa0b70feaaaa659effd5ac4c25c76)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
+        version: 1.0.0(patch_hash=64bc3591f81fd08003967775b43ce9cdc11ee919d0f107de4b532e95d6c463d1)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
       dotenv:
         specifier: ^16.0.0
         version: 16.4.7
@@ -11310,7 +11310,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  '@polymarket/clob-client-v2@1.0.0(patch_hash=13873940d7fe347dff34048654f8b5f9793fa0b70feaaaa659effd5ac4c25c76)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
+  '@polymarket/clob-client-v2@1.0.0(patch_hash=64bc3591f81fd08003967775b43ce9cdc11ee919d0f107de4b532e95d6c463d1)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
     dependencies:
       '@ethersproject/providers': 5.8.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@ethersproject/wallet': 5.8.0
