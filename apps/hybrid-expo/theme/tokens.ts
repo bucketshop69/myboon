@@ -12,6 +12,9 @@ export const tokens = {
     textFaint: '#5c5a50',
     viridian: '#4A8C6F',
     vermillion: '#D9534F',
+    positive: '#34c77b',
+    live: '#f4584e',
+    accent: '#e8c547',
   },
   spacing: {
     xxs: 2,

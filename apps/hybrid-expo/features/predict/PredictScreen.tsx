@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { fetchPredictFeed } from '@/features/predict/predict.api';
@@ -46,9 +47,9 @@ function formatEndDate(endDate: string | null): string {
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   crypto: { bg: 'rgba(123, 97, 255, 0.15)', text: '#7b61ff' },
-  politics: { bg: 'rgba(232, 197, 71, 0.15)', text: '#e8c547' },
+  politics: { bg: 'rgba(232, 197, 71, 0.15)', text: tokens.colors.accent },
   macro: { bg: 'rgba(78, 168, 222, 0.15)', text: '#4ea8de' },
-  sports: { bg: 'rgba(52, 199, 123, 0.15)', text: '#34c77b' },
+  sports: { bg: 'rgba(52, 199, 123, 0.15)', text: tokens.colors.positive },
 };
 
 function getCategoryColor(category: string): { bg: string; text: string } {
@@ -153,13 +154,14 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
   const teamB = nonDraw[1]?.label ?? '';
   const kickoff = item.gameStartTime ?? item.startDate;
 
-  // Outcome pills: IPL = 2 pills, EPL = 3 pills
-  const displayOutcomes = hasDraw
-    ? [item.outcomes[0], item.outcomes.find((o) => o.label.toLowerCase().startsWith('draw'))!, item.outcomes[item.outcomes.length - 1]]
-    : item.outcomes.slice(0, 2);
-
-  const pctColors = ['#34c77b', '#e8c547', '#D9534F']; // win1, draw, win2
-  const pctColors2Way = ['#34c77b', '#D9534F'];
+  // Odds bar segments
+  const teamAPrice = nonDraw[0]?.price ?? 0.5;
+  const teamBPrice = nonDraw[1]?.price ?? 0.5;
+  const drawOutcome = item.outcomes.find((o) => o.label.toLowerCase().startsWith('draw'));
+  const drawPrice = drawOutcome?.price ?? 0;
+  const teamAPct = Math.round(teamAPrice * 100);
+  const teamBPct = Math.round(teamBPrice * 100);
+  const drawPct = Math.round(drawPrice * 100);
 
   return (
     <Pressable
@@ -186,42 +188,49 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
         <Text style={[styles.teamName, styles.teamNameRight]} numberOfLines={1}>{shortTeamName(teamB)}</Text>
       </View>
 
-      {/* outcome pills */}
-      <View style={styles.outcomePills}>
-        {displayOutcomes.map((outcome, idx) => {
-          const color = hasDraw ? pctColors[idx] : pctColors2Way[idx];
-          return (
-            <View key={`${outcome.conditionId}-${idx}`} style={styles.outcomePill}>
-              <Text style={styles.outcomeLabel}>{shortTeamName(outcome.label)}</Text>
-              <Text style={[styles.outcomePct, { color }]}>
-                {formatOdds(outcome.price)}
-              </Text>
-            </View>
-          );
-        })}
+      {/* odds bar */}
+      <View style={styles.oddsBar}>
+        <View style={[styles.oddsBarSeg, styles.oddsBarPos, { flex: teamAPct || 1 }]} />
+        {hasDraw ? <View style={[styles.oddsBarSeg, styles.oddsBarDraw, { flex: drawPct || 1 }]} /> : null}
+        <View style={[styles.oddsBarSeg, styles.oddsBarNeg, { flex: teamBPct || 1 }]} />
       </View>
 
-      {/* volume */}
-      <Text style={styles.sportVol}>Vol {formatUsdCompact(item.volume)}</Text>
+      {/* odds row */}
+      <View style={styles.oddsRow}>
+        <Text style={[styles.oddsPct, styles.oddsPctPos]}>{formatOdds(teamAPrice)}</Text>
+        {hasDraw ? (
+          <Text style={styles.oddsDraw}>{drawPct}% draw</Text>
+        ) : (
+          <Text style={styles.sportVol}>Vol {formatUsdCompact(item.volume)}</Text>
+        )}
+        <Text style={[styles.oddsPct, styles.oddsPctNeg]}>{formatOdds(teamBPrice)}</Text>
+      </View>
+
+      {/* volume below odds row for 3-way */}
+      {hasDraw ? <Text style={[styles.sportVol, { marginTop: 6 }]}>Vol {formatUsdCompact(item.volume)}</Text> : null}
     </Pressable>
   );
 }
 
 // ─── section header ───────────────────────────────────────────────────────────
 
-function SectionHeader({ label, count, unit = 'match', onSeeAll, isLive }: { label: string; count?: number; unit?: string; onSeeAll?: () => void; isLive?: boolean }) {
+function ChevronRight() {
   return (
-    <View style={styles.sectionLabelRow}>
-      <Text style={[styles.sectionLabel, isLive && { color: '#f4584e' }]}>{label}</Text>
-      <View style={styles.sectionRight}>
-        {count ? <Text style={styles.sectionCount}>{count} {count === 1 ? unit : `${unit}s`}</Text> : null}
-        {onSeeAll ? (
-          <Pressable onPress={onSeeAll} hitSlop={8}>
-            <Text style={styles.seeAllText}>See all →</Text>
-          </Pressable>
-        ) : null}
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 18l6-6-6-6" stroke={semantic.text.faint} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function SectionHeader({ label, count, onPress, isLive }: { label: string; count?: number; onPress?: () => void; isLive?: boolean }) {
+  return (
+    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.sectionLabelRow, pressed && styles.sectionPressed]}>
+      <View style={styles.sectionLeft}>
+        <Text style={[styles.sectionLabel, isLive && { color: tokens.colors.live }]}>{label}</Text>
+        {count ? <View style={styles.sectionCountBadge}><Text style={styles.sectionCount}>{count}</Text></View> : null}
       </View>
-    </View>
+      {onPress ? <ChevronRight /> : null}
+    </Pressable>
   );
 }
 
@@ -412,7 +421,7 @@ export default function PredictScreen() {
                 <SectionHeader
                   label="EPL · Upcoming"
                   count={eplUpcoming.length}
-                  onSeeAll={() => setActiveCategory('sports')}
+                  onPress={() => setActiveCategory('sports')}
                 />
                 {eplUpcoming.map((item) => (
                   <MatchCard
@@ -431,7 +440,7 @@ export default function PredictScreen() {
                 <SectionHeader
                   label="IPL · Upcoming"
                   count={iplUpcoming.length}
-                  onSeeAll={() => setActiveCategory('sports')}
+                  onPress={() => setActiveCategory('sports')}
                 />
                 {iplUpcoming.map((item) => (
                   <MatchCard
@@ -450,7 +459,6 @@ export default function PredictScreen() {
                 <SectionHeader
                   label="Markets"
                   count={binaryItems.length}
-                  unit="market"
                 />
                 {binaryItems.map((item) => (
                   <BinaryCard
@@ -556,8 +564,8 @@ const styles = StyleSheet.create({
     borderColor: semantic.border.muted,
   },
   filterTextOn: {
-    color: '#e8c547',
-    fontSize: 9,
+    color: tokens.colors.accent,
+    fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 1,
     fontFamily: 'monospace',
@@ -565,7 +573,7 @@ const styles = StyleSheet.create({
   },
   filterTextOff: {
     color: semantic.text.faint,
-    fontSize: 9,
+    fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 1,
     fontFamily: 'monospace',
@@ -583,33 +591,39 @@ const styles = StyleSheet.create({
   },
   // ─── section header ───
   sectionLabelRow: {
-    paddingVertical: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderRadius: 8,
   },
-  sectionLabel: {
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xs,
-    letterSpacing: 2.2,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
+  sectionPressed: {
+    backgroundColor: tokens.colors.lift,
   },
-  sectionRight: {
+  sectionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  sectionLabel: {
+    color: semantic.text.primary,
+    fontSize: 11,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  sectionCountBadge: {
+    backgroundColor: tokens.colors.lift,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   sectionCount: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 10,
     color: semantic.text.faint,
-  },
-  seeAllText: {
-    color: '#e8c547',
-    fontSize: 8,
-    letterSpacing: 0.5,
-    fontFamily: 'monospace',
   },
   // ─── shared ───
   cardPressed: {
@@ -643,15 +657,15 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#f4584e',
+    backgroundColor: tokens.colors.live,
   },
   liveBadgeText: {
-    color: '#f4584e',
-    fontSize: 7.5,
-    letterSpacing: 1.5,
+    color: tokens.colors.live,
+    fontSize: 10,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     fontFamily: 'monospace',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   categoryBadge: {
     borderRadius: 3,
@@ -659,7 +673,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   categoryBadgeText: {
-    fontSize: 7,
+    fontSize: 10,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     fontFamily: 'monospace',
@@ -694,9 +708,9 @@ const styles = StyleSheet.create({
   },
   binaryBarLabel: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 10,
     color: semantic.text.faint,
-    width: 22,
+    width: 24,
   },
   binaryBarTrack: {
     flex: 1,
@@ -710,7 +724,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    backgroundColor: '#34c77b',
+    backgroundColor: tokens.colors.positive,
     borderRadius: 2,
   },
   binaryPctRow: {
@@ -720,19 +734,19 @@ const styles = StyleSheet.create({
   },
   pctYes: {
     fontFamily: 'monospace',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#34c77b',
+    color: tokens.colors.positive,
   },
   pctNo: {
     fontFamily: 'monospace',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#D9534F',
+    color: tokens.colors.vermillion,
   },
   volBadge: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 11,
     color: semantic.text.faint,
     backgroundColor: tokens.colors.surface,
     paddingHorizontal: 6,
@@ -760,7 +774,7 @@ const styles = StyleSheet.create({
   },
   sportLeague: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 10,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     color: semantic.text.faint,
@@ -772,7 +786,7 @@ const styles = StyleSheet.create({
   },
   upcomingKickoff: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 10,
     color: semantic.text.faint,
   },
   teamsRow: {
@@ -792,42 +806,57 @@ const styles = StyleSheet.create({
   },
   vsBadge: {
     fontFamily: 'monospace',
-    fontSize: 9,
+    fontSize: 11,
     color: semantic.text.faint,
     paddingHorizontal: 8,
   },
-  outcomePills: {
+  // ─── odds bar (unified for sport + binary) ───
+  oddsBar: {
     flexDirection: 'row',
-    gap: 4,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    gap: 2,
+    marginBottom: 6,
   },
-  outcomePill: {
-    flex: 1,
+  oddsBarSeg: {
+    borderRadius: 3,
+    minWidth: 3,
+  },
+  oddsBarPos: {
+    backgroundColor: tokens.colors.positive,
+  },
+  oddsBarNeg: {
+    backgroundColor: tokens.colors.vermillion,
+  },
+  oddsBarDraw: {
+    backgroundColor: tokens.colors.accent,
+  },
+  oddsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 7,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
   },
-  outcomeLabel: {
-    fontFamily: 'monospace',
-    fontSize: 7,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-    marginBottom: 3,
-  },
-  outcomePct: {
+  oddsPct: {
     fontFamily: 'monospace',
     fontSize: 12,
     fontWeight: '700',
   },
+  oddsPctPos: {
+    color: tokens.colors.positive,
+  },
+  oddsPctNeg: {
+    color: tokens.colors.vermillion,
+  },
+  oddsDraw: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: tokens.colors.accent,
+  },
   sportVol: {
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 11,
     color: semantic.text.faint,
-    marginTop: 6,
   },
   // ─── state cards ───
   stateCard: {
