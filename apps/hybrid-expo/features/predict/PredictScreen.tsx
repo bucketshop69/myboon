@@ -24,7 +24,9 @@ import { formatUsdCompact } from '@/lib/format';
 
 function formatGameTime(isoDate: string | null): string {
   if (!isoDate) return 'TBD';
-  const time = Date.parse(isoDate);
+  // Hermes rejects "2026-04-29 14:00:00+00" — normalize to ISO 8601
+  const normalized = isoDate.replace(' ', 'T').replace(/\+(\d{2})$/, '+$1:00');
+  const time = Date.parse(normalized);
   if (Number.isNaN(time)) return 'TBD';
   const date = new Date(time);
   const month = date.toLocaleString('en-US', { month: 'short' });
