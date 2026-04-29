@@ -79,10 +79,8 @@ export interface OrderParams {
 }
 
 function generateSalt(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const hex = '0x' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-  return BigInt(hex).toString();
+  // Match SDK: small salt that survives parseInt on CLOB server
+  return `${Math.round(Math.random() * Date.now())}`;
 }
 
 // Rounding helpers (match SDK exactly)
