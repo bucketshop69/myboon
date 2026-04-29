@@ -301,8 +301,15 @@ clobRoutes.post('/auth', async (c) => {
     }
 
     // 6. Create CLOB API credentials (L1 auth — EIP-712 signature from EOA)
-    const tempClient = new ClobClient({ host: CLOB_HOST, chain: Chain.POLYGON, signer: wallet })
+    const tempClient = new ClobClient({
+      host: CLOB_HOST,
+      chain: Chain.POLYGON,
+      signer: wallet,
+      signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
+      funderAddress: safeAddress,
+    })
     const creds = await tempClient.createOrDeriveApiKey()
+    console.log(`[clob] API key creds:`, JSON.stringify({ apiKey: creds.key?.slice(0, 8) + '...', secret: creds.secret ? 'present' : 'missing', passphrase: creds.passphrase ? 'present' : 'missing' }))
 
     // 7. Store session
     const session: ClobSession = {
