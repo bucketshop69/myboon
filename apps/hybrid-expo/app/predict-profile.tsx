@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
@@ -38,8 +38,8 @@ function formatUsd(value: number | null): string {
 }
 
 function formatPnl(value: number): string {
-  const prefix = value >= 0 ? '+' : '';
-  return `${prefix}$${value.toFixed(2)}`;
+  const prefix = value >= 0 ? '+$' : '-$';
+  return `${prefix}${Math.abs(value).toFixed(2)}`;
 }
 
 export default function PredictProfileScreen() {
@@ -94,7 +94,6 @@ export default function PredictProfileScreen() {
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
       fetchActivity(gammaAddr).catch(() => []),
     ]);
-    if (__DEV__) console.log('[Profile] portfolio:', JSON.stringify(portfolioData, null, 2));
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
     setTradeHistory(activityData);
@@ -122,6 +121,19 @@ export default function PredictProfileScreen() {
     await loadPortfolio();
     setRefreshing(false);
   }, [loadPortfolio]);
+
+  // Refresh when screen regains focus (e.g. returning from position detail after sell)
+  const navigation = useNavigation();
+  const hasMounted = useRef(false);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (hasMounted.current && isEnabled && poly.polygonAddress) {
+        void loadPortfolio();
+      }
+      hasMounted.current = true;
+    });
+    return unsubscribe;
+  }, [navigation, isEnabled, poly.polygonAddress, loadPortfolio]);
 
   const handleOpenAccount = useCallback(() => {
     if (!connected) {
@@ -296,7 +308,7 @@ export default function PredictProfileScreen() {
         {isEnabled && !portfolioLoading && (
           <>
             {/* Performance strip */}
-            <PerfStrip positions={positions} />
+            {/* <PerfStrip positions={positions} /> */}
 
             {/* Equity card */}
             <View style={styles.equityCard}>
@@ -313,17 +325,11 @@ export default function PredictProfileScreen() {
                     {cashBalance !== null ? `$${cashBalance.toFixed(2)}` : '--'}
                   </Text>
                 </View>
-              </View>
-              <View style={[styles.equityRow, { marginTop: 10 }]}>
-                <View style={styles.eqItem}>
+                <View style={[styles.eqItem, styles.eqItemRight]}>
                   <Text style={styles.eqLabel}>P&L</Text>
                   <Text style={[styles.eqVal, totalPnl >= 0 ? styles.posText : styles.negText]}>
                     {formatPnl(totalPnl)}
                   </Text>
-                </View>
-                <View style={[styles.eqItem, styles.eqItemCenter]}>
-                  <Text style={styles.eqLabel}>Positions</Text>
-                  <Text style={styles.eqVal}>{positions.length}</Text>
                 </View>
               </View>
             </View>
@@ -451,7 +457,11 @@ export default function PredictProfileScreen() {
             </View>
 
             {/* Redeemable Positions */}
-            <RedeemableSection positions={redeemablePositions} />
+            <RedeemableSection
+              positions={redeemablePositions}
+              polygonAddress={poly.polygonAddress}
+              onRedeemed={() => void loadPortfolio()}
+            />
 
             {/* Trade History */}
             {tradeHistory.length > 0 && (

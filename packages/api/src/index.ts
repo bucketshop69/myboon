@@ -989,19 +989,9 @@ app.get('/predict/portfolio/:address', async (c) => {
 
     // Parse positions
     let positions: unknown[] = []
-    console.log(`[api] posRes status: ${posRes.status}`)
-    if (posRes.status === 'fulfilled') {
-      console.log(`[api] posRes http status: ${posRes.value.status} ok: ${posRes.value.ok}`)
-      try {
-        const raw = await posRes.value.text()
-        console.log(`[api] raw positions for ${address}:`, raw.slice(0, 500))
-        const body = JSON.parse(raw) as unknown
-        positions = Array.isArray(body) ? body : []
-      } catch (parseErr) {
-        console.error(`[api] positions parse error:`, parseErr)
-      }
-    } else {
-      console.log(`[api] positions rejected:`, posRes.reason)
+    if (posRes.status === 'fulfilled' && posRes.value.ok) {
+      const body = await posRes.value.json() as unknown
+      positions = Array.isArray(body) ? body : []
     }
 
     // Parse redeemable positions

@@ -309,7 +309,6 @@ clobRoutes.post('/auth', async (c) => {
       funderAddress: safeAddress,
     })
     const creds = await tempClient.createOrDeriveApiKey()
-    console.log(`[clob] API key creds:`, JSON.stringify({ apiKey: creds.key?.slice(0, 8) + '...', secret: creds.secret ? 'present' : 'missing', passphrase: creds.passphrase ? 'present' : 'missing' }))
 
     // 7. Store session
     const session: ClobSession = {
@@ -343,14 +342,14 @@ clobRoutes.post('/auth', async (c) => {
  * Server does NOT touch the private key for order signing.
  */
 clobRoutes.post('/order/signed', async (c) => {
-  let body: { polygonAddress?: string; signedOrder?: any }
+  let body: { polygonAddress?: string; signedOrder?: any; orderType?: string }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Bad request' }, 400)
   }
 
-  const { polygonAddress, signedOrder } = body
+  const { polygonAddress, signedOrder, orderType } = body
   if (!polygonAddress || !signedOrder) {
     return c.json({ error: 'Missing polygonAddress or signedOrder' }, 400)
   }
@@ -362,7 +361,7 @@ clobRoutes.post('/order/signed', async (c) => {
 
   try {
     const client = getClient(session)
-    const result = await client.postOrder(signedOrder)
+    const result = await client.postOrder(signedOrder, orderType === 'FOK' ? 'FOK' : 'GTC')
 
     // SDK may swallow errors and return an error object instead of throwing
     if (result?.error || result?.status === 'error') {
@@ -642,6 +641,77 @@ clobRoutes.post('/withdraw', async (c) => {
   } catch (err: any) {
     console.error('[clob] Withdraw failed:', err.message || err)
     return c.json({ error: 'Withdraw failed', detail: err.message }, 500)
+  }
+})
+
+/**
+ * POST /clob/redeem
+ * Body: { polygonAddress, conditionId }
+ *
+ * Redeems winning tokens for a resolved market via CTF contract.
+ * Executes gaslessly through the Builder Relayer (Safe tx).
+ * Burns entire token balance — no amount param (CTF spec).
+ */
+const CTF_REDEEM_ABI = [{
+  name: 'redeemPositions', type: 'function',
+  inputs: [
+    { name: 'collateralToken', type: 'address' },
+    { name: 'parentCollectionId', type: 'bytes32' },
+    { name: 'conditionId', type: 'bytes32' },
+    { name: 'indexSets', type: 'uint256[]' },
+  ],
+  outputs: [],
+}] as const
+
+clobRoutes.post('/redeem', async (c) => {
+  let body: { polygonAddress?: string; conditionId?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const { polygonAddress, conditionId } = body
+  if (!polygonAddress || !conditionId) {
+    return c.json({ error: 'Missing polygonAddress or conditionId' }, 400)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  if (!relayerBuilderConfig) {
+    return c.json({ error: 'Relayer not configured' }, 500)
+  }
+
+  try {
+    const redeemTx = {
+      to: CONTRACTS.CTF as `0x${string}`,
+      data: encodeFunctionData({
+        abi: CTF_REDEEM_ABI,
+        functionName: 'redeemPositions',
+        args: [
+          CONTRACTS.PUSD as `0x${string}`,
+          '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
+          conditionId as `0x${string}`,
+          [1n, 2n],
+        ],
+      }),
+      value: '0',
+    }
+
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
+    const execRes = await relay.execute([redeemTx], `Redeem positions for condition ${conditionId.slice(0, 10)}...`)
+    const execResult = await execRes.wait()
+
+    const txHash = execResult?.transactionHash ?? null
+    console.log(`[clob] Redeemed positions for ${polygonAddress} condition=${conditionId.slice(0, 10)}... tx=${txHash}`)
+
+    return c.json({ ok: true, txHash })
+  } catch (err: any) {
+    console.error('[clob] Redeem failed:', err.message || err)
+    return c.json({ error: 'Redeem failed', detail: err.message }, 500)
   }
 })
 

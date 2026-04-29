@@ -310,8 +310,8 @@ function mapFeedItem(raw: unknown): FeedItem | null {
       sport,
       tags,
       status,
-      gameStartTime: typeof item.gameStartTime === 'string' ? item.gameStartTime : null,
-      startDate: typeof item.startDate === 'string' ? item.startDate : null,
+      gameStartTime: typeof item.gameStartTime === 'string' && item.gameStartTime !== '' ? item.gameStartTime : null,
+      startDate: typeof item.startDate === 'string' && item.startDate !== '' ? item.startDate : null,
       endDate,
       image,
       active,
@@ -646,6 +646,35 @@ export async function withdrawFromPolymarket(params: WithdrawParams): Promise<Wi
   return {
     ok: true,
     amount: typeof data.amount === 'number' ? data.amount : undefined,
+    txHash: typeof data.txHash === 'string' ? data.txHash : null,
+  };
+}
+
+// --- Redeem ---
+
+export interface RedeemResult {
+  ok: boolean;
+  txHash?: string | null;
+  error?: string;
+}
+
+export async function redeemPosition(polygonAddress: string, conditionId: string): Promise<RedeemResult> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetchWithTimeout(`${baseUrl}/clob/redeem`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ polygonAddress, conditionId }),
+  });
+
+  const data = await response.json() as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Redeem failed';
+    return { ok: false, error: detail };
+  }
+
+  return {
+    ok: true,
     txHash: typeof data.txHash === 'string' ? data.txHash : null,
   };
 }

@@ -19,6 +19,8 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useDrawer } from './DrawerProvider';
 import { useWallet } from '@/hooks/useWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
+import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { fetchClobBalance, fetchPortfolio } from '@/features/predict/predict.api';
 import { semantic, tokens } from '@/theme';
 
 const DRAWER_WIDTH = 280;
@@ -30,10 +32,25 @@ export function WalletDrawer() {
   const router = useRouter();
   const { connected, address, source, connect: walletConnect } = useWallet();
   const privy = usePrivyWallet();
+  const poly = usePolymarketWallet();
 
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const [visible, setVisible] = useState(false);
+  const [predictValue, setPredictValue] = useState<string | null>(null);
+
+  // Fetch predict portfolio value when drawer opens
+  useEffect(() => {
+    if (!isOpen || !poly.polygonAddress) return;
+    const addr = poly.safeAddress ?? poly.polygonAddress;
+    Promise.all([
+      fetchPortfolio(addr).catch(() => null),
+      fetchClobBalance(poly.polygonAddress).catch(() => null),
+    ]).then(([portfolio, balance]) => {
+      const total = (portfolio?.portfolioValue ?? 0) + (balance?.balance ?? 0);
+      setPredictValue(total > 0 ? `$${total.toFixed(0)}` : '$0');
+    });
+  }, [isOpen, poly.polygonAddress, poly.safeAddress]);
 
   // Email OTP state
   const [emailInput, setEmailInput] = useState('');
@@ -249,7 +266,7 @@ export function WalletDrawer() {
                   <Text style={styles.protocolName}>Predict</Text>
                   <Text style={styles.protocolSub}>Polymarket</Text>
                 </View>
-                <Text style={styles.protocolValue}>$847</Text>
+                <Text style={styles.protocolValue}>{predictValue ?? '--'}</Text>
                 <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
               </TouchableOpacity>
 
