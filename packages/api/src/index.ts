@@ -126,8 +126,13 @@ function getLivePrice(tokenId: string): number | null {
 async function pollLivePrices(): Promise<void> {
   if (activeTokenIds.size === 0) return
   try {
-    const ids = [...activeTokenIds].join(',')
-    const res = await clobFetch(`midpoints?token_ids=${encodeURIComponent(ids)}`)
+    // V2: POST /midpoints with JSON array of { token_id } objects
+    const body = [...activeTokenIds].map(id => ({ token_id: id }))
+    const res = await clobFetch('midpoints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
     if (!res.ok) {
       console.error(`[api] CLOB /midpoints poll failed: ${res.status}`)
       return
