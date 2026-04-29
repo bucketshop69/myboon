@@ -1,3 +1,16 @@
+diff --git a/dist/types/ordersV2.js b/dist/types/ordersV2.js
+index 7f1fe459ddac7e4cad07a5d6822a64e16497ccdd..b4bea3d4cd41841821e5b41fdb6f4a819d015b2a 100644
+--- a/dist/types/ordersV2.js
++++ b/dist/types/ordersV2.js
+@@ -3,7 +3,7 @@ export function orderToJsonV2(order, owner, orderType, postOnly = false, deferEx
+         deferExec,
+         postOnly,
+         order: {
+-            salt: parseInt(order.salt, 10),
++            salt: order.salt,
+             maker: order.maker,
+             signer: order.signer,
+             taker: order.taker,
 diff --git a/package.json b/package.json
 index 092d15214c8a3e7e159f10b1f3f1206729fb6d2f..efbc53b99421f23b1c59a05416f6bba60cbb8ba0 100644
 --- a/package.json
