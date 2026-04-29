@@ -18,6 +18,9 @@
  * because Node 22 has ERR_REQUIRE_CYCLE_MODULE bugs with the ESM loader.
  */
 
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '.env') })
+
 const ROOT = __dirname
 const TSX = `${ROOT}/node_modules/.bin/tsx`
 
