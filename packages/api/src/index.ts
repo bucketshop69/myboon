@@ -970,8 +970,8 @@ app.get('/predict/portfolio/:address', async (c) => {
     // Fetch value, positions, redeemable positions, and profile in parallel
     const [valueRes, posRes, redeemableRes, profileRes] = await Promise.allSettled([
       dataApiFetch(`value?user=${encodeURIComponent(address)}`),
-      dataApiFetch(`positions?user=${encodeURIComponent(address)}&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`),
-      dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT_VALUE&sortDirection=DESC`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&limit=100&sortBy=CURRENT&sortDirection=DESC`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
@@ -1179,7 +1179,7 @@ app.get('/predict/positions/:address/market/:slug', async (c) => {
 
   try {
     const res = await dataApiFetch(
-      `positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT_VALUE&sortDirection=DESC`
+      `positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT&sortDirection=DESC`
     )
     if (!res.ok) {
       console.error(`[api] data-api /positions error ${res.status}`)
