@@ -7,6 +7,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { serve } from '@hono/node-server'
 import { clobRoutes } from './clob.js'
+import { pacificaRoutes } from './pacifica.js'
 import { CURATED_GEOPOLITICS_SLUGS, deriveCategoryFromText } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
@@ -207,6 +208,9 @@ app.use('*', logger())
 
 // --- CLOB routes (Polymarket Builder) ---
 app.route('/clob', clobRoutes)
+
+// --- Pacifica perps proxy routes ---
+app.route('/perps/pacifica', pacificaRoutes)
 
 // GET /health
 app.get('/health', (c) => {
