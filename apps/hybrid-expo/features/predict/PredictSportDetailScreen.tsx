@@ -20,6 +20,8 @@ import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
+import { useOddsFormat } from '@/hooks/useOddsFormat';
+import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
 import { StatsStrip } from '@/features/predict/components/StatsStrip';
@@ -55,6 +57,7 @@ function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const { format, setFormat, formatOdds } = useOddsFormat();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -419,16 +422,11 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
             <View style={styles.oddsSection}>
               <View style={styles.selHeader}>
                 <Text style={styles.selHeaderLabel}>{sortedOutcomes.length} Selections</Text>
-                <View style={styles.selHeaderHints}>
-                  <Text style={styles.selHintYes}>Yes</Text>
-                  <Text style={styles.selHintNo}>No</Text>
-                </View>
+                <OddsFormatToggle format={format} onFormatChange={setFormat} />
               </View>
               {sortedOutcomes.map((outcome, i) => {
                 const isDraw = outcome.label.toLowerCase().includes('draw');
                 const label = isDraw ? 'Draw' : outcome.label;
-                const yesCents = outcome.price !== null ? Math.round(outcome.price * 100) : null;
-                const noCents = outcome.price !== null ? Math.round((1 - outcome.price) * 100) : null;
                 const isSelected = (side: 'yes' | 'no') => selectedOutcomeIdx === i && selectedSide === side;
                 return (
                   <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={[styles.selRow, i > 0 && styles.selRowBorder]}>
@@ -440,13 +438,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                       <Pressable
                         style={[styles.selBtn, styles.selBtnYes, isSelected('yes') && styles.selBtnYesSelected]}
                         onPress={() => tapOdd(i, 'yes')}>
-                        <Text style={styles.selBtnYesPct}>{yesCents !== null ? `${yesCents}\u00A2` : '--'}</Text>
+                        <Text style={styles.selBtnYesPct}>{outcome.price !== null ? formatOdds(outcome.price) : '--'}</Text>
                         <Text style={styles.selBtnYesLabel}>Yes</Text>
                       </Pressable>
                       <Pressable
                         style={[styles.selBtn, styles.selBtnNo, isSelected('no') && styles.selBtnNoSelected]}
                         onPress={() => tapOdd(i, 'no')}>
-                        <Text style={styles.selBtnNoPct}>{noCents !== null ? `${noCents}\u00A2` : '--'}</Text>
+                        <Text style={styles.selBtnNoPct}>{outcome.price !== null ? formatOdds(1 - outcome.price) : '--'}</Text>
                         <Text style={styles.selBtnNoLabel}>No</Text>
                       </Pressable>
                     </View>
@@ -665,24 +663,6 @@ const styles = StyleSheet.create({
     fontSize: 8,
     letterSpacing: 1,
     color: semantic.text.dim,
-  },
-  selHeaderHints: {
-    flexDirection: 'row',
-    gap: 32,
-  },
-  selHintYes: {
-    fontFamily: 'monospace',
-    fontSize: 7,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.sentiment.positive,
-  },
-  selHintNo: {
-    fontFamily: 'monospace',
-    fontSize: 7,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.sentiment.negative,
   },
   selRow: {
     flexDirection: 'row',

@@ -21,6 +21,8 @@ import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
+import { useOddsFormat } from '@/hooks/useOddsFormat';
+import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
 import { StatsStrip } from '@/features/predict/components/StatsStrip';
@@ -50,6 +52,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const router = useRouter();
   const poly = usePolymarketWallet();
   const privy = usePrivyWallet();
+  const { format, setFormat, formatOdds } = useOddsFormat();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -368,19 +371,22 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             {/* Separator */}
             <View style={styles.separator} />
 
-            {/* Binary odds buttons */}
+            {/* Odds format toggle + Binary odds buttons */}
             <View style={styles.oddsSection}>
+              <View style={styles.oddsHeader}>
+                <OddsFormatToggle format={format} onFormatChange={setFormat} />
+              </View>
               <View style={styles.binaryBtns}>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnYes, selectedSide === 'yes' && styles.bnBtnYesSelected]}
                   onPress={() => tapOdd('yes')}>
-                  <Text style={styles.bnBtnYesPrice}>{yesPct !== null ? `${yesPct}\u00A2` : '--'}</Text>
+                  <Text style={styles.bnBtnYesPrice}>{yesPrice !== null ? formatOdds(yesPrice) : '--'}</Text>
                   <Text style={styles.bnBtnYesLabel}>Yes</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnNo, selectedSide === 'no' && styles.bnBtnNoSelected]}
                   onPress={() => tapOdd('no')}>
-                  <Text style={styles.bnBtnNoPrice}>{noPct !== null ? `${noPct}\u00A2` : '--'}</Text>
+                  <Text style={styles.bnBtnNoPrice}>{noPrice !== null ? formatOdds(noPrice) : '--'}</Text>
                   <Text style={styles.bnBtnNoLabel}>No</Text>
                 </Pressable>
               </View>
@@ -560,6 +566,11 @@ const styles = StyleSheet.create({
   oddsSection: {
     paddingHorizontal: 20,
     paddingVertical: 10,
+  },
+  oddsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 8,
   },
   binaryBtns: {
     flexDirection: 'row',

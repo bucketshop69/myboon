@@ -17,6 +17,7 @@ import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
+import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 
@@ -240,7 +241,7 @@ function SectionHeader({ label, count, onPress, isLive }: { label: string; count
 
 export default function PredictScreen() {
   const router = useRouter();
-  const { formatOdds } = useOddsFormat();
+  const { format, setFormat, formatOdds } = useOddsFormat();
   const insets = useSafeAreaInsets();
 
   const [feedData, setFeedData] = useState<FeedResponse | null>(null);
@@ -341,7 +342,7 @@ export default function PredictScreen() {
       <View style={styles.predictHeader}>
         <AvatarTrigger />
         <Text style={styles.predictTitle}>Predict</Text>
-        <View style={{ width: 30 }} />
+        <OddsFormatToggle format={format} onFormatChange={setFormat} />
       </View>
 
       {/* category filter chips */}

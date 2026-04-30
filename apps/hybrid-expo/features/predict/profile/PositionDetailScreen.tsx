@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { fetchMarketPositions, fetchActivity } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
+import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
@@ -44,6 +45,7 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const { formatOdds } = useOddsFormat();
 
   const [position, setPosition] = useState<PortfolioPosition | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -232,8 +234,8 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
         {/* Stats grid */}
         <View style={styles.statsGrid}>
           <StatCell label="Shares" value={position.size.toFixed(2)} />
-          <StatCell label="Avg Price" value={`${Math.round(position.avgPrice * 100)}\u00A2`} />
-          <StatCell label="Current" value={`${Math.round(position.curPrice * 100)}\u00A2`} />
+          <StatCell label="Avg Price" value={formatOdds(position.avgPrice)} />
+          <StatCell label="Current" value={formatOdds(position.curPrice)} />
           <StatCell
             label="P&L"
             value={formatUsd(pnl)}
@@ -279,7 +281,7 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
                   </View>
                   <View style={styles.activityInfo}>
                     <Text style={styles.activitySize}>
-                      {t.size.toFixed(2)} @ {Math.round(t.price * 100)}{'\u00A2'}
+                      {t.size.toFixed(2)} @ {formatOdds(t.price)}
                     </Text>
                     <Text style={styles.activityTime}>{formatDate(t.timestamp)}</Text>
                   </View>
