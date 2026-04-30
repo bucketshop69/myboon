@@ -67,6 +67,7 @@ export interface PerpsMarket {
   volume24h: number;      // USD
   change24h: number;      // percentage, e.g. 2.14 means +2.14%
   yesterdayPrice: number;
+  iconPath: string;        // API-relative cached SVG path
 }
 
 export interface PerpsPosition {

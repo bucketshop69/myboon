@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { fetchWithTimeout } from '@/lib/api';
+import { fetchWithTimeout, resolveApiBaseUrl } from '@/lib/api';
 import {
   ActivityIndicator,
   Pressable,
@@ -30,19 +30,20 @@ type TradeView = 'markets' | 'profile';
 // In-memory SVG cache — persists for the app session
 const svgCache = new Map<string, string | null>();
 
-const TokenIcon = memo(function TokenIcon({ symbol }: { symbol: string }) {
+const TokenIcon = memo(function TokenIcon({ symbol, iconPath }: { symbol: string; iconPath: string }) {
   const base = symbol.split('-')[0];
-  const uri = `https://app.pacifica.fi/imgs/tokens/${base}.svg`;
-  const [xml, setXml] = useState<string | null>(svgCache.get(base) ?? null);
-  const [failed, setFailed] = useState(svgCache.get(base) === null && svgCache.has(base));
+  const cacheKey = iconPath || base;
+  const uri = `${resolveApiBaseUrl()}${iconPath}`;
+  const [xml, setXml] = useState<string | null>(svgCache.get(cacheKey) ?? null);
+  const [failed, setFailed] = useState(svgCache.get(cacheKey) === null && svgCache.has(cacheKey));
 
   useEffect(() => {
-    if (svgCache.has(base)) return;
+    if (svgCache.has(cacheKey)) return;
     fetchWithTimeout(uri)
       .then((res) => (res.ok ? res.text() : Promise.reject()))
-      .then((text) => { svgCache.set(base, text); setXml(text); })
-      .catch(() => { svgCache.set(base, null); setFailed(true); });
-  }, [base, uri]);
+      .then((text) => { svgCache.set(cacheKey, text); setXml(text); })
+      .catch(() => { svgCache.set(cacheKey, null); setFailed(true); });
+  }, [cacheKey, uri]);
 
   if (failed || !xml) {
     return (
@@ -69,10 +70,11 @@ export function TradeListScreen() {
   const [view, setView] = useState<TradeView>(viewParam === 'profile' ? 'profile' : 'markets');
   const [searchText, setSearchText] = useState('');
 
-  const filteredMarkets = markets.filter((m) => {
-    if (!searchText.trim()) return true;
-    return m.symbol.toLowerCase().includes(searchText.trim().toLowerCase());
-  });
+  const filteredMarkets = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return markets;
+    return markets.filter((m) => m.symbol.toLowerCase().includes(query));
+  }, [markets, searchText]);
   async function loadMarkets() {
     setLoading(true);
     setErrorMessage(null);
@@ -151,7 +153,7 @@ export function TradeListScreen() {
                       key={market.symbol}
                       style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
                       onPress={() => goToMarket(market.symbol)}>
-                      <TokenIcon symbol={market.symbol} />
+                      <TokenIcon symbol={market.symbol} iconPath={market.iconPath} />
                       <View style={styles.symCol}>
                         <Text style={styles.rowSym}>{market.symbol} <Text style={styles.rowLev}>{market.maxLeverage}×</Text></Text>
                       </View>

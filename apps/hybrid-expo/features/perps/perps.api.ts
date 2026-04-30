@@ -11,7 +11,7 @@ import type {
   RawPosition,
   RawPriceInfo,
 } from '@/features/perps/perps.types';
-import { fetchWithTimeout } from '@/lib/api';
+import { fetchWithTimeout, resolveApiBaseUrl } from '@/lib/api';
 
 import bs58 from 'bs58';
 import { PublicKey, TransactionInstruction } from '@solana/web3.js';
@@ -123,41 +123,13 @@ async function pacificGet<T>(path: string): Promise<T> {
 }
 
 export async function fetchPerpsMarkets(): Promise<PerpsMarket[]> {
-  const [markets, prices] = await Promise.all([
-    pacificGet<RawMarketInfo[]>('/info'),
-    pacificGet<RawPriceInfo[]>('/info/prices'),
-  ]);
+  const baseUrl = resolveApiBaseUrl();
+  const res = await fetchWithTimeout(`${baseUrl}/perps/pacifica/markets`);
+  if (!res.ok) throw new Error(`Markets unavailable (${res.status})`);
 
-  const priceMap = new Map(prices.map((p) => [p.symbol, p]));
-
-  return markets
-    .filter((m) => m.instrument_type === 'perpetual')
-    .map((m): PerpsMarket | null => {
-      const p = priceMap.get(m.symbol);
-      if (!p) return null;
-
-      const mark = safeNum(p.mark);
-      const yesterday = safeNum(p.yesterday_price);
-      const change24h = yesterday > 0 ? ((mark - yesterday) / yesterday) * 100 : 0;
-
-      return {
-        symbol: m.symbol,
-        maxLeverage: m.max_leverage,
-        tickSize: m.tick_size,
-        lotSize: m.lot_size,
-        minOrderSize: m.min_order_size,
-        markPrice: mark,
-        oraclePrice: safeNum(p.oracle),
-        midPrice: safeNum(p.mid),
-        fundingRate: safeNum(p.funding),
-        openInterest: safeNum(p.open_interest),
-        volume24h: safeNum(p.volume_24h),
-        change24h,
-        yesterdayPrice: yesterday,
-      };
-    })
-    .filter((m): m is PerpsMarket => m !== null)
-    .sort((a, b) => b.volume24h - a.volume24h);
+  const payload = await res.json();
+  if (!Array.isArray(payload)) throw new Error('Invalid markets response');
+  return payload as PerpsMarket[];
 }
 
 export async function fetchPerpsPositions(address: string): Promise<PerpsPosition[]> {
