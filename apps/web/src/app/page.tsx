@@ -1,15 +1,15 @@
-import TickerTape from '@/components/hero/TickerTape'
 import HeroSection from '@/components/hero/HeroSection'
-import { FeaturesScroll } from '@/components/features/FeaturesScroll'
-import { NewsroomSection } from '@/components/world/NewsroomSection'
+import { FeaturesSection } from '@/components/features/FeaturesSection'
+import { LiveFeedSection } from '@/components/feed/LiveFeedSection'
+import { FooterCTA } from '@/components/footer/FooterCTA'
 
 export default function Home() {
   return (
     <main>
-      <TickerTape />
       <HeroSection />
-      <FeaturesScroll />
-      <NewsroomSection />
+      <FeaturesSection />
+      <LiveFeedSection />
+      <FooterCTA />
     </main>
   )
 }

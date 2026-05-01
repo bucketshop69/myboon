@@ -15,8 +15,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'myboon | Narrative Intelligence',
-  description: 'Narrative intelligence for on-chain traders.',
+  title: 'myboon | A news feed for markets',
+  description: 'A news feed for markets. Take action on everything you read.',
 }
 
 export default function RootLayout({
