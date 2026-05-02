@@ -7,6 +7,7 @@ export interface PolymarketOddsShiftInput {
   hoursSinceObserved: number
   liquidityUsd?: number
   sourceReliability?: number
+  currentPrice?: number
 }
 
 export function scorePolymarketOddsShift(input: PolymarketOddsShiftInput): ScoreBreakdown {
@@ -15,9 +16,14 @@ export function scorePolymarketOddsShift(input: PolymarketOddsShiftInput): Score
   const freshness = clamp01(1 - input.hoursSinceObserved / 24)
   const sourceReliability = clamp01(input.sourceReliability ?? 0.8)
   const signalWeight = clamp01(absDelta / 0.2)
+  const directionRoom = input.currentPrice == null
+    ? 1
+    : input.oddsDelta >= 0
+      ? clamp01((1 - input.currentPrice) / 0.5)
+      : clamp01(input.currentPrice / 0.5)
 
   return {
-    confidence: clamp01(signalWeight * 0.5 + liquidityScore * 0.25 + sourceReliability * 0.25),
+    confidence: clamp01((signalWeight * 0.5 + liquidityScore * 0.25 + sourceReliability * 0.25) * directionRoom),
     urgency: clamp01(signalWeight * 0.7 + freshness * 0.3),
     freshness,
     sourceReliability,

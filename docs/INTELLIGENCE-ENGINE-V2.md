@@ -154,3 +154,22 @@ Before API/action-router work, create an ADR deciding whether myboon is:
 - Executor mode: in-app signing/execution across venues
 
 This decision changes API shape, auth, custody/risk assumptions, and frontend flows.
+
+## Current v1 backtest scaffold
+
+Implemented first vertical slice:
+
+- source: existing Supabase `signals` rows where `source = POLYMARKET` and `type = ODDS_SHIFT`
+- classifier: converts legacy odds-shift rows into `ClassifiedSignal`
+- evaluator: checks whether odds continue in the same direction by the publish-time threshold within the configured window
+- baseline: largest raw odds delta over the same candidate pool
+- runner: `pnpm --filter @myboon/brain intelligence:polymarket:backtest`
+
+Default criteria:
+
+- continuation delta: `0.03`
+- window: `24h`
+- selected set: top `30%` by v1 confidence score
+- max rows: `5000` unless `POLYMARKET_BACKTEST_MAX_ROWS` is set
+
+Latest local full run used `POLYMARKET_BACKTEST_MAX_ROWS=50000` and processed 44k+ recent ODDS_SHIFT rows. This is still a first-pass proxy backtest, not final proof of alpha: it uses existing event signals rather than raw market snapshots and evaluates continuation, not final market resolution.
