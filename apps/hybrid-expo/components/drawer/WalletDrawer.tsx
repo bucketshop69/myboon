@@ -30,7 +30,13 @@ export function WalletDrawer() {
   const { isOpen, close } = useDrawer();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { connected, address, source, connect: walletConnect } = useWallet();
+  const {
+    connected,
+    address,
+    source,
+    connect: walletConnect,
+    disconnect: walletDisconnect,
+  } = useWallet();
   const privy = usePrivyWallet();
   const poly = usePolymarketWallet();
 
@@ -112,12 +118,22 @@ export function WalletDrawer() {
         text: 'Disconnect',
         style: 'destructive',
         onPress: async () => {
-          await privy.disconnect();
-          close();
+          setBusy(true);
+          try {
+            // Clear derived Polymarket session/local state before the base wallet address disappears.
+            poly.disable();
+            await walletDisconnect();
+            close();
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Failed to disconnect wallet';
+            Alert.alert('Disconnect failed', msg);
+          } finally {
+            setBusy(false);
+          }
         },
       },
     ]);
-  }, [privy, close]);
+  }, [poly, walletDisconnect, close]);
 
   const handleSendEmail = useCallback(async () => {
     if (!emailInput.trim() || busy) return;
