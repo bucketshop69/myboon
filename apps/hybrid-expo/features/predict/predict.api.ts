@@ -414,8 +414,10 @@ export interface PlaceBetParams {
   polygonAddress: string;
   tokenID: string;
   price: number;
-  amount: number;
+  size: number;
   side: 'BUY' | 'SELL';
+  negRisk?: boolean;
+  orderType?: 'GTC' | 'FOK';
 }
 
 export interface PlaceBetResult {

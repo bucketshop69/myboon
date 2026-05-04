@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@polymarket/clob-client-v2':
-    hash: 64bc3591f81fd08003967775b43ce9cdc11ee919d0f107de4b532e95d6c463d1
-    path: patches/@polymarket__clob-client-v2.patch
-
 importers:
 
   .:
@@ -272,14 +267,14 @@ importers:
         specifier: ^1.13.0
         version: 1.19.11(hono@4.12.5)
       '@polymarket/builder-relayer-client':
-        specifier: ^0.0.8
-        version: 0.0.8(bufferutil@4.1.0)(utf-8-validate@5.0.10)(zod@4.3.6)
+        specifier: ^0.0.9
+        version: 0.0.9(bufferutil@4.1.0)(utf-8-validate@5.0.10)(zod@4.3.6)
       '@polymarket/builder-signing-sdk':
         specifier: ^1.0.0
         version: 1.0.0
       '@polymarket/clob-client-v2':
-        specifier: ^1.0.0
-        version: 1.0.0(patch_hash=64bc3591f81fd08003967775b43ce9cdc11ee919d0f107de4b532e95d6c463d1)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
+        specifier: 1.0.3-canary.0
+        version: 1.0.3-canary.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
       dotenv:
         specifier: ^16.0.0
         version: 16.4.7
@@ -2299,8 +2294,8 @@ packages:
   '@polymarket/builder-abstract-signer@0.0.1':
     resolution: {integrity: sha512-XuuxQQcXYtqQce8slhqiJQti1lVPr+xXC7M3lbetmNnsc9tlYdYRnojE+tcniCHg7VQ6dokcIu0eLYDtM5vdvQ==}
 
-  '@polymarket/builder-relayer-client@0.0.8':
-    resolution: {integrity: sha512-l9bQvghlMn8FIknw4+QAJ1dA1pyTCHMr0vQff1EKt7aGo8wXKa68FloxKc9PoBF35s7zZ6fsy+hZiRpSaYqvYg==}
+  '@polymarket/builder-relayer-client@0.0.9':
+    resolution: {integrity: sha512-7i5LSSpSFZiNuoLY623krWWEiT/jkxv76tueGTNOVy3ZND+2sJvOJk5+PQFgiws+LNa476UFOodkMEgqH5lSqw==}
 
   '@polymarket/builder-signing-sdk@0.0.8':
     resolution: {integrity: sha512-rZLCFxEdYahl5FiJmhe22RDXysS1ibFJlWz4NT0s3itJRYq3XJzXXHXEZkAQplU+nIS1IlbbKjA4zDQaeCyYtg==}
@@ -2308,8 +2303,8 @@ packages:
   '@polymarket/builder-signing-sdk@1.0.0':
     resolution: {integrity: sha512-LNHc8Ox+2ITM6+VIEH5LH3SVh9ScE2mOUAJI789YfyNqhF4n1cNulk35Hb6IZfy1xtNfcEfNotanPLa/U8dCaw==}
 
-  '@polymarket/clob-client-v2@1.0.0':
-    resolution: {integrity: sha512-gCjJolRXOQNF/NEbioRfcjwofyyS/qi0CHkUkF0Xp58GdTXcqUCwvTGxL64qa+dRL4/Zxv4RAi0TlsLxueoPaQ==}
+  '@polymarket/clob-client-v2@1.0.3-canary.0':
+    resolution: {integrity: sha512-e9uhrtvv+xev6dkZNFSSyxDkGdRbuYDW7wZzha4rKMkvdxcrhHoIkI2IAehfPcY7HvRnnQnZoktxrrHEmLtgTA==}
 
   '@privy-io/api-base@1.9.0':
     resolution: {integrity: sha512-8OJ2chadFcgUwr+Kqim0z5paIdadEdMH8pW94WJz0O3s2X4aX7vhN1eqiNZqcdgSIk9FHm8c3A+/epJUwiTYuQ==}
@@ -11280,7 +11275,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@polymarket/builder-relayer-client@0.0.8(bufferutil@4.1.0)(utf-8-validate@5.0.10)(zod@4.3.6)':
+  '@polymarket/builder-relayer-client@0.0.9(bufferutil@4.1.0)(utf-8-validate@5.0.10)(zod@4.3.6)':
     dependencies:
       '@polymarket/builder-abstract-signer': 0.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)(zod@4.3.6)
       '@polymarket/builder-signing-sdk': 0.0.8
@@ -11310,7 +11305,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  '@polymarket/clob-client-v2@1.0.0(patch_hash=64bc3591f81fd08003967775b43ce9cdc11ee919d0f107de4b532e95d6c463d1)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
+  '@polymarket/clob-client-v2@1.0.3-canary.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
     dependencies:
       '@ethersproject/providers': 5.8.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@ethersproject/wallet': 5.8.0

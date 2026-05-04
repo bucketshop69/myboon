@@ -11,12 +11,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { fetchMarketPositions, fetchActivity } from '@/features/predict/predict.api';
+import { fetchMarketPositions, fetchActivity, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
-import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { semantic, tokens } from '@/theme';
 import { SellForm } from './SellForm';
 
@@ -55,7 +54,7 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
   const [sellStatus, setSellStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [sellMessage, setSellMessage] = useState('');
 
-  const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
+  const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
 
   const loadData = useCallback(async () => {
     if (!gammaAddr) return;
@@ -113,10 +112,6 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
     setSellMessage('');
     setSubmitting(true);
     try {
-      const exchangeAddress = position.negativeRisk
-        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
-        : V2_CONTRACTS.CTF_EXCHANGE;
-
       // Market sell: price acts as worst-price limit (slippage protection)
       // Use current price minus 10% as floor — FOK fills at best available or cancels
       // Limit sell: use the user's exact specified price
@@ -124,31 +119,40 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
         ? Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100)
         : price;
 
-      const signedOrder = await poly.signOrder({
-        tokenID,
-        price: orderPrice,
-        size: shares,
-        side: 'SELL',
-        exchangeAddress,
-      });
-
-      const res = await fetchWithTimeout(`${resolveApiBaseUrl()}/clob/order/signed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      if (poly.walletMode === 'deposit_wallet') {
+        const result = await placeBet({
           polygonAddress: poly.polygonAddress,
+          tokenID,
+          price: orderPrice,
+          size: shares,
+          side: 'SELL',
+          negRisk: !!position.negativeRisk,
+          orderType: mode === 'market' ? 'FOK' : 'GTC',
+        });
+        if (!result.success) throw new Error(result.error || 'Order failed');
+      } else {
+        const exchangeAddress = position.negativeRisk
+          ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+          : V2_CONTRACTS.CTF_EXCHANGE;
+
+        const signedOrder = await poly.signOrder({
+          tokenID,
+          price: orderPrice,
+          size: shares,
+          side: 'SELL',
+          exchangeAddress,
+        });
+
+        const result = await placeBet({
+          polygonAddress: poly.polygonAddress,
+          tokenID,
+          price: orderPrice,
+          size: shares,
+          side: 'SELL',
           signedOrder,
           orderType: mode === 'market' ? 'FOK' : 'GTC',
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as Record<string, unknown>).detail as string
-          || (err as Record<string, unknown>).error as string
-          || 'Order failed'
-        );
+        });
+        if (!result.success) throw new Error(result.error || 'Order failed');
       }
 
       setSellStatus('success');

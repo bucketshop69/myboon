@@ -13,11 +13,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fetchSportMarketDetail, fetchPriceHistory, fetchOrderbook } from '@/features/predict/predict.api';
+import { fetchSportMarketDetail, fetchPriceHistory, fetchOrderbook, placeBet } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
-import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -249,31 +248,43 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
     setSubmitting(true);
     try {
+      if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
-      const exchangeAddress = detail.negRisk
-        ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
-        : V2_CONTRACTS.CTF_EXCHANGE;
+      const size = Math.floor((amount / price) * 100) / 100;
+      const polygonAddress = poly.polygonAddress;
 
-      const signedOrder = await poly.signOrder({
-        tokenID,
-        price,
-        size: Math.floor((amount / price) * 100) / 100,
-        side: 'BUY',
-        exchangeAddress,
-      });
+      if (poly.walletMode === 'deposit_wallet') {
+        const result = await placeBet({
+          polygonAddress,
+          tokenID,
+          price,
+          size,
+          side: 'BUY',
+          negRisk: !!detail.negRisk,
+        });
+        if (!result.success) throw new Error(result.error || 'Order failed');
+      } else {
+        const exchangeAddress = detail.negRisk
+          ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
+          : V2_CONTRACTS.CTF_EXCHANGE;
 
-      const res = await fetchWithTimeout(`${resolveApiBaseUrl()}/clob/order/signed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          polygonAddress: poly.polygonAddress,
+        const signedOrder = await poly.signOrder({
+          tokenID,
+          price,
+          size,
+          side: 'BUY',
+          exchangeAddress,
+        });
+
+        const result = await placeBet({
+          polygonAddress,
+          tokenID,
+          price,
+          size,
+          side: 'BUY',
           signedOrder,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || err.error || 'Order failed');
+        });
+        if (!result.success) throw new Error(result.error || 'Order failed');
       }
 
       const label = outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
