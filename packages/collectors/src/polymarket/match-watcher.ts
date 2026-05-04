@@ -39,6 +39,9 @@ interface PolyTrade {
   outcome?: string
   size?: number
   amount?: number
+  price?: number
+  tradePrice?: number
+  marketPrice?: number
   conditionId?: string
   asset?: string
   title?: string
@@ -91,6 +94,25 @@ async function resolveConditionId(slug: string): Promise<string | null> {
   }
 }
 
+
+function normalizeOdds(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null
+}
+
+async function fetchMarketOddsAtBet(slug: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`)
+    if (!res.ok) return null
+    const data = await res.json() as Array<{ outcomePrices?: string[] }>
+    const price = Number(data[0]?.outcomePrices?.[0])
+    return normalizeOdds(price)
+  } catch {
+    return null
+  }
+}
+
 function betWeight(amount?: number): number {
   if (!amount || amount < MIN_BET_AMOUNT) return 0
   if (amount < 2000) return 6
@@ -134,6 +156,9 @@ async function pollMatchTrades(
     const weight = betWeight(amount)
     if (weight === 0) continue
 
+    const tradePrice = normalizeOdds(trade.tradePrice ?? trade.price ?? trade.marketPrice ?? null)
+    const marketOddsAtBet = tradePrice ?? await fetchMarketOddsAtBet(slug)
+
     const signal: Signal = {
       source: 'POLYMARKET',
       type: 'WHALE_BET',
@@ -147,6 +172,9 @@ async function pollMatchTrades(
         outcome: trade.outcome,
         marketId: conditionId,
         slug,
+        activityTimestamp: trade.timestamp,
+        tradePrice,
+        marketOddsAtBet,
         source: 'match-watcher',   // distinguishes from user-tracker signals
       },
     }
