@@ -666,10 +666,23 @@ export async function redeemPosition(polygonAddress: string, conditionId: string
     body: JSON.stringify({ polygonAddress, conditionId }),
   });
 
-  const data = await response.json() as Record<string, unknown>;
+  const text = await response.text();
+  let data: Record<string, unknown> = {};
+  if (text) {
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      data = { error: text };
+    }
+  }
 
   if (!response.ok) {
-    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Redeem failed';
+    const detail =
+      typeof data.detail === 'string'
+        ? data.detail
+        : typeof data.error === 'string'
+          ? data.error
+          : `Redeem failed (${response.status})`;
     return { ok: false, error: detail };
   }
 
