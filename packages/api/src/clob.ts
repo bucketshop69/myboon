@@ -722,10 +722,23 @@ clobRoutes.post('/redeem', async (c) => {
     console.log(`[clob] Redeem relay execute: to=${redeemTx.to}, dataBytes=${redeemTx.data.length}`)
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
     const execRes = await relay.execute([redeemTx], `Redeem positions for condition ${conditionId.slice(0, 10)}...`)
+    console.log('[clob] Redeem relay response:', {
+      type: typeof execRes,
+      keys: execRes && typeof execRes === 'object' ? Object.keys(execRes as Record<string, unknown>) : [],
+    })
     console.log('[clob] Redeem relay submitted, waiting for receipt...')
     const execResult = await execRes.wait()
+    console.log('[clob] Redeem relay wait result:', execResult ?? null)
 
     const txHash = execResult?.transactionHash ?? null
+    if (!txHash) {
+      console.warn('[clob] Redeem relay completed without transaction hash; treating as not confirmed')
+      return c.json({
+        error: 'Redeem not confirmed',
+        detail: 'Relayer completed without returning a transaction hash',
+      }, 502)
+    }
+
     console.log(`[clob] Redeemed positions for ${polygonAddress} condition=${conditionId.slice(0, 10)}... tx=${txHash}`)
 
     return c.json({ ok: true, txHash })
