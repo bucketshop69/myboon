@@ -1663,22 +1663,520 @@
     .betslip-confirm:hover { opacity: 0.9 }
     .betslip-confirm.yes-confirm { background: var(--pos) }
     .betslip-confirm.no-confirm  { background: var(--neg) }
+
+    /* ════════════════════════════════
+       SCREEN 1 V2 — MODERN LIST EXPLORATION
+    ════════════════════════════════ */
+
+    .v2-phone {
+      background:
+        radial-gradient(circle at 50% -8%, rgba(232,197,71,0.10), transparent 36%),
+        linear-gradient(180deg, #11110d 0%, var(--bg1) 30%, var(--bg0) 100%);
+    }
+    .v2-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 0 18px;
+    }
+    .v2-scroll::-webkit-scrollbar { display: none }
+    .v2-topbar {
+      padding: 10px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .v2-title-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+    .v2-eyebrow {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: var(--a2);
+      margin-bottom: 3px;
+    }
+    .v2-title {
+      font-family: var(--sans);
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 750;
+      color: var(--hi);
+      letter-spacing: 0;
+    }
+    .v2-wallet {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(33,33,26,0.74);
+      border: 1px solid var(--border1);
+      border-radius: 999px;
+      padding: 7px 10px;
+    }
+    .v2-wallet-main {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--hi);
+    }
+    .v2-wallet-sub {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-top: 1px;
+    }
+    .v2-filter-shell {
+      padding: 2px 16px 12px;
+    }
+    .v2-filter-row {
+      display: flex;
+      gap: 6px;
+      background: rgba(8,8,6,0.42);
+      border: 1px solid var(--border0);
+      border-radius: 12px;
+      padding: 4px;
+      overflow-x: auto;
+    }
+    .v2-filter-row::-webkit-scrollbar { display: none }
+    .v2-chip {
+      flex-shrink: 0;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--mid);
+      white-space: nowrap;
+    }
+    .v2-chip.active {
+      color: var(--hi);
+      background: var(--bg3);
+      box-shadow: inset 0 0 0 1px var(--border1);
+    }
+    .v2-chip-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--a);
+      box-shadow: 0 0 10px rgba(232,197,71,0.45);
+    }
+    .v2-featured-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px 8px;
+    }
+    .v2-featured-title {
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 760;
+      color: var(--hi);
+    }
+    .v2-featured-meta {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .v2-page-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--lo);
+    }
+    .v2-page-dot.active {
+      width: 15px;
+      background: var(--a);
+      box-shadow: 0 0 10px rgba(232,197,71,0.35);
+    }
+    .v2-featured-rail {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 0 16px 12px;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+    }
+    .v2-featured-rail::-webkit-scrollbar { display: none }
+    .v2-hero-card {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(33,33,26,0.98), rgba(20,20,16,0.96)),
+        var(--bg2);
+      border: 1px solid rgba(232,197,71,0.20);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 18px 36px rgba(0,0,0,0.30);
+      flex: 0 0 312px;
+      scroll-snap-align: start;
+    }
+    .v2-hero-card::after {
+      content: '';
+      position: absolute;
+      inset: auto -20% -42% 28%;
+      height: 140px;
+      background: radial-gradient(circle, rgba(52,199,123,0.13), transparent 68%);
+      pointer-events: none;
+    }
+    .v2-hero-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .v2-live-lockup {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .v2-live-copy {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .v2-live-copy strong {
+      display: block;
+      font-family: var(--sans);
+      font-size: 11.5px;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--hi);
+      margin-bottom: 1px;
+    }
+    .v2-hero-volume {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--a);
+      background: var(--a4);
+      border: 1px solid rgba(232,197,71,0.14);
+      border-radius: 999px;
+      padding: 5px 8px;
+    }
+    .v2-matchup {
+      display: grid;
+      grid-template-columns: 1fr 36px 1fr;
+      gap: 10px;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 12px;
+    }
+    .v2-team {
+      min-width: 0;
+    }
+    .v2-team.right { text-align: right }
+    .v2-team-name {
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 750;
+      color: var(--hi);
+      line-height: 1.12;
+    }
+    .v2-team-meta {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    .v2-vs {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--bg1);
+      border: 1px solid var(--border1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--mid);
+    }
+    .v2-hero-odds {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 10px;
+    }
+    .v2-odd-panel {
+      border-radius: 12px;
+      padding: 9px;
+      border: 1px solid var(--border0);
+      background: rgba(8,8,6,0.32);
+    }
+    .v2-odd-panel.pos { border-color: rgba(52,199,123,0.18); background: rgba(52,199,123,0.08) }
+    .v2-odd-panel.neg { border-color: rgba(244,88,78,0.16); background: rgba(244,88,78,0.06) }
+    .v2-odd-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 3px;
+    }
+    .v2-odd-value {
+      font-family: var(--mono);
+      font-size: 20px;
+      line-height: 1;
+      font-weight: 800;
+    }
+    .v2-odd-value.pos { color: var(--pos) }
+    .v2-odd-value.neg { color: var(--neg) }
+    .v2-action-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      position: relative;
+      z-index: 1;
+    }
+    .v2-action {
+      height: 32px;
+      border-radius: 10px;
+      border: 1px solid var(--border1);
+      background: var(--bg3);
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 750;
+      color: var(--hi);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .v2-action.primary {
+      background: var(--a);
+      border-color: var(--a);
+      color: #0b0b09;
+    }
+    .v2-section-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 13px 16px 7px;
+    }
+    .v2-section-title {
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 760;
+      color: var(--hi);
+    }
+    .v2-section-link {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+    .v2-market-card {
+      background: rgba(20,20,16,0.82);
+      border: 1px solid var(--border0);
+      border-radius: 12px;
+      padding: 10px 11px;
+      margin: 0 16px 6px;
+    }
+    .v2-sport-card {
+      margin: 0 16px 8px;
+      padding: 11px 12px;
+    }
+    .v2-sport-card .sport-meta {
+      margin-bottom: 8px;
+    }
+    .v2-sport-meta-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .v2-sport-card .sport-teams {
+      margin-bottom: 9px;
+    }
+    .v2-sport-card .odds-row {
+      margin-top: 0;
+    }
+    .v2-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .v2-card-title {
+      font-family: var(--sans);
+      font-size: 12.25px;
+      font-weight: 700;
+      color: var(--hi);
+      line-height: 1.22;
+      flex: 1;
+      min-width: 0;
+    }
+    .v2-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 5px;
+      flex-wrap: wrap;
+    }
+    .v2-card-liquidity {
+      margin-left: auto;
+      color: var(--mid);
+      background: transparent;
+      border: 1px solid var(--border0);
+    }
+    .v2-mini-badge {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--mid);
+      background: var(--bg3);
+      border-radius: 999px;
+      padding: 2px 6px;
+    }
+    .v2-mini-badge.hot {
+      color: var(--neg);
+      background: var(--neg2);
+    }
+    .v2-mini-badge.gold {
+      color: var(--a);
+      background: var(--a4);
+    }
+    .v2-card-price {
+      text-align: right;
+      min-width: 54px;
+    }
+    .v2-card-price strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 17px;
+      line-height: 1;
+      color: var(--pos);
+    }
+    .v2-card-price span {
+      display: block;
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      margin-top: 4px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .v2-progress {
+      display: grid;
+      grid-template-columns: 1fr;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--bg4);
+      overflow: hidden;
+    }
+    .v2-progress span {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--pos);
+    }
+    .v2-progress.three {
+      display: flex;
+      gap: 2px;
+      background: transparent;
+      border-radius: 999px;
+    }
+    .v2-progress.three span { border-radius: 999px }
+    .v2-progress .draw { background: var(--a) }
+    .v2-progress .neg { background: var(--neg) }
+    .v2-card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: var(--mid);
+      margin-top: 5px;
+    }
+    .v2-card-foot strong {
+      color: var(--hi);
+      font-weight: 700;
+    }
+    .v2-binary-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(20,20,16,0.72);
+      border: 1px solid var(--border0);
+      border-radius: 12px;
+      padding: 9px 10px;
+      margin: 0 16px 6px;
+    }
+    .v2-binary-img {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: var(--bg4);
+      flex-shrink: 0;
+    }
+    .v2-binary-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .v2-binary-title {
+      font-family: var(--sans);
+      font-size: 11.5px;
+      line-height: 1.22;
+      color: var(--hi);
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+    .v2-binary-odds {
+      width: 54px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .v2-binary-odds strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 17px;
+      color: var(--pos);
+      line-height: 1;
+    }
+    .v2-binary-odds span {
+      display: block;
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--mid);
+      margin-top: 3px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
 
-  <div class="flow-label">Predict — UI Mockup · Issue #061</div>
-
+  <!-- ═══════════════════════════════════
+       SCREEN 1 V2: MODERN LIST CONCEPT
+  ═══════════════════════════════════ -->
+  <div class="flow-label">Predict — Permanent Screen · Same Data / Same Palette</div>
   <div class="screens-row">
-
-    <!-- ═══════════════════════════════════
-         SCREEN 1: PREDICT LIST
-    ═══════════════════════════════════ -->
     <div class="screen-col">
-      <div class="screen-label">01 · List Screen</div>
-      <div class="phone">
-        <!-- notch -->
-        <!-- status bar -->
+      <div class="screen-label">01 · Modern List Screen</div>
+      <div class="phone v2-phone">
         <div class="status-bar">
           <span class="st-time">9:41</span>
           <div class="st-icons">
@@ -1696,74 +2194,189 @@
           </div>
         </div>
 
-        <!-- header -->
-        <div class="predict-header">
-          <div class="profile-avatar-ring" style="width:28px;height:28px;cursor:pointer">
-            <div class="profile-avatar-inner">B</div>
+        <div class="v2-topbar">
+          <div class="profile-avatar-ring" style="width:34px;height:34px;cursor:pointer">
+            <div class="profile-avatar-inner" style="width:27px;height:27px">B</div>
           </div>
-          <span class="predict-title" style="flex:1;text-align:center">Predict</span>
-          <div class="wallet-pill">
+          <div class="v2-title-wrap">
+            <div class="v2-eyebrow">MYBOON MARKETS</div>
+            <div class="v2-title">Predict</div>
+          </div>
+          <div class="v2-wallet">
             <div class="wallet-dot"></div>
-            <span class="wallet-addr">7xKp···m3Qr</span>
+            <div>
+              <div class="v2-wallet-main">$2.4K</div>
+              <div class="v2-wallet-sub">7xKp</div>
+            </div>
           </div>
         </div>
 
-        <!-- filter chips -->
-        <div class="filter-row">
-          <div class="chip active">All</div>
-          <div class="chip">Sports</div>
-          <div class="chip">Crypto</div>
-          <div class="chip">Politics</div>
-          <div class="chip">Macro</div>
-        </div>
-
-        <!-- scrollable list -->
-        <div class="screen-scroll">
-
-          <!-- ── LIVE SECTION ── -->
-          <div class="section-hdr">
-            <div class="section-left">
-              <span class="section-title" style="color:var(--neg)">Live Now</span>
-              <span class="section-count">2</span>
-            </div>
-            <div class="section-chevron">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+        <div class="v2-scroll">
+          <div class="v2-featured-head">
+            <div class="v2-featured-title">Featured markets</div>
+            <div class="v2-featured-meta">
+              <span class="v2-page-dot active"></span>
+              <span class="v2-page-dot"></span>
+              <span class="v2-page-dot"></span>
             </div>
           </div>
 
-          <!-- LIVE: IPL — Delhi vs Punjab (2-way, no draw) -->
-          <div class="sport-card" style="border-color:rgba(244,88,78,0.2)">
+          <div class="v2-featured-rail">
+            <div class="v2-hero-card">
+              <div class="v2-hero-top">
+                <div class="v2-live-lockup">
+                  <div class="live-badge">
+                    <div class="live-badge-dot"></div>
+                    LIVE
+                  </div>
+                  <div class="v2-live-copy">
+                    <strong>Top live market</strong>
+                    IPL · Match 42
+                  </div>
+                </div>
+                <div class="v2-hero-volume">$2.0M vol</div>
+              </div>
+
+              <div class="v2-matchup">
+                <div class="v2-team">
+                  <div class="v2-team-name">Delhi Capitals</div>
+                  <div class="v2-team-meta">home</div>
+                </div>
+                <div class="v2-vs">VS</div>
+                <div class="v2-team right">
+                  <div class="v2-team-name">Punjab Kings</div>
+                  <div class="v2-team-meta">away</div>
+                </div>
+              </div>
+
+              <div class="v2-hero-odds">
+                <div class="v2-odd-panel pos">
+                  <div class="v2-odd-label">Delhi wins</div>
+                  <div class="v2-odd-value pos">59%</div>
+                </div>
+                <div class="v2-odd-panel neg">
+                  <div class="v2-odd-label">Punjab wins</div>
+                  <div class="v2-odd-value neg">42%</div>
+                </div>
+              </div>
+
+              <div class="v2-action-row">
+                <div class="v2-action primary">Trade Delhi</div>
+                <div class="v2-action">Open Market</div>
+              </div>
+            </div>
+
+            <div class="v2-hero-card">
+              <div class="v2-hero-top">
+                <div class="v2-live-lockup">
+                  <div class="live-badge">
+                    <div class="live-badge-dot"></div>
+                    LIVE
+                  </div>
+                  <div class="v2-live-copy">
+                    <strong>Late EPL swing</strong>
+                    EPL · 3-way
+                  </div>
+                </div>
+                <div class="v2-hero-volume">$1.1M vol</div>
+              </div>
+
+              <div class="v2-matchup">
+                <div class="v2-team">
+                  <div class="v2-team-name">Fulham</div>
+                  <div class="v2-team-meta">leading</div>
+                </div>
+                <div class="v2-vs">VS</div>
+                <div class="v2-team right">
+                  <div class="v2-team-name">Aston Villa</div>
+                  <div class="v2-team-meta">away</div>
+                </div>
+              </div>
+
+              <div class="v2-hero-odds">
+                <div class="v2-odd-panel pos">
+                  <div class="v2-odd-label">Fulham wins</div>
+                  <div class="v2-odd-value pos">99%</div>
+                </div>
+                <div class="v2-odd-panel neg">
+                  <div class="v2-odd-label">Villa wins</div>
+                  <div class="v2-odd-value neg">0%</div>
+                </div>
+              </div>
+
+              <div class="v2-action-row">
+                <div class="v2-action primary">Trade Fulham</div>
+                <div class="v2-action">Draw 1%</div>
+              </div>
+            </div>
+
+            <div class="v2-hero-card">
+              <div class="v2-hero-top">
+                <div class="v2-live-lockup">
+                  <div class="v2-mini-badge gold">Featured</div>
+                  <div class="v2-live-copy">
+                    <strong>Crypto spotlight</strong>
+                    Bitcoin · Dec 31
+                  </div>
+                </div>
+                <div class="v2-hero-volume">$11K vol</div>
+              </div>
+
+              <div class="v2-matchup" style="grid-template-columns:1fr 72px">
+                <div class="v2-team">
+                  <div class="v2-team-name">Bitcoin all time high by December 31, 2026?</div>
+                  <div class="v2-team-meta">crypto market</div>
+                </div>
+                <div class="v2-card-price" style="min-width:72px">
+                  <strong>18%</strong>
+                  <span>yes</span>
+                </div>
+              </div>
+
+              <div class="v2-hero-odds">
+                <div class="v2-odd-panel pos">
+                  <div class="v2-odd-label">Yes</div>
+                  <div class="v2-odd-value pos">18%</div>
+                </div>
+                <div class="v2-odd-panel neg">
+                  <div class="v2-odd-label">No</div>
+                  <div class="v2-odd-value neg">82%</div>
+                </div>
+              </div>
+
+              <div class="v2-action-row">
+                <div class="v2-action primary">Trade Yes</div>
+                <div class="v2-action">Open Market</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="v2-filter-shell">
+            <div class="v2-filter-row">
+              <div class="v2-chip active"><span class="v2-chip-dot"></span> All</div>
+              <div class="v2-chip">Live</div>
+              <div class="v2-chip">Sports</div>
+              <div class="v2-chip">Crypto</div>
+              <div class="v2-chip">Politics</div>
+              <div class="v2-chip">Macro</div>
+            </div>
+          </div>
+
+          <div class="v2-section-row">
+            <div class="v2-section-title">Live Now</div>
+            <div class="v2-section-link">2 markets</div>
+          </div>
+
+          <div class="sport-card v2-sport-card" style="border-color:rgba(244,88,78,0.2)">
             <div class="sport-meta">
               <div class="live-badge">
                 <div class="live-badge-dot"></div>
                 LIVE
               </div>
-              <span class="sport-league">IPL · Match 42</span>
-            </div>
-            <div class="sport-teams">
-              <div class="team-name">Delhi Capitals</div>
-              <div class="vs-badge">vs</div>
-              <div class="team-name right">Punjab Kings</div>
-            </div>
-            <div class="odds-bar">
-              <div class="odds-bar-seg pos" style="width:59%"></div>
-              <div class="odds-bar-seg neg" style="width:41%"></div>
-            </div>
-            <div class="odds-row">
-              <span class="odds-pct pos">59%</span>
-              <span class="sport-vol">Vol $2.0M</span>
-              <span class="odds-pct neg">42%</span>
-            </div>
-          </div>
-
-          <!-- LIVE: EPL — Fulham vs Aston Villa (3-way) -->
-          <div class="sport-card" style="border-color:rgba(244,88,78,0.2)">
-            <div class="sport-meta">
-              <div class="live-badge">
-                <div class="live-badge-dot"></div>
-                LIVE
+              <div class="v2-sport-meta-right">
+                <span class="sport-league">EPL</span>
+                <span class="v2-mini-badge v2-card-liquidity">$1.1M vol</span>
               </div>
-              <span class="sport-league">EPL</span>
             </div>
             <div class="sport-teams">
               <div class="team-name">Fulham</div>
@@ -1780,28 +2393,23 @@
               <span class="odds-draw">1% draw</span>
               <span class="odds-pct neg">0%</span>
             </div>
-            <div class="sport-vol" style="margin-top:6px">Vol $1.1M</div>
           </div>
 
-          <!-- ── UPCOMING · EPL ── -->
-          <div class="section-hdr" style="margin-top:4px">
-            <div class="section-left">
-              <span class="section-title">EPL · Upcoming</span>
-              <span class="section-count">6</span>
-            </div>
-            <div class="section-chevron">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
+          <div class="v2-section-row">
+            <div class="v2-section-title">Upcoming Sports</div>
+            <div class="v2-section-link">10 games</div>
           </div>
 
-          <!-- UPCOMING: Liverpool vs Crystal Palace -->
-          <div class="sport-card">
+          <div class="sport-card v2-sport-card">
             <div class="sport-meta">
               <div class="upcoming-badge">
                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                 Today · 14:00
               </div>
-              <span class="sport-league">EPL</span>
+              <div class="v2-sport-meta-right">
+                <span class="sport-league">EPL</span>
+                <span class="v2-mini-badge v2-card-liquidity">$240K vol</span>
+              </div>
             </div>
             <div class="sport-teams">
               <div class="team-name">Liverpool</div>
@@ -1818,55 +2426,19 @@
               <span class="odds-draw">21% draw</span>
               <span class="odds-pct neg">18%</span>
             </div>
-            <div class="sport-vol" style="margin-top:6px">Vol $240K</div>
           </div>
 
-          <!-- UPCOMING: Wolves vs Tottenham -->
-          <div class="sport-card">
-            <div class="sport-meta">
-              <div class="upcoming-badge">
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                Today · 14:00
-              </div>
-              <span class="sport-league">EPL</span>
-            </div>
-            <div class="sport-teams">
-              <div class="team-name">Wolves</div>
-              <div class="vs-badge">vs</div>
-              <div class="team-name right">Tottenham</div>
-            </div>
-            <div class="odds-bar">
-              <div class="odds-bar-seg neg" style="width:21%"></div>
-              <div class="odds-bar-seg draw" style="width:22%"></div>
-              <div class="odds-bar-seg pos" style="width:59%"></div>
-            </div>
-            <div class="odds-row">
-              <span class="odds-pct neg">21%</span>
-              <span class="odds-draw">22% draw</span>
-              <span class="odds-pct pos">59%</span>
-            </div>
-            <div class="sport-vol" style="margin-top:6px">Vol $519K</div>
-          </div>
-
-          <!-- ── UPCOMING · IPL ── -->
-          <div class="section-hdr" style="margin-top:4px">
-            <div class="section-left">
-              <span class="section-title">IPL · Upcoming</span>
-              <span class="section-count">4</span>
-            </div>
-            <div class="section-chevron">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
-          </div>
-
-          <!-- UPCOMING: IPL — Chennai vs Rajasthan (2-way) -->
-          <div class="sport-card">
+          <div class="sport-card v2-sport-card">
             <div class="sport-meta">
               <div class="upcoming-badge">
                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                 Tomorrow · 14:00
               </div>
-              <span class="sport-league">IPL · Match 43</span>
+              <div class="v2-sport-meta-right">
+                <span class="sport-league">IPL</span>
+                <span class="v2-mini-badge gold">2-way</span>
+                <span class="v2-mini-badge v2-card-liquidity">$1.4M vol</span>
+              </div>
             </div>
             <div class="sport-teams">
               <div class="team-name">Chennai Super Kings</div>
@@ -1879,140 +2451,49 @@
             </div>
             <div class="odds-row">
               <span class="odds-pct pos">55%</span>
-              <span class="sport-vol">Vol $1.4M</span>
+              <span class="sport-vol">2-way</span>
               <span class="odds-pct neg">45%</span>
             </div>
           </div>
 
-          <!-- ── MARKETS SECTION ── -->
-          <div class="section-hdr" style="margin-top:4px">
-            <div class="section-left">
-              <span class="section-title">Markets</span>
-              <span class="section-count">12</span>
-            </div>
-            <div class="section-chevron">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
+          <div class="v2-section-row">
+            <div class="v2-section-title">Markets</div>
+            <div class="v2-section-link">12 open</div>
           </div>
 
-          <!-- BINARY: China–Taiwan (politics) with image -->
-          <div class="geo-card">
-            <div class="geo-top">
-              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/china-invade-taiwan.jpg" alt="" onerror="this.style.display='none'">
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span class="cat-badge cat-politics">Politics</span>
-                </div>
-                <div class="geo-question">Will China invade Taiwan by end of 2026?</div>
+          <div class="v2-binary-card">
+            <img class="v2-binary-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/china-invade-taiwan.jpg" alt="" onerror="this.style.display='none'">
+            <div class="v2-binary-main">
+              <div class="v2-binary-title">Will China invade Taiwan by end of 2026?</div>
+              <div class="v2-card-meta">
+                <span class="v2-mini-badge gold">Politics</span>
+                <span class="v2-mini-badge">Ends 2026</span>
+                <span class="v2-mini-badge v2-card-liquidity">$335K vol</span>
               </div>
             </div>
-            <div class="geo-bar-row">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--pos);width:26px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:7%"></div></div>
-              <div style="font-family:var(--mono);font-size:11px;color:var(--neg);width:26px;text-align:right">NO</div>
-            </div>
-            <div class="geo-pcts">
-              <span class="pct-yes">7%</span>
-              <span class="vol-badge">$335K vol</span>
-              <span class="pct-no">93%</span>
+            <div class="v2-binary-odds">
+              <strong>7%</strong>
+              <span>yes</span>
             </div>
           </div>
 
-          <!-- BINARY: Russia–Ukraine ceasefire (politics) -->
-          <div class="geo-card">
-            <div class="geo-top">
-              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/russia-ukraine-ceasefire.jpg" alt="" onerror="this.style.display='none'">
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span class="cat-badge cat-politics">Politics</span>
-                </div>
-                <div class="geo-question">Russia x Ukraine ceasefire by end of 2026?</div>
+          <div class="v2-binary-card">
+            <img class="v2-binary-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+full+hd+logo+light.jpg" alt="" onerror="this.style.display='none'">
+            <div class="v2-binary-main">
+              <div class="v2-binary-title">Bitcoin all time high by December 31, 2026?</div>
+              <div class="v2-card-meta">
+                <span class="v2-mini-badge">Crypto</span>
+                <span class="v2-mini-badge">Ends Dec 31</span>
+                <span class="v2-mini-badge v2-card-liquidity">$11K vol</span>
               </div>
             </div>
-            <div class="geo-bar-row">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--pos);width:26px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:26%"></div></div>
-              <div style="font-family:var(--mono);font-size:11px;color:var(--neg);width:26px;text-align:right">NO</div>
-            </div>
-            <div class="geo-pcts">
-              <span class="pct-yes">26%</span>
-              <span class="vol-badge">$49K vol</span>
-              <span class="pct-no">74%</span>
+            <div class="v2-binary-odds">
+              <strong>18%</strong>
+              <span>yes</span>
             </div>
           </div>
-
-          <!-- BINARY: Bitcoin ATH (crypto) -->
-          <div class="geo-card">
-            <div class="geo-top">
-              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+full+hd+logo+light.jpg" alt="" onerror="this.style.display='none'">
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span class="cat-badge cat-crypto">Crypto</span>
-                </div>
-                <div class="geo-question">Bitcoin all time high by December 31, 2026?</div>
-              </div>
-            </div>
-            <div class="geo-bar-row">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--pos);width:26px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:18%"></div></div>
-              <div style="font-family:var(--mono);font-size:11px;color:var(--neg);width:26px;text-align:right">NO</div>
-            </div>
-            <div class="geo-pcts">
-              <span class="pct-yes">18%</span>
-              <span class="vol-badge">$11K vol</span>
-              <span class="pct-no">82%</span>
-            </div>
-          </div>
-
-          <!-- BINARY: US recession (macro) -->
-          <div class="geo-card">
-            <div class="geo-top">
-              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/us-recession.jpg" alt="" onerror="this.style.display='none'">
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span class="cat-badge cat-macro">Macro</span>
-                </div>
-                <div class="geo-question">US recession by end of 2026?</div>
-              </div>
-            </div>
-            <div class="geo-bar-row">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--pos);width:26px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:26%"></div></div>
-              <div style="font-family:var(--mono);font-size:11px;color:var(--neg);width:26px;text-align:right">NO</div>
-            </div>
-            <div class="geo-pcts">
-              <span class="pct-yes">26%</span>
-              <span class="vol-badge">$1.8K vol</span>
-              <span class="pct-no">74%</span>
-            </div>
-          </div>
-
-          <!-- BINARY: ETH ATH (crypto) -->
-          <div class="geo-card" style="margin-bottom:16px">
-            <div class="geo-top">
-              <img class="market-img" src="https://polymarket-upload.s3.us-east-2.amazonaws.com/ethereum-logo.jpg" alt="" onerror="this.style.display='none'">
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span class="cat-badge cat-crypto">Crypto</span>
-                </div>
-                <div class="geo-question">Ethereum all time high by December 31, 2026?</div>
-              </div>
-            </div>
-            <div class="geo-bar-row">
-              <div style="font-family:var(--mono);font-size:11px;color:var(--pos);width:26px">YES</div>
-              <div class="geo-bar" style="flex:1"><div class="geo-fill yes-fill" style="width:5%"></div></div>
-              <div style="font-family:var(--mono);font-size:11px;color:var(--neg);width:26px;text-align:right">NO</div>
-            </div>
-            <div class="geo-pcts">
-              <span class="pct-yes">5%</span>
-              <span class="vol-badge">$415 vol</span>
-              <span class="pct-no">95%</span>
-            </div>
-          </div>
-
         </div>
 
-        <!-- nav bar -->
         <div class="nav-bar">
           <div class="nav-item">
             <div class="nav-icon">
@@ -2042,130 +2523,6 @@
         </div>
       </div>
     </div>
-
-  </div>
-
-  <!-- ═══════════════════════════════════
-       EXPERIMENTAL CARD VARIANTS
-  ═══════════════════════════════════ -->
-  <div class="flow-label">Card Variants — Experimental</div>
-  <div style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;max-width:1320px;width:100%">
-
-    <!-- ── VARIANT A: Odds inline with team names ── -->
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-      <div class="screen-label">A · Inline Odds</div>
-      <div style="width:345px;background:var(--bg2);border:1px solid var(--border1);border-radius:12px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="live-badge"><div class="live-badge-dot"></div>LIVE</div>
-          <span style="font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mid)">EPL</span>
-        </div>
-        <!-- teams with odds directly next to names -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <div style="display:flex;align-items:baseline;gap:8px">
-            <span style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi)">Fulham</span>
-            <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--pos)">99%</span>
-          </div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--lo)">vs</div>
-          <div style="display:flex;align-items:baseline;gap:8px;flex-direction:row-reverse">
-            <span style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi)">Aston Villa</span>
-            <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--neg)">0%</span>
-          </div>
-        </div>
-        <!-- draw as subtle center pill -->
-        <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px">
-          <div style="flex:1;height:1px;background:var(--border0)"></div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--a)">Draw 1%</span>
-          <div style="flex:1;height:1px;background:var(--border0)"></div>
-        </div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--mid)">Vol $1.1M</div>
-      </div>
-    </div>
-
-    <!-- ── VARIANT B: Bar between teams ── -->
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-      <div class="screen-label">B · Bar Between Teams</div>
-      <div style="width:345px;background:var(--bg2);border:1px solid var(--border1);border-radius:12px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="live-badge"><div class="live-badge-dot"></div>LIVE</div>
-          <span style="font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mid)">EPL</span>
-        </div>
-        <!-- team names -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi)">Fulham</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--lo)">vs</span>
-          <span style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi);text-align:right">Aston Villa</span>
-        </div>
-        <!-- stacked bar: win / draw / lose -->
-        <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px;margin-bottom:6px">
-          <div style="width:99%;background:var(--pos);border-radius:3px"></div>
-          <div style="width:1%;background:var(--a);border-radius:3px;min-width:3px"></div>
-          <div style="width:0%;background:var(--neg);border-radius:3px;min-width:3px"></div>
-        </div>
-        <!-- percentages below bar -->
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--pos)">99%</span>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--a)">1% draw</span>
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--neg)">0%</span>
-        </div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--mid);margin-top:8px">Vol $1.1M</div>
-      </div>
-    </div>
-
-    <!-- ── VARIANT C: Compact — no pills, just numbers ── -->
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-      <div class="screen-label">C · Compact Row</div>
-      <div style="width:345px;background:var(--bg2);border:1px solid var(--border1);border-radius:12px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="live-badge"><div class="live-badge-dot"></div>LIVE</div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mid)">EPL</span>
-            <span style="font-family:var(--mono);font-size:11px;color:var(--mid)">·</span>
-            <span style="font-family:var(--mono);font-size:11px;color:var(--mid)">$1.1M</span>
-          </div>
-        </div>
-        <!-- single row: team — pct — vs — pct — team -->
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div style="flex:1">
-            <div style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi)">Fulham</div>
-            <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--pos);margin-top:2px">99%</div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:center;padding:0 12px">
-            <span style="font-family:var(--mono);font-size:10px;color:var(--lo);margin-bottom:2px">vs</span>
-            <span style="font-family:var(--mono);font-size:10px;color:var(--a)">1% draw</span>
-          </div>
-          <div style="flex:1;text-align:right">
-            <div style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi)">Aston Villa</div>
-            <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--neg);margin-top:2px">0%</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── VARIANT D: 2-way (IPL, no draw) ── -->
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-      <div class="screen-label">D · 2-Way Bar (IPL)</div>
-      <div style="width:345px;background:var(--bg2);border:1px solid var(--border1);border-radius:12px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="live-badge"><div class="live-badge-dot"></div>LIVE</div>
-          <span style="font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mid)">IPL · Match 42</span>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi)">Delhi Capitals</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--lo)">vs</span>
-          <span style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--hi);text-align:right">Punjab Kings</span>
-        </div>
-        <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px;margin-bottom:6px">
-          <div style="width:59%;background:var(--pos);border-radius:3px"></div>
-          <div style="width:41%;background:var(--neg);border-radius:3px"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--pos)">59%</span>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--mid)">Vol $2.0M</span>
-          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--neg)">42%</span>
-        </div>
-      </div>
-    </div>
-
   </div>
 
   <!-- ─── ANNOTATIONS ─── -->

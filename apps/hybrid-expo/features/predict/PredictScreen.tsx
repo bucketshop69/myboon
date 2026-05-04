@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -44,6 +45,11 @@ function formatEndDate(endDate: string | null): string {
   const month = date.toLocaleString('en-US', { month: 'short' });
   const day = date.getDate();
   return `Ends ${month} ${day}`;
+}
+
+function formatChipLabel(label: string): string {
+  if (label === 'All') return label;
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 // ─── category badge colors ───────────────────────────────────────────────────
@@ -140,6 +146,96 @@ function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPre
   );
 }
 
+// ─── featured carousel card ─────────────────────────────────────────────────
+
+function FeaturedCard({
+  item,
+  onPress,
+  formatOdds,
+  width,
+}: {
+  item: FeedItem;
+  onPress: () => void;
+  formatOdds: (p: number | null) => string;
+  width: number;
+}) {
+  const isMatch = item.type === 'match';
+  const isLive = item.status === 'live';
+
+  if (isMatch) {
+    const nonDraw = item.outcomes.filter((o) => !o.label.toLowerCase().startsWith('draw'));
+    const drawOutcome = item.outcomes.find((o) => o.label.toLowerCase().startsWith('draw'));
+    const teamA = nonDraw[0];
+    const teamB = nonDraw[1];
+    const teamAPrice = teamA?.price ?? 0.5;
+    const teamBPrice = teamB?.price ?? 0.5;
+
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.featuredCard, { width }, pressed && styles.cardPressed]}>
+        <View style={styles.featuredTop}>
+          <View style={styles.featuredStatusRow}>
+            {isLive ? <LiveBadge /> : <Text style={styles.featuredTime}>{formatGameTime(item.gameStartTime ?? item.startDate)}</Text>}
+            <View>
+              <Text style={styles.featuredKicker}>{isLive ? 'Top live market' : 'Featured match'}</Text>
+              <Text style={styles.featuredLeague}>{item.sport.toUpperCase()} · {formatUsdCompact(item.volume)} vol</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.featuredMatchup}>
+          <View style={styles.featuredTeam}>
+            <Text style={styles.featuredTeamName} numberOfLines={2}>{shortTeamName(teamA?.label ?? '')}</Text>
+            <Text style={[styles.featuredOdd, styles.featuredOddPos]}>{formatOdds(teamAPrice)}</Text>
+          </View>
+          <View style={styles.featuredVs}><Text style={styles.featuredVsText}>VS</Text></View>
+          <View style={[styles.featuredTeam, styles.featuredTeamRight]}>
+            <Text style={[styles.featuredTeamName, styles.featuredTextRight]} numberOfLines={2}>{shortTeamName(teamB?.label ?? '')}</Text>
+            <Text style={[styles.featuredOdd, styles.featuredOddNeg]}>{formatOdds(teamBPrice)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.featuredActionRow}>
+          <Text style={styles.featuredActionPrimary}>Trade {shortTeamName(teamA?.label ?? 'Yes')}</Text>
+          <Text style={styles.featuredActionSecondary}>
+            {drawOutcome ? `Draw ${formatOdds(drawOutcome.price)}` : 'Open market'}
+          </Text>
+        </View>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.featuredCard, { width }, pressed && styles.cardPressed]}>
+      <View style={styles.featuredTop}>
+        <View style={styles.featuredStatusRow}>
+          <CategoryBadge category={item.category} />
+          <View>
+            <Text style={styles.featuredKicker}>Featured market</Text>
+            <Text style={styles.featuredLeague}>{formatUsdCompact(item.volume)} vol</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.featuredBinaryMain}>
+        {item.image ? <Image source={{ uri: item.image }} style={styles.featuredImage} resizeMode="cover" /> : null}
+        <View style={styles.featuredBinaryCopy}>
+          <Text style={styles.featuredQuestion} numberOfLines={3}>{item.title}</Text>
+          <Text style={styles.featuredEnd}>{formatEndDate(item.endDate)}</Text>
+        </View>
+        <View style={styles.featuredBinaryOdds}>
+          <Text style={[styles.featuredOdd, styles.featuredOddPos]}>{formatOdds(item.price)}</Text>
+          <Text style={styles.featuredOddsLabel}>YES</Text>
+        </View>
+      </View>
+
+      <View style={styles.featuredActionRow}>
+        <Text style={styles.featuredActionPrimary}>Trade Yes</Text>
+        <Text style={styles.featuredActionSecondary}>No {formatOdds(1 - item.price)}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 // ─── match card (epl / ipl) ──────────────────────────────────────────────────
 
 function shortTeamName(label: string): string {
@@ -181,7 +277,10 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
             <Text style={styles.upcomingKickoff}>{formatGameTime(kickoff)}</Text>
           </View>
         )}
-        <Text style={styles.sportLeague}>{item.sport.toUpperCase()}</Text>
+        <View style={styles.sportMetaRight}>
+          <Text style={styles.sportLeague}>{item.sport.toUpperCase()}</Text>
+          <Text style={styles.metaVolChip}>{formatUsdCompact(item.volume)} vol</Text>
+        </View>
       </View>
 
       {/* teams row */}
@@ -204,13 +303,10 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
         {hasDraw ? (
           <Text style={styles.oddsDraw}>{drawPct}% draw</Text>
         ) : (
-          <Text style={styles.sportVol}>Vol {formatUsdCompact(item.volume)}</Text>
+          <Text style={styles.sportVol}>2-way</Text>
         )}
         <Text style={[styles.oddsPct, styles.oddsPctNeg]}>{formatOdds(teamBPrice)}</Text>
       </View>
-
-      {/* volume below odds row for 3-way */}
-      {hasDraw ? <Text style={[styles.sportVol, { marginTop: 6 }]}>Vol {formatUsdCompact(item.volume)}</Text> : null}
     </Pressable>
   );
 }
@@ -243,6 +339,7 @@ export default function PredictScreen() {
   const router = useRouter();
   const { format, setFormat, formatOdds } = useOddsFormat();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
 
   const [feedData, setFeedData] = useState<FeedResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -326,6 +423,18 @@ export default function PredictScreen() {
     [feedData],
   );
 
+  const featuredItems = useMemo(() => {
+    if (!feedData) return [];
+    return [...feedData.items]
+      .sort((a, b) => {
+        const aLive = a.status === 'live' ? 1 : 0;
+        const bLive = b.status === 'live' ? 1 : 0;
+        if (aLive !== bLive) return bLive - aLive;
+        return b.volume - a.volume;
+      })
+      .slice(0, 4);
+  }, [feedData]);
+
   function navigateBinary(slug: string) {
     router.push({ pathname: '/predict-market/[slug]', params: { slug } });
   }
@@ -335,6 +444,25 @@ export default function PredictScreen() {
   }
 
   const isAllSelected = activeCategory === 'All';
+  const featuredCardWidth = Math.min(320, Math.max(286, width - 52));
+
+  function renderFeedItem(item: FeedItem) {
+    return item.type === 'binary' ? (
+      <BinaryCard
+        key={item.slug}
+        item={item}
+        onPress={() => navigateBinary(item.slug)}
+        formatOdds={formatOdds}
+      />
+    ) : (
+      <MatchCard
+        key={item.slug}
+        item={item}
+        onPress={() => navigateMatch(item.sport, item.slug)}
+        formatOdds={formatOdds}
+      />
+    );
+  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -343,26 +471,6 @@ export default function PredictScreen() {
         <AvatarTrigger />
         <Text style={styles.predictTitle}>Predict</Text>
         <OddsFormatToggle format={format} onFormatChange={setFormat} />
-      </View>
-
-      {/* category filter chips */}
-      <View style={styles.filterStripShell}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterStrip}>
-          {chips.map((chip) => {
-            const active = chip === activeCategory;
-            return (
-              <Pressable
-                key={chip}
-                onPress={() => setActiveCategory(chip)}
-                style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
-                <Text style={active ? styles.filterTextOn : styles.filterTextOff}>{chip}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
       </View>
 
       {/* feed scroll */}
@@ -391,6 +499,64 @@ export default function PredictScreen() {
           </View>
         ) : null}
 
+        {!loading && !errorMessage && featuredItems.length > 0 ? (
+          <>
+            <View style={styles.featuredHeader}>
+              <Text style={styles.featuredHeaderTitle}>Featured markets</Text>
+              <View style={styles.featuredDots}>
+                {featuredItems.slice(0, 3).map((item, index) => (
+                  <View
+                    key={item.slug}
+                    style={[styles.featuredDot, index === 0 && styles.featuredDotActive]}
+                  />
+                ))}
+              </View>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              snapToInterval={featuredCardWidth + 10}
+              contentContainerStyle={styles.featuredRail}>
+              {featuredItems.map((item) => (
+                <FeaturedCard
+                  key={item.slug}
+                  item={item}
+                  onPress={() => item.type === 'match'
+                    ? navigateMatch(item.sport, item.slug)
+                    : navigateBinary(item.slug)}
+                  formatOdds={formatOdds}
+                  width={featuredCardWidth}
+                />
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
+
+        {!loading && !errorMessage ? (
+          <View style={styles.filterStripShell}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterStrip}>
+              {chips.map((chip) => {
+                const active = chip === activeCategory;
+                return (
+                  <Pressable
+                    key={chip}
+                    onPress={() => setActiveCategory(chip)}
+                    style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
+                    {active ? <View style={styles.filterActiveDot} /> : null}
+                    <Text style={active ? styles.filterTextOn : styles.filterTextOff}>
+                      {formatChipLabel(chip)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
         {/* ── "All" sectioned layout ── */}
         {!loading && !errorMessage && isAllSelected ? (
           <>
@@ -398,23 +564,7 @@ export default function PredictScreen() {
             {liveItems.length > 0 ? (
               <View style={styles.sectionWrap}>
                 <SectionHeader label="Live Now" isLive />
-                {liveItems.map((item) =>
-                  item.type === 'binary' ? (
-                    <BinaryCard
-                      key={item.slug}
-                      item={item}
-                      onPress={() => navigateBinary(item.slug)}
-                      formatOdds={formatOdds}
-                    />
-                  ) : (
-                    <MatchCard
-                      key={item.slug}
-                      item={item}
-                      onPress={() => navigateMatch(item.sport, item.slug)}
-                      formatOdds={formatOdds}
-                    />
-                  ),
-                )}
+                {liveItems.map(renderFeedItem)}
               </View>
             ) : null}
 
@@ -426,14 +576,7 @@ export default function PredictScreen() {
                   count={eplUpcoming.length}
                   onPress={() => setActiveCategory('sports')}
                 />
-                {eplUpcoming.map((item) => (
-                  <MatchCard
-                    key={item.slug}
-                    item={item}
-                    onPress={() => navigateMatch(item.sport, item.slug)}
-                    formatOdds={formatOdds}
-                  />
-                ))}
+                {eplUpcoming.map(renderFeedItem)}
               </View>
             ) : null}
 
@@ -445,14 +588,7 @@ export default function PredictScreen() {
                   count={iplUpcoming.length}
                   onPress={() => setActiveCategory('sports')}
                 />
-                {iplUpcoming.map((item) => (
-                  <MatchCard
-                    key={item.slug}
-                    item={item}
-                    onPress={() => navigateMatch(item.sport, item.slug)}
-                    formatOdds={formatOdds}
-                  />
-                ))}
+                {iplUpcoming.map(renderFeedItem)}
               </View>
             ) : null}
 
@@ -463,14 +599,7 @@ export default function PredictScreen() {
                   label="Markets"
                   count={binaryItems.length}
                 />
-                {binaryItems.map((item) => (
-                  <BinaryCard
-                    key={item.slug}
-                    item={item}
-                    onPress={() => navigateBinary(item.slug)}
-                    formatOdds={formatOdds}
-                  />
-                ))}
+                {binaryItems.map(renderFeedItem)}
               </View>
             ) : null}
 
@@ -494,21 +623,7 @@ export default function PredictScreen() {
               </View>
             ) : null}
             {filteredItems.map((item) =>
-              item.type === 'binary' ? (
-                <BinaryCard
-                  key={item.slug}
-                  item={item}
-                  onPress={() => navigateBinary(item.slug)}
-                  formatOdds={formatOdds}
-                />
-              ) : (
-                <MatchCard
-                  key={item.slug}
-                  item={item}
-                  onPress={() => navigateMatch(item.sport, item.slug)}
-                  formatOdds={formatOdds}
-                />
-              ),
+              renderFeedItem(item),
             )}
           </View>
         ) : null}
@@ -544,18 +659,24 @@ const styles = StyleSheet.create({
   },
   // ─── filter strip ───
   filterStripShell: {
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
+    marginBottom: tokens.spacing.sm,
   },
   filterStrip: {
-    gap: tokens.spacing.xs,
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
+    gap: 6,
+    paddingHorizontal: 2,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 12,
+    backgroundColor: 'rgba(8, 8, 6, 0.36)',
   },
   filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 28,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: tokens.radius.xs,
+    borderRadius: 8,
     borderWidth: 1,
   },
   filterChipOn: {
@@ -567,20 +688,20 @@ const styles = StyleSheet.create({
     borderColor: semantic.border.muted,
   },
   filterTextOn: {
-    color: tokens.colors.accent,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    fontFamily: 'monospace',
-    fontWeight: '500',
+    color: semantic.text.primary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   filterTextOff: {
     color: semantic.text.faint,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    fontFamily: 'monospace',
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterActiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: tokens.colors.accent,
   },
   // ─── feed ───
   feedContent: {
@@ -591,6 +712,210 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     gap: 6,
+  },
+  // ─── featured carousel ───
+  featuredHeader: {
+    marginTop: tokens.spacing.xs,
+    marginBottom: tokens.spacing.sm,
+    paddingHorizontal: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  featuredHeaderTitle: {
+    color: semantic.text.primary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  featuredDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  featuredDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: tokens.colors.textFaint,
+  },
+  featuredDotActive: {
+    width: 15,
+    backgroundColor: tokens.colors.accent,
+  },
+  featuredRail: {
+    gap: 10,
+    paddingBottom: tokens.spacing.md,
+  },
+  featuredCard: {
+    overflow: 'hidden',
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.2)',
+    borderRadius: 18,
+    padding: 14,
+    minHeight: 186,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
+  },
+  featuredTop: {
+    marginBottom: tokens.spacing.md,
+  },
+  featuredStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.sm,
+  },
+  featuredKicker: {
+    color: semantic.text.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  featuredLeague: {
+    marginTop: 2,
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'right',
+  },
+  featuredTime: {
+    color: tokens.colors.accent,
+    backgroundColor: 'rgba(232, 197, 71, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 197, 71, 0.18)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    overflow: 'hidden',
+  },
+  featuredMatchup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    marginBottom: tokens.spacing.md,
+  },
+  featuredTeam: {
+    flex: 1,
+    minWidth: 0,
+  },
+  featuredTeamRight: {
+    alignItems: 'flex-end',
+  },
+  featuredTeamName: {
+    color: semantic.text.primary,
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  featuredTextRight: {
+    textAlign: 'right',
+  },
+  featuredVs: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: semantic.background.screen,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featuredVsText: {
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    fontSize: 9,
+  },
+  featuredOdd: {
+    marginTop: tokens.spacing.xs,
+    fontFamily: 'monospace',
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: '800',
+  },
+  featuredOddPos: {
+    color: tokens.colors.positive,
+  },
+  featuredOddNeg: {
+    color: tokens.colors.vermillion,
+  },
+  featuredActionRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+  },
+  featuredActionPrimary: {
+    flex: 1,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: tokens.colors.accent,
+    color: semantic.background.screen,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontSize: 12,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingTop: 8,
+  },
+  featuredActionSecondary: {
+    flex: 1,
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.lift,
+    color: semantic.text.primary,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontSize: 12,
+    fontWeight: '700',
+    overflow: 'hidden',
+    paddingTop: 8,
+  },
+  featuredBinaryMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.sm,
+    marginBottom: tokens.spacing.md,
+  },
+  featuredImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: tokens.colors.lift,
+  },
+  featuredBinaryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  featuredQuestion: {
+    color: semantic.text.primary,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '800',
+  },
+  featuredEnd: {
+    marginTop: 4,
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    fontSize: 9,
+  },
+  featuredBinaryOdds: {
+    alignItems: 'flex-end',
+    minWidth: 54,
+  },
+  featuredOddsLabel: {
+    marginTop: 2,
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1,
   },
   // ─── section header ───
   sectionLabelRow: {
@@ -774,6 +1099,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+    gap: 8,
+  },
+  sportMetaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    flexShrink: 1,
   },
   sportLeague: {
     fontFamily: 'monospace',
@@ -781,6 +1114,17 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     color: semantic.text.faint,
+  },
+  metaVolChip: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
   },
   upcomingBadgeInline: {
     flexDirection: 'row',
