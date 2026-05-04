@@ -1,6 +1,7 @@
 import {
   INTELLIGENCE_SCHEMA_VERSION,
   INTELLIGENCE_SCORING_VERSION,
+  oddsMoveCriterion,
   type BacktestRunSummary,
   type ClassifiedSignal,
   type NarrativeOutcome,
@@ -27,6 +28,7 @@ export interface OddsShiftBacktestOptions {
   windowHours: number
   topFraction: number
   minCandidates?: number
+  requestedWindowDays?: number
 }
 
 export interface OddsShiftBacktestResult {
@@ -145,14 +147,7 @@ function evaluateCandidate(
     id: `outcome:${signal.id}`,
     narrativeId: signal.id,
     evaluatedAt: new Date().toISOString(),
-    criteria: [
-      {
-        kind: 'odds_move',
-        direction,
-        targetDelta: options.continuationDelta,
-        windowHours: options.windowHours,
-      },
-    ],
+    criteria: [oddsMoveCriterion(direction, options.continuationDelta, options.windowHours)],
     result: matched ? 'hit' : latestInWindow ? 'miss' : 'inconclusive',
     measuredValues: {
       startPrice,
@@ -214,6 +209,9 @@ export function runPolymarketOddsShiftBacktest(
   const hitRate = mean(selected.map((outcome) => (outcome.result === 'hit' ? 1 : 0)))
   const baselineHitRate = mean(baseline.map((outcome) => (outcome.result === 'hit' ? 1 : 0)))
   const hits = selected.filter((outcome) => outcome.result === 'hit').length
+  const windowStart = conclusive[0]?.signal.observedAt ?? signals[0]?.observedAt ?? new Date().toISOString()
+  const windowEnd = conclusive.at(-1)?.signal.observedAt ?? signals.at(-1)?.observedAt ?? windowStart
+  const actualWindowDays = Math.max(0, (new Date(windowEnd).getTime() - new Date(windowStart).getTime()) / 86_400_000)
 
   return {
     summary: {
@@ -223,8 +221,10 @@ export function runPolymarketOddsShiftBacktest(
       signalKind: 'polymarket.odds_shift',
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
-      windowStart: signals[0]?.observedAt ?? new Date().toISOString(),
-      windowEnd: signals.at(-1)?.observedAt ?? new Date().toISOString(),
+      windowStart,
+      windowEnd,
+      requestedWindowDays: options.requestedWindowDays,
+      actualWindowDays,
       scoringVersion: INTELLIGENCE_SCORING_VERSION,
       baseline: 'largest_raw_odds_delta',
       candidateCount: conclusive.length,

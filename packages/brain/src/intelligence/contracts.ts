@@ -1,5 +1,6 @@
 export const INTELLIGENCE_SCHEMA_VERSION = 1 as const
 export const INTELLIGENCE_SCORING_VERSION = 1 as const
+export const INTELLIGENCE_EDITOR_VERSION = 1 as const
 
 export type SourceVenue = 'polymarket'
 
@@ -36,6 +37,21 @@ export type OutcomeCriterion =
       targetMultiplier: number
       windowHours: number
     }
+
+export function oddsMoveCriterion(
+  direction: Exclude<SignalDirection, 'neutral' | 'unknown'>,
+  targetDelta: number,
+  windowHours: number
+): Extract<OutcomeCriterion, { kind: 'odds_move' }> {
+  return { kind: 'odds_move', direction, targetDelta, windowHours }
+}
+
+export function marketResolutionCriterion(
+  expectedOutcome: string,
+  windowHours?: number
+): Extract<OutcomeCriterion, { kind: 'market_resolution' }> {
+  return { kind: 'market_resolution', expectedOutcome, ...(windowHours == null ? {} : { windowHours }) }
+}
 
 export interface ContractVersion {
   schemaVersion: typeof INTELLIGENCE_SCHEMA_VERSION
@@ -120,7 +136,7 @@ export interface NarrativeCandidate extends ContractVersion {
 
 export interface PublishedNarrative extends NarrativeCandidate {
   publishedAt: string
-  editorVersion: number
+  editorVersion: typeof INTELLIGENCE_EDITOR_VERSION | number
   status: 'published'
 }
 
@@ -143,8 +159,10 @@ export interface BacktestRunSummary extends ContractVersion {
   completedAt?: string
   windowStart: string
   windowEnd: string
+  requestedWindowDays?: number
+  actualWindowDays: number
   scoringVersion: typeof INTELLIGENCE_SCORING_VERSION
-  baseline: 'random_candidate' | 'largest_raw_odds_delta'
+  baseline: 'random_candidate' | 'largest_raw_odds_delta' | 'largest_trade_amount'
   candidateCount: number
   hitRate: number
   baselineHitRate: number

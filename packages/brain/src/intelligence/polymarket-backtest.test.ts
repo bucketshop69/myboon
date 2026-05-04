@@ -40,6 +40,8 @@ describe('Polymarket odds-shift backtest', () => {
     expect(result.summary.hitRate).toBeGreaterThanOrEqual(0)
     expect(result.summary.hitRate).toBeLessThanOrEqual(1)
     expect(result.summary.baselineHitRate).toBeGreaterThanOrEqual(0)
+    expect(result.summary.actualWindowDays).toBeGreaterThanOrEqual(0)
+    expect(result.selected[0]?.criteria[0]).toMatchObject({ kind: 'odds_move', targetDelta: 0.03, windowHours: 24 })
     expect(result.summary.confidenceInterval?.level).toBe(0.95)
   })
 })

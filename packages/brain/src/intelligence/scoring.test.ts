@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { scorePolymarketOddsShift, scoringVersion } from './scoring.js'
+import { classifyPolymarketWhaleBet, scorePolymarketOddsShift, scorePolymarketWhaleBet, scoringVersion } from './scoring.js'
 
 const expectScoreRange = (value: number) => {
   expect(value).toBeGreaterThanOrEqual(0)
@@ -32,5 +32,26 @@ describe('intelligence v2 scoring', () => {
 
     expect(large.signalWeight).toBeGreaterThan(small.signalWeight)
     expect(large.confidence).toBeGreaterThan(small.confidence)
+  })
+
+
+  it('classifies 95%+ consensus whale bets as penny pickup, not conviction', () => {
+    const classification = classifyPolymarketWhaleBet({
+      amountUsd: 100_000,
+      hoursSinceObserved: 0,
+      tradePrice: 0.99,
+    })
+
+    expect(classification.archetype).toBe('penny_pickup')
+    expect(classification.publishableAsConviction).toBe(false)
+    expect(classification.riskUsd).toBeCloseTo(1_000)
+  })
+
+  it('scores contrarian whale risk higher than same-notional penny pickup', () => {
+    const penny = scorePolymarketWhaleBet({ amountUsd: 100_000, hoursSinceObserved: 0, tradePrice: 0.99 })
+    const contrarian = scorePolymarketWhaleBet({ amountUsd: 100_000, hoursSinceObserved: 0, tradePrice: 0.20 })
+
+    expect(contrarian.signalWeight).toBeGreaterThan(penny.signalWeight)
+    expect(contrarian.confidence).toBeGreaterThan(penny.confidence)
   })
 })
