@@ -53,20 +53,20 @@ function betWeight(amount?: number): number {
 // Cache conditionId -> { title, slug } to avoid repeated lookups
 const marketCache = new Map<string, { title: string; slug: string | null }>()
 
-const oddsCache = new Map<string, number | null>()
+function normalizeOdds(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null
+}
 
 async function fetchMarketOddsAtBet(slug: string): Promise<number | null> {
-  if (oddsCache.has(slug)) return oddsCache.get(slug)!
   try {
     const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`)
     if (!res.ok) return null
     const data = await res.json() as Array<{ outcomePrices?: string[] }>
     const price = Number(data[0]?.outcomePrices?.[0])
-    const normalized = Number.isFinite(price) && price >= 0 && price <= 1 ? price : null
-    oddsCache.set(slug, normalized)
-    return normalized
+    return normalizeOdds(price)
   } catch {
-    oddsCache.set(slug, null)
     return null
   }
 }
@@ -202,8 +202,8 @@ async function pollUser(address: string): Promise<void> {
       continue
     }
 
-    const tradePrice = activity.tradePrice ?? activity.price ?? activity.marketPrice ?? null
-    const marketOddsAtBet = await fetchMarketOddsAtBet(slug)
+    const tradePrice = normalizeOdds(activity.tradePrice ?? activity.price ?? activity.marketPrice ?? null)
+    const marketOddsAtBet = tradePrice ?? await fetchMarketOddsAtBet(slug)
 
     // Determine wallet label and upsert stats
     const isTracked = (trackedUsers as string[]).includes(address)

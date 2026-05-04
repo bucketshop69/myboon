@@ -95,20 +95,20 @@ async function resolveConditionId(slug: string): Promise<string | null> {
 }
 
 
-const oddsCache = new Map<string, number | null>()
+function normalizeOdds(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null
+}
 
 async function fetchMarketOddsAtBet(slug: string): Promise<number | null> {
-  if (oddsCache.has(slug)) return oddsCache.get(slug)!
   try {
     const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`)
     if (!res.ok) return null
     const data = await res.json() as Array<{ outcomePrices?: string[] }>
     const price = Number(data[0]?.outcomePrices?.[0])
-    const normalized = Number.isFinite(price) && price >= 0 && price <= 1 ? price : null
-    oddsCache.set(slug, normalized)
-    return normalized
+    return normalizeOdds(price)
   } catch {
-    oddsCache.set(slug, null)
     return null
   }
 }
@@ -156,8 +156,8 @@ async function pollMatchTrades(
     const weight = betWeight(amount)
     if (weight === 0) continue
 
-    const tradePrice = trade.tradePrice ?? trade.price ?? trade.marketPrice ?? null
-    const marketOddsAtBet = await fetchMarketOddsAtBet(slug)
+    const tradePrice = normalizeOdds(trade.tradePrice ?? trade.price ?? trade.marketPrice ?? null)
+    const marketOddsAtBet = tradePrice ?? await fetchMarketOddsAtBet(slug)
 
     const signal: Signal = {
       source: 'POLYMARKET',
