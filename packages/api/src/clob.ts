@@ -818,12 +818,41 @@ clobRoutes.post('/redeem', async (c) => {
       value: '0',
     }
 
+    try {
+      await polygonProvider.call({
+        from: session.safeAddress,
+        to: redeemTx.to,
+        data: redeemTx.data,
+      })
+      console.log('[clob] Redeem preflight simulation ok')
+    } catch (simErr: any) {
+      console.error('[clob] Redeem preflight simulation failed:', {
+        reason: simErr?.reason,
+        message: simErr?.message,
+        code: simErr?.code,
+        data: simErr?.data,
+      })
+      return c.json({
+        error: 'Redeem simulation failed',
+        detail: simErr?.reason ?? simErr?.message ?? 'Redeem call would revert',
+        code: simErr?.code ?? null,
+        data: simErr?.data ?? null,
+      }, 400)
+    }
+
     console.log(`[clob] Redeem relay execute: to=${redeemTx.to}, dataBytes=${redeemTx.data.length}`)
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
     const execRes = await relay.execute([redeemTx], `Redeem positions for condition ${conditionId.slice(0, 10)}...`)
+    const relayInfo = {
+      transactionID: (execRes as any)?.transactionID ?? null,
+      transactionHash: (execRes as any)?.transactionHash ?? null,
+      hash: (execRes as any)?.hash ?? null,
+      state: (execRes as any)?.state ?? null,
+    }
     console.log('[clob] Redeem relay response:', {
       type: typeof execRes,
       keys: execRes && typeof execRes === 'object' ? Object.keys(execRes as unknown as Record<string, unknown>) : [],
+      ...relayInfo,
     })
     console.log('[clob] Redeem relay submitted, waiting for receipt...')
     const execResult = await execRes.wait()
@@ -835,6 +864,7 @@ clobRoutes.post('/redeem', async (c) => {
       return c.json({
         error: 'Redeem not confirmed',
         detail: 'Relayer completed without returning a transaction hash',
+        relayer: relayInfo,
       }, 502)
     }
 
