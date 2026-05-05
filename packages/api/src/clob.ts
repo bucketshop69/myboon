@@ -764,6 +764,29 @@ clobRoutes.post('/redeem/debug', async (c) => {
   return c.json(result)
 })
 
+clobRoutes.get('/relayer/transaction/:transactionId', async (c) => {
+  const transactionId = c.req.param('transactionId')
+  if (!transactionId?.trim()) return c.json({ error: 'Missing transactionId' }, 400)
+
+  try {
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID)
+    const transaction = await relay.getTransaction(transactionId)
+    console.log('[clob] Relayer transaction lookup:', { transactionId, transaction })
+    return c.json({ transactionId, transaction })
+  } catch (err: any) {
+    console.error('[clob] Relayer transaction lookup failed:', {
+      transactionId,
+      message: err?.message,
+      response: err?.response?.data ?? err?.response,
+    })
+    return c.json({
+      error: 'Relayer transaction lookup failed',
+      detail: err?.message,
+      response: err?.response?.data ?? null,
+    }, 502)
+  }
+})
+
 clobRoutes.post('/redeem', async (c) => {
   console.log('[clob] Redeem route hit')
 
@@ -860,11 +883,25 @@ clobRoutes.post('/redeem', async (c) => {
 
     const txHash = execResult?.transactionHash ?? null
     if (!txHash) {
+      let relayerTransaction: unknown = null
+      if (relayInfo.transactionID) {
+        try {
+          relayerTransaction = await relay.getTransaction(relayInfo.transactionID)
+          console.warn('[clob] Redeem failed relayer transaction:', relayerTransaction)
+        } catch (lookupErr: any) {
+          relayerTransaction = {
+            error: lookupErr?.message ?? 'Relayer transaction lookup failed',
+            response: lookupErr?.response?.data ?? null,
+          }
+        }
+      }
+
       console.warn('[clob] Redeem relay completed without transaction hash; treating as not confirmed')
       return c.json({
         error: 'Redeem not confirmed',
         detail: 'Relayer completed without returning a transaction hash',
         relayer: relayInfo,
+        relayerTransaction,
       }, 502)
     }
 
