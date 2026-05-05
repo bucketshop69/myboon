@@ -442,6 +442,7 @@ export async function placeBet(params: PlaceBetParams & { signedOrder?: unknown 
       body: JSON.stringify({
         polygonAddress: params.polygonAddress,
         signedOrder: params.signedOrder,
+        orderType: params.orderType,
       }),
     });
 
