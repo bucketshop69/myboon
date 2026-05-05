@@ -414,8 +414,10 @@ export interface PlaceBetParams {
   polygonAddress: string;
   tokenID: string;
   price: number;
-  amount: number;
+  size: number;
   side: 'BUY' | 'SELL';
+  negRisk?: boolean;
+  orderType?: 'GTC' | 'FOK';
 }
 
 export interface PlaceBetResult {
@@ -440,6 +442,7 @@ export async function placeBet(params: PlaceBetParams & { signedOrder?: unknown 
       body: JSON.stringify({
         polygonAddress: params.polygonAddress,
         signedOrder: params.signedOrder,
+        orderType: params.orderType,
       }),
     });
 

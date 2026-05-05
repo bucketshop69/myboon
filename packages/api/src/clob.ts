@@ -1,12 +1,13 @@
 /**
  * Server-side CLOB V2 session management and order routing.
  *
- * Flow (gasless via Builder Relayer + Safe wallet):
+ * Flow (gasless via Builder Relayer + trading wallet):
  * 1. Phone derives EVM key from Solana wallet signature (Phantom MWA)
  * 2. Phone sends the raw Solana signature to POST /clob/auth
- * 3. Server derives EVM key → deploys Safe (gasless) → runs approvals (gasless)
- *    → creates CLOB API credentials (SignatureTypeV2.POLY_GNOSIS_SAFE)
- * 4. Phone places orders via POST /clob/order — server signs & submits via builder
+ * 3. Server derives EVM key, then uses Safe for existing users or deposit wallet
+ *    for new API users
+ * 4. Safe users sign orders locally; deposit-wallet users are signed server-side
+ *    by the CLOB SDK with POLY_1271
  *
  * V2 changes (April 2026):
  * - Collateral: pUSD (0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB) replaces USDC.e
@@ -18,10 +19,10 @@
 
 import { Hono } from 'hono'
 import { Wallet, utils, providers } from 'ethers'
-import { ClobClient, SignatureTypeV2, Chain } from '@polymarket/clob-client-v2'
+import { AssetType, ClobClient, OrderType, Side, SignatureTypeV2, Chain } from '@polymarket/clob-client-v2'
 import type { ApiKeyCreds } from '@polymarket/clob-client-v2'
-import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client'
-import { deriveSafe } from '@polymarket/builder-relayer-client/dist/builder/derive'
+import { deriveSafe, RelayClient, RelayerTxType, TransactionType } from '@polymarket/builder-relayer-client'
+import type { DepositWalletCall, Transaction } from '@polymarket/builder-relayer-client'
 import { BuilderConfig as RelayerBuilderConfig } from '@polymarket/builder-signing-sdk'
 import { encodeFunctionData, maxUint256 } from 'viem'
 
@@ -82,7 +83,7 @@ const CTF_PAYOUT_DENOMINATOR_ABI = [{
 
 // --- Builder Config ---
 
-// Relayer still uses V1 HMAC auth (for Safe deploy/approve/withdraw)
+// Relayer uses builder HMAC auth for Safe and deposit-wallet gasless calls.
 const builderKey = process.env.POLYMARKET_BUILDER_API_KEY
 const builderSecret = process.env.POLYMARKET_BUILDER_SECRET
 const builderPassphrase = process.env.POLYMARKET_BUILDER_PASSPHRASE
@@ -102,11 +103,13 @@ const clobBuilderConfig = { builderCode: BUILDER_CODE }
 
 // --- USDC.e balance check + auto-wrap helper ---
 
-async function getUsdceBalance(safeAddress: string): Promise<bigint> {
+type WalletMode = 'safe' | 'deposit_wallet'
+
+async function getUsdceBalance(walletAddress: string): Promise<bigint> {
   const balanceData = encodeFunctionData({
     abi: [{ name: 'balanceOf', type: 'function', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] }] as const,
     functionName: 'balanceOf',
-    args: [safeAddress as `0x${string}`],
+    args: [walletAddress as `0x${string}`],
   })
   const res = await polygonProvider.call({ to: CONTRACTS.USDC_E, data: balanceData })
   return BigInt(res)
@@ -115,10 +118,10 @@ async function getUsdceBalance(safeAddress: string): Promise<bigint> {
 async function autoWrapUsdce(session: ClobSession): Promise<{ wrapped: boolean; amount: number; txHash: string | null }> {
   if (!relayerBuilderConfig) return { wrapped: false, amount: 0, txHash: null }
 
-  const usdceBalance = await getUsdceBalance(session.safeAddress)
+  const usdceBalance = await getUsdceBalance(session.tradingAddress)
   if (usdceBalance === 0n) return { wrapped: false, amount: 0, txHash: null }
 
-  const safeAddr = session.safeAddress as `0x${string}`
+  const tradingAddr = session.tradingAddress as `0x${string}`
   const onramp = CONTRACTS.COLLATERAL_ONRAMP as `0x${string}`
   const usdceContract = CONTRACTS.USDC_E as `0x${string}`
 
@@ -137,18 +140,16 @@ async function autoWrapUsdce(session: ClobSession): Promise<{ wrapped: boolean; 
     data: encodeFunctionData({
       abi: [{ name: 'wrap', type: 'function', inputs: [{ name: '_asset', type: 'address' }, { name: '_to', type: 'address' }, { name: '_amount', type: 'uint256' }], outputs: [] }] as const,
       functionName: 'wrap',
-      args: [usdceContract, safeAddr, usdceBalance],
+      args: [usdceContract, tradingAddr, usdceBalance],
     }),
     value: '0',
   }
 
-  const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-  const execRes = await relay.execute([approveTx, wrapTx], `Auto-wrap ${Number(usdceBalance) / 1e6} USDC.e → pUSD`)
-  const execResult = await execRes.wait()
+  const execResult = await executeTradingWalletCalls(session, [approveTx, wrapTx], `Auto-wrap ${Number(usdceBalance) / 1e6} USDC.e to pUSD`)
 
   const amount = Number(usdceBalance) / 1e6
   const txHash = execResult?.transactionHash ?? null
-  console.log(`[clob] Auto-wrapped ${amount} USDC.e → pUSD${txHash ? ` tx=${txHash}` : ''}`)
+  console.log(`[clob] Auto-wrapped ${amount} USDC.e to pUSD for ${session.walletMode}${txHash ? ` tx=${txHash}` : ''}`)
   return { wrapped: true, amount, txHash }
 }
 
@@ -192,7 +193,10 @@ interface ClobSession {
   wallet: Wallet
   creds: ApiKeyCreds
   eoaAddress: string
-  safeAddress: string
+  walletMode: WalletMode
+  tradingAddress: string
+  safeAddress?: string
+  depositWalletAddress?: string
   createdAt: number
 }
 
@@ -217,10 +221,61 @@ function getClient(session: ClobSession): ClobClient {
     chain: Chain.POLYGON,
     signer: session.wallet,
     creds: session.creds,
-    signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
-    funderAddress: session.safeAddress,
+    signatureType: session.walletMode === 'deposit_wallet'
+      ? SignatureTypeV2.POLY_1271
+      : SignatureTypeV2.POLY_GNOSIS_SAFE,
+    funderAddress: session.tradingAddress,
     builderConfig: clobBuilderConfig,
   })
+}
+
+function getRelay(session: ClobSession, relayTxType = RelayerTxType.SAFE): RelayClient {
+  return new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, relayTxType)
+}
+
+function toDepositWalletCall(tx: Transaction): DepositWalletCall {
+  return {
+    target: tx.to,
+    value: tx.value,
+    data: tx.data,
+  }
+}
+
+async function executeTradingWalletCalls(session: ClobSession, txs: Transaction[], metadata: string) {
+  const { execResult } = await submitTradingWalletCalls(session, txs, metadata)
+  return execResult
+}
+
+async function submitTradingWalletCalls(session: ClobSession, txs: Transaction[], metadata: string) {
+  if (!relayerBuilderConfig) {
+    throw new Error('Builder not configured')
+  }
+
+  let relay: RelayClient
+  let res: any
+
+  if (session.walletMode === 'deposit_wallet') {
+    if (!session.depositWalletAddress) throw new Error('Missing deposit wallet address')
+    const deadline = Math.floor(Date.now() / 1000 + 240).toString()
+    relay = getRelay(session)
+    res = await relay.executeDepositWalletBatch(
+      txs.map(toDepositWalletCall),
+      session.depositWalletAddress,
+      deadline,
+    )
+  } else {
+    relay = getRelay(session, RelayerTxType.SAFE)
+    res = await relay.execute(txs, metadata)
+  }
+
+  const relayInfo = {
+    transactionID: res?.transactionID ?? null,
+    transactionHash: res?.transactionHash ?? null,
+    hash: res?.hash ?? null,
+    state: res?.state ?? null,
+  }
+  const execResult = await res.wait()
+  return { relay, relayInfo, execResult, response: res }
 }
 
 // --- Routes ---
@@ -233,8 +288,8 @@ console.log('[clob] Routes loaded: /auth, /order/signed, /positions/:polygonAddr
  * POST /clob/auth
  * Body: { signature: string } — hex-encoded 64-byte Solana signature
  *
- * Server derives EVM key → deploys Safe (gasless) → runs approvals (gasless)
- * → creates CLOB API credentials → returns EOA + Safe addresses.
+ * Server derives EVM key, prepares the selected trading wallet, creates CLOB API
+ * credentials, and returns the EOA plus Safe/deposit wallet addresses.
  */
 clobRoutes.post('/auth', async (c) => {
   let body: { signature?: string }
@@ -266,44 +321,70 @@ clobRoutes.post('/auth', async (c) => {
 
     console.log(`[clob] EOA derived: ${eoaAddress}`)
 
-    // 2. Create RelayClient (SAFE mode — gasless, still uses V1 HMAC auth)
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-
-    // 3. Derive Safe address deterministically (CREATE2 from EOA + factory)
-    // NOTE: Do NOT use relay.getRelayPayload() — it returns the relay hub address, not the Safe!
     const safeAddress = deriveSafe(eoaAddress, SAFE_FACTORY) as string
-    console.log(`[clob] Safe address (derived): ${safeAddress}`)
+    const safeDeployed = await relay.getDeployed(safeAddress)
 
-    // 4. Deploy Safe if needed
-    try {
-      const deployed = await relay.getDeployed(safeAddress)
-      if (!deployed) {
-        console.log(`[clob] Deploying Safe for ${eoaAddress}...`)
-        const deployRes = await relay.deploy()
-        const deployResult = await deployRes.wait()
-        if (deployResult) {
-          console.log(`[clob] Safe deployed: tx=${deployResult.transactionHash}`)
-        } else {
-          console.warn(`[clob] Safe deploy may have failed — continuing anyway`)
-        }
-      } else {
-        console.log(`[clob] Safe already deployed`)
+    let sessionDraft: Omit<ClobSession, 'creds' | 'createdAt'>
+
+    if (safeDeployed) {
+      // Existing users keep the Safe path in this phase. The server chooses
+      // this from deployed wallet state, not local app storage.
+      console.log(`[clob] Safe address (derived): ${safeAddress}`)
+      console.log(`[clob] Existing Safe detected; using signatureType=2`)
+
+      sessionDraft = {
+        wallet,
+        eoaAddress: eoaAddress.toLowerCase(),
+        walletMode: 'safe',
+        tradingAddress: safeAddress.toLowerCase(),
+        safeAddress: safeAddress.toLowerCase(),
       }
-    } catch (deployErr: any) {
-      // "safe already deployed!" is fine — just means the check was stale
-      if (deployErr.message?.includes('already deployed')) {
-        console.log(`[clob] Safe already deployed (caught)`)
-      } else {
-        throw deployErr
+    } else {
+      console.log(`[clob] No deployed Safe detected; using deposit wallet signatureType=3`)
+      const depositWalletAddress = await relay.deriveDepositWalletAddress()
+      console.log(`[clob] Deposit wallet address (derived): ${depositWalletAddress}`)
+
+      try {
+        const deployed = await relay.getDeployed(depositWalletAddress, TransactionType.WALLET)
+        if (!deployed) {
+          console.log(`[clob] Deploying deposit wallet for ${eoaAddress}...`)
+          const deployRes = await relay.deployDepositWallet()
+          const deployResult = await deployRes.wait()
+          if (deployResult) {
+            console.log(`[clob] Deposit wallet deployed: tx=${deployResult.transactionHash}`)
+          } else {
+            console.warn(`[clob] Deposit wallet deploy may have failed — continuing anyway`)
+          }
+        } else {
+          console.log(`[clob] Deposit wallet already deployed`)
+        }
+      } catch (deployErr: any) {
+        if (deployErr.message?.includes('already deployed')) {
+          console.log(`[clob] Deposit wallet already deployed (caught)`)
+        } else {
+          throw deployErr
+        }
+      }
+
+      sessionDraft = {
+        wallet,
+        eoaAddress: eoaAddress.toLowerCase(),
+        walletMode: 'deposit_wallet',
+        tradingAddress: depositWalletAddress.toLowerCase(),
+        depositWalletAddress: depositWalletAddress.toLowerCase(),
       }
     }
 
-    // 5. Run approvals for V2 contracts (gasless via builder relayer)
-    console.log(`[clob] Running V2 approvals...`)
+    // 5. Run approvals for V2 contracts from the active trading wallet.
+    console.log(`[clob] Running V2 approvals for ${sessionDraft.walletMode}...`)
     try {
       const approvalTxs = buildApprovalTxs()
-      const approvalRes = await relay.execute(approvalTxs, `Approve pUSD + CTF for V2 exchanges (${eoaAddress})`)
-      const approvalResult = await approvalRes.wait()
+      const approvalResult = await executeTradingWalletCalls(
+        { ...sessionDraft, creds: {} as ApiKeyCreds, createdAt: Date.now() },
+        approvalTxs,
+        `Approve pUSD + CTF for V2 exchanges (${eoaAddress})`,
+      )
       if (approvalResult) {
         console.log(`[clob] V2 approvals confirmed: tx=${approvalResult.transactionHash}`)
       } else {
@@ -319,26 +400,36 @@ clobRoutes.post('/auth', async (c) => {
       host: CLOB_HOST,
       chain: Chain.POLYGON,
       signer: wallet,
-      signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
-      funderAddress: safeAddress,
+      signatureType: sessionDraft.walletMode === 'deposit_wallet'
+        ? SignatureTypeV2.POLY_1271
+        : SignatureTypeV2.POLY_GNOSIS_SAFE,
+      funderAddress: sessionDraft.tradingAddress,
     })
     const creds = await tempClient.createOrDeriveApiKey()
 
     // 7. Store session
     const session: ClobSession = {
-      wallet,
+      ...sessionDraft,
       creds,
-      eoaAddress: eoaAddress.toLowerCase(),
-      safeAddress: safeAddress.toLowerCase(),
       createdAt: Date.now(),
     }
     sessions.set(eoaAddress.toLowerCase(), session)
 
-    console.log(`[clob] Session created — EOA: ${eoaAddress}, Safe: ${safeAddress}`)
+    try {
+      const client = getClient(session)
+      await client.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL })
+    } catch (balanceErr: any) {
+      console.warn(`[clob] Balance allowance sync failed (non-fatal): ${balanceErr.message}`)
+    }
+
+    console.log(`[clob] Session created — EOA: ${eoaAddress}, ${session.walletMode}: ${session.tradingAddress}`)
 
     return c.json({
       polygonAddress: eoaAddress,
-      safeAddress,
+      walletMode: session.walletMode,
+      tradingAddress: session.tradingAddress,
+      safeAddress: session.safeAddress ?? null,
+      depositWalletAddress: session.depositWalletAddress ?? null,
       ok: true,
     })
   } catch (err: any) {
@@ -375,7 +466,7 @@ clobRoutes.post('/order/signed', async (c) => {
 
   try {
     const client = getClient(session)
-    const result = await client.postOrder(signedOrder, orderType === 'FOK' ? 'FOK' : 'GTC')
+    const result = await client.postOrder(signedOrder, orderType === 'FOK' ? OrderType.FOK : OrderType.GTC)
 
     // SDK may swallow errors and return an error object instead of throwing
     if (result?.error || result?.status === 'error') {
@@ -388,6 +479,72 @@ clobRoutes.post('/order/signed', async (c) => {
     return c.json(result)
   } catch (err: any) {
     console.error('[clob] Signed order failed:', err.message || err)
+    return c.json({ error: 'Order failed', detail: err.message }, 500)
+  }
+})
+
+/**
+ * POST /clob/order
+ * Body: { polygonAddress, tokenID, price, size, side, negRisk?, orderType? }
+ *
+ * Server-side order creation for deposit-wallet users. The updated CLOB SDK
+ * builds the ERC-7739-wrapped POLY_1271 signature when the session is configured
+ * with `signatureType = POLY_1271` and `funderAddress = depositWalletAddress`.
+ */
+clobRoutes.post('/order', async (c) => {
+  let body: {
+    polygonAddress?: string
+    tokenID?: string
+    price?: number
+    size?: number
+    side?: 'BUY' | 'SELL'
+    negRisk?: boolean
+    orderType?: string
+  }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const { polygonAddress, tokenID, price, size, side, negRisk, orderType } = body
+  if (!polygonAddress || !tokenID || typeof price !== 'number' || typeof size !== 'number' || !side) {
+    return c.json({ error: 'Missing required fields: polygonAddress, tokenID, price, size, side' }, 400)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+  }
+
+  if (session.walletMode !== 'deposit_wallet') {
+    return c.json({ error: 'Use /clob/order/signed for Safe wallet orders' }, 400)
+  }
+
+  try {
+    const client = getClient(session)
+    const order = await client.createOrder(
+      {
+        tokenID,
+        price,
+        size,
+        side: side === 'BUY' ? Side.BUY : Side.SELL,
+        builderCode: BUILDER_CODE,
+      },
+      { tickSize: '0.01', negRisk: !!negRisk },
+    )
+    const result = await client.postOrder(order, orderType === 'FOK' ? OrderType.FOK : OrderType.GTC)
+
+    if (result?.error || result?.status === 'error') {
+      const detail = result.error || result.message || JSON.stringify(result)
+      console.error(`[clob] CLOB rejected deposit-wallet order for ${polygonAddress}:`, detail)
+      return c.json({ error: 'Order rejected by CLOB', detail }, 400)
+    }
+
+    console.log(`[clob] Deposit-wallet order posted for ${polygonAddress}: ${side}`)
+    return c.json(result)
+  } catch (err: any) {
+    console.error('[clob] Deposit-wallet order failed:', err.message || err)
     return c.json({ error: 'Order failed', detail: err.message }, 500)
   }
 })
@@ -444,14 +601,14 @@ clobRoutes.delete('/order/:orderId', async (c) => {
 /**
  * GET /clob/deposit/:polygonAddress
  * Fetches deposit addresses from Polymarket Bridge API.
- * Uses the Safe address — that's where funds need to land.
+ * Uses the active trading wallet address — Safe for existing users, deposit
+ * wallet for new API users.
  */
 clobRoutes.get('/deposit/:polygonAddress', async (c) => {
   const polygonAddress = c.req.param('polygonAddress')
   const session = sessions.get(polygonAddress.toLowerCase())
 
-  // Use Safe address if session exists, otherwise fall back to provided address
-  const depositAddress = session ? session.safeAddress : polygonAddress
+  const depositAddress = session ? session.tradingAddress : polygonAddress
 
   try {
     const res = await fetch('https://bridge.polymarket.com/deposit', {
@@ -467,7 +624,7 @@ clobRoutes.get('/deposit/:polygonAddress', async (c) => {
     }
 
     const addresses = await res.json()
-    console.log(`[clob] Deposit addresses fetched for Safe ${depositAddress}`)
+    console.log(`[clob] Deposit addresses fetched for trading wallet ${depositAddress}`)
     return c.json(addresses)
   } catch (err: any) {
     console.error('[clob] Deposit fetch failed:', err.message || err)
@@ -487,7 +644,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   }
 
   try {
-    // Auto-wrap any USDC.e sitting in the Safe (bridge deposits arrive as USDC.e)
+    // Auto-wrap any USDC.e sitting in the trading wallet (bridge deposits arrive as USDC.e)
     try {
       const wrapResult = await autoWrapUsdce(session)
       if (wrapResult.wrapped) {
@@ -505,7 +662,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
     const balance = rawBalance >= 1000 ? rawBalance / 1e6 : rawBalance
     const allowance = rawAllowance >= 1000 ? rawAllowance / 1e6 : rawAllowance
 
-    console.log(`[clob] Balance for ${polygonAddress} (Safe: ${session.safeAddress}): raw=${rawBalance} → ${balance} pUSD`)
+    console.log(`[clob] Balance for ${polygonAddress} (${session.walletMode}: ${session.tradingAddress}): raw=${rawBalance} -> ${balance} pUSD`)
     return c.json({ balance, allowance, raw: result })
   } catch (err: any) {
     console.error('[clob] Balance fetch failed:', err.message || err)
@@ -517,7 +674,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
  * POST /clob/wrap
  * Body: { polygonAddress }
  *
- * Wraps all USDC.e in the Safe into pUSD (V2 collateral) via CollateralOnramp.
+ * Wraps all USDC.e in the trading wallet into pUSD (V2 collateral) via CollateralOnramp.
  * Gasless — relayer pays gas. Two batched txs: approve + wrap.
  */
 clobRoutes.post('/wrap', async (c) => {
@@ -559,7 +716,7 @@ clobRoutes.post('/wrap', async (c) => {
  * POST /clob/withdraw
  * Body: { polygonAddress, amount, solanaAddress }
  *
- * Withdraws from Polymarket Safe to user's Solana wallet (gasless).
+ * Withdraws from the Polymarket trading wallet to user's Solana wallet (gasless).
  * 1. Calls Polymarket Bridge API for withdraw deposit address
  * 2. Transfers pUSD to bridge EVM address (gasless via relayer)
  * 3. Bridge auto-unwraps pUSD → USDC and bridges to Solana
@@ -599,7 +756,7 @@ clobRoutes.post('/withdraw', async (c) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        address: session.safeAddress,
+        address: session.tradingAddress,
         toChainId: SOLANA_CHAIN_ID,
         toTokenAddress: SOLANA_USDC_MINT,
         recipientAddr: solanaAddress,
@@ -637,17 +794,21 @@ clobRoutes.post('/withdraw', async (c) => {
     }
 
     // 3. Execute via relayer (gasless)
-    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-    const execRes = await relay.execute([transferTx], `Withdraw ${amount} pUSD to Solana ${solanaAddress.slice(0, 8)}...`)
-    const execResult = await execRes.wait()
+    const execResult = await executeTradingWalletCalls(
+      session,
+      [transferTx],
+      `Withdraw ${amount} pUSD to Solana ${solanaAddress.slice(0, 8)}...`,
+    )
 
     const txHash = execResult?.transactionHash ?? null
-    console.log(`[clob] Withdraw ${amount}: pUSD → bridge ${bridgeEvmAddress} → Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
+    console.log(`[clob] Withdraw ${amount}: pUSD -> bridge ${bridgeEvmAddress} -> Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
 
     return c.json({
       ok: true,
       amount,
-      safeAddress: session.safeAddress,
+      tradingAddress: session.tradingAddress,
+      safeAddress: session.safeAddress ?? null,
+      depositWalletAddress: session.depositWalletAddress ?? null,
       bridgeAddress: bridgeEvmAddress,
       solanaAddress,
       txHash,
@@ -663,7 +824,7 @@ clobRoutes.post('/withdraw', async (c) => {
  * Body: { polygonAddress, conditionId }
  *
  * Redeems winning tokens for a resolved market via CTF contract.
- * Executes gaslessly through the Builder Relayer (Safe tx).
+ * Executes gaslessly through the Builder Relayer.
  * Burns entire token balance — no amount param (CTF spec).
  */
 const CTF_REDEEM_ABI = [{
@@ -698,6 +859,7 @@ clobRoutes.post('/redeem/debug', async (c) => {
 
   const session = sessions.get(polygonAddress.toLowerCase())
   const safeAddress = session?.safeAddress ?? deriveSafe(polygonAddress, SAFE_FACTORY).toLowerCase()
+  const tradingAddress = session?.tradingAddress ?? safeAddress
 
   const redeemData = encodeFunctionData({
     abi: CTF_REDEEM_ABI,
@@ -713,6 +875,8 @@ clobRoutes.post('/redeem/debug', async (c) => {
   const result: Record<string, unknown> = {
     polygonAddress,
     safeAddress,
+    tradingAddress,
+    walletMode: session?.walletMode ?? 'safe',
     conditionId,
     asset,
     hasActiveSession: !!session,
@@ -724,7 +888,7 @@ clobRoutes.post('/redeem/debug', async (c) => {
     const balanceData = encodeFunctionData({
       abi: ERC1155_BALANCE_OF_ABI,
       functionName: 'balanceOf',
-      args: [safeAddress as `0x${string}`, BigInt(asset)],
+      args: [tradingAddress as `0x${string}`, BigInt(asset)],
     })
     const balanceRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: balanceData })
     const tokenBalance = BigInt(balanceRaw)
@@ -748,7 +912,7 @@ clobRoutes.post('/redeem/debug', async (c) => {
 
   try {
     await polygonProvider.call({
-      from: safeAddress,
+      from: tradingAddress,
       to: CONTRACTS.CTF,
       data: redeemData,
     })
@@ -824,7 +988,7 @@ clobRoutes.post('/redeem', async (c) => {
   }
 
   try {
-    console.log(`[clob] Redeem building tx: EOA=${session.eoaAddress}, Safe=${session.safeAddress}, condition=${conditionId.slice(0, 10)}...`)
+    console.log(`[clob] Redeem building tx: EOA=${session.eoaAddress}, ${session.walletMode}=${session.tradingAddress}, condition=${conditionId.slice(0, 10)}...`)
 
     const redeemTx = {
       to: CONTRACTS.CTF as `0x${string}`,
@@ -843,7 +1007,7 @@ clobRoutes.post('/redeem', async (c) => {
 
     try {
       await polygonProvider.call({
-        from: session.safeAddress,
+        from: session.tradingAddress,
         to: redeemTx.to,
         data: redeemTx.data,
       })
@@ -863,22 +1027,17 @@ clobRoutes.post('/redeem', async (c) => {
       }, 400)
     }
 
-    console.log(`[clob] Redeem relay execute: to=${redeemTx.to}, dataBytes=${redeemTx.data.length}`)
-    const relay = new RelayClient(RELAYER_URL, CHAIN_ID, session.wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
-    const execRes = await relay.execute([redeemTx], `Redeem positions for condition ${conditionId.slice(0, 10)}...`)
-    const relayInfo = {
-      transactionID: (execRes as any)?.transactionID ?? null,
-      transactionHash: (execRes as any)?.transactionHash ?? null,
-      hash: (execRes as any)?.hash ?? null,
-      state: (execRes as any)?.state ?? null,
-    }
+    console.log(`[clob] Redeem relay execute: walletMode=${session.walletMode}, to=${redeemTx.to}, dataBytes=${redeemTx.data.length}`)
+    const { relay, relayInfo, execResult, response: execRes } = await submitTradingWalletCalls(
+      session,
+      [redeemTx],
+      `Redeem positions for condition ${conditionId.slice(0, 10)}...`,
+    )
     console.log('[clob] Redeem relay response:', {
       type: typeof execRes,
       keys: execRes && typeof execRes === 'object' ? Object.keys(execRes as unknown as Record<string, unknown>) : [],
       ...relayInfo,
     })
-    console.log('[clob] Redeem relay submitted, waiting for receipt...')
-    const execResult = await execRes.wait()
     console.log('[clob] Redeem relay wait result:', execResult ?? null)
 
     const txHash = execResult?.transactionHash ?? null
@@ -929,7 +1088,7 @@ clobRoutes.get('/book', async (c) => {
   try {
     const res = await fetch(`${CLOB_HOST}/book?token_id=${encodeURIComponent(tokenId)}`)
     const data = await res.json()
-    return c.json(data, res.ok ? 200 : res.status)
+    return c.json(data, (res.ok ? 200 : res.status) as any)
   } catch (err: any) {
     return c.json({ error: 'CLOB book proxy failed', detail: err.message }, 502)
   }
@@ -941,7 +1100,7 @@ clobRoutes.get('/midpoint', async (c) => {
   try {
     const res = await fetch(`${CLOB_HOST}/midpoint?token_id=${encodeURIComponent(tokenId)}`)
     const data = await res.json()
-    return c.json(data, res.ok ? 200 : res.status)
+    return c.json(data, (res.ok ? 200 : res.status) as any)
   } catch (err: any) {
     return c.json({ error: 'CLOB midpoint proxy failed', detail: err.message }, 502)
   }
@@ -953,7 +1112,7 @@ clobRoutes.get('/last-trade-price', async (c) => {
   try {
     const res = await fetch(`${CLOB_HOST}/last-trade-price?token_id=${encodeURIComponent(tokenId)}`)
     const data = await res.json()
-    return c.json(data, res.ok ? 200 : res.status)
+    return c.json(data, (res.ok ? 200 : res.status) as any)
   } catch (err: any) {
     return c.json({ error: 'CLOB last-trade-price proxy failed', detail: err.message }, 502)
   }
@@ -964,7 +1123,7 @@ clobRoutes.get('/markets/:conditionId', async (c) => {
   try {
     const res = await fetch(`${CLOB_HOST}/markets/${encodeURIComponent(conditionId)}`)
     const data = await res.json()
-    return c.json(data, res.ok ? 200 : res.status)
+    return c.json(data, (res.ok ? 200 : res.status) as any)
   } catch (err: any) {
     return c.json({ error: 'CLOB market info proxy failed', detail: err.message }, 502)
   }

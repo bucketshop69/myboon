@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@polymarket/builder-relayer-client": "^0.0.8",
+    "@polymarket/builder-relayer-client": "^0.0.9",
     "@polymarket/builder-signing-sdk": "^1.0.0",
-    "@polymarket/clob-client-v2": "^1.0.0",
+    "@polymarket/clob-client-v2": "1.0.3-canary.0",
     "dotenv": "^16.0.0",
     "ethers": "5",
     "hono": "^4.6.0",

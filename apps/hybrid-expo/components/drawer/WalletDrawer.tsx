@@ -54,7 +54,7 @@ export function WalletDrawer() {
   // Fetch predict portfolio value when drawer opens
   useEffect(() => {
     if (!isOpen || !poly.polygonAddress) return;
-    const addr = poly.safeAddress ?? poly.polygonAddress;
+    const addr = poly.tradingAddress ?? poly.polygonAddress;
     Promise.all([
       fetchPortfolio(addr).catch(() => null),
       fetchClobBalance(poly.polygonAddress).catch(() => null),
@@ -62,7 +62,7 @@ export function WalletDrawer() {
       const total = (portfolio?.portfolioValue ?? 0) + (balance?.balance ?? 0);
       setPredictValue(total > 0 ? `$${total.toFixed(0)}` : '$0');
     });
-  }, [isOpen, poly.polygonAddress, poly.safeAddress]);
+  }, [isOpen, poly.polygonAddress, poly.tradingAddress]);
 
   // Email OTP state
   const [emailInput, setEmailInput] = useState('');

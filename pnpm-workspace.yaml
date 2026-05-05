@@ -1,6 +1,3 @@
 packages:
   - apps/*
   - packages/*
-
-patchedDependencies:
-  '@polymarket/clob-client-v2': patches/@polymarket__clob-client-v2.patch

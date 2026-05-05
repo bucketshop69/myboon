@@ -88,7 +88,7 @@ export default function PredictProfileScreen() {
     if (!poly.polygonAddress) return;
     // Gamma data-api tracks by Safe address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
-    const gammaAddr = poly.safeAddress ?? poly.polygonAddress;
+    const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
     const [portfolioData, balanceData, ordersData, activityData] = await Promise.all([
       fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
@@ -105,7 +105,7 @@ export default function PredictProfileScreen() {
       setCashBalance(null);
       setSessionExpired(true);
     }
-  }, [poly.polygonAddress, poly.safeAddress]);
+  }, [poly.polygonAddress, poly.tradingAddress]);
 
   // Fetch portfolio when enabled
   useEffect(() => {
@@ -511,7 +511,7 @@ export default function PredictProfileScreen() {
         <DepositModal
           isOpen={depositOpen}
           onClose={() => setDepositOpen(false)}
-          polygonAddress={poly.polygonAddress}
+          polygonAddress={poly.tradingAddress ?? poly.polygonAddress}
         />
       )}
 
