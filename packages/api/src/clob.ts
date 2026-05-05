@@ -49,6 +49,9 @@ const CONTRACTS = {
   COLLATERAL_ONRAMP: '0x93070a847efEf7F70739046A929D47a521F5B8ee',
   // CollateralOfframp — unwraps pUSD → USDC.e
   COLLATERAL_OFFRAMP: '0x2957922Eb93258b93368531d39fAcCA3B4dC5854',
+  // Collateral adapters — redeem legacy USDC.e-backed outcome tokens and wrap payout to pUSD
+  CTF_COLLATERAL_ADAPTER: '0xAdA100Db00Ca00073811820692005400218FcE1f',
+  NEG_RISK_CTF_COLLATERAL_ADAPTER: '0xadA2005600Dec949baf300f4C6120000bDB6eAab',
   // V2 exchanges
   CTF_EXCHANGE_V2: '0xE111180000d2663C0091e4f400237545B87B996B',
   NEG_RISK_CTF_EXCHANGE_V2: '0xe2222d279d744050d28e00520010520000310F59',
@@ -182,6 +185,8 @@ function buildApprovalTxs() {
     CONTRACTS.CTF_EXCHANGE_V2,
     CONTRACTS.NEG_RISK_CTF_EXCHANGE_V2,
     CONTRACTS.NEG_RISK_ADAPTER,
+    CONTRACTS.CTF_COLLATERAL_ADAPTER,
+    CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER,
   ]
 
   // pUSD approvals (replaces USDC.e in V2)
@@ -859,15 +864,6 @@ const CTF_REDEEM_ABI = [{
   outputs: [],
 }] as const
 
-const NEG_RISK_REDEEM_ABI = [{
-  name: 'redeemPositions', type: 'function',
-  inputs: [
-    { name: '_conditionId', type: 'bytes32' },
-    { name: '_amounts', type: 'uint256[]' },
-  ],
-  outputs: [],
-}] as const
-
 const REDEEM_INDEX_SETS = [1n, 2n] as const
 const REDEEM_COLLATERALS = [
   { label: 'pUSD', address: CONTRACTS.PUSD },
@@ -897,15 +893,6 @@ function buildCtfRedeemData(collateralToken: string, conditionId: string) {
       conditionId as `0x${string}`,
       REDEEM_INDEX_SETS,
     ],
-  })
-}
-
-function buildNegRiskRedeemData(conditionId: string, outcomeIndex: number, amountRaw: bigint) {
-  const amounts = outcomeIndex === 0 ? [amountRaw, 0n] : [0n, amountRaw]
-  return encodeFunctionData({
-    abi: NEG_RISK_REDEEM_ABI,
-    functionName: 'redeemPositions',
-    args: [conditionId as `0x${string}`, amounts],
   })
 }
 
@@ -967,8 +954,20 @@ async function getRedeemCollateralBalances(
   return balances
 }
 
-function isBinaryOutcomeIndex(value: unknown): value is 0 | 1 {
-  return value === 0 || value === 1
+function buildSetApprovalForAllTx(operator: string): Transaction {
+  return {
+    to: CONTRACTS.CTF,
+    data: encodeFunctionData({
+      abi: ERC1155_SET_APPROVAL_ABI,
+      functionName: 'setApprovalForAll',
+      args: [operator as `0x${string}`, true],
+    }),
+    value: '0',
+  }
+}
+
+function isPusdCollateral(collateral: RedeemCollateralBalance) {
+  return collateral.collateralToken.toLowerCase() === CONTRACTS.PUSD.toLowerCase()
 }
 
 /**
@@ -1139,10 +1138,10 @@ clobRoutes.post('/redeem', async (c) => {
 
     if (negativeRisk) {
       redeemMode = 'neg-risk'
-      if (!asset || !isBinaryOutcomeIndex(outcomeIndex)) {
+      if (!asset) {
         return c.json({
           error: 'Missing neg-risk redeem fields',
-          detail: 'negativeRisk redeem requires asset and outcomeIndex',
+          detail: 'negativeRisk redeem requires asset',
         }, 400)
       }
 
@@ -1166,16 +1165,19 @@ clobRoutes.post('/redeem', async (c) => {
 
       redeemContext = {
         mode: redeemMode,
-        adapter: CONTRACTS.NEG_RISK_ADAPTER,
+        adapter: CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER,
         asset,
         outcomeIndex,
         amountRaw: assetBalanceRaw.toString(),
       }
-      redeemTxs = [{
-        to: CONTRACTS.NEG_RISK_ADAPTER,
-        data: buildNegRiskRedeemData(conditionId, outcomeIndex, assetBalanceRaw),
-        value: '0',
-      }]
+      redeemTxs = [
+        buildSetApprovalForAllTx(CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER),
+        {
+          to: CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER,
+          data: buildCtfRedeemData(CONTRACTS.USDC_E, conditionId),
+          value: '0',
+        },
+      ]
     } else {
       collateralBalances = await getRedeemCollateralBalances(session.tradingAddress, conditionId)
       const positiveCollaterals = collateralBalances.filter((collateral) => BigInt(collateral.totalBalanceRaw) > 0n)
@@ -1217,10 +1219,13 @@ clobRoutes.post('/redeem', async (c) => {
         })),
       }
       redeemTxs = redeemableCollaterals.map((collateral) => ({
-        to: CONTRACTS.CTF,
+        to: isPusdCollateral(collateral) ? CONTRACTS.CTF : CONTRACTS.CTF_COLLATERAL_ADAPTER,
         data: buildCtfRedeemData(collateral.collateralToken, conditionId),
         value: '0',
       }))
+      if (redeemTxs.some((tx) => tx.to.toLowerCase() === CONTRACTS.CTF_COLLATERAL_ADAPTER.toLowerCase())) {
+        redeemTxs = [buildSetApprovalForAllTx(CONTRACTS.CTF_COLLATERAL_ADAPTER), ...redeemTxs]
+      }
     }
 
     try {
