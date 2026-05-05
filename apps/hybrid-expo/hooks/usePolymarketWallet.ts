@@ -3,7 +3,7 @@
  *
  * Architecture:
  * - The EVM private key is NEVER stored on the device. It lives only on the server, in-memory.
- * - The phone stores ONLY the polygon address (public info) in AsyncStorage so the UI
+ * - The phone stores public Polygon/deposit-wallet addresses in AsyncStorage so the UI
  *   remembers the user is "enabled" across app restarts.
  * - On enable: Phantom signs a message → signature sent to server → server derives EVM key,
  *   creates CLOB session, returns polygon address.
@@ -62,6 +62,17 @@ export function usePolymarketWallet(): PolymarketWallet {
   const scopedDepositWalletKey = solanaAddress ? `${DEPOSIT_WALLET_STORAGE_KEY}:${solanaAddress}` : null;
   const scopedWalletModeKey = solanaAddress ? `${WALLET_MODE_STORAGE_KEY}:${solanaAddress}` : null;
 
+  const clearStoredSession = useCallback(() => {
+    if (scopedKey) AsyncStorage.removeItem(scopedKey).catch(() => {});
+    if (scopedDepositWalletKey) AsyncStorage.removeItem(scopedDepositWalletKey).catch(() => {});
+    if (scopedWalletModeKey) AsyncStorage.removeItem(scopedWalletModeKey).catch(() => {});
+    setPolygonAddress(null);
+    setSafeAddress(null);
+    setDepositWalletAddress(null);
+    setWalletMode(null);
+    evmSigner.clear();
+  }, [scopedKey, scopedDepositWalletKey, scopedWalletModeKey, evmSigner]);
+
   // Load stored addresses when Solana wallet connects/changes; clear when disconnected
   useEffect(() => {
     // Wallet disconnected or address changed — clear everything
@@ -94,6 +105,11 @@ export function usePolymarketWallet(): PolymarketWallet {
       AsyncStorage.getItem(`${WALLET_MODE_STORAGE_KEY}:${solanaAddress}`),
     ])
       .then(([storedEoa, storedDepositWallet, storedWalletMode]) => {
+        if (storedEoa && (!storedDepositWallet || storedWalletMode !== 'deposit_wallet')) {
+          clearStoredSession();
+          return;
+        }
+
         if (storedEoa) setPolygonAddress(storedEoa);
         if (storedDepositWallet) setDepositWalletAddress(storedDepositWallet);
         if (storedWalletMode === 'deposit_wallet') {
@@ -135,14 +151,18 @@ export function usePolymarketWallet(): PolymarketWallet {
       }
 
       const data = await res.json();
+      if (!data.depositWalletAddress) {
+        throw new Error('Deposit wallet setup incomplete — please try again');
+      }
+
       setPolygonAddress(data.polygonAddress);
       setSafeAddress(null);
-      setDepositWalletAddress(data.depositWalletAddress ?? null);
+      setDepositWalletAddress(data.depositWalletAddress);
       setWalletMode('deposit_wallet');
 
       // Persist addresses locally (public info only, scoped to Solana wallet)
       if (scopedKey) await AsyncStorage.setItem(scopedKey, data.polygonAddress);
-      if (data.depositWalletAddress && scopedDepositWalletKey) {
+      if (scopedDepositWalletKey) {
         await AsyncStorage.setItem(scopedDepositWalletKey, data.depositWalletAddress);
       }
       if (scopedWalletModeKey) {
@@ -166,19 +186,11 @@ export function usePolymarketWallet(): PolymarketWallet {
     if (polygonAddress) {
       fetchWithTimeout(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
     }
-    // Clear local storage (scoped to current Solana wallet)
-    if (scopedKey) AsyncStorage.removeItem(scopedKey).catch(() => {});
-    if (scopedDepositWalletKey) AsyncStorage.removeItem(scopedDepositWalletKey).catch(() => {});
-    if (scopedWalletModeKey) AsyncStorage.removeItem(scopedWalletModeKey).catch(() => {});
-    setPolygonAddress(null);
-    setSafeAddress(null);
-    setDepositWalletAddress(null);
-    setWalletMode(null);
-    // Wipe EVM key from memory
-    evmSigner.clear();
-  }, [polygonAddress, scopedKey, scopedDepositWalletKey, scopedWalletModeKey, evmSigner]);
+    clearStoredSession();
+  }, [polygonAddress, clearStoredSession]);
 
   const tradingAddress = depositWalletAddress;
+  const isReady = !!polygonAddress && walletMode === 'deposit_wallet' && !!depositWalletAddress;
 
   return {
     polygonAddress,
@@ -186,7 +198,7 @@ export function usePolymarketWallet(): PolymarketWallet {
     depositWalletAddress,
     walletMode,
     tradingAddress,
-    isReady: !!polygonAddress,
+    isReady,
     isLoading,
     enable,
     disable,
