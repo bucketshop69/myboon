@@ -68,6 +68,18 @@ const ERC1155_SET_APPROVAL_ABI = [{
   outputs: [],
 }] as const
 
+const ERC1155_BALANCE_OF_ABI = [{
+  name: 'balanceOf', type: 'function',
+  inputs: [{ name: 'account', type: 'address' }, { name: 'id', type: 'uint256' }],
+  outputs: [{ type: 'uint256' }],
+}] as const
+
+const CTF_PAYOUT_DENOMINATOR_ABI = [{
+  name: 'payoutDenominator', type: 'function',
+  inputs: [{ name: 'conditionId', type: 'bytes32' }],
+  outputs: [{ type: 'uint256' }],
+}] as const
+
 // --- Builder Config ---
 
 // Relayer still uses V1 HMAC auth (for Safe deploy/approve/withdraw)
@@ -665,6 +677,93 @@ const CTF_REDEEM_ABI = [{
   outputs: [],
 }] as const
 
+/**
+ * POST /clob/redeem/debug
+ * Body: { polygonAddress, conditionId, asset }
+ *
+ * Read-only/simulation diagnostics for redeem failures.
+ */
+clobRoutes.post('/redeem/debug', async (c) => {
+  let body: { polygonAddress?: string; conditionId?: string; asset?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const { polygonAddress, conditionId, asset } = body
+  if (!polygonAddress || !conditionId || !asset) {
+    return c.json({ error: 'Missing polygonAddress, conditionId, or asset' }, 400)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  const safeAddress = session?.safeAddress ?? deriveSafe(polygonAddress, SAFE_FACTORY).toLowerCase()
+
+  const redeemData = encodeFunctionData({
+    abi: CTF_REDEEM_ABI,
+    functionName: 'redeemPositions',
+    args: [
+      CONTRACTS.PUSD as `0x${string}`,
+      '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
+      conditionId as `0x${string}`,
+      [1n, 2n],
+    ],
+  })
+
+  const result: Record<string, unknown> = {
+    polygonAddress,
+    safeAddress,
+    conditionId,
+    asset,
+    hasActiveSession: !!session,
+    collateralToken: CONTRACTS.PUSD,
+    ctf: CONTRACTS.CTF,
+  }
+
+  try {
+    const balanceData = encodeFunctionData({
+      abi: ERC1155_BALANCE_OF_ABI,
+      functionName: 'balanceOf',
+      args: [safeAddress as `0x${string}`, BigInt(asset)],
+    })
+    const balanceRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: balanceData })
+    const tokenBalance = BigInt(balanceRaw)
+    result.tokenBalanceRaw = tokenBalance.toString()
+    result.tokenBalance = Number(tokenBalance) / 1e6
+  } catch (err: any) {
+    result.tokenBalanceError = err?.message ?? String(err)
+  }
+
+  try {
+    const denominatorData = encodeFunctionData({
+      abi: CTF_PAYOUT_DENOMINATOR_ABI,
+      functionName: 'payoutDenominator',
+      args: [conditionId as `0x${string}`],
+    })
+    const denominatorRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: denominatorData })
+    result.payoutDenominator = BigInt(denominatorRaw).toString()
+  } catch (err: any) {
+    result.payoutDenominatorError = err?.message ?? String(err)
+  }
+
+  try {
+    await polygonProvider.call({
+      from: safeAddress,
+      to: CONTRACTS.CTF,
+      data: redeemData,
+    })
+    result.simulationOk = true
+  } catch (err: any) {
+    result.simulationOk = false
+    result.simulationError = err?.reason ?? err?.message ?? String(err)
+    result.simulationCode = err?.code ?? null
+    result.simulationData = err?.data ?? null
+  }
+
+  console.log('[clob] Redeem debug:', result)
+  return c.json(result)
+})
+
 clobRoutes.post('/redeem', async (c) => {
   console.log('[clob] Redeem route hit')
 
@@ -724,7 +823,7 @@ clobRoutes.post('/redeem', async (c) => {
     const execRes = await relay.execute([redeemTx], `Redeem positions for condition ${conditionId.slice(0, 10)}...`)
     console.log('[clob] Redeem relay response:', {
       type: typeof execRes,
-      keys: execRes && typeof execRes === 'object' ? Object.keys(execRes as Record<string, unknown>) : [],
+      keys: execRes && typeof execRes === 'object' ? Object.keys(execRes as unknown as Record<string, unknown>) : [],
     })
     console.log('[clob] Redeem relay submitted, waiting for receipt...')
     const execResult = await execRes.wait()
