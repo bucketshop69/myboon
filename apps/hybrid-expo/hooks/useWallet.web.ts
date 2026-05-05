@@ -48,8 +48,10 @@ export function useWallet() {
   }, [wallets, wallet, connect, select]);
 
   const handleDisconnect = useCallback(async () => {
+    connectingRef.current = false;
     await disconnect();
-  }, [disconnect]);
+    select(null);
+  }, [disconnect, select]);
 
   // Wrap sendTransaction so callers don't need to pass connection
   const handleSignAndSendTransaction = useCallback(

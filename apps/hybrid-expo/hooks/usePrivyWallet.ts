@@ -7,7 +7,7 @@
  * works identically for both Privy and MWA users.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { usePrivy, useEmbeddedSolanaWallet, useLoginWithEmail, isConnected } from '@privy-io/expo';
 import { useLoginWithPasskey, useSignupWithPasskey } from '@privy-io/expo/passkey';
 
@@ -30,6 +30,8 @@ export interface PrivyWalletState {
   loginWithEmailOTP: (code: string) => Promise<void>;
   /** Log out of Privy */
   disconnect: () => Promise<void>;
+  /** Wait until the embedded Solana wallet is hydrated after auth */
+  waitForWallet: () => Promise<void>;
   /** Sign a message with the embedded Solana wallet */
   signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | null;
   /** Auth method the user used (email, passkey, wallet, or null) */
@@ -49,19 +51,63 @@ export function usePrivyWallet(): PrivyWalletState {
   const walletConnected = isConnected(solanaWallet);
   const wallet = walletConnected ? solanaWallet.wallets?.[0] ?? null : null;
   const address = wallet?.address ?? null;
+  const solanaWalletStatus = solanaWallet.status;
+  const createSolanaWallet = solanaWallet.create;
 
   // Auto-create embedded wallet if authenticated but wallet not yet created.
-  // creatingRef stays true after attempt (success or fail) to prevent retry loops.
   const creatingRef = useRef(false);
+  const walletWaitersRef = useRef<{ resolve: () => void; reject: (err: Error) => void }[]>([]);
+
   useEffect(() => {
-    if (authenticated && solanaWallet.status === 'not-created' && solanaWallet.create && !creatingRef.current) {
-      creatingRef.current = true;
-      console.log('[PrivyWallet] Auto-creating embedded Solana wallet...');
-      solanaWallet.create().catch((err: unknown) => {
-        console.error('[PrivyWallet] Failed to create wallet:', err);
+    if (!authenticated) {
+      creatingRef.current = false;
+      walletWaitersRef.current.splice(0).forEach(({ reject }) => {
+        reject(new Error('Privy user is not authenticated'));
       });
     }
-  }, [authenticated, solanaWallet.status]);
+  }, [authenticated]);
+
+  useEffect(() => {
+    if (!address) return;
+    walletWaitersRef.current.splice(0).forEach(({ resolve }) => resolve());
+  }, [address]);
+
+  useEffect(() => {
+    if (authenticated && solanaWalletStatus === 'not-created' && createSolanaWallet && !creatingRef.current) {
+      creatingRef.current = true;
+      console.log('[PrivyWallet] Auto-creating embedded Solana wallet...');
+      createSolanaWallet()
+        .catch((err: unknown) => {
+          creatingRef.current = false;
+          console.error('[PrivyWallet] Failed to create wallet:', err);
+          walletWaitersRef.current.splice(0).forEach(({ reject }) => {
+            reject(err instanceof Error ? err : new Error('Failed to create Privy wallet'));
+          });
+        });
+    }
+  }, [authenticated, solanaWalletStatus, createSolanaWallet]);
+
+  const waitForEmbeddedWallet = useCallback(async () => {
+    if (address) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        walletWaitersRef.current = walletWaitersRef.current.filter((waiter) => waiter.resolve !== resolve);
+        reject(new Error('Privy wallet is still preparing. Please try again in a moment.'));
+      }, 15000);
+
+      walletWaitersRef.current.push({
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        reject: (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+      });
+    });
+  }, [address]);
 
   const signMessage = wallet
     ? async (message: Uint8Array): Promise<Uint8Array> => {
@@ -103,6 +149,7 @@ export function usePrivyWallet(): PrivyWalletState {
     disconnect: async () => {
       await logout();
     },
+    waitForWallet: waitForEmbeddedWallet,
     signMessage,
     authMethod,
   };
