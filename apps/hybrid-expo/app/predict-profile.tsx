@@ -86,7 +86,7 @@ export default function PredictProfileScreen() {
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
-    // Gamma data-api tracks by Safe address (where funds/positions live)
+    // Gamma data-api tracks by trading wallet address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
     const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
     const [portfolioData, balanceData, ordersData, activityData] = await Promise.all([

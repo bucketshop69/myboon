@@ -15,7 +15,6 @@ import { fetchMarketPositions, fetchActivity, placeBet } from '@/features/predic
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
-import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 import { SellForm } from './SellForm';
 
@@ -119,41 +118,16 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
         ? Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100)
         : price;
 
-      if (poly.walletMode === 'deposit_wallet') {
-        const result = await placeBet({
-          polygonAddress: poly.polygonAddress,
-          tokenID,
-          price: orderPrice,
-          size: shares,
-          side: 'SELL',
-          negRisk: !!position.negativeRisk,
-          orderType: mode === 'market' ? 'FOK' : 'GTC',
-        });
-        if (!result.success) throw new Error(result.error || 'Order failed');
-      } else {
-        const exchangeAddress = position.negativeRisk
-          ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
-          : V2_CONTRACTS.CTF_EXCHANGE;
-
-        const signedOrder = await poly.signOrder({
-          tokenID,
-          price: orderPrice,
-          size: shares,
-          side: 'SELL',
-          exchangeAddress,
-        });
-
-        const result = await placeBet({
-          polygonAddress: poly.polygonAddress,
-          tokenID,
-          price: orderPrice,
-          size: shares,
-          side: 'SELL',
-          signedOrder,
-          orderType: mode === 'market' ? 'FOK' : 'GTC',
-        });
-        if (!result.success) throw new Error(result.error || 'Order failed');
-      }
+      const result = await placeBet({
+        polygonAddress: poly.polygonAddress,
+        tokenID,
+        price: orderPrice,
+        size: shares,
+        side: 'SELL',
+        negRisk: !!position.negativeRisk,
+        orderType: mode === 'market' ? 'FOK' : 'GTC',
+      });
+      if (!result.success) throw new Error(result.error || 'Order failed');
 
       setSellStatus('success');
       const soldAll = shares >= (position.size - 0.01);
