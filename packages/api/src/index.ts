@@ -45,6 +45,7 @@ try {
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
+const HOST = process.env.HOST ?? '0.0.0.0'
 
 const missing: string[] = []
 if (!SUPABASE_URL) missing.push('SUPABASE_URL')
@@ -1550,6 +1551,6 @@ app.get('/predict/feed', async (c) => {
 
 // --- start server ---
 
-serve({ fetch: app.fetch, port: PORT }, () => {
-  console.log(`[api] Listening on port ${PORT}`)
+serve({ fetch: app.fetch, port: PORT, hostname: HOST }, () => {
+  console.log(`[api] Listening on http://${HOST}:${PORT}`)
 })
