@@ -24,7 +24,9 @@
     "crypto-god:test": "tsx src/test-crypto-god.ts",
     "event:analyst": "tsx src/event-analyst.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "intelligence:polymarket:backtest": "tsx src/run-polymarket-odds-backtest.ts",
+    "intelligence:polymarket:whale-backtest": "tsx src/run-polymarket-whale-backtest.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.3",

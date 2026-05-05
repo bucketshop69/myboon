@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useWallet as useSolanaWallet, useConnection } from '@solana/wallet-adapter-react';
+import type { WalletName } from '@solana/wallet-adapter-base';
 import type { Transaction, VersionedTransaction } from '@solana/web3.js';
 
 export function useWallet() {
@@ -29,13 +30,22 @@ export function useWallet() {
     }
   }, [wallet, connected, connect]);
 
-  const handleConnect = useCallback(async () => {
-    // If only one wallet available (e.g. Phantom via Wallet Standard), select it
-    if (wallets.length > 0) {
-      connectingRef.current = true;
-      select(wallets[0].adapter.name);
+  const handleConnect = useCallback(async (walletName?: WalletName | string) => {
+    const targetName = walletName ?? wallets[0]?.adapter.name;
+    if (!targetName) {
+      throw new Error('No Solana wallet extension found');
     }
-  }, [wallets, select]);
+
+    connectingRef.current = true;
+
+    if (wallet?.adapter.name === targetName) {
+      connectingRef.current = false;
+      await connect();
+      return;
+    }
+
+    select(targetName as WalletName);
+  }, [wallets, wallet, connect, select]);
 
   const handleDisconnect = useCallback(async () => {
     await disconnect();
@@ -63,6 +73,11 @@ export function useWallet() {
     signTransaction: signTransaction ?? (async () => { throw new Error('signTransaction not supported'); }),
     signAndSendTransaction: handleSignAndSendTransaction,
     connection,
+    walletOptions: wallets.map(({ adapter, readyState }) => ({
+      name: adapter.name,
+      icon: adapter.icon,
+      readyState,
+    })),
     source: 'mwa' as const,
   };
 }

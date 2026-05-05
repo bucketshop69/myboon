@@ -14,6 +14,9 @@ interface PolyActivity {
   proxyWallet: string
   size?: number
   amount?: number
+  price?: number
+  tradePrice?: number
+  marketPrice?: number
   side?: string
   outcome?: string
   title?: string
@@ -49,6 +52,25 @@ function betWeight(amount?: number): number {
 
 // Cache conditionId -> { title, slug } to avoid repeated lookups
 const marketCache = new Map<string, { title: string; slug: string | null }>()
+
+function normalizeOdds(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null
+}
+
+async function fetchMarketOddsAtBet(slug: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`)
+    if (!res.ok) return null
+    const data = await res.json() as Array<{ outcomePrices?: string[] }>
+    const price = Number(data[0]?.outcomePrices?.[0])
+    return normalizeOdds(price)
+  } catch {
+    return null
+  }
+}
+
 
 async function resolveMarket(conditionId: string): Promise<{ title: string; slug: string | null }> {
   if (!conditionId) return { title: 'Unknown market', slug: null }
@@ -180,6 +202,9 @@ async function pollUser(address: string): Promise<void> {
       continue
     }
 
+    const tradePrice = normalizeOdds(activity.tradePrice ?? activity.price ?? activity.marketPrice ?? null)
+    const marketOddsAtBet = tradePrice ?? await fetchMarketOddsAtBet(slug)
+
     // Determine wallet label and upsert stats
     const isTracked = (trackedUsers as string[]).includes(address)
     const walletLabel = isTracked ? 'tracked-whale' : 'unknown'
@@ -198,9 +223,12 @@ async function pollUser(address: string): Promise<void> {
         outcome: activity.outcome,
         marketId: conditionId,
         slug, // keep in metadata for backwards compat
+        activityTimestamp: activity.timestamp,
         walletTotalBets: walletStats.total_bets,
         walletWinRate: walletStats.win_rate,
         walletLabel: walletStats.label,
+        tradePrice,
+        marketOddsAtBet,
       },
     }
 

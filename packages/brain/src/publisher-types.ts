@@ -1,5 +1,7 @@
 // Shared types for publisher + critic pipeline
 
+import type { OutcomeCriterion } from './intelligence/contracts.js'
+
 export type ContentType = 'fomo' | 'signal' | 'sports' | 'macro' | 'news' | 'crypto'
 
 export interface NarrativeAction {
@@ -35,6 +37,10 @@ export interface Narrative {
   slugs: string[]
   status: string
   created_at: string
+  schema_version?: number | null
+  scoring_version?: number | null
+  editor_version?: number | null
+  success_criteria?: OutcomeCriterion[] | null
 }
 
 export interface PublishedNarrative {
@@ -44,4 +50,8 @@ export interface PublishedNarrative {
   tags: string[]
   content_type: ContentType
   actions: NarrativeAction[]
+  schema_version?: number | null
+  scoring_version?: number | null
+  editor_version?: number | null
+  success_criteria?: OutcomeCriterion[] | null
 }

@@ -69,6 +69,18 @@ const ERC1155_SET_APPROVAL_ABI = [{
   outputs: [],
 }] as const
 
+const ERC1155_BALANCE_OF_ABI = [{
+  name: 'balanceOf', type: 'function',
+  inputs: [{ name: 'account', type: 'address' }, { name: 'id', type: 'uint256' }],
+  outputs: [{ type: 'uint256' }],
+}] as const
+
+const CTF_PAYOUT_DENOMINATOR_ABI = [{
+  name: 'payoutDenominator', type: 'function',
+  inputs: [{ name: 'conditionId', type: 'bytes32' }],
+  outputs: [{ type: 'uint256' }],
+}] as const
+
 // --- Builder Config ---
 
 // Relayer uses builder HMAC auth for Safe and deposit-wallet gasless calls.
@@ -230,28 +242,47 @@ function toDepositWalletCall(tx: Transaction): DepositWalletCall {
 }
 
 async function executeTradingWalletCalls(session: ClobSession, txs: Transaction[], metadata: string) {
+  const { execResult } = await submitTradingWalletCalls(session, txs, metadata)
+  return execResult
+}
+
+async function submitTradingWalletCalls(session: ClobSession, txs: Transaction[], metadata: string) {
   if (!relayerBuilderConfig) {
     throw new Error('Builder not configured')
   }
 
+  let relay: RelayClient
+  let res: any
+
   if (session.walletMode === 'deposit_wallet') {
     if (!session.depositWalletAddress) throw new Error('Missing deposit wallet address')
     const deadline = Math.floor(Date.now() / 1000 + 240).toString()
-    const res = await getRelay(session).executeDepositWalletBatch(
+    relay = getRelay(session)
+    res = await relay.executeDepositWalletBatch(
       txs.map(toDepositWalletCall),
       session.depositWalletAddress,
       deadline,
     )
-    return res.wait()
+  } else {
+    relay = getRelay(session, RelayerTxType.SAFE)
+    res = await relay.execute(txs, metadata)
   }
 
-  const res = await getRelay(session, RelayerTxType.SAFE).execute(txs, metadata)
-  return res.wait()
+  const relayInfo = {
+    transactionID: res?.transactionID ?? null,
+    transactionHash: res?.transactionHash ?? null,
+    hash: res?.hash ?? null,
+    state: res?.state ?? null,
+  }
+  const execResult = await res.wait()
+  return { relay, relayInfo, execResult, response: res }
 }
 
 // --- Routes ---
 
 export const clobRoutes = new Hono()
+
+console.log('[clob] Routes loaded: /auth, /order/signed, /positions/:polygonAddress, /balance/:polygonAddress, /redeem')
 
 /**
  * POST /clob/auth
@@ -807,29 +838,158 @@ const CTF_REDEEM_ABI = [{
   outputs: [],
 }] as const
 
-clobRoutes.post('/redeem', async (c) => {
-  let body: { polygonAddress?: string; conditionId?: string }
+/**
+ * POST /clob/redeem/debug
+ * Body: { polygonAddress, conditionId, asset }
+ *
+ * Read-only/simulation diagnostics for redeem failures.
+ */
+clobRoutes.post('/redeem/debug', async (c) => {
+  let body: { polygonAddress?: string; conditionId?: string; asset?: string }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Bad request' }, 400)
   }
 
+  const { polygonAddress, conditionId, asset } = body
+  if (!polygonAddress || !conditionId || !asset) {
+    return c.json({ error: 'Missing polygonAddress, conditionId, or asset' }, 400)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  const safeAddress = session?.safeAddress ?? deriveSafe(polygonAddress, SAFE_FACTORY).toLowerCase()
+  const tradingAddress = session?.tradingAddress ?? safeAddress
+
+  const redeemData = encodeFunctionData({
+    abi: CTF_REDEEM_ABI,
+    functionName: 'redeemPositions',
+    args: [
+      CONTRACTS.PUSD as `0x${string}`,
+      '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
+      conditionId as `0x${string}`,
+      [1n, 2n],
+    ],
+  })
+
+  const result: Record<string, unknown> = {
+    polygonAddress,
+    safeAddress,
+    tradingAddress,
+    walletMode: session?.walletMode ?? 'safe',
+    conditionId,
+    asset,
+    hasActiveSession: !!session,
+    collateralToken: CONTRACTS.PUSD,
+    ctf: CONTRACTS.CTF,
+  }
+
+  try {
+    const balanceData = encodeFunctionData({
+      abi: ERC1155_BALANCE_OF_ABI,
+      functionName: 'balanceOf',
+      args: [tradingAddress as `0x${string}`, BigInt(asset)],
+    })
+    const balanceRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: balanceData })
+    const tokenBalance = BigInt(balanceRaw)
+    result.tokenBalanceRaw = tokenBalance.toString()
+    result.tokenBalance = Number(tokenBalance) / 1e6
+  } catch (err: any) {
+    result.tokenBalanceError = err?.message ?? String(err)
+  }
+
+  try {
+    const denominatorData = encodeFunctionData({
+      abi: CTF_PAYOUT_DENOMINATOR_ABI,
+      functionName: 'payoutDenominator',
+      args: [conditionId as `0x${string}`],
+    })
+    const denominatorRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: denominatorData })
+    result.payoutDenominator = BigInt(denominatorRaw).toString()
+  } catch (err: any) {
+    result.payoutDenominatorError = err?.message ?? String(err)
+  }
+
+  try {
+    await polygonProvider.call({
+      from: tradingAddress,
+      to: CONTRACTS.CTF,
+      data: redeemData,
+    })
+    result.simulationOk = true
+  } catch (err: any) {
+    result.simulationOk = false
+    result.simulationError = err?.reason ?? err?.message ?? String(err)
+    result.simulationCode = err?.code ?? null
+    result.simulationData = err?.data ?? null
+  }
+
+  console.log('[clob] Redeem debug:', result)
+  return c.json(result)
+})
+
+clobRoutes.get('/relayer/transaction/:transactionId', async (c) => {
+  const transactionId = c.req.param('transactionId')
+  if (!transactionId?.trim()) return c.json({ error: 'Missing transactionId' }, 400)
+
+  try {
+    const relay = new RelayClient(RELAYER_URL, CHAIN_ID)
+    const transaction = await relay.getTransaction(transactionId)
+    console.log('[clob] Relayer transaction lookup:', { transactionId, transaction })
+    return c.json({ transactionId, transaction })
+  } catch (err: any) {
+    console.error('[clob] Relayer transaction lookup failed:', {
+      transactionId,
+      message: err?.message,
+      response: err?.response?.data ?? err?.response,
+    })
+    return c.json({
+      error: 'Relayer transaction lookup failed',
+      detail: err?.message,
+      response: err?.response?.data ?? null,
+    }, 502)
+  }
+})
+
+clobRoutes.post('/redeem', async (c) => {
+  console.log('[clob] Redeem route hit')
+
+  let body: { polygonAddress?: string; conditionId?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    console.warn('[clob] Redeem bad request: invalid JSON body')
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
   const { polygonAddress, conditionId } = body
+  console.log('[clob] Redeem request:', {
+    polygonAddress,
+    conditionId: conditionId ? `${conditionId.slice(0, 10)}...${conditionId.slice(-6)}` : null,
+  })
+
   if (!polygonAddress || !conditionId) {
+    console.warn('[clob] Redeem missing fields:', {
+      hasPolygonAddress: !!polygonAddress,
+      hasConditionId: !!conditionId,
+    })
     return c.json({ error: 'Missing polygonAddress or conditionId' }, 400)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
+    console.warn(`[clob] Redeem no active session for ${polygonAddress}. Active sessions=${sessions.size}`)
     return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
   }
 
   if (!relayerBuilderConfig) {
+    console.error('[clob] Redeem relayer not configured: missing POLYMARKET_BUILDER_* env vars')
     return c.json({ error: 'Relayer not configured' }, 500)
   }
 
   try {
+    console.log(`[clob] Redeem building tx: EOA=${session.eoaAddress}, ${session.walletMode}=${session.tradingAddress}, condition=${conditionId.slice(0, 10)}...`)
+
     const redeemTx = {
       to: CONTRACTS.CTF as `0x${string}`,
       data: encodeFunctionData({
@@ -845,18 +1005,75 @@ clobRoutes.post('/redeem', async (c) => {
       value: '0',
     }
 
-    const execResult = await executeTradingWalletCalls(
+    try {
+      await polygonProvider.call({
+        from: session.tradingAddress,
+        to: redeemTx.to,
+        data: redeemTx.data,
+      })
+      console.log('[clob] Redeem preflight simulation ok')
+    } catch (simErr: any) {
+      console.error('[clob] Redeem preflight simulation failed:', {
+        reason: simErr?.reason,
+        message: simErr?.message,
+        code: simErr?.code,
+        data: simErr?.data,
+      })
+      return c.json({
+        error: 'Redeem simulation failed',
+        detail: simErr?.reason ?? simErr?.message ?? 'Redeem call would revert',
+        code: simErr?.code ?? null,
+        data: simErr?.data ?? null,
+      }, 400)
+    }
+
+    console.log(`[clob] Redeem relay execute: walletMode=${session.walletMode}, to=${redeemTx.to}, dataBytes=${redeemTx.data.length}`)
+    const { relay, relayInfo, execResult, response: execRes } = await submitTradingWalletCalls(
       session,
       [redeemTx],
       `Redeem positions for condition ${conditionId.slice(0, 10)}...`,
     )
+    console.log('[clob] Redeem relay response:', {
+      type: typeof execRes,
+      keys: execRes && typeof execRes === 'object' ? Object.keys(execRes as unknown as Record<string, unknown>) : [],
+      ...relayInfo,
+    })
+    console.log('[clob] Redeem relay wait result:', execResult ?? null)
 
     const txHash = execResult?.transactionHash ?? null
+    if (!txHash) {
+      let relayerTransaction: unknown = null
+      if (relayInfo.transactionID) {
+        try {
+          relayerTransaction = await relay.getTransaction(relayInfo.transactionID)
+          console.warn('[clob] Redeem failed relayer transaction:', relayerTransaction)
+        } catch (lookupErr: any) {
+          relayerTransaction = {
+            error: lookupErr?.message ?? 'Relayer transaction lookup failed',
+            response: lookupErr?.response?.data ?? null,
+          }
+        }
+      }
+
+      console.warn('[clob] Redeem relay completed without transaction hash; treating as not confirmed')
+      return c.json({
+        error: 'Redeem not confirmed',
+        detail: 'Relayer completed without returning a transaction hash',
+        relayer: relayInfo,
+        relayerTransaction,
+      }, 502)
+    }
+
     console.log(`[clob] Redeemed positions for ${polygonAddress} condition=${conditionId.slice(0, 10)}... tx=${txHash}`)
 
     return c.json({ ok: true, txHash })
   } catch (err: any) {
-    console.error('[clob] Redeem failed:', err.message || err)
+    console.error('[clob] Redeem failed:', {
+      message: err?.message,
+      code: err?.code,
+      response: err?.response?.data ?? err?.response,
+      stack: err?.stack,
+    })
     return c.json({ error: 'Redeem failed', detail: err.message }, 500)
   }
 })

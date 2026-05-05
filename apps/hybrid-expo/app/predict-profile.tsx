@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -135,38 +136,46 @@ export default function PredictProfileScreen() {
     return unsubscribe;
   }, [navigation, isEnabled, poly.polygonAddress, loadPortfolio]);
 
-  const handleOpenAccount = useCallback(() => {
+  const connectPredictAccount = useCallback(async () => {
+    setBusy(true);
+    try {
+      await poly.enable();
+      setSessionExpired(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to connect Predict account';
+      Alert.alert('Error', msg);
+    } finally {
+      setBusy(false);
+    }
+  }, [poly]);
+
+  const handleConnectPredictAccount = useCallback(() => {
     if (!connected) {
       Alert.alert('Connect Wallet', 'Connect your Solana wallet first.');
       return;
     }
 
+    if (Platform.OS === 'web') {
+      void connectPredictAccount();
+      return;
+    }
+
     Alert.alert(
-      'Open Prediction Account',
-      'Create a prediction market account linked to your wallet.\n\n' +
+      'Connect Predict Account',
+      'Sign once to restore or set up the prediction account linked to this wallet.\n\n' +
         '• Sign a message to verify ownership (no transaction)\n' +
-        '• A trading address is derived automatically\n' +
+        '• Your trading address is derived deterministically\n' +
         '• No extra seed phrases or wallets to manage\n' +
         '• Deposit & trade on prediction markets — gasless',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Create Account',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await poly.enable();
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : 'Failed to create account';
-              Alert.alert('Error', msg);
-            } finally {
-              setBusy(false);
-            }
-          },
+          text: 'Continue',
+          onPress: () => void connectPredictAccount(),
         },
       ],
     );
-  }, [connected, poly]);
+  }, [connectPredictAccount, connected]);
 
   const handleReconnect = useCallback(async () => {
     if (!connected) return;
@@ -270,14 +279,14 @@ export default function PredictProfileScreen() {
           )}
           {!isEnabled && !poly.isLoading && connected && (
             <Pressable
-              onPress={handleOpenAccount}
+              onPress={handleConnectPredictAccount}
               disabled={busy}
               style={[styles.passkeyCta, busy && styles.btnDisabled]}
             >
               {busy ? (
                 <ActivityIndicator color={tokens.colors.backgroundDark} size="small" />
               ) : (
-                <Text style={styles.passkeyCtaText}>Open Account</Text>
+                <Text style={styles.passkeyCtaText}>Connect Predict</Text>
               )}
             </Pressable>
           )}

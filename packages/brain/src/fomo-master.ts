@@ -3,6 +3,7 @@ import 'dotenv/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { PolymarketProfileClient } from '@myboon/shared'
 import { fomoMasterGraph, type FormattedSignal, type XPostRow } from './graphs/fomo-master-graph.js'
+import { classifyPolymarketWhaleBet, type PolymarketWhaleBetClassification } from './intelligence/scoring.js'
 
 // --- env validation ---
 
@@ -76,6 +77,27 @@ function formatAmount(amount: number): string {
   return `$${Math.round(amount).toLocaleString()}`
 }
 
+function numberOrNull(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function formatProbability(value: number | null): string {
+  return value == null ? 'unknown' : `${(value * 100).toFixed(0)}%`
+}
+
+function classifyFomoSignal(meta: Record<string, unknown>, liveOdds: number | null): PolymarketWhaleBetClassification {
+  return classifyPolymarketWhaleBet({
+    amountUsd: numberOrNull(meta.amount) ?? 0,
+    hoursSinceObserved: 0,
+    tradePrice: numberOrNull(meta.tradePrice),
+    marketOddsAtBet: numberOrNull(meta.marketOddsAtBet) ?? liveOdds,
+    outcome: typeof meta.outcome === 'string' ? meta.outcome : null,
+    walletTotalBets: numberOrNull(meta.walletTotalBets),
+    walletWinRate: numberOrNull(meta.walletWinRate),
+  })
+}
+
 interface BettorProfile {
   portfolio_value: number
   markets_traded: number
@@ -124,6 +146,7 @@ function formatSignalBlock(signal: {
     total_volume: number
     latest_at: string
   } | null
+  whale_classification: PolymarketWhaleBetClassification
 }): FormattedSignal {
   const meta = signal.metadata
   const amount = typeof meta?.amount === 'number' ? meta.amount : null
@@ -131,6 +154,7 @@ function formatSignalBlock(signal: {
   const question = typeof meta?.question === 'string' ? meta.question : typeof meta?.title === 'string' ? meta.title : 'Unknown market'
   const slug = typeof meta?.slug === 'string' ? meta.slug : null
   const address = typeof meta?.user === 'string' ? meta.user : null
+  const whale = signal.whale_classification
 
   // Line 1: SIGNAL
   const amountStr = amount !== null ? formatAmount(amount) : 'Unknown amount'
@@ -140,6 +164,7 @@ function formatSignalBlock(signal: {
   // Line 2: Market + odds
   const oddsStr = signal.live_odds !== null ? `${(signal.live_odds * 100).toFixed(0)}% YES` : 'unknown'
   const line2 = `Market: ${slug ?? 'unknown'} | Current odds: ${oddsStr}`
+  const line2b = `Whale classification: ${whale.archetype} | Bet probability: ${formatProbability(whale.betProbability)} | Est. risk: ${whale.riskUsd == null ? 'unknown' : formatAmount(whale.riskUsd)} | ${whale.reason}`
 
   // Line 3: Bettor profile (from Polymarket data APIs)
   const profile = signal.bettor_profile
@@ -169,7 +194,7 @@ function formatSignalBlock(signal: {
     : `Market activity (7d): no prior bets on record`
 
   // Line 5: Cluster (only if cluster_context exists)
-  const lines = [line1, line2, line3, line4]
+  const lines = [line1, line2, line2b, line3, line4]
   if (signal.cluster_context) {
     const cc = signal.cluster_context
     const line5 = `Cluster: ${cc.signal_count} bets in last 4h, ${cc.distinct_wallets} wallets, ${formatVolume(cc.total_volume)} total`
@@ -289,20 +314,43 @@ export async function runFomoMaster(): Promise<void> {
     })
   )
 
-  // Step 6: format into plaintext signal blocks
-  const formatted_signals: FormattedSignal[] = enriched.map((signal) =>
-    formatSignalBlock({
+  // Step 6: deterministic odds-aware classification before any LLM sees the signals
+  const formattedAll: FormattedSignal[] = enriched.map((signal) => {
+    const metadata = signal.metadata as Record<string, unknown>
+    return formatSignalBlock({
       id: signal.id,
       type: signal.type,
       weight: signal.weight,
-      metadata: signal.metadata as Record<string, unknown>,
+      metadata,
       created_at: signal.created_at,
       bettor_profile: signal.bettor_profile,
       live_odds: signal.live_odds,
       market_history: signal.market_history,
       cluster_context: signal.cluster_context,
+      whale_classification: classifyFomoSignal(metadata, signal.live_odds),
     })
+  })
+
+  const deterministicSkips = Object.fromEntries(
+    formattedAll
+      .filter((signal) => !signal.whale_classification.publishableAsConviction)
+      .map((signal) => [signal.id, `deterministic whale filter: ${signal.whale_classification.archetype} — ${signal.whale_classification.reason}`])
   )
+  const formatted_signals = formattedAll.filter((signal) => signal.whale_classification.publishableAsConviction)
+
+  if (Object.keys(deterministicSkips).length > 0) {
+    await Promise.all(
+      Object.entries(deterministicSkips).map(([signal_id, reason]) =>
+        supabase.from('signals').update({ skip_reasoning: reason }).eq('id', signal_id)
+      )
+    )
+    console.log(`[fomo_master] Deterministically filtered ${Object.keys(deterministicSkips).length} signal(s)`)
+  }
+
+  if (!formatted_signals.length) {
+    console.log('[fomo_master] No publishable whale signals after deterministic filtering')
+    return
+  }
 
   // Step 7: fetch timelines
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()

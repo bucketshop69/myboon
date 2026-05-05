@@ -26,11 +26,23 @@ import { semantic, tokens } from '@/theme';
 const DRAWER_WIDTH = 280;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+type WalletOption = {
+  name: string;
+  readyState?: string;
+};
+
 export function WalletDrawer() {
   const { isOpen, close } = useDrawer();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { connected, address, source, connect: walletConnect } = useWallet();
+  const {
+    connected,
+    address,
+    source,
+    connect: walletConnect,
+    disconnect: walletDisconnect,
+    walletOptions = [],
+  } = useWallet();
   const privy = usePrivyWallet();
   const poly = usePolymarketWallet();
 
@@ -112,12 +124,26 @@ export function WalletDrawer() {
         text: 'Disconnect',
         style: 'destructive',
         onPress: async () => {
-          await privy.disconnect();
-          close();
+          setBusy(true);
+          try {
+            // Clear derived Polymarket session/local state before the base wallet address disappears.
+            poly.disable();
+            if (source === 'privy') {
+              await privy.disconnect();
+            } else {
+              await walletDisconnect();
+            }
+            close();
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Failed to disconnect wallet';
+            Alert.alert('Disconnect failed', msg);
+          } finally {
+            setBusy(false);
+          }
         },
       },
     ]);
-  }, [privy, close]);
+  }, [source, poly, privy, walletDisconnect, close]);
 
   const handleSendEmail = useCallback(async () => {
     if (!emailInput.trim() || busy) return;
@@ -169,11 +195,11 @@ export function WalletDrawer() {
     }
   }, [privy, close]);
 
-  const handleWalletConnect = useCallback(async () => {
+  const handleWalletConnect = useCallback(async (walletName?: string) => {
     setBusy(true);
     try {
       // MWA connect via useWallet hook
-      await walletConnect();
+      await walletConnect(walletName);
       close();
     } catch {
       // Fallback: just close and let user use the in-context wallet connect
@@ -197,6 +223,10 @@ export function WalletDrawer() {
         : source === 'privy'
           ? 'Privy'
           : 'Wallet';
+
+  const installedWalletOptions = (walletOptions as WalletOption[]).filter(
+    (option) => option.readyState !== 'Unsupported',
+  );
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -432,19 +462,40 @@ export function WalletDrawer() {
                   </TouchableOpacity>
 
                   {/* Solana Wallet */}
-                  <TouchableOpacity
-                    style={[styles.secondaryBtn, busy && styles.btnDisabled]}
-                    onPress={handleWalletConnect}
-                    disabled={busy}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons
-                      name="account-balance-wallet"
-                      size={16}
-                      color={semantic.text.dim}
-                    />
-                    <Text style={styles.secondaryBtnText}>Solana Wallet</Text>
-                  </TouchableOpacity>
+                  {installedWalletOptions.length > 1 ? (
+                    <View style={styles.walletOptionGroup}>
+                      {installedWalletOptions.map((option) => (
+                        <TouchableOpacity
+                          key={option.name}
+                          style={[styles.secondaryBtn, styles.walletOptionBtn, busy && styles.btnDisabled]}
+                          onPress={() => handleWalletConnect(option.name)}
+                          disabled={busy}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons
+                            name="account-balance-wallet"
+                            size={16}
+                            color={semantic.text.dim}
+                          />
+                          <Text style={styles.secondaryBtnText}>{option.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.secondaryBtn, busy && styles.btnDisabled]}
+                      onPress={() => handleWalletConnect(installedWalletOptions[0]?.name)}
+                      disabled={busy}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons
+                        name="account-balance-wallet"
+                        size={16}
+                        color={semantic.text.dim}
+                      />
+                      <Text style={styles.secondaryBtnText}>Solana Wallet</Text>
+                    </TouchableOpacity>
+                  )}
 
                   {/* MFA note */}
                   <View style={styles.mfaNote}>
@@ -802,6 +853,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: semantic.text.dim,
+  },
+  walletOptionGroup: {
+    gap: 8,
+  },
+  walletOptionBtn: {
+    justifyContent: 'flex-start',
+    paddingHorizontal: 14,
   },
 
   mfaNote: {

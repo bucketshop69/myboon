@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { publisherGraph } from './graphs/publisher-graph.js'
+import { INTELLIGENCE_EDITOR_VERSION, INTELLIGENCE_SCHEMA_VERSION, INTELLIGENCE_SCORING_VERSION } from './intelligence/contracts.js'
 import { callMinimax, extractText } from './minimax.js'
 import type { Narrative, PublishedOutput } from './publisher-types.js'
 
@@ -80,33 +81,53 @@ async function findExistingThread(slugs: string[]): Promise<string | null> {
 }
 
 async function insertPublishedNarrative(
-  narrativeId: string,
+  narrative: Narrative,
   output: PublishedOutput,
   threadId: string | null
 ): Promise<void> {
   const url = `${SUPABASE_URL}/rest/v1/published_narratives`
-  const res = await fetch(url, {
+  const baseRow = {
+    narrative_id: narrative.id,
+    content_small: output.content_small,
+    content_full: output.content_full,
+    reasoning: output.reasoning,
+    tags: output.tags,
+    priority: output.priority,
+    actions: output.actions ?? [],
+    content_type: output.content_type,
+    thread_id: threadId,
+  }
+  const intelligenceRow = {
+    ...baseRow,
+    schema_version: narrative.schema_version ?? INTELLIGENCE_SCHEMA_VERSION,
+    scoring_version: narrative.scoring_version ?? INTELLIGENCE_SCORING_VERSION,
+    editor_version: narrative.editor_version ?? INTELLIGENCE_EDITOR_VERSION,
+    success_criteria: narrative.success_criteria ?? null,
+  }
+
+  const insert = (row: typeof baseRow | typeof intelligenceRow) => fetch(url, {
     method: 'POST',
     headers: {
       ...supabaseHeaders(),
       Prefer: 'return=minimal',
     },
-    body: JSON.stringify({
-      narrative_id: narrativeId,
-      content_small: output.content_small,
-      content_full: output.content_full,
-      reasoning: output.reasoning,
-      tags: output.tags,
-      priority: output.priority,
-      actions: output.actions ?? [],
-      content_type: output.content_type,
-      thread_id: threadId,
-    }),
+    body: JSON.stringify(row),
   })
 
-  if (!res.ok) {
-    throw new Error(`Supabase published_narratives insert failed: ${res.status} ${await res.text()}`)
+  const res = await insert(intelligenceRow)
+  if (res.ok) return
+
+  const text = await res.text()
+  // Prod-safe bridge: code writes frozen intelligence metadata once migration 037 is applied,
+  // but older prod DBs should keep publishing instead of failing on unknown columns.
+  if (/schema_version|scoring_version|editor_version|success_criteria|column/i.test(text)) {
+    console.warn(`[publisher] published_narratives intelligence columns unavailable; retrying legacy insert: ${text}`)
+    const fallback = await insert(baseRow)
+    if (fallback.ok) return
+    throw new Error(`Supabase published_narratives legacy insert failed: ${fallback.status} ${await fallback.text()}`)
   }
+
+  throw new Error(`Supabase published_narratives insert failed: ${res.status} ${text}`)
 }
 
 async function markNarrativeStatus(narrativeId: string, status: 'published' | 'rejected'): Promise<void> {
@@ -406,7 +427,7 @@ async function run(): Promise<void> {
 
       if (draft.publisher_score >= 8) {
         const threadId = await findExistingThread(narrative.slugs ?? [])
-        await insertPublishedNarrative(narrative.id, draft, threadId)
+        await insertPublishedNarrative(narrative, draft, threadId)
         await markNarrativeStatus(narrative.id, 'published')
         published.push({ narrative, output: draft })
         console.log(`[publisher] Published: "${narrative.cluster}" (publisher_score ${draft.publisher_score}, priority ${draft.priority}, content_type ${draft.content_type})`)

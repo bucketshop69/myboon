@@ -30,6 +30,13 @@ export interface FormattedSignal {
     total_volume: number
     latest_at: string
   } | null
+  whale_classification: {
+    archetype: 'penny_pickup' | 'lottery' | 'contrarian' | 'conviction' | 'noise'
+    betProbability: number | null
+    riskUsd: number | null
+    reason: string
+    publishableAsConviction: boolean
+  }
   formatted_text: string
 }
 
@@ -212,11 +219,14 @@ const RANKER_SYSTEM_PROMPT = `You are the editorial director for a financial int
 Your job: from a batch of whale bet signals, pick the 1-3 most compelling stories to post about.
 
 Ranking criteria (in order):
-1. Contrarian conviction — large bet on a low-probability outcome is the strongest signal
-2. Wallet credibility — a high win-rate wallet with proven PnL matters more than an unknown wallet
-3. Pattern — multiple wallets betting the same market is a story on its own
-4. Size — raw dollar amount (everyone can read this, so it's the weakest differentiator alone)
-5. Timing — a fresh bet is more relevant than a stale one
+1. Deterministic whale classification — contrarian/conviction/lottery beats raw notional size
+2. Contrarian conviction — meaningful risk on a low-probability outcome is the strongest signal
+3. Wallet credibility — a high win-rate wallet with proven PnL matters more than an unknown wallet
+4. Pattern — multiple wallets betting the same market is a story on its own
+5. Risk-adjusted size — estimated max loss matters more than displayed trade amount
+6. Timing — a fresh bet is more relevant than a stale one
+
+Never rank 95%+ consensus bets as whale conviction. Those should already be filtered as penny_pickup; if one appears, skip it.
 
 You will receive formatted signal blocks with short IDs (S1, S2, ...). Each block includes: bet direction+odds (for contrarian scoring), bettor profile (win rate, PnL, trade count from Polymarket data), market_history (for pattern), and cluster_context (if multiple wallets hit this market).
 
@@ -242,12 +252,17 @@ Build tension through facts. Let the implication land in the final line.
 The reader should finish and think "huh" — not "so what."
 
 [Classification]
-Before writing, classify the signal. First match wins:
-1. CONTRARIAN: live_odds < 0.30 — wallet betting heavily against consensus
-2. CLUSTER: 3+ wallets, same market, last 4h (cluster_context.signal_count)
-3. AUTHORITY: bettor_profile.win_rate >= 0.60 AND bettor_profile.trade_count >= 10
-4. FRESH_WALLET: no bettor_profile OR bettor_profile.trade_count < 3
-5. GENERAL: fallback — lead with the most specific number in the signal
+The code has already classified each bet using odds/risk math before you see it. Use that classification; do not invent signal math.
+First match wins for the writing frame:
+1. CONTRARIAN: whale_classification.archetype = contrarian
+2. LOTTERY: whale_classification.archetype = lottery
+3. CONVICTION: whale_classification.archetype = conviction
+4. CLUSTER: 3+ wallets, same market, last 4h (cluster_context.signal_count)
+5. AUTHORITY: bettor_profile.win_rate >= 0.60 AND bettor_profile.trade_count >= 10
+6. FRESH_WALLET: no bettor_profile OR bettor_profile.trade_count < 3
+7. GENERAL: fallback — lead with the most specific number in the signal
+
+Never call penny-pickup / 95%+ consensus bets whale conviction. If a penny_pickup reaches you, refuse it.
 
 [TIME_SENSITIVE modifier]
 If the market resolves within 48h (detectable from question text: "by March 31", "tonight", etc.),
@@ -272,7 +287,7 @@ Return JSON:
   "drafts": [
     {
       "signal_id": "uuid",
-      "archetype": "CONTRARIAN | CLUSTER | AUTHORITY | FRESH_WALLET | GENERAL",
+      "archetype": "CONTRARIAN | LOTTERY | CONVICTION | CLUSTER | AUTHORITY | FRESH_WALLET | GENERAL",
       "draft_text": "...",
       "reasoning": "why this archetype, what you led with"
     }

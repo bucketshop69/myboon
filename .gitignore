@@ -38,6 +38,10 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+# Generated analysis artifacts
+artifacts/
+packages/*/artifacts/
+
 # Cache
 .cache/
 .turbo/
