@@ -661,12 +661,28 @@ export interface RedeemResult {
   error?: string;
 }
 
-export async function redeemPosition(polygonAddress: string, conditionId: string): Promise<RedeemResult> {
+export interface RedeemPositionInput {
+  conditionId: string;
+  asset?: string;
+  outcomeIndex?: number;
+  negativeRisk?: boolean;
+}
+
+export async function redeemPosition(
+  polygonAddress: string,
+  position: RedeemPositionInput,
+): Promise<RedeemResult> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetchWithTimeout(`${baseUrl}/clob/redeem`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ polygonAddress, conditionId }),
+    body: JSON.stringify({
+      polygonAddress,
+      conditionId: position.conditionId,
+      asset: position.asset,
+      outcomeIndex: position.outcomeIndex,
+      negativeRisk: position.negativeRisk,
+    }),
   });
 
   const text = await response.text();

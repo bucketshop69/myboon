@@ -54,7 +54,12 @@ function RedeemRow({
     setErrorMsg('');
 
     try {
-      const result = await redeemPosition(polygonAddress, p.conditionId);
+      const result = await redeemPosition(polygonAddress, {
+        conditionId: p.conditionId,
+        asset: p.asset,
+        outcomeIndex: p.outcomeIndex,
+        negativeRisk: p.negativeRisk,
+      });
       if (result.ok) {
         setStatus('success');
         onRedeemed?.();

@@ -81,6 +81,27 @@ const CTF_PAYOUT_DENOMINATOR_ABI = [{
   outputs: [{ type: 'uint256' }],
 }] as const
 
+const CTF_GET_COLLECTION_ID_ABI = [{
+  name: 'getCollectionId', type: 'function',
+  inputs: [
+    { name: 'parentCollectionId', type: 'bytes32' },
+    { name: 'conditionId', type: 'bytes32' },
+    { name: 'indexSet', type: 'uint256' },
+  ],
+  outputs: [{ type: 'bytes32' }],
+}] as const
+
+const CTF_GET_POSITION_ID_ABI = [{
+  name: 'getPositionId', type: 'function',
+  inputs: [
+    { name: 'collateralToken', type: 'address' },
+    { name: 'collectionId', type: 'bytes32' },
+  ],
+  outputs: [{ type: 'uint256' }],
+}] as const
+
+const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const
+
 // --- Builder Config ---
 
 // Relayer uses builder HMAC auth for Safe and deposit-wallet gasless calls.
@@ -838,6 +859,118 @@ const CTF_REDEEM_ABI = [{
   outputs: [],
 }] as const
 
+const NEG_RISK_REDEEM_ABI = [{
+  name: 'redeemPositions', type: 'function',
+  inputs: [
+    { name: '_conditionId', type: 'bytes32' },
+    { name: '_amounts', type: 'uint256[]' },
+  ],
+  outputs: [],
+}] as const
+
+const REDEEM_INDEX_SETS = [1n, 2n] as const
+const REDEEM_COLLATERALS = [
+  { label: 'pUSD', address: CONTRACTS.PUSD },
+  { label: 'USDC.e', address: CONTRACTS.USDC_E },
+] as const
+
+type RedeemCollateralBalance = {
+  label: string
+  collateralToken: string
+  positions: {
+    indexSet: string
+    positionId: string
+    balanceRaw: string
+    balance: number
+  }[]
+  totalBalanceRaw: string
+  totalBalance: number
+}
+
+function buildCtfRedeemData(collateralToken: string, conditionId: string) {
+  return encodeFunctionData({
+    abi: CTF_REDEEM_ABI,
+    functionName: 'redeemPositions',
+    args: [
+      collateralToken as `0x${string}`,
+      ZERO_BYTES32,
+      conditionId as `0x${string}`,
+      REDEEM_INDEX_SETS,
+    ],
+  })
+}
+
+function buildNegRiskRedeemData(conditionId: string, outcomeIndex: number, amountRaw: bigint) {
+  const amounts = outcomeIndex === 0 ? [amountRaw, 0n] : [0n, amountRaw]
+  return encodeFunctionData({
+    abi: NEG_RISK_REDEEM_ABI,
+    functionName: 'redeemPositions',
+    args: [conditionId as `0x${string}`, amounts],
+  })
+}
+
+async function getCtfPositionBalance(account: string, positionId: bigint): Promise<bigint> {
+  const balanceData = encodeFunctionData({
+    abi: ERC1155_BALANCE_OF_ABI,
+    functionName: 'balanceOf',
+    args: [account as `0x${string}`, positionId],
+  })
+  const balanceRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: balanceData })
+  return BigInt(balanceRaw)
+}
+
+async function getRedeemCollateralBalances(
+  tradingAddress: string,
+  conditionId: string,
+): Promise<RedeemCollateralBalance[]> {
+  const balances: RedeemCollateralBalance[] = []
+
+  for (const collateral of REDEEM_COLLATERALS) {
+    const positions: RedeemCollateralBalance['positions'] = []
+    let totalBalanceRaw = 0n
+
+    for (const indexSet of REDEEM_INDEX_SETS) {
+      const collectionData = encodeFunctionData({
+        abi: CTF_GET_COLLECTION_ID_ABI,
+        functionName: 'getCollectionId',
+        args: [ZERO_BYTES32, conditionId as `0x${string}`, indexSet],
+      })
+      const collectionId = await polygonProvider.call({ to: CONTRACTS.CTF, data: collectionData }) as `0x${string}`
+
+      const positionData = encodeFunctionData({
+        abi: CTF_GET_POSITION_ID_ABI,
+        functionName: 'getPositionId',
+        args: [collateral.address as `0x${string}`, collectionId],
+      })
+      const positionIdRaw = await polygonProvider.call({ to: CONTRACTS.CTF, data: positionData })
+      const positionId = BigInt(positionIdRaw)
+      const balanceRaw = await getCtfPositionBalance(tradingAddress, positionId)
+      totalBalanceRaw += balanceRaw
+
+      positions.push({
+        indexSet: indexSet.toString(),
+        positionId: positionId.toString(),
+        balanceRaw: balanceRaw.toString(),
+        balance: Number(balanceRaw) / 1e6,
+      })
+    }
+
+    balances.push({
+      label: collateral.label,
+      collateralToken: collateral.address,
+      positions,
+      totalBalanceRaw: totalBalanceRaw.toString(),
+      totalBalance: Number(totalBalanceRaw) / 1e6,
+    })
+  }
+
+  return balances
+}
+
+function isBinaryOutcomeIndex(value: unknown): value is 0 | 1 {
+  return value === 0 || value === 1
+}
+
 /**
  * POST /clob/redeem/debug
  * Body: { polygonAddress, conditionId, asset }
@@ -861,17 +994,6 @@ clobRoutes.post('/redeem/debug', async (c) => {
   const safeAddress = session?.safeAddress ?? deriveSafe(polygonAddress, SAFE_FACTORY).toLowerCase()
   const tradingAddress = session?.tradingAddress ?? safeAddress
 
-  const redeemData = encodeFunctionData({
-    abi: CTF_REDEEM_ABI,
-    functionName: 'redeemPositions',
-    args: [
-      CONTRACTS.PUSD as `0x${string}`,
-      '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
-      conditionId as `0x${string}`,
-      [1n, 2n],
-    ],
-  })
-
   const result: Record<string, unknown> = {
     polygonAddress,
     safeAddress,
@@ -880,7 +1002,6 @@ clobRoutes.post('/redeem/debug', async (c) => {
     conditionId,
     asset,
     hasActiveSession: !!session,
-    collateralToken: CONTRACTS.PUSD,
     ctf: CONTRACTS.CTF,
   }
 
@@ -911,12 +1032,23 @@ clobRoutes.post('/redeem/debug', async (c) => {
   }
 
   try {
+    const collateralBalances = await getRedeemCollateralBalances(tradingAddress, conditionId)
+    result.collateralBalances = collateralBalances
+    result.selectedCollateral = collateralBalances.find((collateral) => BigInt(collateral.totalBalanceRaw) > 0n) ?? null
+  } catch (err: any) {
+    result.collateralBalancesError = err?.message ?? String(err)
+  }
+
+  try {
+    const selectedCollateral = result.selectedCollateral as RedeemCollateralBalance | null | undefined
+    const collateralToken = selectedCollateral?.collateralToken ?? CONTRACTS.PUSD
     await polygonProvider.call({
       from: tradingAddress,
       to: CONTRACTS.CTF,
-      data: redeemData,
+      data: buildCtfRedeemData(collateralToken, conditionId),
     })
     result.simulationOk = true
+    result.simulationCollateralToken = collateralToken
   } catch (err: any) {
     result.simulationOk = false
     result.simulationError = err?.reason ?? err?.message ?? String(err)
@@ -954,7 +1086,13 @@ clobRoutes.get('/relayer/transaction/:transactionId', async (c) => {
 clobRoutes.post('/redeem', async (c) => {
   console.log('[clob] Redeem route hit')
 
-  let body: { polygonAddress?: string; conditionId?: string }
+  let body: {
+    polygonAddress?: string
+    conditionId?: string
+    asset?: string
+    outcomeIndex?: number
+    negativeRisk?: boolean
+  }
   try {
     body = await c.req.json()
   } catch {
@@ -962,10 +1100,13 @@ clobRoutes.post('/redeem', async (c) => {
     return c.json({ error: 'Bad request' }, 400)
   }
 
-  const { polygonAddress, conditionId } = body
+  const { polygonAddress, conditionId, asset, outcomeIndex, negativeRisk } = body
   console.log('[clob] Redeem request:', {
     polygonAddress,
     conditionId: conditionId ? `${conditionId.slice(0, 10)}...${conditionId.slice(-6)}` : null,
+    asset,
+    outcomeIndex,
+    negativeRisk,
   })
 
   if (!polygonAddress || !conditionId) {
@@ -990,47 +1131,139 @@ clobRoutes.post('/redeem', async (c) => {
   try {
     console.log(`[clob] Redeem building tx: EOA=${session.eoaAddress}, ${session.walletMode}=${session.tradingAddress}, condition=${conditionId.slice(0, 10)}...`)
 
-    const redeemTx = {
-      to: CONTRACTS.CTF as `0x${string}`,
-      data: encodeFunctionData({
-        abi: CTF_REDEEM_ABI,
-        functionName: 'redeemPositions',
-        args: [
-          CONTRACTS.PUSD as `0x${string}`,
-          '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
-          conditionId as `0x${string}`,
-          [1n, 2n],
-        ],
-      }),
-      value: '0',
+    let redeemMode: 'ctf' | 'neg-risk' = 'ctf'
+    let collateralBalances: RedeemCollateralBalance[] = []
+    let redeemableCollaterals: RedeemCollateralBalance[] = []
+    let redeemContext: Record<string, unknown> = {}
+    let redeemTxs: Transaction[] = []
+
+    if (negativeRisk) {
+      redeemMode = 'neg-risk'
+      if (!asset || !isBinaryOutcomeIndex(outcomeIndex)) {
+        return c.json({
+          error: 'Missing neg-risk redeem fields',
+          detail: 'negativeRisk redeem requires asset and outcomeIndex',
+        }, 400)
+      }
+
+      let assetId: bigint
+      try {
+        assetId = BigInt(asset)
+      } catch {
+        return c.json({ error: 'Invalid asset', detail: 'asset must be a uint256 token ID string' }, 400)
+      }
+
+      const assetBalanceRaw = await getCtfPositionBalance(session.tradingAddress, assetId)
+      if (assetBalanceRaw === 0n) {
+        return c.json({
+          error: 'No redeemable position balance',
+          detail: 'No balance found for supplied neg-risk asset',
+          asset,
+          outcomeIndex,
+          assetBalanceRaw: assetBalanceRaw.toString(),
+        }, 400)
+      }
+
+      redeemContext = {
+        mode: redeemMode,
+        adapter: CONTRACTS.NEG_RISK_ADAPTER,
+        asset,
+        outcomeIndex,
+        amountRaw: assetBalanceRaw.toString(),
+      }
+      redeemTxs = [{
+        to: CONTRACTS.NEG_RISK_ADAPTER,
+        data: buildNegRiskRedeemData(conditionId, outcomeIndex, assetBalanceRaw),
+        value: '0',
+      }]
+    } else {
+      collateralBalances = await getRedeemCollateralBalances(session.tradingAddress, conditionId)
+      const positiveCollaterals = collateralBalances.filter((collateral) => BigInt(collateral.totalBalanceRaw) > 0n)
+      const assetMatchedCollaterals = asset
+        ? positiveCollaterals.filter((collateral) => collateral.positions.some((position) => position.positionId === asset))
+        : []
+      redeemableCollaterals = assetMatchedCollaterals.length > 0 ? assetMatchedCollaterals : positiveCollaterals
+
+      console.log('[clob] Redeem collateral precheck:', {
+        conditionId,
+        tradingAddress: session.tradingAddress,
+        asset,
+        collateralBalances,
+        selectedCollaterals: redeemableCollaterals,
+      })
+
+      if (redeemableCollaterals.length === 0) {
+        console.warn('[clob] Redeem no position balance for supported collateral tokens:', {
+          conditionId,
+          tradingAddress: session.tradingAddress,
+          asset,
+          collateralBalances,
+        })
+        return c.json({
+          error: 'No redeemable position balance',
+          detail: 'No position balance found for pUSD or USDC.e collateral token IDs for this condition',
+          asset,
+          collateralBalances,
+        }, 400)
+      }
+
+      redeemContext = {
+        mode: redeemMode,
+        asset,
+        collaterals: redeemableCollaterals.map((collateral) => ({
+          label: collateral.label,
+          collateralToken: collateral.collateralToken,
+          totalBalanceRaw: collateral.totalBalanceRaw,
+        })),
+      }
+      redeemTxs = redeemableCollaterals.map((collateral) => ({
+        to: CONTRACTS.CTF,
+        data: buildCtfRedeemData(collateral.collateralToken, conditionId),
+        value: '0',
+      }))
     }
 
     try {
-      await polygonProvider.call({
-        from: session.tradingAddress,
-        to: redeemTx.to,
-        data: redeemTx.data,
-      })
-      console.log('[clob] Redeem preflight simulation ok')
+      for (const [i, redeemTx] of redeemTxs.entries()) {
+        await polygonProvider.call({
+          from: session.tradingAddress,
+          to: redeemTx.to,
+          data: redeemTx.data,
+        })
+        console.log('[clob] Redeem preflight simulation ok:', {
+          mode: redeemMode,
+          to: redeemTx.to,
+          collateralToken: redeemableCollaterals[i]?.collateralToken,
+          label: redeemableCollaterals[i]?.label,
+        })
+      }
     } catch (simErr: any) {
       console.error('[clob] Redeem preflight simulation failed:', {
         reason: simErr?.reason,
         message: simErr?.message,
         code: simErr?.code,
         data: simErr?.data,
+        redeemContext,
+        collateralBalances,
       })
       return c.json({
         error: 'Redeem simulation failed',
         detail: simErr?.reason ?? simErr?.message ?? 'Redeem call would revert',
         code: simErr?.code ?? null,
         data: simErr?.data ?? null,
+        redeemContext,
+        collateralBalances,
       }, 400)
     }
 
-    console.log(`[clob] Redeem relay execute: walletMode=${session.walletMode}, to=${redeemTx.to}, dataBytes=${redeemTx.data.length}`)
+    console.log('[clob] Redeem relay execute:', {
+      walletMode: session.walletMode,
+      txCount: redeemTxs.length,
+      ...redeemContext,
+    })
     const { relay, relayInfo, execResult, response: execRes } = await submitTradingWalletCalls(
       session,
-      [redeemTx],
+      redeemTxs,
       `Redeem positions for condition ${conditionId.slice(0, 10)}...`,
     )
     console.log('[clob] Redeem relay response:', {
@@ -1061,12 +1294,14 @@ clobRoutes.post('/redeem', async (c) => {
         detail: 'Relayer completed without returning a transaction hash',
         relayer: relayInfo,
         relayerTransaction,
+        redeemContext,
+        collateralBalances,
       }, 502)
     }
 
     console.log(`[clob] Redeemed positions for ${polygonAddress} condition=${conditionId.slice(0, 10)}... tx=${txHash}`)
 
-    return c.json({ ok: true, txHash })
+    return c.json({ ok: true, txHash, redeemContext, collateralBalances, redeemedCollaterals: redeemableCollaterals })
   } catch (err: any) {
     console.error('[clob] Redeem failed:', {
       message: err?.message,
