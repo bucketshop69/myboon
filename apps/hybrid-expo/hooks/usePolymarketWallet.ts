@@ -131,12 +131,10 @@ export function usePolymarketWallet(): PolymarketWallet {
       // Step 3: Send hex-encoded signature to server for Safe setup + CLOB API creds
       const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
 
-      const preferredWalletMode: PolymarketWalletMode = safeAddress ? 'safe' : 'deposit_wallet';
-
       const res = await fetchWithTimeout(`${API_BASE}/clob/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signature: sigHex, preferredWalletMode }),
+        body: JSON.stringify({ signature: sigHex }),
       });
 
       if (!res.ok) {
@@ -169,7 +167,6 @@ export function usePolymarketWallet(): PolymarketWallet {
   }, [
     connected,
     signMessage,
-    safeAddress,
     scopedKey,
     scopedSafeKey,
     scopedDepositWalletKey,

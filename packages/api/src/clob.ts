@@ -261,7 +261,7 @@ export const clobRoutes = new Hono()
  * credentials, and returns the EOA plus Safe/deposit wallet addresses.
  */
 clobRoutes.post('/auth', async (c) => {
-  let body: { signature?: string; preferredWalletMode?: WalletMode }
+  let body: { signature?: string }
   try {
     body = await c.req.json()
   } catch {
@@ -290,37 +290,17 @@ clobRoutes.post('/auth', async (c) => {
 
     console.log(`[clob] EOA derived: ${eoaAddress}`)
 
-    const requestedWalletMode: WalletMode = body.preferredWalletMode === 'safe' ? 'safe' : 'deposit_wallet'
     const relay = new RelayClient(RELAYER_URL, CHAIN_ID, wallet, relayerBuilderConfig as any, RelayerTxType.SAFE)
+    const safeAddress = deriveSafe(eoaAddress, SAFE_FACTORY) as string
+    const safeDeployed = await relay.getDeployed(safeAddress)
 
     let sessionDraft: Omit<ClobSession, 'creds' | 'createdAt'>
 
-    if (requestedWalletMode === 'safe') {
-      // Existing users keep the Safe path in this phase.
-      const safeAddress = deriveSafe(eoaAddress, SAFE_FACTORY) as string
+    if (safeDeployed) {
+      // Existing users keep the Safe path in this phase. The server chooses
+      // this from deployed wallet state, not local app storage.
       console.log(`[clob] Safe address (derived): ${safeAddress}`)
-
-      try {
-        const deployed = await relay.getDeployed(safeAddress)
-        if (!deployed) {
-          console.log(`[clob] Deploying Safe for ${eoaAddress}...`)
-          const deployRes = await relay.deploy()
-          const deployResult = await deployRes.wait()
-          if (deployResult) {
-            console.log(`[clob] Safe deployed: tx=${deployResult.transactionHash}`)
-          } else {
-            console.warn(`[clob] Safe deploy may have failed — continuing anyway`)
-          }
-        } else {
-          console.log(`[clob] Safe already deployed`)
-        }
-      } catch (deployErr: any) {
-        if (deployErr.message?.includes('already deployed')) {
-          console.log(`[clob] Safe already deployed (caught)`)
-        } else {
-          throw deployErr
-        }
-      }
+      console.log(`[clob] Existing Safe detected; using signatureType=2`)
 
       sessionDraft = {
         wallet,
@@ -330,6 +310,7 @@ clobRoutes.post('/auth', async (c) => {
         safeAddress: safeAddress.toLowerCase(),
       }
     } else {
+      console.log(`[clob] No deployed Safe detected; using deposit wallet signatureType=3`)
       const depositWalletAddress = await relay.deriveDepositWalletAddress()
       console.log(`[clob] Deposit wallet address (derived): ${depositWalletAddress}`)
 
