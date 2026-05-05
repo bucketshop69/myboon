@@ -273,13 +273,13 @@
        seamless, no borders, just data
     ══════════════════════════════════ */
     .dark-zone {
-      flex: 1;
+      flex: 0 0 318px;
       display: flex;
       flex-direction: column;
       padding: 0 20px;
       position: relative;
       min-height: 0;
-      padding-bottom: 68px; /* space for nav */
+      padding-bottom: 0;
     }
 
 
@@ -488,14 +488,17 @@
       border-radius: 24px 24px 0 0;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
-      /* pinned to bottom, grows upward over chart */
+      overflow-y: auto;
       position: absolute;
-      left: 0; right: 0;
+      left: 0;
+      right: 0;
+      top: 408px;
       bottom: 68px; /* above nav */
       z-index: 45;
       transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      scrollbar-width: none;
     }
+    .soft-zone::-webkit-scrollbar { display: none }
 
     /* drag handle pill — universal bottom-sheet affordance */
     .drag-handle {
@@ -554,6 +557,27 @@
       padding: 10px 20px;
       transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    .market-prompt {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 9px;
+    }
+    .market-prompt-title {
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--hi);
+    }
+    .market-prompt-note {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lo);
+      text-align: right;
+    }
 
     /* binary yes/no */
     .binary-btns {
@@ -595,61 +619,78 @@
     .bn-btn.yes .bn-btn-label { color: rgba(74,140,111,0.55) }
     .bn-btn.no .bn-btn-label  { color: rgba(217,83,79,0.45) }
 
-    /* sport selections */
+    /* sport outcomes */
+    .outcome-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .sel-row {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 9px 0;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid var(--border0);
+      cursor: pointer;
+      transition: all 0.12s;
     }
-    .sel-row + .sel-row { border-top: 1px solid var(--border0) }
+    .sel-row:active { transform: scale(0.985) }
+    .sel-row.selected {
+      background: rgba(74,140,111,0.14);
+      border-color: rgba(74,140,111,0.35);
+    }
+    .sel-row.draw.selected {
+      background: rgba(199,183,112,0.14);
+      border-color: rgba(199,183,112,0.35);
+    }
+    .sel-row.away.selected {
+      background: rgba(217,83,79,0.12);
+      border-color: rgba(217,83,79,0.35);
+    }
     .sel-info { flex: 1; min-width: 0 }
     .sel-name {
       font-family: var(--sans);
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 800;
       color: var(--hi);
     }
     .sel-vol {
       font-family: var(--mono);
       font-size: 8px;
       color: var(--mid);
-      margin-top: 1px;
+      margin-top: 3px;
     }
-    .sel-btns { display: flex; gap: 8px; flex-shrink: 0 }
-    .sel-btn {
-      width: 58px; height: 42px;
-      border-radius: 10px;
+    .sel-odds {
+      min-width: 70px;
+      height: 42px;
+      border-radius: 12px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 1px;
-      cursor: pointer;
-      border: none;
-      transition: all 0.12s;
+      background: rgba(74,140,111,0.12);
     }
-    .sel-btn:active { transform: scale(0.96) }
-    .sel-btn.yes-btn { background: rgba(74,140,111,0.14) }
-    .sel-btn.no-btn  { background: rgba(217,83,79,0.12) }
-    .sel-btn.yes-btn.selected { background: rgba(74,140,111,0.25); box-shadow: 0 0 0 1px rgba(74,140,111,0.35) }
-    .sel-btn.no-btn.selected  { background: rgba(217,83,79,0.20); box-shadow: 0 0 0 1px rgba(217,83,79,0.35) }
-    .sel-btn-pct {
+    .sel-row.draw .sel-odds { background: rgba(199,183,112,0.12) }
+    .sel-row.away .sel-odds { background: rgba(217,83,79,0.12) }
+    .sel-odds-pct {
       font-family: var(--mono);
-      font-size: 12px;
+      font-size: 15px;
       font-weight: 700;
       line-height: 1;
+      color: var(--pos);
     }
-    .sel-btn.yes-btn .sel-btn-pct { color: var(--pos) }
-    .sel-btn.no-btn .sel-btn-pct  { color: var(--neg) }
-    .sel-btn-label {
+    .sel-row.draw .sel-odds-pct { color: var(--a) }
+    .sel-row.away .sel-odds-pct { color: var(--neg) }
+    .sel-odds-label {
       font-family: var(--mono);
       font-size: 6.5px;
       letter-spacing: 0.8px;
       text-transform: uppercase;
+      color: var(--lo);
     }
-    .sel-btn.yes-btn .sel-btn-label { color: rgba(74,140,111,0.55) }
-    .sel-btn.no-btn .sel-btn-label  { color: rgba(217,83,79,0.45) }
 
     .sel-header {
       display: flex;
@@ -673,6 +714,22 @@
     .sel-header-hints .h-yes { color: var(--pos) }
     .sel-header-hints .h-no  { color: var(--neg) }
 
+    .preview-row span {
+      display: block;
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--lo);
+      margin-bottom: 3px;
+    }
+    .preview-row strong {
+      display: block;
+      font-family: var(--sans);
+      font-size: 12px;
+      color: var(--hi);
+    }
+
     /* ══════════════════════════════════
        NUMPAD — expands in-place below odds.
        Soft-zone grows over chart (z-index),
@@ -691,6 +748,27 @@
 
     .numpad-inner {
       padding: 4px 0 6px;
+    }
+    .numpad-context {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .numpad-context-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lo);
+    }
+    .numpad-context-pick {
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--hi);
+      text-align: right;
     }
 
     .numpad-amount-display {
@@ -766,9 +844,9 @@
     }
 
     .numpad-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
       padding: 8px 0 2px;
     }
     .numpad-payout-label {
@@ -799,6 +877,9 @@
     }
     .numpad-confirm:active { opacity: 0.85 }
     .numpad-confirm.yes { background: var(--pos) }
+    .numpad-confirm.home { background: var(--pos) }
+    .numpad-confirm.draw { background: var(--a) }
+    .numpad-confirm.away { background: var(--neg) }
     .numpad-confirm.no  { background: var(--neg) }
 
     /* ─── Y-AXIS LABELS ─── */
@@ -826,7 +907,7 @@
       }
       .numpad-zone,
       .soft-zone,
-      .sel-btn,
+      .sel-row,
       .bn-btn,
       .numpad-key {
         transition: none;
@@ -955,21 +1036,25 @@
               <div class="stats-strip-lbl">Liquidity</div>
             </div>
             <div class="stats-strip-item">
-              <div class="stats-strip-val">892</div>
-              <div class="stats-strip-lbl">Traders</div>
+              <div class="stats-strip-val">$2.4K</div>
+              <div class="stats-strip-lbl">Balance</div>
             </div>
           </div>
           <div class="sep"></div>
 
           <!-- odds section -->
           <div class="odds-section" id="odds-binary">
+            <div class="market-prompt">
+              <div class="market-prompt-title">Make your prediction</div>
+              <div class="market-prompt-note">Prices can move live</div>
+            </div>
             <div class="binary-btns">
               <div class="bn-btn yes" id="bn-b-yes" onclick="tapOdd('binary','China invade Taiwan?','yes',7)">
-                <span class="bn-btn-price">7&#162;</span>
+                <span class="bn-btn-price">7%</span>
                 <span class="bn-btn-label">Yes</span>
               </div>
               <div class="bn-btn no" id="bn-b-no" onclick="tapOdd('binary','China invade Taiwan?','no',93)">
-                <span class="bn-btn-price">93&#162;</span>
+                <span class="bn-btn-price">93%</span>
                 <span class="bn-btn-label">No</span>
               </div>
             </div>
@@ -978,6 +1063,16 @@
           <!-- numpad expands here -->
           <div class="numpad-zone" id="numpad-binary">
             <div class="numpad-inner">
+              <div class="numpad-context">
+                <div>
+                  <div class="numpad-context-label">You picked</div>
+                  <div class="numpad-context-pick" id="np-b-pick">Yes</div>
+                </div>
+                <div>
+                  <div class="numpad-context-label">Current chance</div>
+                  <div class="numpad-context-pick" id="np-b-price">7%</div>
+                </div>
+              </div>
               <div class="numpad-amount-display">
                 <div class="numpad-currency">USDC</div>
                 <div class="numpad-amount-val" id="np-b-amount">50</div>
@@ -1003,10 +1098,10 @@
                 <div class="numpad-key del" onclick="npDel('b')">&#9003;</div>
               </div>
               <div class="numpad-footer">
-                <span class="numpad-payout-label">Potential payout</span>
-                <span class="numpad-payout-val" id="np-b-payout">$714.29</span>
+                <div class="preview-row"><span>If right</span><strong class="numpad-payout-val" id="np-b-payout">$714.29</strong></div>
+                <div class="preview-row"><span>If wrong</span><strong id="np-b-risk">Lose $50</strong></div>
               </div>
-              <button class="numpad-confirm yes" id="np-b-confirm" onclick="tapOdd('binary',null,null,null)">Confirm Yes &#8212; $50</button>
+              <button class="numpad-confirm yes" id="np-b-confirm" onclick="confirmPick('binary')">Back Yes with $50</button>
             </div>
           </div>
         </div>
@@ -1141,74 +1236,65 @@
               <div class="stats-strip-lbl">Liquidity</div>
             </div>
             <div class="stats-strip-item">
-              <div class="stats-strip-val">1.2K</div>
-              <div class="stats-strip-lbl">Traders</div>
+              <div class="stats-strip-val">$2.4K</div>
+              <div class="stats-strip-lbl">Balance</div>
             </div>
           </div>
           <div class="sep"></div>
 
           <!-- odds section -->
           <div class="odds-section" id="odds-sport">
-            <div class="sel-header">
-              <span class="sel-header-label">3 Selections</span>
-              <div class="sel-header-hints">
-                <span class="h-yes">Yes</span>
-                <span class="h-no">No</span>
-              </div>
+            <div class="market-prompt">
+              <div class="market-prompt-title">Who wins?</div>
+              <div class="market-prompt-note">Live odds</div>
             </div>
-            <div class="sel-row">
+            <div class="outcome-list">
+            <div class="sel-row selected" onclick="tapOdd('sport','Liverpool','home',61)">
               <div class="sel-info">
                 <div class="sel-name">Liverpool</div>
                 <div class="sel-vol">$498K vol</div>
               </div>
-              <div class="sel-btns">
-                <div class="sel-btn yes-btn" onclick="tapOdd('sport','Liverpool','yes',61)">
-                  <span class="sel-btn-pct">61&#162;</span>
-                  <span class="sel-btn-label">Yes</span>
-                </div>
-                <div class="sel-btn no-btn" onclick="tapOdd('sport','Liverpool','no',39)">
-                  <span class="sel-btn-pct">39&#162;</span>
-                  <span class="sel-btn-label">No</span>
-                </div>
+              <div class="sel-odds">
+                <span class="sel-odds-pct">61%</span>
+                <span class="sel-odds-label">Chance</span>
               </div>
             </div>
-            <div class="sel-row">
+            <div class="sel-row draw" onclick="tapOdd('sport','Draw','draw',22)">
               <div class="sel-info">
                 <div class="sel-name">Draw</div>
                 <div class="sel-vol">$176K vol</div>
               </div>
-              <div class="sel-btns">
-                <div class="sel-btn yes-btn" onclick="tapOdd('sport','Draw','yes',22)">
-                  <span class="sel-btn-pct">22&#162;</span>
-                  <span class="sel-btn-label">Yes</span>
-                </div>
-                <div class="sel-btn no-btn" onclick="tapOdd('sport','Draw','no',78)">
-                  <span class="sel-btn-pct">78&#162;</span>
-                  <span class="sel-btn-label">No</span>
-                </div>
+              <div class="sel-odds">
+                <span class="sel-odds-pct">22%</span>
+                <span class="sel-odds-label">Chance</span>
               </div>
             </div>
-            <div class="sel-row">
+            <div class="sel-row away" onclick="tapOdd('sport','Crystal Palace','away',18)">
               <div class="sel-info">
                 <div class="sel-name">Crystal Palace</div>
                 <div class="sel-vol">$148K vol</div>
               </div>
-              <div class="sel-btns">
-                <div class="sel-btn yes-btn" onclick="tapOdd('sport','Crystal Palace','yes',18)">
-                  <span class="sel-btn-pct">18&#162;</span>
-                  <span class="sel-btn-label">Yes</span>
-                </div>
-                <div class="sel-btn no-btn" onclick="tapOdd('sport','Crystal Palace','no',82)">
-                  <span class="sel-btn-pct">82&#162;</span>
-                  <span class="sel-btn-label">No</span>
-                </div>
+              <div class="sel-odds">
+                <span class="sel-odds-pct">18%</span>
+                <span class="sel-odds-label">Chance</span>
               </div>
             </div>
+              </div>
           </div>
 
           <!-- numpad expands here -->
           <div class="numpad-zone" id="numpad-sport">
             <div class="numpad-inner">
+              <div class="numpad-context">
+                <div>
+                  <div class="numpad-context-label">You picked</div>
+                  <div class="numpad-context-pick" id="np-s-pick">Liverpool</div>
+                </div>
+                <div>
+                  <div class="numpad-context-label">Current chance</div>
+                  <div class="numpad-context-pick" id="np-s-price">61%</div>
+                </div>
+              </div>
               <div class="numpad-amount-display">
                 <div class="numpad-currency">USDC</div>
                 <div class="numpad-amount-val" id="np-s-amount">50</div>
@@ -1234,10 +1320,10 @@
                 <div class="numpad-key del" onclick="npDel('s')">&#9003;</div>
               </div>
               <div class="numpad-footer">
-                <span class="numpad-payout-label">Potential payout</span>
-                <span class="numpad-payout-val" id="np-s-payout">$81.97</span>
+                <div class="preview-row"><span>If right</span><strong class="numpad-payout-val" id="np-s-payout">$81.97</strong></div>
+                <div class="preview-row"><span>If wrong</span><strong id="np-s-risk">Lose $50</strong></div>
               </div>
-              <button class="numpad-confirm yes" id="np-s-confirm" onclick="tapOdd('sport',null,null,null)">Confirm Yes &#8212; $50</button>
+              <button class="numpad-confirm yes" id="np-s-confirm" onclick="confirmPick('sport')">Back Liverpool with $50</button>
             </div>
           </div>
         </div>
@@ -1276,7 +1362,7 @@ function toggleView(btnEl, screen) {
 
 var npState = {
   b: { amount: '50', price: 0.07, side: 'yes', open: false, selection: '' },
-  s: { amount: '50', price: 0.61, side: 'yes', open: false, selection: '' }
+  s: { amount: '50', price: 0.61, side: 'home', open: false, selection: 'Liverpool' }
 };
 
 function tapOdd(screen, selection, side, cents) {
@@ -1299,23 +1385,20 @@ function tapOdd(screen, selection, side, cents) {
   state.amount = '50';
   state.open = true;
 
-  // highlight selected button
   clearSelected(screen);
   if (screen === 'binary') {
     var btnId = 'bn-b-' + side;
     document.getElementById(btnId).classList.add('selected');
   } else {
-    // find the clicked btn and highlight it
-    var allBtns = document.querySelectorAll('#odds-sport .sel-btn');
-    allBtns.forEach(function(b) {
-      var onclick = b.getAttribute('onclick');
-      if (onclick && onclick.indexOf("'" + selection + "'") !== -1 && onclick.indexOf("'" + side + "'") !== -1) {
-        b.classList.add('selected');
+    var allRows = document.querySelectorAll('#odds-sport .sel-row');
+    allRows.forEach(function(row) {
+      var onclick = row.getAttribute('onclick');
+      if (onclick && onclick.indexOf("'" + selection + "'") !== -1) {
+        row.classList.add('selected');
       }
     });
   }
 
-  // update confirm button color
   var confirmEl = document.getElementById('np-' + prefix + '-confirm');
   confirmEl.className = 'numpad-confirm ' + side;
 
@@ -1373,13 +1456,34 @@ function npRender(prefix) {
   var state = npState[prefix];
   var amount = parseFloat(state.amount) || 0;
   var payout = state.price > 0 ? (amount / state.price) : 0;
+  var pickLabel = getPickLabel(prefix);
 
   document.getElementById('np-' + prefix + '-amount').textContent = state.amount;
   document.getElementById('np-' + prefix + '-payout').textContent = '$' + payout.toFixed(2);
+  document.getElementById('np-' + prefix + '-risk').textContent = 'Lose $' + amount.toFixed(0);
+  document.getElementById('np-' + prefix + '-pick').textContent = pickLabel;
+  document.getElementById('np-' + prefix + '-price').textContent = Math.round(state.price * 100) + '%';
 
   var confirmEl = document.getElementById('np-' + prefix + '-confirm');
-  var sideLabel = state.side.charAt(0).toUpperCase() + state.side.slice(1);
-  confirmEl.textContent = 'Confirm ' + sideLabel + ' \u2014 $' + amount;
+  confirmEl.textContent = 'Back ' + pickLabel + ' with $' + amount.toFixed(0);
+}
+
+function getPickLabel(prefix) {
+  var state = npState[prefix];
+  if (prefix === 'b') {
+    return state.side === 'yes' ? 'Yes' : 'No';
+  }
+  return state.selection || 'Liverpool';
+}
+
+function confirmPick(screen) {
+  var prefix = screen === 'binary' ? 'b' : 's';
+  var state = npState[prefix];
+  var numpadEl = document.getElementById('numpad-' + screen);
+
+  numpadEl.classList.remove('open');
+  state.open = false;
+  clearSelected(screen);
 }
 </script>
 </body>
