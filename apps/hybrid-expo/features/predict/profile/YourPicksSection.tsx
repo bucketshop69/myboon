@@ -1,34 +1,34 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
 import { semantic, tokens } from '@/theme';
 
 type YourPick =
   | { kind: 'position'; id: string; position: PortfolioPosition }
   | { kind: 'order'; id: string; order: OpenOrder }
-  | { kind: 'redeemable'; id: string; position: PortfolioPosition };
+  | { kind: 'redeemable'; id: string; position: PortfolioPosition }
+  | { kind: 'closed'; id: string; position: ClosedPortfolioPosition };
 
 interface YourPicksSectionProps {
   positions: PortfolioPosition[];
   openOrders: OpenOrder[];
   redeemablePositions: PortfolioPosition[];
+  closedPositions: ClosedPortfolioPosition[];
   polygonAddress: string | null;
   cancellingOrderId: string | null;
-  onPositionPress: (position: PortfolioPosition) => void;
+  onCashOutPress: (position: PortfolioPosition) => void;
   onMarketPress: (slug: string) => void;
   onCancelOrder: (orderId: string) => void;
   onRedeemed: () => void;
 }
 
-function formatPnl(value: number): string {
-  const prefix = value >= 0 ? '+$' : '-$';
-  return `${prefix}${Math.abs(value).toFixed(2)}`;
-}
-
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function formatActionUsd(value: number): string {
+  return `$${Math.round(value)}`;
 }
 
 function formatChance(value: number | null | undefined): string {
@@ -41,6 +41,12 @@ function formatOutcome(label: string | null | undefined): string {
   return label.toLowerCase().includes('draw') ? 'Draw' : label;
 }
 
+function getClosedPayout(position: ClosedPortfolioPosition): number {
+  const putIn = Number.isFinite(position.totalBought) ? position.totalBought : 0;
+  const realized = Number.isFinite(position.realizedPnl) ? position.realizedPnl : 0;
+  return Math.max(putIn + realized, 0);
+}
+
 function makePositionId(prefix: string, p: PortfolioPosition, index: number): string {
   return `${prefix}-${p.conditionId}-${p.outcomeIndex}-${index}`;
 }
@@ -49,6 +55,7 @@ function getYourPicks(
   positions: PortfolioPosition[],
   openOrders: OpenOrder[],
   redeemablePositions: PortfolioPosition[],
+  closedPositions: ClosedPortfolioPosition[],
   scope: 'active' | 'all',
 ): YourPick[] {
   const livePicks: YourPick[] = positions.map((position, index) => ({
@@ -66,9 +73,14 @@ function getYourPicks(
     id: makePositionId('redeemable', position, index),
     position,
   }));
+  const closedPicks: YourPick[] = closedPositions.map((position, index) => ({
+    kind: 'closed' as const,
+    id: `closed-${position.conditionId}-${position.outcomeIndex}-${position.timestamp}-${index}`,
+    position,
+  }));
 
   if (scope === 'all') {
-    return [...readyPicks, ...livePicks, ...waitingPicks];
+    return [...readyPicks, ...livePicks, ...waitingPicks, ...closedPicks];
   }
 
   return [
@@ -82,16 +94,17 @@ export function YourPicksSection({
   positions,
   openOrders,
   redeemablePositions,
+  closedPositions,
   polygonAddress,
   cancellingOrderId,
-  onPositionPress,
+  onCashOutPress,
   onMarketPress,
   onCancelOrder,
   onRedeemed,
 }: YourPicksSectionProps) {
   const [scope, setScope] = useState<'active' | 'all'>('active');
-  const picks = getYourPicks(positions, openOrders, redeemablePositions, scope);
-  const allCount = positions.length + openOrders.length + redeemablePositions.length;
+  const picks = getYourPicks(positions, openOrders, redeemablePositions, closedPositions, scope);
+  const allCount = positions.length + openOrders.length + redeemablePositions.length + closedPositions.length;
   if (allCount === 0) return null;
 
   const activeCount = positions.length + openOrders.length;
@@ -145,11 +158,19 @@ export function YourPicksSection({
             />
           );
         }
+        if (pick.kind === 'closed') {
+          return (
+            <ClosedRow
+              key={pick.id}
+              position={pick.position}
+            />
+          );
+        }
         return (
           <PositionRow
             key={pick.id}
             position={pick.position}
-            onPress={() => onPositionPress(pick.position)}
+            onCashOut={() => onCashOutPress(pick.position)}
             onMarketPress={() => onMarketPress(pick.position.slug)}
           />
         );
@@ -158,53 +179,63 @@ export function YourPicksSection({
   );
 }
 
+function ClosedRow({ position: p }: { position: ClosedPortfolioPosition }) {
+  const payout = getClosedPayout(p);
+  const won = payout > 0 && (p.curPrice >= 0.99 || (p.realizedPnl ?? 0) > 0);
+
+  return (
+    <View style={[styles.card, won ? styles.finishedCard : styles.lostCard]}>
+      <View style={styles.row}>
+        <View style={styles.info}>
+          <Text style={styles.question} numberOfLines={2}>
+            {formatOutcome(p.outcome)} {won ? 'won' : 'lost'}
+          </Text>
+          <Text style={styles.meta}>
+            {p.title || p.slug || '--'} · {won ? `collected ${formatActionUsd(payout)}` : 'settled'}
+          </Text>
+        </View>
+        <View style={styles.actions}>
+          <View style={styles.settledAction}>
+            <Text style={styles.settledActionText}>{won ? 'Collected' : 'No payout'}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function PositionRow({
   position: p,
-  onPress,
+  onCashOut,
   onMarketPress,
 }: {
   position: PortfolioPosition;
-  onPress: () => void;
+  onCashOut: () => void;
   onMarketPress: () => void;
 }) {
-  const pnl = p.cashPnl ?? 0;
-  const isUp = pnl >= 0;
-
   return (
-    <Pressable
+    <View
       style={[styles.card, p.outcome === 'No' ? styles.noCard : styles.liveCard]}
-      onPress={onPress}
-      accessibilityLabel={`View position: ${p.title}`}
     >
       <View style={styles.row}>
-        <OutcomeBadge label={formatOutcome(p.outcome)} positive={p.outcome !== 'No'} />
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
             {formatOutcome(p.outcome)} {formatChance(p.curPrice)} now
           </Text>
           <Text style={styles.meta}>
-            {p.title || p.slug || '--'} · Picked at {formatChance(p.avgPrice)}
+            {p.title || p.slug || '--'} · avg entry {formatChance(p.avgPrice)}
           </Text>
         </View>
-        <View style={styles.trailing}>
-          <Text style={[styles.value, isUp ? styles.posText : styles.negText]}>{formatUsd(p.currentValue ?? 0)}</Text>
-          <Text style={styles.subValue}>
-            {formatPnl(pnl)}
-          </Text>
+        <View style={styles.actions}>
+          <Pressable style={styles.cashAction} onPress={onCashOut}>
+            <Text style={styles.cashActionText}>{formatActionUsd(p.currentValue ?? 0)} cash out now</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryAction} onPress={onMarketPress}>
+            <Text style={styles.secondaryActionText}>Back more</Text>
+          </Pressable>
         </View>
-        <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
       </View>
-      <View style={styles.actions}>
-        <Pressable style={styles.secondaryAction} onPress={onPress}>
-          <MaterialIcons name="payments" size={12} color={tokens.colors.viridian} />
-          <Text style={styles.secondaryActionText}>Cash out now</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryAction} onPress={onMarketPress}>
-          <MaterialIcons name="add-chart" size={12} color={tokens.colors.primary} />
-          <Text style={[styles.secondaryActionText, styles.primaryActionText]}>Back more</Text>
-        </Pressable>
-      </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -220,14 +251,12 @@ function OrderRow({
   const sizeNum = Number.parseFloat(o.original_size) || 0;
   const matched = Number.parseFloat(o.size_matched) || 0;
   const priceNum = Number.parseFloat(o.price) || 0;
-  const cost = sizeNum * priceNum;
   const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
   const outcomeLabel = formatOutcome(o.outcome);
 
   return (
     <View style={[styles.card, styles.waitingCard]}>
       <View style={styles.row}>
-        <OutcomeBadge label={outcomeLabel} positive={o.side !== 'SELL'} />
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
             {formatChance(priceNum)} on {outcomeLabel}
@@ -236,26 +265,21 @@ function OrderRow({
             Yet to be placed{fillPct > 0 ? ` · ${fillPct}% matched` : ''}
           </Text>
         </View>
-        <View style={styles.trailing}>
-          <Text style={styles.value}>{formatUsd(cost)}</Text>
-          <Text style={styles.subValue}>{o.status || o.order_type}</Text>
+        <View style={styles.actions}>
+          <Pressable
+            style={styles.dangerAction}
+            disabled={cancelling}
+            onPress={onCancel}
+            accessibilityLabel={`Cancel waiting pick`}
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color={semantic.sentiment.negative} />
+            ) : (
+              <Text style={styles.dangerActionText}>Cancel</Text>
+            )}
+          </Pressable>
         </View>
       </View>
-      <Pressable
-        style={styles.dangerAction}
-        disabled={cancelling}
-        onPress={onCancel}
-        accessibilityLabel={`Cancel ${o.side.toLowerCase()} order`}
-      >
-        {cancelling ? (
-          <ActivityIndicator size="small" color={semantic.sentiment.negative} />
-        ) : (
-          <>
-            <MaterialIcons name="close" size={12} color={semantic.sentiment.negative} />
-            <Text style={styles.dangerActionText}>Cancel</Text>
-          </>
-        )}
-      </Pressable>
     </View>
   );
 }
@@ -294,7 +318,6 @@ function RedeemableRow({
   return (
     <View style={[styles.card, styles.attentionCard]}>
       <View style={styles.row}>
-        <OutcomeBadge label={formatOutcome(p.outcome)} positive />
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
             {formatOutcome(p.outcome)} won
@@ -303,46 +326,27 @@ function RedeemableRow({
             {p.title || p.slug || '--'} · Ready to collect
           </Text>
         </View>
-        <View style={styles.trailing}>
-          <Text style={[styles.value, styles.posText]}>{formatUsd(value)}</Text>
-          <Text style={styles.subValue}>Payout</Text>
+        <View style={styles.actions}>
+          <Pressable
+            style={[
+              styles.redeemAction,
+              status === 'success' && styles.redeemActionSuccess,
+              status === 'error' && styles.redeemActionError,
+            ]}
+            disabled={status === 'loading' || status === 'success'}
+            onPress={handleRedeem}
+            accessibilityLabel={`Redeem ${formatUsd(value)} payout`}
+          >
+            {status === 'loading' ? (
+              <ActivityIndicator size="small" color={tokens.colors.backgroundDark} />
+            ) : (
+              <Text style={[styles.redeemActionText, status === 'error' && styles.errorText]}>
+                {status === 'success' ? 'Redeemed' : status === 'error' ? 'Redeem failed' : `Redeem ${formatActionUsd(value)}`}
+              </Text>
+            )}
+          </Pressable>
         </View>
       </View>
-      <Pressable
-        style={[
-          styles.redeemAction,
-          status === 'success' && styles.redeemActionSuccess,
-          status === 'error' && styles.redeemActionError,
-        ]}
-        disabled={status === 'loading' || status === 'success'}
-        onPress={handleRedeem}
-        accessibilityLabel={`Redeem ${formatUsd(value)} payout`}
-      >
-        {status === 'loading' ? (
-          <ActivityIndicator size="small" color={tokens.colors.viridian} />
-        ) : (
-          <>
-            <MaterialIcons
-              name={status === 'success' ? 'check' : 'redeem'}
-              size={12}
-              color={status === 'error' ? tokens.colors.vermillion : tokens.colors.viridian}
-            />
-            <Text style={[styles.redeemActionText, status === 'error' && styles.errorText]}>
-              {status === 'success' ? 'Redeemed' : status === 'error' ? 'Redeem failed' : `Redeem ${formatUsd(value)}`}
-            </Text>
-          </>
-        )}
-      </Pressable>
-    </View>
-  );
-}
-
-function OutcomeBadge({ label, positive }: { label: string; positive: boolean }) {
-  return (
-    <View style={[styles.badge, positive ? styles.badgePos : styles.badgeNeg]}>
-      <Text style={[styles.badgeText, positive ? styles.posText : styles.negText]}>
-        {label.toUpperCase()}
-      </Text>
     </View>
   );
 }
@@ -423,9 +427,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: 8,
-    padding: 11,
-    gap: 9,
-    marginBottom: 5,
+    padding: 13,
+    marginBottom: 8,
+    minHeight: 70,
   },
   liveCard: {
     borderColor: 'rgba(74,140,111,0.22)',
@@ -443,68 +447,65 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(74,140,111,0.28)',
     backgroundColor: 'rgba(74,140,111,0.10)',
   },
+  lostCard: {
+    borderColor: 'rgba(244,88,78,0.20)',
+    backgroundColor: 'rgba(244,88,78,0.06)',
+  },
+  finishedCard: {
+    borderColor: 'rgba(210,202,157,0.12)',
+    backgroundColor: 'rgba(210,202,157,0.05)',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  badge: {
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 3,
-  },
-  badgePos: { backgroundColor: 'rgba(52,199,123,0.12)' },
-  badgeNeg: { backgroundColor: 'rgba(244,88,78,0.12)' },
-  badgeText: {
-    fontFamily: 'monospace',
-    fontSize: 7.5,
-    fontWeight: '700',
+    gap: 12,
   },
   info: {
     flex: 1,
     gap: 3,
   },
   question: {
-    fontSize: 9.5,
+    fontSize: 12,
+    fontWeight: '700',
     color: semantic.text.primary,
-    lineHeight: 13,
+    lineHeight: 16,
   },
   meta: {
     fontFamily: 'monospace',
-    fontSize: 7.5,
+    fontSize: 8,
     color: semantic.text.faint,
-  },
-  trailing: {
-    alignItems: 'flex-end',
-    gap: 1,
-  },
-  value: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    fontWeight: '700',
-    color: semantic.text.primary,
-  },
-  subValue: {
-    fontFamily: 'monospace',
-    fontSize: 7.5,
-    color: semantic.text.faint,
-    textTransform: 'uppercase',
   },
   actions: {
-    flexDirection: 'row',
+    width: 112,
     gap: 6,
   },
-  secondaryAction: {
-    flex: 1,
+  cashAction: {
     minHeight: 32,
-    borderRadius: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.36)',
+    backgroundColor: 'rgba(232,197,71,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  cashActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: tokens.colors.primary,
+    textAlign: 'center',
+  },
+  secondaryAction: {
+    minHeight: 32,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     backgroundColor: semantic.background.lift,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    paddingHorizontal: 8,
   },
   secondaryActionText: {
     fontFamily: 'monospace',
@@ -514,18 +515,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: tokens.colors.viridian,
   },
-  primaryActionText: {
-    color: tokens.colors.primary,
-  },
   dangerAction: {
-    minHeight: 32,
-    borderRadius: 6,
+    minHeight: 46,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: 'rgba(255,69,58,0.25)',
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    backgroundColor: 'rgba(244,88,78,0.06)',
+    paddingHorizontal: 8,
   },
   dangerActionText: {
     fontFamily: 'monospace',
@@ -536,15 +534,12 @@ const styles = StyleSheet.create({
     color: semantic.sentiment.negative,
   },
   redeemAction: {
-    minHeight: 32,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.25)',
-    backgroundColor: 'rgba(74,140,111,0.12)',
-    flexDirection: 'row',
+    minHeight: 46,
+    borderRadius: 7,
+    backgroundColor: tokens.colors.viridian,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    paddingHorizontal: 8,
   },
   redeemActionSuccess: {
     backgroundColor: 'rgba(74,140,111,0.25)',
@@ -557,9 +552,27 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 8,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     textTransform: 'uppercase',
-    color: tokens.colors.viridian,
+    color: tokens.colors.backgroundDark,
+  },
+  settledAction: {
+    minHeight: 46,
+    borderRadius: 7,
+    backgroundColor: semantic.background.lift,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    opacity: 0.78,
+  },
+  settledActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: semantic.text.dim,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   errorText: {
     color: tokens.colors.vermillion,

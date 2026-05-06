@@ -978,11 +978,12 @@ app.get('/predict/portfolio/:address', async (c) => {
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    // Fetch value, active positions, positive-payout redeemables, and profile in parallel
-    const [valueRes, posRes, redeemableRes, profileRes] = await Promise.allSettled([
+    // Fetch value, active positions, positive-payout redeemables, closed picks, and profile in parallel
+    const [valueRes, posRes, redeemableRes, closedRes, profileRes] = await Promise.allSettled([
       dataApiFetch(`value?user=${encodeURIComponent(address)}`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=false&limit=100&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT&sortDirection=DESC`),
+      dataApiFetch(`closed-positions?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
@@ -1012,6 +1013,13 @@ app.get('/predict/portfolio/:address', async (c) => {
       redeemablePositions = Array.isArray(body) ? body.filter(isPositivePositionValue) : []
     }
 
+    // Parse closed picks
+    let closedPositions: unknown[] = []
+    if (closedRes.status === 'fulfilled' && closedRes.value.ok) {
+      const body = await closedRes.value.json() as unknown
+      closedPositions = Array.isArray(body) ? body : []
+    }
+
     // Parse profile
     let profile: Record<string, unknown> | null = null
     if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
@@ -1026,12 +1034,20 @@ app.get('/predict/portfolio/:address', async (c) => {
       totalPnl += parseNullableNumber(pos.cashPnl) ?? 0
       openCount++
     }
+    let totalCollected = 0
+    for (const p of closedPositions) {
+      const closed = p as Record<string, unknown>
+      const realized = parseNullableNumber(closed.realizedPnl) ?? 0
+      const putIn = parseNullableNumber(closed.totalBought) ?? 0
+      if (realized > 0) totalCollected += Math.max(putIn + realized, 0)
+    }
 
     return c.json({
       address,
       portfolioValue: portfolioValue !== null ? Math.round(portfolioValue * 100) / 100 : null,
       positions,
       redeemablePositions,
+      closedPositions,
       profile: profile ? {
         name: profile.name ?? profile.pseudonym ?? null,
         bio: profile.bio ?? null,
@@ -1041,6 +1057,7 @@ app.get('/predict/portfolio/:address', async (c) => {
       summary: {
         openPositions: openCount,
         totalPnl: Math.round(totalPnl * 100) / 100,
+        totalCollected: Math.round(totalCollected * 100) / 100,
       },
     })
   } catch (err) {

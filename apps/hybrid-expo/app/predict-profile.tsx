@@ -36,9 +36,10 @@ function formatUsd(value: number | null): string {
   return `${prefix}$${abs.toFixed(2)}`;
 }
 
-function formatPnl(value: number): string {
-  const prefix = value >= 0 ? '+$' : '-$';
-  return `${prefix}${Math.abs(value).toFixed(2)}`;
+function getOrderCost(order: OpenOrder): number {
+  const size = Number.parseFloat(order.original_size) || 0;
+  const price = Number.parseFloat(order.price) || 0;
+  return size * price;
 }
 
 export default function PredictProfileScreen() {
@@ -155,12 +156,11 @@ export default function PredictProfileScreen() {
     }
 
     Alert.alert(
-      'Connect Predict Account',
-      'Sign once to restore or set up the prediction account linked to this wallet.\n\n' +
+        'Connect Predict Account',
+        'Sign once to restore or set up the prediction account linked to this wallet.\n\n' +
         '• Sign a message to verify ownership (no transaction)\n' +
-        '• Your trading address is derived deterministically\n' +
         '• No extra seed phrases or wallets to manage\n' +
-        '• Deposit & trade on prediction markets — gasless',
+        '• Deposit and make picks without gas',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -201,10 +201,17 @@ export default function PredictProfileScreen() {
 
   const positions = portfolio?.positions ?? [];
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
+  const closedPositions = portfolio?.closedPositions ?? [];
   const portfolioValue = portfolio?.portfolioValue ?? null;
-  const totalPnl = portfolio?.summary.totalPnl ?? 0;
   const cashOutNow = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
   const readyToCollect = redeemablePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const waitingPickValue = openOrders.reduce((sum, order) => sum + getOrderCost(order), 0);
+  const activePickCount = positions.length + openOrders.length;
+  const hasAnyPicks = activePickCount + redeemablePositions.length + closedPositions.length > 0;
+  const hasActiveOrReadyPicks = activePickCount + redeemablePositions.length > 0;
+  const activePicksValue = cashOutNow + waitingPickValue;
+  const collectedValue = portfolio?.summary.totalCollected ?? 0;
+  const collectedDisplay = hasAnyPicks || (cashBalance ?? 0) > 0 ? formatUsd(collectedValue) : '--';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -257,14 +264,8 @@ export default function PredictProfileScreen() {
           </View>
           <View style={styles.identityInfo}>
             <Text style={styles.handle}>
-              {portfolio?.profile?.name ?? (poly.polygonAddress ? truncate(poly.polygonAddress) : '—')}
+              {portfolio?.profile?.name ?? (solanaAddress ? truncate(solanaAddress) : poly.polygonAddress ? truncate(poly.polygonAddress) : '—')}
             </Text>
-            <View style={styles.addrRow}>
-              <Text style={styles.addrText}>
-                {solanaAddress ? truncate(solanaAddress) : '—'}
-              </Text>
-              <MaterialIcons name="content-copy" size={10} color={semantic.text.faint} />
-            </View>
             {connected && (
               <View style={styles.connectedChip}>
                 <View style={styles.connectedDot} />
@@ -282,19 +283,6 @@ export default function PredictProfileScreen() {
             >
               <MaterialIcons name="login" size={14} color={tokens.colors.backgroundDark} />
               <Text style={styles.passkeyCtaText}>Sign In</Text>
-            </Pressable>
-          )}
-          {!isEnabled && !poly.isLoading && connected && (
-            <Pressable
-              onPress={handleConnectPredictAccount}
-              disabled={busy}
-              style={[styles.passkeyCta, busy && styles.btnDisabled]}
-            >
-              {busy ? (
-                <ActivityIndicator color={tokens.colors.backgroundDark} size="small" />
-              ) : (
-                <Text style={styles.passkeyCtaText}>Connect Predict</Text>
-              )}
             </Pressable>
           )}
           {isEnabled && (
@@ -325,7 +313,7 @@ export default function PredictProfileScreen() {
             <EmptyPortfolio
               mode="no-account"
               onPrimaryAction={!connected ? openDrawer : handleConnectPredictAccount}
-              primaryLabel={!connected ? 'Sign In' : 'Connect Predict'}
+              primaryLabel={!connected ? 'Sign In' : 'Open Prediction Account'}
             />
           </View>
         )}
@@ -352,37 +340,44 @@ export default function PredictProfileScreen() {
                   </Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemRight]}>
-                  <Text style={styles.eqLabel}>Ready</Text>
+                  <Text style={styles.eqLabel}>
+                    {!hasActiveOrReadyPicks ? 'Collected' : readyToCollect > 0 ? 'Ready' : 'Active picks'}
+                  </Text>
                   <Text style={[styles.eqVal, readyToCollect > 0 && styles.posText]}>
-                    {formatUsd(readyToCollect)}
+                    {!hasActiveOrReadyPicks
+                      ? collectedDisplay
+                      : readyToCollect > 0
+                        ? formatUsd(readyToCollect)
+                        : formatUsd(activePicksValue)}
                   </Text>
                 </View>
               </View>
-              <View style={styles.equityRow}>
-                <View style={styles.eqItem}>
-                  <Text style={styles.eqLabel}>Cash out now</Text>
-                  <Text style={styles.eqVal}>{formatUsd(cashOutNow)}</Text>
+              {hasActiveOrReadyPicks && (
+                <View style={[styles.equityRow, styles.equityRowSecond]}>
+                  <View style={styles.eqItem}>
+                    <Text style={styles.eqLabel}>Cash out now</Text>
+                    <Text style={styles.eqVal}>{formatUsd(cashOutNow)}</Text>
+                  </View>
+                  <View style={[styles.eqItem, styles.eqItemCenter]}>
+                    <Text style={styles.eqLabel}>Active picks</Text>
+                    <Text style={styles.eqVal}>{activePickCount}</Text>
+                  </View>
+                  <View style={[styles.eqItem, styles.eqItemRight]}>
+                    <Text style={styles.eqLabel}>Collected</Text>
+                    <Text style={styles.eqVal}>{collectedDisplay}</Text>
+                  </View>
                 </View>
-                <View style={[styles.eqItem, styles.eqItemCenter]}>
-                  <Text style={styles.eqLabel}>Active picks</Text>
-                  <Text style={styles.eqVal}>{positions.length + openOrders.length}</Text>
-                </View>
-                <View style={[styles.eqItem, styles.eqItemRight]}>
-                  <Text style={styles.eqLabel}>P&L</Text>
-                  <Text style={[styles.eqVal, totalPnl >= 0 ? styles.posText : styles.negText]}>
-                    {formatPnl(totalPnl)}
-                  </Text>
-                </View>
-              </View>
+              )}
             </View>
 
             <YourPicksSection
               positions={positions}
               openOrders={openOrders}
               redeemablePositions={redeemablePositions}
+              closedPositions={closedPositions}
               polygonAddress={poly.polygonAddress}
               cancellingOrderId={cancellingId}
-              onPositionPress={(p) =>
+              onCashOutPress={(p) =>
                 router.push({
                   pathname: '/predict-position/[conditionId]',
                   params: {
@@ -397,7 +392,7 @@ export default function PredictProfileScreen() {
               onRedeemed={() => void loadPortfolio()}
             />
 
-            {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && (
+            {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && closedPositions.length === 0 && (
               <View style={styles.positionsSection}>
                 <EmptyPortfolio
                   mode={(cashBalance ?? 0) > 0 ? 'no-picks' : 'no-balance'}
@@ -535,17 +530,6 @@ const styles = StyleSheet.create({
     color: semantic.text.primary,
     marginBottom: 3,
   },
-  addrRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  addrText: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    color: semantic.text.dim,
-    letterSpacing: 0.3,
-  },
   connectedChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -647,6 +631,9 @@ const styles = StyleSheet.create({
   },
   equityRow: {
     flexDirection: 'row',
+  },
+  equityRowSecond: {
+    marginTop: 14,
   },
   eqItem: { flex: 1, gap: 3 },
   eqItemCenter: { alignItems: 'center' },
