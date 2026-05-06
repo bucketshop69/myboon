@@ -184,6 +184,12 @@ function parseNullableNumber(input: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function isPositivePositionValue(position: unknown): boolean {
+  if (!position || typeof position !== 'object') return false
+  const value = parseNullableNumber((position as Record<string, unknown>).currentValue) ?? 0
+  return value > 0
+}
+
 // --- dome fallback wrapper ---
 
 async function withDomeFallback<T>(
@@ -972,10 +978,10 @@ app.get('/predict/portfolio/:address', async (c) => {
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    // Fetch value, positions, redeemable positions, and profile in parallel
+    // Fetch value, active positions, positive-payout redeemables, and profile in parallel
     const [valueRes, posRes, redeemableRes, profileRes] = await Promise.allSettled([
       dataApiFetch(`value?user=${encodeURIComponent(address)}`),
-      dataApiFetch(`positions?user=${encodeURIComponent(address)}&limit=100&sortBy=CURRENT&sortDirection=DESC`),
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=false&limit=100&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
@@ -1003,7 +1009,7 @@ app.get('/predict/portfolio/:address', async (c) => {
     let redeemablePositions: unknown[] = []
     if (redeemableRes.status === 'fulfilled' && redeemableRes.value.ok) {
       const body = await redeemableRes.value.json() as unknown
-      redeemablePositions = Array.isArray(body) ? body : []
+      redeemablePositions = Array.isArray(body) ? body.filter(isPositivePositionValue) : []
     }
 
     // Parse profile
@@ -1174,7 +1180,7 @@ app.get('/predict/positions/:address/market/:slug', async (c) => {
 
   try {
     const res = await dataApiFetch(
-      `positions?user=${encodeURIComponent(address)}&sizeThreshold=0.1&limit=100&sortBy=CURRENT&sortDirection=DESC`
+      `positions?user=${encodeURIComponent(address)}&redeemable=false&sizeThreshold=0.1&limit=100&sortBy=CURRENT&sortDirection=DESC`
     )
     if (!res.ok) {
       console.error(`[api] data-api /positions error ${res.status}`)
