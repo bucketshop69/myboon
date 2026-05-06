@@ -187,7 +187,7 @@ function parseNullableNumber(input: unknown): number | null {
 function isPositivePositionValue(position: unknown): boolean {
   if (!position || typeof position !== 'object') return false
   const value = parseNullableNumber((position as Record<string, unknown>).currentValue) ?? 0
-  return value > 0
+  return value >= 0.01
 }
 
 // --- dome fallback wrapper ---

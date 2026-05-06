@@ -11,9 +11,10 @@ interface RedeemableSectionProps {
 }
 
 export function RedeemableSection({ positions, polygonAddress, onRedeemed }: RedeemableSectionProps) {
-  if (positions.length === 0) return null;
+  const visiblePositions = positions.filter((position) => (position.currentValue ?? 0) >= 0.01);
+  if (visiblePositions.length === 0) return null;
 
-  const totalRedeemable = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const totalRedeemable = visiblePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
 
   return (
     <View style={styles.section}>
@@ -22,7 +23,7 @@ export function RedeemableSection({ positions, polygonAddress, onRedeemed }: Red
         <Text style={styles.total}>${totalRedeemable.toFixed(2)}</Text>
       </View>
 
-      {positions.map((p, i) => (
+      {visiblePositions.map((p, i) => (
         <RedeemRow
           key={`${p.conditionId}-${p.outcomeIndex}-${i}`}
           position={p}

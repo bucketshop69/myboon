@@ -558,7 +558,9 @@ export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioD
     address: typeof p.address === 'string' ? p.address : polygonAddress,
     portfolioValue: toNumber(p.portfolioValue),
     positions: Array.isArray(p.positions) ? (p.positions as PortfolioPosition[]) : [],
-    redeemablePositions: Array.isArray(p.redeemablePositions) ? (p.redeemablePositions as PortfolioPosition[]) : [],
+    redeemablePositions: Array.isArray(p.redeemablePositions)
+      ? (p.redeemablePositions as PortfolioPosition[]).filter((position) => (position.currentValue ?? 0) >= 0.01)
+      : [],
     profile: p.profile as PortfolioData['profile'] ?? null,
     summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0 },
   };
