@@ -49,23 +49,32 @@ function getYourPicks(
   positions: PortfolioPosition[],
   openOrders: OpenOrder[],
   redeemablePositions: PortfolioPosition[],
+  scope: 'active' | 'all',
 ): YourPick[] {
+  const livePicks: YourPick[] = positions.map((position, index) => ({
+    kind: 'position' as const,
+    id: makePositionId('position', position, index),
+    position,
+  }));
+  const waitingPicks: YourPick[] = openOrders.map((order) => ({
+    kind: 'order' as const,
+    id: `order-${order.id}`,
+    order,
+  }));
+  const readyPicks: YourPick[] = redeemablePositions.map((position, index) => ({
+    kind: 'redeemable' as const,
+    id: makePositionId('redeemable', position, index),
+    position,
+  }));
+
+  if (scope === 'all') {
+    return [...readyPicks, ...livePicks, ...waitingPicks];
+  }
+
   return [
-    ...positions.map((position, index) => ({
-      kind: 'position' as const,
-      id: makePositionId('position', position, index),
-      position,
-    })),
-    ...openOrders.map((order) => ({
-      kind: 'order' as const,
-      id: `order-${order.id}`,
-      order,
-    })),
-    ...redeemablePositions.map((position, index) => ({
-      kind: 'redeemable' as const,
-      id: makePositionId('redeemable', position, index),
-      position,
-    })),
+    ...livePicks,
+    ...waitingPicks,
+    ...readyPicks,
   ];
 }
 
@@ -81,36 +90,30 @@ export function YourPicksSection({
   onRedeemed,
 }: YourPicksSectionProps) {
   const [scope, setScope] = useState<'active' | 'all'>('active');
-  const picks = getYourPicks(positions, openOrders, redeemablePositions);
+  const picks = getYourPicks(positions, openOrders, redeemablePositions, scope);
   const allCount = positions.length + openOrders.length + redeemablePositions.length;
   if (allCount === 0) return null;
 
-  const activeCount = allCount;
+  const activeCount = positions.length + openOrders.length;
+  const readyCount = redeemablePositions.length;
+  const scopeSwitchLabel = scope === 'active' ? 'All' : 'Active';
 
   return (
     <View style={styles.section}>
       <View style={styles.header}>
         <Text style={styles.title}>Your Picks</Text>
-        <View style={styles.scopeToggle} accessibilityRole="tablist">
+        <View style={styles.headerSide}>
+          <Text style={styles.count}>
+            {activeCount} active{readyCount > 0 ? ` · ${readyCount} ready` : ''}
+          </Text>
           <Pressable
-            style={[styles.scopeBtn, scope === 'active' && styles.scopeBtnActive]}
-            onPress={() => setScope('active')}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: scope === 'active' }}
+            style={[styles.scopeSwitch, scope === 'all' && styles.scopeSwitchActive]}
+            onPress={() => setScope(scope === 'active' ? 'all' : 'active')}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: scope === 'all' }}
           >
-            <Text style={[styles.scopeText, scope === 'active' && styles.scopeTextActive]}>
-              Active {activeCount}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.scopeBtn, scope === 'all' && styles.scopeBtnActive]}
-            onPress={() => setScope('all')}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: scope === 'all' }}
-          >
-            <Text style={[styles.scopeText, scope === 'all' && styles.scopeTextActive]}>
-              All {allCount}
-            </Text>
+            <View style={styles.scopeSwitchKnob} />
+            <Text style={styles.scopeSwitchText}>{scopeSwitchLabel}</Text>
           </Pressable>
         </View>
       </View>
@@ -169,7 +172,7 @@ function PositionRow({
 
   return (
     <Pressable
-      style={styles.card}
+      style={[styles.card, p.outcome === 'No' ? styles.noCard : styles.liveCard]}
       onPress={onPress}
       accessibilityLabel={`View position: ${p.title}`}
     >
@@ -222,7 +225,7 @@ function OrderRow({
   const outcomeLabel = formatOutcome(o.outcome);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, styles.waitingCard]}>
       <View style={styles.row}>
         <OutcomeBadge label={outcomeLabel} positive={o.side !== 'SELL'} />
         <View style={styles.info}>
@@ -289,7 +292,7 @@ function RedeemableRow({
   }
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, styles.attentionCard]}>
       <View style={styles.row}>
         <OutcomeBadge label={formatOutcome(p.outcome)} positive />
         <View style={styles.info}>
@@ -357,10 +360,16 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'monospace',
-    fontSize: 7.5,
+    fontSize: 8,
     letterSpacing: 2,
     textTransform: 'uppercase',
-    color: semantic.text.dim,
+    color: semantic.text.primary,
+    fontWeight: '700',
+  },
+  headerSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   count: {
     fontFamily: 'monospace',
@@ -382,33 +391,32 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  scopeToggle: {
+  scopeSwitch: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: semantic.background.lift,
     borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 7,
-    padding: 2,
+    borderColor: 'rgba(232,197,71,0.25)',
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    minHeight: 28,
   },
-  scopeBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  scopeSwitchActive: {
+    borderColor: 'rgba(232,197,71,0.45)',
+  },
+  scopeSwitchKnob: {
+    width: 10,
+    height: 10,
     borderRadius: 5,
-    minHeight: 24,
-    justifyContent: 'center',
+    backgroundColor: tokens.colors.accent,
   },
-  scopeBtnActive: {
-    backgroundColor: semantic.background.surface,
-  },
-  scopeText: {
+  scopeSwitchText: {
     fontFamily: 'monospace',
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: '700',
-    color: semantic.text.faint,
-    textTransform: 'uppercase',
-  },
-  scopeTextActive: {
     color: semantic.text.primary,
+    textTransform: 'uppercase',
   },
   card: {
     backgroundColor: semantic.background.surface,
@@ -418,6 +426,22 @@ const styles = StyleSheet.create({
     padding: 11,
     gap: 9,
     marginBottom: 5,
+  },
+  liveCard: {
+    borderColor: 'rgba(74,140,111,0.22)',
+    backgroundColor: 'rgba(74,140,111,0.07)',
+  },
+  noCard: {
+    borderColor: 'rgba(244,88,78,0.22)',
+    backgroundColor: 'rgba(244,88,78,0.07)',
+  },
+  waitingCard: {
+    borderColor: 'rgba(232,197,71,0.25)',
+    backgroundColor: 'rgba(232,197,71,0.08)',
+  },
+  attentionCard: {
+    borderColor: 'rgba(74,140,111,0.28)',
+    backgroundColor: 'rgba(74,140,111,0.10)',
   },
   row: {
     flexDirection: 'row',

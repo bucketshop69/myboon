@@ -31,7 +31,7 @@ function truncate(addr: string, start = 6, end = 4): string {
 function formatUsd(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return '--';
   const abs = Math.abs(value);
-  const prefix = value < 0 ? '-' : value > 0 ? '+' : '';
+  const prefix = value < 0 ? '-' : '';
   if (abs >= 1000) return `${prefix}$${(abs / 1000).toFixed(1)}K`;
   return `${prefix}$${abs.toFixed(2)}`;
 }
@@ -203,6 +203,8 @@ export default function PredictProfileScreen() {
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
   const portfolioValue = portfolio?.portfolioValue ?? null;
   const totalPnl = portfolio?.summary.totalPnl ?? 0;
+  const cashOutNow = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const readyToCollect = redeemablePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -338,7 +340,7 @@ export default function PredictProfileScreen() {
             <View style={styles.equityCard}>
               <View style={styles.equityRow}>
                 <View style={styles.eqItem}>
-                  <Text style={styles.eqLabel}>Portfolio</Text>
+                  <Text style={styles.eqLabel}>Predict value</Text>
                   <Text style={styles.eqVal}>
                     {portfolioValue !== null ? formatUsd(portfolioValue) : '--'}
                   </Text>
@@ -348,6 +350,22 @@ export default function PredictProfileScreen() {
                   <Text style={styles.eqVal}>
                     {cashBalance !== null ? `$${cashBalance.toFixed(2)}` : '--'}
                   </Text>
+                </View>
+                <View style={[styles.eqItem, styles.eqItemRight]}>
+                  <Text style={styles.eqLabel}>Ready</Text>
+                  <Text style={[styles.eqVal, readyToCollect > 0 && styles.posText]}>
+                    {formatUsd(readyToCollect)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.equityRow}>
+                <View style={styles.eqItem}>
+                  <Text style={styles.eqLabel}>Cash out now</Text>
+                  <Text style={styles.eqVal}>{formatUsd(cashOutNow)}</Text>
+                </View>
+                <View style={[styles.eqItem, styles.eqItemCenter]}>
+                  <Text style={styles.eqLabel}>Active picks</Text>
+                  <Text style={styles.eqVal}>{positions.length + openOrders.length}</Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemRight]}>
                   <Text style={styles.eqLabel}>P&L</Text>
