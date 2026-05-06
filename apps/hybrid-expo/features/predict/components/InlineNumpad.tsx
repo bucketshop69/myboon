@@ -7,6 +7,12 @@ interface InlineNumpadProps {
   side: 'yes' | 'no';
   price: number;
   amount: string;
+  /** Label for the selected outcome, e.g. YES, NO, or a team name */
+  pickLabel?: string;
+  /** Override for the confirm button label */
+  confirmLabel?: string;
+  /** Override for the payout helper label */
+  payoutLabel?: string;
   onAmountChange: (amount: string) => void;
   onConfirm: () => void;
   /** Whether an order is currently being submitted */
@@ -31,7 +37,19 @@ function numpadDel(current: string): string {
   return current.slice(0, -1);
 }
 
-export function InlineNumpad({ visible, side, price, amount, onAmountChange, onConfirm, submitting = false, disabled = false }: InlineNumpadProps) {
+export function InlineNumpad({
+  visible,
+  side,
+  price,
+  amount,
+  pickLabel,
+  confirmLabel,
+  payoutLabel = 'You could receive',
+  onAmountChange,
+  onConfirm,
+  submitting = false,
+  disabled = false,
+}: InlineNumpadProps) {
   const heightAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -44,8 +62,9 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
 
   const amountNum = parseFloat(amount) || 0;
   const payout = price > 0 ? amountNum / price : 0;
-  const sideLabel = side === 'yes' ? 'Yes' : 'No';
+  const outcomeLabel = pickLabel ?? (side === 'yes' ? 'YES' : 'NO');
   const isYes = side === 'yes';
+  const backLabel = confirmLabel ?? `Back ${outcomeLabel} with $${amountNum.toFixed(amountNum % 1 === 0 ? 0 : 2)}`;
 
   return (
     <Animated.View style={[styles.container, { maxHeight: heightAnim }]}>
@@ -84,8 +103,12 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
 
         {/* Payout row */}
         <View style={styles.payoutRow}>
-          <Text style={styles.payoutLabel}>Potential payout</Text>
+          <Text style={styles.payoutLabel}>{payoutLabel}</Text>
           <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
+        </View>
+        <View style={styles.downsideRow}>
+          <Text style={styles.downsideLabel}>If you are wrong, you lose</Text>
+          <Text style={styles.downsideValue}>${amountNum.toFixed(2)}</Text>
         </View>
 
         {/* Confirm button */}
@@ -94,7 +117,7 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
           disabled={disabled || submitting || amountNum <= 0}
           onPress={onConfirm}>
           <Text style={styles.confirmText}>
-            {submitting ? 'Placing order\u2026' : `Confirm ${sideLabel} \u2014 $${amountNum}`}
+            {submitting ? 'Placing order\u2026' : backLabel}
           </Text>
         </Pressable>
       </View>
@@ -191,6 +214,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: semantic.sentiment.positive,
+  },
+  downsideRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 2,
+  },
+  downsideLabel: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 0.5,
+    color: semantic.text.faint,
+  },
+  downsideValue: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
+    color: semantic.text.dim,
   },
   confirmBtn: {
     height: 44,
