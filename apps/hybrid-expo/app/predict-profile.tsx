@@ -16,7 +16,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
-import type { ActivityItem, PortfolioData } from '@/features/predict/predict.api';
+import type { ActivityItem, OpenOrder, PortfolioData } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
@@ -204,7 +204,7 @@ export default function PredictProfileScreen() {
 
   const positions = portfolio?.positions ?? [];
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
-  const portfolioValue = portfolio?.portfolioValue;
+  const portfolioValue = portfolio?.portfolioValue ?? null;
   const totalPnl = portfolio?.summary.totalPnl ?? 0;
 
   return (
@@ -321,6 +321,16 @@ export default function PredictProfileScreen() {
           </Pressable>
         )}
 
+        {!isEnabled && !poly.isLoading && (
+          <View style={styles.positionsSection}>
+            <EmptyPortfolio
+              mode="no-account"
+              onPrimaryAction={!connected ? openDrawer : handleConnectPredictAccount}
+              primaryLabel={!connected ? 'Sign In' : 'Connect Predict'}
+            />
+          </View>
+        )}
+
         {/* ── Enabled: real portfolio ── */}
         {isEnabled && !portfolioLoading && (
           <>
@@ -375,8 +385,9 @@ export default function PredictProfileScreen() {
             {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && (
               <View style={styles.positionsSection}>
                 <EmptyPortfolio
-                  hasBalance={(cashBalance ?? 0) > 0}
-                  onDeposit={() => setDepositOpen(true)}
+                  mode={(cashBalance ?? 0) > 0 ? 'no-picks' : 'no-balance'}
+                  onPrimaryAction={(cashBalance ?? 0) > 0 ? () => router.push('/predict') : () => setDepositOpen(true)}
+                  primaryLabel={(cashBalance ?? 0) > 0 ? 'Browse Markets' : 'Deposit'}
                 />
               </View>
             )}

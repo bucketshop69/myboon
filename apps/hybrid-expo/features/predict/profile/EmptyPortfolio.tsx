@@ -13,14 +13,38 @@ import type { TrendingMarket } from '@/features/predict/predict.types';
 import { semantic, tokens } from '@/theme';
 
 interface EmptyPortfolioProps {
-  onDeposit: () => void;
-  hasBalance: boolean;
+  mode: 'no-account' | 'no-balance' | 'no-picks';
+  onPrimaryAction: () => void;
+  primaryLabel: string;
 }
 
-export function EmptyPortfolio({ onDeposit, hasBalance }: EmptyPortfolioProps) {
+const EMPTY_COPY: Record<EmptyPortfolioProps['mode'], {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  title: string;
+  description: string;
+}> = {
+  'no-account': {
+    icon: 'account-balance-wallet',
+    title: 'Set up your Predict account',
+    description: 'Sign in once to create the trading account for your picks, payouts, and open orders.',
+  },
+  'no-balance': {
+    icon: 'add-card',
+    title: 'Add funds for your first pick',
+    description: 'Deposit USDC, then back a market. Your live picks and waiting orders will appear here.',
+  },
+  'no-picks': {
+    icon: 'touch-app',
+    title: 'Make your first pick',
+    description: 'Choose a market below. Once you buy shares, this page will track what is live, waiting, or ready to redeem.',
+  },
+};
+
+export function EmptyPortfolio({ mode, onPrimaryAction, primaryLabel }: EmptyPortfolioProps) {
   const router = useRouter();
   const [trending, setTrending] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
+  const copy = EMPTY_COPY[mode];
 
   useEffect(() => {
     fetchTrendingMarkets(5)
@@ -33,21 +57,13 @@ export function EmptyPortfolio({ onDeposit, hasBalance }: EmptyPortfolioProps) {
     <View style={styles.container}>
       {/* CTA */}
       <View style={styles.ctaCard}>
-        <MaterialIcons name="rocket-launch" size={20} color={tokens.colors.primary} />
-        <Text style={styles.ctaTitle}>
-          {hasBalance ? 'Ready to trade' : 'Fund your account'}
-        </Text>
-        <Text style={styles.ctaDesc}>
-          {hasBalance
-            ? 'Pick a market below and place your first prediction'
-            : 'Deposit USDC to start trading on prediction markets'}
-        </Text>
-        {!hasBalance && (
-          <Pressable style={styles.ctaBtn} onPress={onDeposit}>
-            <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.backgroundDark} />
-            <Text style={styles.ctaBtnText}>Deposit</Text>
-          </Pressable>
-        )}
+        <MaterialIcons name={copy.icon} size={20} color={tokens.colors.primary} />
+        <Text style={styles.ctaTitle}>{copy.title}</Text>
+        <Text style={styles.ctaDesc}>{copy.description}</Text>
+        <Pressable style={styles.ctaBtn} onPress={onPrimaryAction}>
+          <MaterialIcons name={mode === 'no-balance' ? 'arrow-downward' : 'arrow-forward'} size={12} color={tokens.colors.backgroundDark} />
+          <Text style={styles.ctaBtnText}>{primaryLabel}</Text>
+        </Pressable>
       </View>
 
       {/* Trending markets */}
