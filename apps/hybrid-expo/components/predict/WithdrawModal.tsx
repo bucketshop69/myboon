@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -35,16 +35,31 @@ export function WithdrawModal({
   const [state, setState] = useState<WithdrawState>('input');
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recipientAddress, setRecipientAddress] = useState(solanaAddress);
 
   const parsedAmount = parseFloat(amount);
   const MIN_WITHDRAW = 1; // $1 minimum — dust amounts would fail on bridge
-  const isValid = parsedAmount >= MIN_WITHDRAW && (cashBalance === null || parsedAmount <= cashBalance);
+  const trimmedRecipientAddress = recipientAddress.trim();
+  const isRecipientValid = useMemo(() => {
+    // Solana base58 addresses are usually 32-44 chars. Keep this client-side check light;
+    // the bridge/server remains the source of truth.
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmedRecipientAddress);
+  }, [trimmedRecipientAddress]);
+  const isValid =
+    parsedAmount >= MIN_WITHDRAW &&
+    (cashBalance === null || parsedAmount <= cashBalance) &&
+    isRecipientValid;
+
+  useEffect(() => {
+    if (isOpen) setRecipientAddress(solanaAddress);
+  }, [isOpen, solanaAddress]);
 
   const handleClose = () => {
     setAmount('');
     setState('input');
     setTxHash(null);
     setError(null);
+    setRecipientAddress(solanaAddress);
     onClose();
   };
 
@@ -60,7 +75,7 @@ export function WithdrawModal({
       const result = await withdrawFromPolymarket({
         polygonAddress,
         amount: parsedAmount,
-        solanaAddress,
+        solanaAddress: trimmedRecipientAddress,
       });
       if (result.ok) {
         setTxHash(result.txHash ?? null);
@@ -98,7 +113,7 @@ export function WithdrawModal({
           {state === 'input' && (
             <>
               <Text style={styles.subtitle}>
-                Withdraw USDC from Polymarket to your Solana wallet.
+                Withdraw USDC from Polymarket to a Solana wallet. Your connected wallet is prefilled, but you can change it.
               </Text>
 
               {/* Balance row */}
@@ -127,12 +142,27 @@ export function WithdrawModal({
               </View>
 
               {/* Destination */}
-              <View style={styles.destRow}>
-                <MaterialIcons name="arrow-forward" size={10} color={semantic.text.faint} />
-                <Text style={styles.destLabel}>To Solana:</Text>
-                <Text style={styles.destAddr} numberOfLines={1}>
-                  {solanaAddress.slice(0, 8)}...{solanaAddress.slice(-6)}
-                </Text>
+              <View style={styles.destinationWrap}>
+                <View style={styles.destRow}>
+                  <MaterialIcons name="arrow-forward" size={10} color={semantic.text.faint} />
+                  <Text style={styles.destLabel}>To Solana wallet</Text>
+                  <Pressable onPress={() => setRecipientAddress(solanaAddress)}>
+                    <Text style={styles.useConnectedText}>USE CONNECTED</Text>
+                  </Pressable>
+                </View>
+                <TextInput
+                  style={[styles.addressInput, recipientAddress.length > 0 && !isRecipientValid && styles.inputError]}
+                  value={recipientAddress}
+                  onChangeText={setRecipientAddress}
+                  placeholder="Solana wallet address"
+                  placeholderTextColor={semantic.text.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                />
+                {recipientAddress.length > 0 && !isRecipientValid && (
+                  <Text style={styles.errorHint}>Enter a valid Solana wallet address.</Text>
+                )}
               </View>
 
               <Pressable
@@ -161,7 +191,7 @@ export function WithdrawModal({
                 <View style={styles.confirmRow}>
                   <Text style={styles.confirmLabel}>To</Text>
                   <Text style={styles.confirmValue}>
-                    {solanaAddress.slice(0, 8)}...{solanaAddress.slice(-6)}
+                    {trimmedRecipientAddress.slice(0, 8)}...{trimmedRecipientAddress.slice(-6)}
                   </Text>
                 </View>
                 <View style={styles.confirmRow}>
@@ -194,7 +224,7 @@ export function WithdrawModal({
               <MaterialIcons name="check-circle" size={32} color={tokens.colors.viridian} />
               <Text style={styles.statusText}>Withdraw submitted!</Text>
               <Text style={styles.statusSubtext}>
-                ${parsedAmount.toFixed(2)} USDC bridging to your Solana wallet.{'\n'}
+                ${parsedAmount.toFixed(2)} USDC bridging to {trimmedRecipientAddress.slice(0, 8)}...{trimmedRecipientAddress.slice(-6)}.{'\n'}
                 May take a few minutes to arrive.
               </Text>
               {txHash && (
@@ -330,18 +360,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 6,
+  },
+  destinationWrap: {
     marginBottom: 16,
   },
   destLabel: {
     fontFamily: 'monospace',
     fontSize: 8,
     color: semantic.text.dim,
-  },
-  destAddr: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    color: semantic.text.accent,
     flex: 1,
+  },
+  useConnectedText: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: tokens.colors.primary,
+  },
+  addressInput: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: semantic.text.primary,
+    backgroundColor: semantic.background.lift,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  inputError: {
+    borderColor: tokens.colors.vermillion,
+  },
+  errorHint: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: tokens.colors.vermillion,
+    marginTop: 5,
   },
   withdrawBtn: {
     backgroundColor: tokens.colors.primary,
