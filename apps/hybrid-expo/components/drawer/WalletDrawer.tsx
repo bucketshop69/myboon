@@ -164,6 +164,7 @@ export function WalletDrawer() {
     setBusy(true);
     try {
       await privy.loginWithEmailOTP(otpCode.trim());
+      await privy.waitForWallet();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setOtpSent(false);
       setOtpCode('');
@@ -185,6 +186,7 @@ export function WalletDrawer() {
       } catch {
         await privy.signupWithPasskey();
       }
+      await privy.waitForWallet();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       close();
     } catch (err: unknown) {

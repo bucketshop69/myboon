@@ -8,6 +8,7 @@ export interface PrivyWalletState {
   sendEmailOTP: (email: string) => Promise<void>;
   loginWithEmailOTP: (code: string) => Promise<void>;
   disconnect: () => Promise<void>;
+  waitForWallet: () => Promise<void>;
   signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | null;
   authMethod: 'email' | 'passkey' | 'wallet' | null;
 }
@@ -26,6 +27,7 @@ const webPrivyWallet: PrivyWalletState = {
   sendEmailOTP: unavailable,
   loginWithEmailOTP: unavailable,
   disconnect: async () => {},
+  waitForWallet: async () => {},
   signMessage: null,
   authMethod: null,
 };

@@ -427,39 +427,11 @@ export interface PlaceBetResult {
 }
 
 /**
- * Place bet with local signing (Phase 2).
- * Phone signs the order EIP-712 locally, sends pre-signed order to VPS.
- * VPS wraps with L2 HMAC headers and forwards to CLOB.
+ * Place bet through the server-side deposit-wallet order path.
  */
-export async function placeBet(params: PlaceBetParams & { signedOrder?: unknown }): Promise<PlaceBetResult> {
+export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> {
   const baseUrl = resolveApiBaseUrl();
 
-  // If we have a pre-signed order, use the signed endpoint
-  if (params.signedOrder) {
-    const response = await fetchWithTimeout(`${baseUrl}/clob/order/signed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        polygonAddress: params.polygonAddress,
-        signedOrder: params.signedOrder,
-        orderType: params.orderType,
-      }),
-    });
-
-    const data = await response.json() as Record<string, unknown>;
-
-    if (!response.ok) {
-      const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Order failed';
-      return { success: false, error: detail };
-    }
-
-    return {
-      success: true,
-      orderID: typeof data.orderID === 'string' ? data.orderID : undefined,
-    };
-  }
-
-  // Fallback: server-side signing (Phase 1 compat)
   const response = await fetchWithTimeout(`${baseUrl}/clob/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

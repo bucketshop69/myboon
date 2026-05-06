@@ -1870,17 +1870,18 @@
     }
     .v2-matchup {
       display: grid;
-      grid-template-columns: 1fr 36px 1fr;
-      gap: 10px;
+      grid-template-columns: 1fr 34px 1fr;
+      gap: 12px;
       align-items: center;
       position: relative;
       z-index: 1;
-      margin-bottom: 12px;
+      margin: 20px 0 14px;
     }
     .v2-team {
       min-width: 0;
+      text-align: center;
     }
-    .v2-team.right { text-align: right }
+    .v2-team.right { text-align: center }
     .v2-team-name {
       font-family: var(--sans);
       font-size: 14px;
@@ -1911,36 +1912,52 @@
     }
     .v2-hero-odds {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 42px 1fr 48px;
+      align-items: center;
       gap: 8px;
       position: relative;
       z-index: 1;
-      margin-bottom: 10px;
+      margin: 0 0 2px;
     }
     .v2-odd-panel {
-      border-radius: 12px;
-      padding: 9px;
-      border: 1px solid var(--border0);
-      background: rgba(8,8,6,0.32);
+      border: none;
+      background: transparent;
+      padding: 0;
+      min-width: 0;
+      text-align: left;
     }
-    .v2-odd-panel.pos { border-color: rgba(52,199,123,0.18); background: rgba(52,199,123,0.08) }
-    .v2-odd-panel.neg { border-color: rgba(244,88,78,0.16); background: rgba(244,88,78,0.06) }
+    .v2-odd-panel.neg {
+      text-align: right;
+    }
+    .v2-odd-panel.pos { border-color: transparent; background: transparent }
+    .v2-odd-panel.neg { border-color: transparent; background: transparent }
     .v2-odd-label {
-      font-family: var(--mono);
-      font-size: 8px;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--mid);
-      margin-bottom: 3px;
+      display: none;
     }
     .v2-odd-value {
       font-family: var(--mono);
-      font-size: 20px;
+      font-size: 18px;
       line-height: 1;
       font-weight: 800;
     }
     .v2-odd-value.pos { color: var(--pos) }
     .v2-odd-value.neg { color: var(--neg) }
+    .v2-odds-track {
+      height: 8px;
+      border-radius: 999px;
+      background: var(--bg4);
+      overflow: hidden;
+      display: flex;
+      gap: 2px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+    }
+    .v2-odds-seg {
+      height: 100%;
+      border-radius: 999px;
+    }
+    .v2-odds-seg.pos { background: var(--pos) }
+    .v2-odds-seg.neg { background: var(--neg) }
+    .v2-odds-seg.draw { background: var(--a) }
     .v2-action-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -2251,19 +2268,19 @@
 
               <div class="v2-hero-odds">
                 <div class="v2-odd-panel pos">
-                  <div class="v2-odd-label">Delhi wins</div>
+                  <div class="v2-odd-label">Delhi</div>
                   <div class="v2-odd-value pos">59%</div>
                 </div>
+                <div class="v2-odds-track">
+                  <div class="v2-odds-seg pos" style="width:59%"></div>
+                  <div class="v2-odds-seg neg" style="width:41%"></div>
+                </div>
                 <div class="v2-odd-panel neg">
-                  <div class="v2-odd-label">Punjab wins</div>
-                  <div class="v2-odd-value neg">42%</div>
+                  <div class="v2-odd-label">Punjab</div>
+                  <div class="v2-odd-value neg">41%</div>
                 </div>
               </div>
 
-              <div class="v2-action-row">
-                <div class="v2-action primary">Trade Delhi</div>
-                <div class="v2-action">Open Market</div>
-              </div>
             </div>
 
             <div class="v2-hero-card">
@@ -2295,19 +2312,20 @@
 
               <div class="v2-hero-odds">
                 <div class="v2-odd-panel pos">
-                  <div class="v2-odd-label">Fulham wins</div>
+                  <div class="v2-odd-label">Fulham</div>
                   <div class="v2-odd-value pos">99%</div>
                 </div>
+                <div class="v2-odds-track">
+                  <div class="v2-odds-seg pos" style="width:99%"></div>
+                  <div class="v2-odds-seg draw" style="width:1%"></div>
+                  <div class="v2-odds-seg neg" style="width:0%"></div>
+                </div>
                 <div class="v2-odd-panel neg">
-                  <div class="v2-odd-label">Villa wins</div>
+                  <div class="v2-odd-label">Villa</div>
                   <div class="v2-odd-value neg">0%</div>
                 </div>
               </div>
 
-              <div class="v2-action-row">
-                <div class="v2-action primary">Trade Fulham</div>
-                <div class="v2-action">Draw 1%</div>
-              </div>
             </div>
 
             <div class="v2-hero-card">
@@ -2338,16 +2356,16 @@
                   <div class="v2-odd-label">Yes</div>
                   <div class="v2-odd-value pos">18%</div>
                 </div>
+                <div class="v2-odds-track">
+                  <div class="v2-odds-seg pos" style="width:18%"></div>
+                  <div class="v2-odds-seg neg" style="width:82%"></div>
+                </div>
                 <div class="v2-odd-panel neg">
                   <div class="v2-odd-label">No</div>
                   <div class="v2-odd-value neg">82%</div>
                 </div>
               </div>
 
-              <div class="v2-action-row">
-                <div class="v2-action primary">Trade Yes</div>
-                <div class="v2-action">Open Market</div>
-              </div>
             </div>
           </div>
 

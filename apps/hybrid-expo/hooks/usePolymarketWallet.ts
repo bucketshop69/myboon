@@ -3,7 +3,7 @@
  *
  * Architecture:
  * - The EVM private key is NEVER stored on the device. It lives only on the server, in-memory.
- * - The phone stores ONLY the polygon address (public info) in AsyncStorage so the UI
+ * - The phone stores public Polygon/deposit-wallet addresses in AsyncStorage so the UI
  *   remembers the user is "enabled" across app restarts.
  * - On enable: Phantom signs a message → signature sent to server → server derives EVM key,
  *   creates CLOB session, returns polygon address.
@@ -15,22 +15,21 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
-import { useEvmSigner, type SignedOrderV2, type OrderParams } from '@/hooks/useEvmSigner';
+import { useEvmSigner } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 const DERIVE_MESSAGE = 'myboon:polymarket:enable';
 const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
-const SAFE_STORAGE_KEY = 'polymarket_safe_address'; // Safe wallet address (where USDC lives)
 const DEPOSIT_WALLET_STORAGE_KEY = 'polymarket_deposit_wallet_address';
 const WALLET_MODE_STORAGE_KEY = 'polymarket_wallet_mode';
 
 const API_BASE = resolveApiBaseUrl();
 
-export type PolymarketWalletMode = 'safe' | 'deposit_wallet';
+export type PolymarketWalletMode = 'deposit_wallet';
 
 export interface PolymarketWallet {
   polygonAddress: string | null;
-  /** Safe wallet address — where pUSD lives, used for deposits */
+  /** Legacy field kept for UI compatibility; deposit-wallet mode always returns null. */
   safeAddress: string | null;
   /** Deposit wallet address for new Polymarket API users */
   depositWalletAddress: string | null;
@@ -40,12 +39,10 @@ export interface PolymarketWallet {
   tradingAddress: string | null;
   isReady: boolean;
   isLoading: boolean;
-  /** Sign with Solana wallet, derive EVM key locally, send sig to server for Safe setup */
+  /** Sign with Solana wallet, derive EVM key locally, send sig to server for deposit-wallet setup */
   enable: () => Promise<void>;
   /** Clear session (server + local + EVM key) */
   disable: () => void;
-  /** Sign a V2 order locally (EIP-712). Returns pre-signed order for VPS proxy. */
-  signOrder: (params: OrderParams) => Promise<SignedOrderV2>;
   /** Whether local EVM signer is initialized */
   canSignLocally: boolean;
 }
@@ -62,9 +59,19 @@ export function usePolymarketWallet(): PolymarketWallet {
 
   // Storage keys scoped to the current Solana wallet
   const scopedKey = solanaAddress ? `${STORAGE_KEY}:${solanaAddress}` : null;
-  const scopedSafeKey = solanaAddress ? `${SAFE_STORAGE_KEY}:${solanaAddress}` : null;
   const scopedDepositWalletKey = solanaAddress ? `${DEPOSIT_WALLET_STORAGE_KEY}:${solanaAddress}` : null;
   const scopedWalletModeKey = solanaAddress ? `${WALLET_MODE_STORAGE_KEY}:${solanaAddress}` : null;
+
+  const clearStoredSession = useCallback(() => {
+    if (scopedKey) AsyncStorage.removeItem(scopedKey).catch(() => {});
+    if (scopedDepositWalletKey) AsyncStorage.removeItem(scopedDepositWalletKey).catch(() => {});
+    if (scopedWalletModeKey) AsyncStorage.removeItem(scopedWalletModeKey).catch(() => {});
+    setPolygonAddress(null);
+    setSafeAddress(null);
+    setDepositWalletAddress(null);
+    setWalletMode(null);
+    evmSigner.clear();
+  }, [scopedKey, scopedDepositWalletKey, scopedWalletModeKey, evmSigner]);
 
   // Load stored addresses when Solana wallet connects/changes; clear when disconnected
   useEffect(() => {
@@ -94,18 +101,19 @@ export function usePolymarketWallet(): PolymarketWallet {
 
     Promise.all([
       AsyncStorage.getItem(`${STORAGE_KEY}:${solanaAddress}`),
-      AsyncStorage.getItem(`${SAFE_STORAGE_KEY}:${solanaAddress}`),
       AsyncStorage.getItem(`${DEPOSIT_WALLET_STORAGE_KEY}:${solanaAddress}`),
       AsyncStorage.getItem(`${WALLET_MODE_STORAGE_KEY}:${solanaAddress}`),
     ])
-      .then(([storedEoa, storedSafe, storedDepositWallet, storedWalletMode]) => {
+      .then(([storedEoa, storedDepositWallet, storedWalletMode]) => {
+        if (storedEoa && (!storedDepositWallet || storedWalletMode !== 'deposit_wallet')) {
+          clearStoredSession();
+          return;
+        }
+
         if (storedEoa) setPolygonAddress(storedEoa);
-        if (storedSafe) setSafeAddress(storedSafe);
         if (storedDepositWallet) setDepositWalletAddress(storedDepositWallet);
-        if (storedWalletMode === 'safe' || storedWalletMode === 'deposit_wallet') {
+        if (storedWalletMode === 'deposit_wallet') {
           setWalletMode(storedWalletMode);
-        } else if (storedSafe) {
-          setWalletMode('safe');
         } else if (storedDepositWallet) {
           setWalletMode('deposit_wallet');
         }
@@ -128,7 +136,7 @@ export function usePolymarketWallet(): PolymarketWallet {
       // Step 2: Derive EVM key locally (same derivation as server)
       evmSigner.deriveFromSignature(signature);
 
-      // Step 3: Send hex-encoded signature to server for Safe setup + CLOB API creds
+      // Step 3: Send hex-encoded signature to server for deposit wallet setup + CLOB API creds
       const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
 
       const res = await fetchWithTimeout(`${API_BASE}/clob/auth`, {
@@ -143,21 +151,22 @@ export function usePolymarketWallet(): PolymarketWallet {
       }
 
       const data = await res.json();
+      if (!data.depositWalletAddress) {
+        throw new Error('Deposit wallet setup incomplete — please try again');
+      }
+
       setPolygonAddress(data.polygonAddress);
-      setSafeAddress(data.safeAddress ?? null);
-      setDepositWalletAddress(data.depositWalletAddress ?? null);
-      setWalletMode(data.walletMode ?? null);
+      setSafeAddress(null);
+      setDepositWalletAddress(data.depositWalletAddress);
+      setWalletMode('deposit_wallet');
 
       // Persist addresses locally (public info only, scoped to Solana wallet)
       if (scopedKey) await AsyncStorage.setItem(scopedKey, data.polygonAddress);
-      if (data.safeAddress && scopedSafeKey) {
-        await AsyncStorage.setItem(scopedSafeKey, data.safeAddress);
-      }
-      if (data.depositWalletAddress && scopedDepositWalletKey) {
+      if (scopedDepositWalletKey) {
         await AsyncStorage.setItem(scopedDepositWalletKey, data.depositWalletAddress);
       }
-      if (data.walletMode && scopedWalletModeKey) {
-        await AsyncStorage.setItem(scopedWalletModeKey, data.walletMode);
+      if (scopedWalletModeKey) {
+        await AsyncStorage.setItem(scopedWalletModeKey, 'deposit_wallet');
       }
     } catch (err) {
       throw err;
@@ -168,7 +177,6 @@ export function usePolymarketWallet(): PolymarketWallet {
     connected,
     signMessage,
     scopedKey,
-    scopedSafeKey,
     scopedDepositWalletKey,
     scopedWalletModeKey,
   ]);
@@ -178,32 +186,11 @@ export function usePolymarketWallet(): PolymarketWallet {
     if (polygonAddress) {
       fetchWithTimeout(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
     }
-    // Clear local storage (scoped to current Solana wallet)
-    if (scopedKey) AsyncStorage.removeItem(scopedKey).catch(() => {});
-    if (scopedSafeKey) AsyncStorage.removeItem(scopedSafeKey).catch(() => {});
-    if (scopedDepositWalletKey) AsyncStorage.removeItem(scopedDepositWalletKey).catch(() => {});
-    if (scopedWalletModeKey) AsyncStorage.removeItem(scopedWalletModeKey).catch(() => {});
-    setPolygonAddress(null);
-    setSafeAddress(null);
-    setDepositWalletAddress(null);
-    setWalletMode(null);
-    // Wipe EVM key from memory
-    evmSigner.clear();
-  }, [polygonAddress, scopedKey, scopedSafeKey, scopedDepositWalletKey, scopedWalletModeKey, evmSigner]);
+    clearStoredSession();
+  }, [polygonAddress, clearStoredSession]);
 
-  /** Sign order locally — phone holds the key, VPS just proxies the signed order */
-  const signOrder = useCallback(async (params: OrderParams): Promise<SignedOrderV2> => {
-    if (walletMode === 'deposit_wallet') {
-      throw new Error('Deposit wallet orders are signed by the API');
-    }
-    if (!safeAddress) throw new Error('No Safe address — enable wallet first');
-    return evmSigner.signOrder(params, safeAddress);
-  }, [evmSigner, safeAddress, walletMode]);
-
-  const tradingAddress =
-    walletMode === 'deposit_wallet'
-      ? depositWalletAddress
-      : safeAddress;
+  const tradingAddress = depositWalletAddress;
+  const isReady = !!polygonAddress && walletMode === 'deposit_wallet' && !!depositWalletAddress;
 
   return {
     polygonAddress,
@@ -211,11 +198,10 @@ export function usePolymarketWallet(): PolymarketWallet {
     depositWalletAddress,
     walletMode,
     tradingAddress,
-    isReady: !!polygonAddress,
+    isReady,
     isLoading,
     enable,
     disable,
-    signOrder,
     canSignLocally: evmSigner.isReady,
   };
 }

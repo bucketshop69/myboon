@@ -17,7 +17,6 @@ import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory, fetchOrd
 import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
-import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -233,39 +232,15 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       const size = Math.floor((amount / price) * 100) / 100;
       const polygonAddress = poly.polygonAddress;
 
-      if (poly.walletMode === 'deposit_wallet') {
-        const result = await placeBet({
-          polygonAddress,
-          tokenID,
-          price,
-          size,
-          side: 'BUY',
-          negRisk: !!detail.negRisk,
-        });
-        if (!result.success) throw new Error(result.error || 'Order failed');
-      } else {
-        const exchangeAddress = detail.negRisk
-          ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
-          : V2_CONTRACTS.CTF_EXCHANGE;
-
-        const signedOrder = await poly.signOrder({
-          tokenID,
-          price,
-          size,
-          side: 'BUY',
-          exchangeAddress,
-        });
-
-        const result = await placeBet({
-          polygonAddress,
-          tokenID,
-          price,
-          size,
-          side: 'BUY',
-          signedOrder,
-        });
-        if (!result.success) throw new Error(result.error || 'Order failed');
-      }
+      const result = await placeBet({
+        polygonAddress,
+        tokenID,
+        price,
+        size,
+        side: 'BUY',
+        negRisk: !!detail.negRisk,
+      });
+      if (!result.success) throw new Error(result.error || 'Order failed');
 
       Alert.alert('Order placed', `${selectedSide.toUpperCase()} $${amount} @ ${Math.round(price * 100)}\u00A2`);
       collapseNumpad();

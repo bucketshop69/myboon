@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchSportMarketDetail, fetchPriceHistory, fetchOrderbook, placeBet } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
-import { V2_CONTRACTS } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -253,39 +252,15 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       const size = Math.floor((amount / price) * 100) / 100;
       const polygonAddress = poly.polygonAddress;
 
-      if (poly.walletMode === 'deposit_wallet') {
-        const result = await placeBet({
-          polygonAddress,
-          tokenID,
-          price,
-          size,
-          side: 'BUY',
-          negRisk: !!detail.negRisk,
-        });
-        if (!result.success) throw new Error(result.error || 'Order failed');
-      } else {
-        const exchangeAddress = detail.negRisk
-          ? V2_CONTRACTS.NEG_RISK_CTF_EXCHANGE
-          : V2_CONTRACTS.CTF_EXCHANGE;
-
-        const signedOrder = await poly.signOrder({
-          tokenID,
-          price,
-          size,
-          side: 'BUY',
-          exchangeAddress,
-        });
-
-        const result = await placeBet({
-          polygonAddress,
-          tokenID,
-          price,
-          size,
-          side: 'BUY',
-          signedOrder,
-        });
-        if (!result.success) throw new Error(result.error || 'Order failed');
-      }
+      const result = await placeBet({
+        polygonAddress,
+        tokenID,
+        price,
+        size,
+        side: 'BUY',
+        negRisk: !!detail.negRisk,
+      });
+      if (!result.success) throw new Error(result.error || 'Order failed');
 
       const label = outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
       Alert.alert('Order placed', `${selectedSide.toUpperCase()} ${label} $${amount} @ ${Math.round(price * 100)}\u00A2`);
