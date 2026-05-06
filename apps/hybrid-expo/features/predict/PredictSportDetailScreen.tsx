@@ -31,7 +31,7 @@ interface PredictSportDetailScreenProps {
 }
 
 type Interval = '5m' | '1h' | '1d';
-type ActiveView = 'chart' | 'orderbook';
+type ActiveView = 'picks' | 'stats' | 'chart' | 'orderbook';
 
 const SOFT_COLLAPSED = 280; // handle + stats + ~3 selection rows
 const SOFT_EXPANDED = 720;
@@ -43,6 +43,22 @@ function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
 
 function sportOutcomeLabel(outcome: SportOutcomeDetail): string {
   return outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
+}
+
+function DisplayTab({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={[styles.displayTab, active && styles.displayTabActive]} onPress={onPress}>
+      <Text style={[styles.displayTabText, active && styles.displayTabTextActive]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
@@ -61,7 +77,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [interval, setInterval] = useState<Interval>('1h');
   const [seriesData, setSeriesData] = useState<PricePoint[][]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [activeView, setActiveView] = useState<ActiveView>('chart');
+  const [activeView, setActiveView] = useState<ActiveView>('picks');
   const [orderbook, setOrderbook] = useState<Orderbook | null>(null);
   const [orderbookLoading, setOrderbookLoading] = useState(false);
   const [obOutcomeIdx, setObOutcomeIdx] = useState(0);
@@ -311,8 +327,12 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         <View style={styles.body}>
           {/* ══ DARK ZONE ══ */}
           <View style={[styles.darkZone, { paddingBottom: SOFT_COLLAPSED }]}>
-            {/* Range chips + view toggle */}
-            <View style={styles.chipRow}>
+            <View style={styles.displayRow}>
+              <View style={styles.displayTabGroup}>
+                <DisplayTab label="Your Picks" active={activeView === 'picks'} onPress={() => setActiveView('picks')} />
+                <DisplayTab label="Stats" active={activeView === 'stats'} onPress={() => setActiveView('stats')} />
+              </View>
+              <View style={styles.displayTabGroup}>
               {activeView === 'chart' && (['5m', '1h', '1d'] as Interval[]).map((iv) => (
                 <Pressable
                   key={iv}
@@ -323,23 +343,38 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   </Text>
                 </Pressable>
               ))}
-              <View style={styles.toggleIcons}>
-                <Pressable
-                  style={[styles.toggleBtn, activeView === 'chart' && styles.toggleBtnActive]}
-                  onPress={() => setActiveView('chart')}>
-                  <MaterialIcons name="show-chart" size={14} color={activeView === 'chart' ? semantic.text.primary : semantic.text.faint} />
-                </Pressable>
-                <Pressable
-                  style={[styles.toggleBtn, activeView === 'orderbook' && styles.toggleBtnActive]}
-                  onPress={() => setActiveView('orderbook')}>
-                  <MaterialIcons name="view-list" size={14} color={activeView === 'orderbook' ? semantic.text.primary : semantic.text.faint} />
-                </Pressable>
+                <DisplayTab label="Chart" active={activeView === 'chart'} onPress={() => setActiveView('chart')} />
+                <DisplayTab label="Book" active={activeView === 'orderbook'} onPress={() => setActiveView('orderbook')} />
               </View>
             </View>
 
             {/* Chart or Orderbook */}
             <View style={styles.viewContainer}>
-              {activeView === 'chart' ? (
+              {activeView === 'picks' ? (
+                <View style={styles.picksView}>
+                  <View style={styles.picksHeading}>
+                    <Text style={styles.picksTitle}>Your Picks</Text>
+                    <Text style={styles.picksSubtitle}>This match</Text>
+                  </View>
+                  <View style={styles.picksEmptyCard}>
+                    <Text style={styles.picksEmptyTitle}>No picks here yet</Text>
+                    <Text style={styles.picksEmptyText}>Back Liverpool, Draw, or Crystal Palace below. Live picks show cash out, back more, or collect actions here.</Text>
+                  </View>
+                </View>
+              ) : activeView === 'stats' ? (
+                <View style={styles.statsView}>
+                  <View style={styles.picksHeading}>
+                    <Text style={styles.picksTitle}>Stats</Text>
+                    <Text style={styles.picksSubtitle}>Live market</Text>
+                  </View>
+                  <View style={styles.statsGrid}>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Volume</Text><Text style={styles.statsValue}>{formatUsdCompact(detail.volume24h)}</Text></View>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Liquidity</Text><Text style={styles.statsValue}>{formatUsdCompact(detail.liquidity)}</Text></View>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Leader</Text><Text style={styles.statsValue}>{sortedOutcomes[0] ? sportOutcomeLabel(sortedOutcomes[0]) : '--'}</Text></View>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Chance</Text><Text style={styles.statsValue}>{leadPrice !== null ? `${Math.round(leadPrice * 100)}%` : '--'}</Text></View>
+                  </View>
+                </View>
+              ) : activeView === 'chart' ? (
                 historyLoading ? (
                   <View style={styles.chartSkeleton}>
                     <ActivityIndicator size="small" color={semantic.text.faint} />
@@ -541,6 +576,40 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 10,
   },
+  displayRow: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  displayTabGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexShrink: 1,
+  },
+  displayTab: {
+    height: 28,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  displayTabActive: {
+    backgroundColor: tokens.colors.surface,
+  },
+  displayTabText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  displayTabTextActive: {
+    color: semantic.text.primary,
+  },
   rangeChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -572,6 +641,79 @@ const styles = StyleSheet.create({
   toggleBtnActive: { backgroundColor: tokens.colors.surface },
   viewContainer: { flex: 1, minHeight: 0 },
   chartSkeleton: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  picksView: {
+    flex: 1,
+    paddingTop: 10,
+  },
+  picksHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  picksTitle: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: semantic.text.primary,
+    fontWeight: '700',
+  },
+  picksSubtitle: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  picksEmptyCard: {
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    borderRadius: 12,
+    padding: 14,
+  },
+  picksEmptyTitle: {
+    color: semantic.text.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  picksEmptyText: {
+    color: semantic.text.dim,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  statsView: {
+    flex: 1,
+    paddingTop: 10,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statsCard: {
+    width: '48%',
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    borderRadius: 12,
+    padding: 10,
+  },
+  statsLabel: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  statsValue: {
+    marginTop: 4,
+    fontFamily: 'monospace',
+    fontSize: 15,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
 
   // ── Orderbook wrapper ──
   obWrap: { flex: 1 },
