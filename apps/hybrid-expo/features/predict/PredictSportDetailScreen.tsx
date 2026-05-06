@@ -52,6 +52,10 @@ function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
   return isLead ? semantic.sentiment.positive : semantic.sentiment.negative;
 }
 
+function sportOutcomeLabel(outcome: SportOutcomeDetail): string {
+  return outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
+}
+
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
@@ -76,7 +80,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // Numpad state
   const [numpadOpen, setNumpadOpen] = useState(false);
   const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
-  const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
 
@@ -191,19 +194,17 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     return {
       points: seriesData[i] ?? [],
       color: outcomeColor(outcome, isLead),
-      label: outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label,
+      label: sportOutcomeLabel(outcome),
     };
   });
 
-  function tapOdd(outcomeIdx: number, side: 'yes' | 'no') {
-    if (numpadOpen && selectedOutcomeIdx === outcomeIdx && selectedSide === side) {
+  function tapOdd(outcomeIdx: number) {
+    if (numpadOpen && selectedOutcomeIdx === outcomeIdx) {
       setNumpadOpen(false);
       setSelectedOutcomeIdx(null);
-      setSelectedSide(null);
       return;
     }
     setSelectedOutcomeIdx(outcomeIdx);
-    setSelectedSide(side);
     setNumpadAmount('50');
     setNumpadOpen(true);
   }
@@ -211,25 +212,23 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   function collapseNumpad() {
     setNumpadOpen(false);
     setSelectedOutcomeIdx(null);
-    setSelectedSide(null);
   }
 
   async function submitOrder() {
-    if (!detail || selectedOutcomeIdx === null || !selectedSide || submitting) return;
+    if (!detail || selectedOutcomeIdx === null || submitting) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
 
     const outcome = sortedOutcomes[selectedOutcomeIdx];
     if (!outcome) return;
 
-    // For "yes" buy the yes token (clobTokenIds[0]), for "no" buy the no token (clobTokenIds[1])
-    const tokenID = selectedSide === 'yes' ? outcome.clobTokenIds[0] : outcome.clobTokenIds[1];
+    const tokenID = outcome.clobTokenIds[0];
     if (!tokenID) {
       Alert.alert('Error', 'No token ID for this outcome');
       return;
     }
 
-    const price = selectedSide === 'yes' ? outcome.price : (outcome.price !== null ? 1 - outcome.price : null);
+    const price = outcome.price;
     if (!price || price <= 0 || price >= 1) {
       Alert.alert('Error', 'Invalid price');
       return;
@@ -262,8 +261,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
-      const label = outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
-      Alert.alert('Order placed', `${selectedSide.toUpperCase()} ${label} $${amount} @ ${Math.round(price * 100)}\u00A2`);
+      Alert.alert('Order placed', `${sportOutcomeLabel(outcome)} $${amount} @ ${Math.round(price * 100)}\u00A2`);
       collapseNumpad();
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
@@ -273,11 +271,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   }
 
   const numpadPrice = (() => {
-    if (selectedOutcomeIdx === null || selectedSide === null) return 0.5;
+    if (selectedOutcomeIdx === null) return 0.5;
     const outcome = sortedOutcomes[selectedOutcomeIdx];
     if (!outcome?.price) return 0.5;
-    return selectedSide === 'yes' ? outcome.price : 1 - outcome.price;
+    return outcome.price;
   })();
+  const selectedOutcome = selectedOutcomeIdx !== null ? sortedOutcomes[selectedOutcomeIdx] : null;
+  const selectedOutcomeLabel = selectedOutcome ? sportOutcomeLabel(selectedOutcome) : undefined;
 
   const chartWidth = screenWidth - 40;
   const chartHeight = 180;
@@ -365,8 +365,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   {/* Outcome tabs for orderbook */}
                   <View style={styles.obOutcomeTabs}>
                     {sortedOutcomes.map((o, i) => {
-                      const isDraw = o.label.toLowerCase().includes('draw');
-                      const label = isDraw ? 'Draw' : o.label;
+                      const label = sportOutcomeLabel(o);
                       return (
                         <Pressable
                           key={`${o.conditionId ?? o.label}-${i}`}
@@ -407,13 +406,12 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
             {/* Selection rows */}
             <View style={styles.oddsSection}>
               <View style={styles.selHeader}>
-                <Text style={styles.selHeaderLabel}>{sortedOutcomes.length} Selections</Text>
+                <Text style={styles.selHeaderLabel}>{"What's your pick?"}</Text>
                 <OddsFormatToggle format={format} onFormatChange={setFormat} />
               </View>
               {sortedOutcomes.map((outcome, i) => {
-                const isDraw = outcome.label.toLowerCase().includes('draw');
-                const label = isDraw ? 'Draw' : outcome.label;
-                const isSelected = (side: 'yes' | 'no') => selectedOutcomeIdx === i && selectedSide === side;
+                const label = sportOutcomeLabel(outcome);
+                const isSelected = selectedOutcomeIdx === i;
                 return (
                   <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={[styles.selRow, i > 0 && styles.selRowBorder]}>
                     <View style={styles.selInfo}>
@@ -422,16 +420,10 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                     </View>
                     <View style={styles.selBtns}>
                       <Pressable
-                        style={[styles.selBtn, styles.selBtnYes, isSelected('yes') && styles.selBtnYesSelected]}
-                        onPress={() => tapOdd(i, 'yes')}>
-                        <Text style={styles.selBtnYesPct}>{outcome.price !== null ? formatOdds(outcome.price) : '--'}</Text>
-                        <Text style={styles.selBtnYesLabel}>Yes</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.selBtn, styles.selBtnNo, isSelected('no') && styles.selBtnNoSelected]}
-                        onPress={() => tapOdd(i, 'no')}>
-                        <Text style={styles.selBtnNoPct}>{outcome.price !== null ? formatOdds(1 - outcome.price) : '--'}</Text>
-                        <Text style={styles.selBtnNoLabel}>No</Text>
+                        style={[styles.selBtn, isSelected && styles.selBtnSelected]}
+                        onPress={() => tapOdd(i)}>
+                        <Text style={styles.selBtnPct}>{outcome.price !== null ? formatOdds(outcome.price) : '--'}</Text>
+                        <Text style={styles.selBtnLabel} numberOfLines={1}>Back {label}</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -442,7 +434,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
             {/* Inline numpad */}
             <InlineNumpad
               visible={numpadOpen}
-              side={selectedSide ?? 'yes'}
+              side="yes"
+              pickLabel={selectedOutcomeLabel}
               price={numpadPrice}
               amount={numpadAmount}
               onAmountChange={setNumpadAmount}
@@ -646,9 +639,9 @@ const styles = StyleSheet.create({
   },
   selHeaderLabel: {
     fontFamily: 'monospace',
-    fontSize: 8,
-    letterSpacing: 1,
-    color: semantic.text.dim,
+    fontSize: 11,
+    fontWeight: '700',
+    color: semantic.text.primary,
   },
   selRow: {
     flexDirection: 'row',
@@ -674,51 +667,31 @@ const styles = StyleSheet.create({
   },
   selBtns: { flexDirection: 'row', gap: 8, flexShrink: 0 },
   selBtn: {
-    width: 58,
+    width: 92,
     height: 42,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 1,
+    backgroundColor: semantic.predict.outcomeYesBg,
   },
-  selBtnYes: { backgroundColor: semantic.predict.outcomeYesBg },
-  selBtnNo: { backgroundColor: semantic.predict.outcomeNoBg },
-  selBtnYesSelected: {
+  selBtnSelected: {
     backgroundColor: 'rgba(74,140,111,0.25)',
     borderWidth: 1,
     borderColor: 'rgba(74,140,111,0.35)',
   },
-  selBtnNoSelected: {
-    backgroundColor: 'rgba(217,83,79,0.20)',
-    borderWidth: 1,
-    borderColor: 'rgba(217,83,79,0.35)',
-  },
-  selBtnYesPct: {
+  selBtnPct: {
     fontFamily: 'monospace',
     fontSize: 12,
     fontWeight: '700',
     color: semantic.sentiment.positive,
     lineHeight: 14,
   },
-  selBtnYesLabel: {
+  selBtnLabel: {
     fontFamily: 'monospace',
     fontSize: 6.5,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     color: 'rgba(74,140,111,0.55)',
-  },
-  selBtnNoPct: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    fontWeight: '700',
-    color: semantic.sentiment.negative,
-    lineHeight: 14,
-  },
-  selBtnNoLabel: {
-    fontFamily: 'monospace',
-    fontSize: 6.5,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: 'rgba(217,83,79,0.45)',
   },
 });
