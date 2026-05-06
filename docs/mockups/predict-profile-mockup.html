@@ -716,6 +716,195 @@
       opacity: 0.5;
     }
 
+    .picks-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .picks-heading .section-title {
+      font-family: var(--sans);
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--hi);
+    }
+    .picks-heading-side {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .scope-switch {
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 6px;
+      border-radius: 999px;
+      border: 1px solid var(--border2);
+      background: rgba(255,255,255,0.035);
+      color: var(--lo);
+      font-family: var(--mono);
+      font-size: 7px;
+      font-weight: 800;
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
+    }
+    .scope-switch.active {
+      color: var(--hi);
+      border-color: rgba(199,183,112,0.28);
+      background: rgba(199,183,112,0.10);
+    }
+    .scope-switch-knob {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--lo);
+    }
+    .scope-switch.active .scope-switch-knob { background: var(--a) }
+    .pick-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-radius: 12px;
+      background: rgba(74,140,111,0.10);
+      border: 1px solid rgba(74,140,111,0.24);
+      padding: 9px 10px;
+      min-height: 64px;
+      cursor: default;
+    }
+    .pick-row:hover { border-color: rgba(74,140,111,0.24); background: rgba(74,140,111,0.10) }
+    .pick-row.draw {
+      background: rgba(199,183,112,0.10);
+      border-color: rgba(199,183,112,0.24);
+    }
+    .pick-row.away,
+    .pick-row.no {
+      background: rgba(217,83,79,0.10);
+      border-color: rgba(217,83,79,0.24);
+    }
+    .pick-row.draw:hover { border-color: rgba(199,183,112,0.24); background: rgba(199,183,112,0.10) }
+    .pick-row.away:hover,
+    .pick-row.no:hover { border-color: rgba(217,83,79,0.24); background: rgba(217,83,79,0.10) }
+    .pick-row .pos-info { min-width: 0; flex: 1 }
+    .pick-row .pos-question {
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--hi);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: normal;
+    }
+    .pick-row .pos-question span {
+      color: var(--pos);
+      font-family: var(--mono);
+      font-size: 11px;
+      margin-left: 6px;
+    }
+    .pick-row.draw .pos-question span { color: var(--a) }
+    .pick-row.away .pos-question span,
+    .pick-row.no .pos-question span { color: var(--neg) }
+    .pick-row .pos-question span.win { color: var(--pos) }
+    .pick-row .pos-meta {
+      display: block;
+      margin-top: 5px;
+      font-size: 8px;
+      letter-spacing: 0.3px;
+      line-height: normal;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pick-row.attention {
+      background: rgba(74,140,111,0.10);
+      border-color: rgba(74,140,111,0.24);
+    }
+    .pick-row.finished { opacity: 1 }
+    .side-badge.pending { background: var(--a3); color: var(--a) }
+    .side-badge.draw { background: rgba(199,183,112,0.12); color: var(--a) }
+    .side-badge.team { background: rgba(208,202,168,0.10); color: var(--hi) }
+    .pick-actions {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 5px;
+      flex-shrink: 0;
+      width: 96px;
+    }
+    .pick-action {
+      border: 1px solid var(--border1);
+      border-radius: 9px;
+      padding: 0 6px;
+      height: 24px;
+      width: 100%;
+      font-family: var(--mono);
+      font-size: 7px;
+      font-weight: 800;
+      letter-spacing: 0;
+      color: var(--mid);
+      background: rgba(255,255,255,0.04);
+      white-space: nowrap;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .pick-action.cash {
+      height: 28px;
+      color: var(--a);
+      border-color: rgba(199,183,112,0.28);
+      background: rgba(199,183,112,0.10);
+    }
+    .pick-action.add {
+      color: var(--pos);
+      border-color: rgba(74,140,111,0.26);
+      background: rgba(74,140,111,0.09);
+    }
+    .pick-action.redeem {
+      height: 34px;
+      color: #131209;
+      border-color: transparent;
+      background: var(--pos);
+    }
+    .pick-action.cancel {
+      height: 34px;
+      color: var(--neg);
+      border-color: rgba(217,83,79,0.28);
+      background: rgba(217,83,79,0.08);
+    }
+    .pick-action.settled {
+      height: 34px;
+      color: var(--lo);
+      border-color: var(--border0);
+      background: rgba(255,255,255,0.025);
+      cursor: default;
+    }
+
+    .empty-state {
+      background: var(--bg2);
+      border: 1px solid var(--border1);
+      border-radius: 10px;
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .empty-state-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--hi);
+      margin-bottom: 5px;
+    }
+    .empty-state-copy {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: var(--lo);
+      line-height: 1.55;
+      margin-bottom: 12px;
+    }
+
     /* ─── ORDER CARD ─── */
     .order-card {
       background: var(--bg2);
@@ -1083,91 +1272,6 @@
       color: var(--hi);
     }
 
-    /* ─── REDEEM CARD ─── */
-    .redeem-card {
-      background: linear-gradient(135deg, rgba(74,140,111,0.08) 0%, rgba(199,183,112,0.06) 100%);
-      border: 1px solid rgba(74,140,111,0.20);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 5px;
-    }
-    .redeem-card-top {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    .redeem-card-question {
-      flex: 1;
-      font-size: 9.5px;
-      color: var(--hi);
-      line-height: 13px;
-    }
-    .redeem-payout {
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--pos);
-      flex-shrink: 0;
-    }
-    .redeem-card-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    .redeem-card-resolved {
-      font-family: var(--mono);
-      font-size: 7.5px;
-      color: var(--pos);
-    }
-    .redeem-card-date {
-      font-family: var(--mono);
-      font-size: 7.5px;
-      color: var(--lo);
-    }
-    .redeem-btn {
-      width: 100%;
-      background: var(--pos);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 8px;
-      min-height: 36px;
-      font-family: var(--mono);
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: opacity 0.15s;
-      touch-action: manipulation;
-    }
-    .redeem-btn:hover { opacity: 0.85 }
-
-    /* ─── ADDRESSES ─── */
-    .addresses-section {
-      margin: 16px 20px 0;
-    }
-    .address-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 6px;
-    }
-    .chain-label {
-      font-family: var(--mono);
-      font-size: 8px;
-      font-weight: 700;
-      color: var(--a);
-      width: 36px;
-    }
-    .address-mono {
-      font-family: var(--mono);
-      font-size: 9px;
-      color: var(--mid);
-    }
-
     /* ─── PNL CHART ─── */
     .pnl-chart-wrap {
       margin: 12px 20px 0;
@@ -1221,61 +1325,6 @@
     .pnl-chart svg {
       width: 100%;
       height: 100%;
-    }
-
-    /* ─── BEST CALL CARD ─── */
-    .best-call {
-      margin: 12px 20px 0;
-      background: linear-gradient(135deg, rgba(199,183,112,0.06) 0%, rgba(74,140,111,0.06) 100%);
-      border: 1px solid rgba(199,183,112,0.14);
-      border-radius: 10px;
-      padding: 12px 14px;
-    }
-    .best-call-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 8px;
-    }
-    .best-call-icon {
-      width: 12px; height: 12px;
-      color: var(--a);
-      flex-shrink: 0;
-    }
-    .best-call-label {
-      font-family: var(--mono);
-      font-size: 7px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--a2);
-    }
-    .best-call-question {
-      font-size: 10px;
-      color: var(--hi);
-      line-height: 14px;
-      margin-bottom: 6px;
-    }
-    .best-call-stats {
-      display: flex;
-      gap: 16px;
-    }
-    .best-call-stat {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .best-call-stat-label {
-      font-family: var(--mono);
-      font-size: 6.5px;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-      color: var(--lo);
-    }
-    .best-call-stat-val {
-      font-family: var(--mono);
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--pos);
     }
 
     /* ─── CATEGORY BREAKDOWN ─── */
@@ -1366,7 +1415,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
             </div>
             <div class="onboard-title">Predict the future.<br/>Get paid when you're right.</div>
-            <div class="onboard-subtitle">Trade on real-world outcomes — elections, crypto, sports, macro. Gasless. From your phone.</div>
+            <div class="onboard-subtitle">Pick real-world outcomes — elections, crypto, sports, macro. Gasless. From your phone.</div>
           </div>
 
           <div class="feature-list">
@@ -1374,21 +1423,21 @@
               <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
               <div class="feature-text">
                 <div class="feature-text-title">No gas, no seed phrases</div>
-                <div class="feature-text-desc">Sign in with passkey or wallet. Trading address derived automatically.</div>
+                <div class="feature-text-desc">Sign in with passkey or wallet. Predict account prepared automatically.</div>
               </div>
             </div>
             <div class="feature-item">
               <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
               <div class="feature-text">
-                <div class="feature-text-title">Deposit USDC, start trading</div>
-                <div class="feature-text-desc">Send USDC to your deposit address. Auto-wrapped for trading.</div>
+                <div class="feature-text-title">Deposit USDC, make picks</div>
+                <div class="feature-text-desc">Send USDC to your deposit address. Funds show up in Predict.</div>
               </div>
             </div>
             <div class="feature-item">
               <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg></div>
               <div class="feature-text">
-                <div class="feature-text-title">Markets resolve, you collect</div>
-                <div class="feature-text-desc">Winning shares pay $1. Redeem anytime after resolution.</div>
+                <div class="feature-text-title">When you're right, collect</div>
+                <div class="feature-text-desc">Winning picks become ready to redeem after the market settles.</div>
               </div>
             </div>
           </div>
@@ -1429,13 +1478,13 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color: var(--pos)"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
             </div>
             <div class="onboard-title">Wallet connected.<br/>One more step.</div>
-            <div class="onboard-subtitle">Create your prediction account to start trading. One signature — no transaction, no gas, no cost.</div>
+            <div class="onboard-subtitle">Create your prediction account to start making picks. One signature — no transaction, no gas, no cost.</div>
           </div>
 
           <div class="cta-pad" style="margin-top: 8px">
             <button class="cta-primary">Open Prediction Account</button>
             <div style="font-family: var(--mono); font-size: 7.5px; color: var(--lo); text-align: center; margin-top: 4px; line-height: 1.5">
-              Signs a message to derive your trading key.<br/>No transaction. No gas. Reversible anytime.
+              Signs a message to prepare your Predict account.<br/>No transaction. No gas. Reversible anytime.
             </div>
           </div>
         </div>
@@ -1467,17 +1516,17 @@
           <!-- Empty equity -->
           <div class="equity-card">
             <div class="equity-row">
-              <div class="eq-item"><span class="eq-label">Portfolio</span><span class="eq-val">$0.00</span></div>
+              <div class="eq-item"><span class="eq-label">Predict value</span><span class="eq-val">$0.00</span></div>
               <div class="eq-item center"><span class="eq-label">Cash</span><span class="eq-val">$0.00</span></div>
-              <div class="eq-item right"><span class="eq-label">P&L</span><span class="eq-val">--</span></div>
+              <div class="eq-item right"><span class="eq-label">Collected</span><span class="eq-val">--</span></div>
             </div>
           </div>
 
           <!-- Deposit prompt -->
           <div style="padding: 24px 20px; text-align: center;">
             <div style="font-family: var(--mono); font-size: 7.5px; letter-spacing: 2px; text-transform: uppercase; color: var(--mid); margin-bottom: 12px">Get started</div>
-            <div style="font-size: 12px; color: var(--hi); line-height: 18px; margin-bottom: 4px">Deposit USDC to start trading</div>
-            <div style="font-family: var(--mono); font-size: 8px; color: var(--lo); line-height: 1.5; margin-bottom: 16px">Send USDC to your deposit address on Polygon.<br/>Funds auto-wrap and are ready to trade.</div>
+            <div style="font-size: 12px; color: var(--hi); line-height: 18px; margin-bottom: 4px">Deposit USDC to make your first pick</div>
+            <div style="font-family: var(--mono); font-size: 8px; color: var(--lo); line-height: 1.5; margin-bottom: 16px">Send USDC to your deposit address on Polygon.<br/>Funds show up here when ready.</div>
             <div class="cta-pad" style="padding: 0">
               <button class="cta-primary">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
@@ -1495,24 +1544,24 @@
             <div class="trending-card">
               <div class="trending-question">Will BTC reach $150K by Dec 2026?</div>
               <div class="trending-odds">
-                <div class="trending-odds-bar yes-bar" style="flex: 0.61">YES 61¢</div>
-                <div class="trending-odds-bar no-bar" style="flex: 0.39">NO 39¢</div>
+                <div class="trending-odds-bar yes-bar" style="flex: 0.61">Yes 61%</div>
+                <div class="trending-odds-bar no-bar" style="flex: 0.39">No 39%</div>
               </div>
               <div class="trending-meta"><span class="trending-vol">$2.4M volume</span><span class="trending-badge">Crypto</span></div>
             </div>
             <div class="trending-card">
               <div class="trending-question">Fed rate cut before July 2026?</div>
               <div class="trending-odds">
-                <div class="trending-odds-bar yes-bar" style="flex: 0.48">YES 48¢</div>
-                <div class="trending-odds-bar no-bar" style="flex: 0.52">NO 52¢</div>
+                <div class="trending-odds-bar yes-bar" style="flex: 0.48">Yes 48%</div>
+                <div class="trending-odds-bar no-bar" style="flex: 0.52">No 52%</div>
               </div>
               <div class="trending-meta"><span class="trending-vol">$890K volume</span><span class="trending-badge">Macro</span></div>
             </div>
             <div class="trending-card">
               <div class="trending-question">Arsenal to win EPL 2025-26?</div>
               <div class="trending-odds">
-                <div class="trending-odds-bar yes-bar" style="flex: 0.38">YES 38¢</div>
-                <div class="trending-odds-bar no-bar" style="flex: 0.62">NO 62¢</div>
+                <div class="trending-odds-bar yes-bar" style="flex: 0.38">Arsenal 38%</div>
+                <div class="trending-odds-bar no-bar" style="flex: 0.62">Field 62%</div>
               </div>
               <div class="trending-meta"><span class="trending-vol">$340K volume</span><span class="trending-badge">Sports</span></div>
             </div>
@@ -1525,15 +1574,15 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       PHASE 2 — ACTIVE PORTFOLIO
+       PHASE 2 — FUNDED ACCOUNT + ACTIVE PICKS
   ═══════════════════════════════════════════════ -->
-  <div class="flow-label">Phase 2 — Active Portfolio</div>
+  <div class="flow-label">Phase 2 — Funded Account + Active Picks</div>
 
   <div class="screens-row">
 
-    <!-- SCREEN 2A: Active portfolio overview -->
+    <!-- SCREEN 2A: Funded account, no picks yet -->
     <div class="screen-col">
-      <div class="screen-label">2A · Portfolio + Performance</div>
+      <div class="screen-label">2A · Funded, No Picks Yet</div>
       <div class="phone">
         <div class="status-bar"><span class="st-time">9:41</span><div class="st-icons"><div class="signal-bar" style="height:6px"></div><div class="signal-bar" style="height:8px"></div><div class="signal-bar" style="height:10px"></div><div class="signal-bar" style="height:12px"></div></div></div>
         <div class="profile-header">
@@ -1555,75 +1604,48 @@
             <div class="active-badge"><div class="connected-dot"></div><span class="active-badge-text">Active</span></div>
           </div>
 
-          <div class="perf-strip">
-            <div class="perf-cell"><span class="perf-label">Win Rate</span><span class="perf-val pos">72%</span></div>
-            <div class="perf-cell"><span class="perf-label">ROI</span><span class="perf-val pos">+34%</span></div>
-            <div class="perf-cell"><span class="perf-label">Streak</span><span class="perf-val pos">W4</span></div>
-            <div class="perf-cell"><span class="perf-label">Trades</span><span class="perf-val">31</span></div>
-          </div>
-
           <div class="equity-card">
             <div class="equity-row">
-              <div class="eq-item"><span class="eq-label">Portfolio</span><span class="eq-val">$2,847.30</span></div>
-              <div class="eq-item center"><span class="eq-label">Cash</span><span class="eq-val">$412.50</span></div>
-              <div class="eq-item right"><span class="eq-label">P&L</span><span class="eq-val" style="color: var(--pos)">+$724.18</span></div>
+              <div class="eq-item"><span class="eq-label">Predict value</span><span class="eq-val">$125.00</span></div>
+              <div class="eq-item center"><span class="eq-label">Cash</span><span class="eq-val">$125.00</span></div>
+              <div class="eq-item right"><span class="eq-label">Collected</span><span class="eq-val">$0.00</span></div>
             </div>
           </div>
 
-          <!-- Positions — tappable -->
           <div class="section-wrap">
             <div class="section-header">
-              <span class="section-title">Open Positions</span>
-              <span class="section-count">5 active</span>
+              <span class="section-title">Your Picks</span>
+              <span class="section-count">none yet</span>
             </div>
-            <div class="pos-row">
-              <span class="side-badge yes">YES</span>
-              <div class="pos-info"><div class="pos-question">Will BTC reach $150K by Dec 2026?</div><div class="pos-meta"><span>42¢ → 61¢</span><span>·</span><span>50 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl pos">+$9.50</span><span class="pos-pnl-pct pos">+45%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
-            <div class="pos-row">
-              <span class="side-badge no">NO</span>
-              <div class="pos-info"><div class="pos-question">Fed rate cut before July 2026?</div><div class="pos-meta"><span>35¢ → 52¢</span><span>·</span><span>100 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl neg">-$17.00</span><span class="pos-pnl-pct neg">-49%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
-            <div class="pos-row">
-              <span class="side-badge yes">YES</span>
-              <div class="pos-info"><div class="pos-question">Iran nuclear deal signed by 2027?</div><div class="pos-meta"><span>18¢ → 24¢</span><span>·</span><span>200 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl pos">+$12.00</span><span class="pos-pnl-pct pos">+33%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
-            </div>
-            <div class="pos-row">
-              <span class="side-badge yes">YES</span>
-              <div class="pos-info"><div class="pos-question">Arsenal to win EPL 2025-26?</div><div class="pos-meta"><span>30¢ → 38¢</span><span>·</span><span>75 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl pos">+$6.00</span><span class="pos-pnl-pct pos">+27%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            <div class="empty-state">
+              <div class="empty-state-title">No picks yet</div>
+              <div class="empty-state-copy">Your cash is ready. Pick an outcome and it will show up here with its status and next action.</div>
+              <button class="cta-primary">Explore markets</button>
             </div>
           </div>
 
-          <!-- Open orders -->
           <div class="section-wrap">
-            <div class="section-header"><span class="section-title">Open Orders</span><span class="section-count">1 pending</span></div>
-            <div class="order-card">
-              <div class="order-top">
-                <span class="side-badge buy">BUY</span>
-                <span class="order-outcome">YES — Will SOL reach $500?</span>
-                <span class="order-status">LIVE</span>
-              </div>
-              <div class="order-stats">
-                <div><div class="order-stat-label">Price</div><div class="order-stat-val">22¢</div></div>
-                <div><div class="order-stat-label">Shares</div><div class="order-stat-val">150</div></div>
-                <div><div class="order-stat-label">Cost</div><div class="order-stat-val">$33</div></div>
-                <div style="text-align:right"><div class="order-stat-label">Filled</div><div class="order-stat-val">0%</div></div>
-              </div>
-              <button class="cancel-btn">Cancel</button>
+            <div class="section-header">
+              <span class="section-title">Markets to watch</span>
+              <span class="section-count">popular now</span>
             </div>
-          </div>
-
-          <div class="share-cta">
-            <svg class="share-cta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
-            <span class="share-cta-text">Share Stats</span>
+            <div class="trending-card">
+              <div class="trending-question">Liverpool vs Crystal Palace</div>
+              <div class="trending-odds">
+                <div class="trending-odds-bar yes-bar" style="flex: 0.61">Liverpool 61%</div>
+                <div class="trending-odds-bar no-bar" style="flex: 0.22">Draw 22%</div>
+                <div class="trending-odds-bar no-bar" style="flex: 0.18">Palace 18%</div>
+              </div>
+              <div class="trending-meta"><span class="trending-vol">Live today</span><span class="trending-badge">Sports</span></div>
+            </div>
+            <div class="trending-card">
+              <div class="trending-question">Will BTC reach $150K by Dec 2026?</div>
+              <div class="trending-odds">
+                <div class="trending-odds-bar yes-bar" style="flex: 0.61">Yes 61%</div>
+                <div class="trending-odds-bar no-bar" style="flex: 0.39">No 39%</div>
+              </div>
+              <div class="trending-meta"><span class="trending-vol">Crypto</span><span class="trending-badge">Explore</span></div>
+            </div>
           </div>
           <div style="height: 16px"></div>
         </div>
@@ -1633,102 +1655,80 @@
 
     <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
 
-    <!-- SCREEN 2B: Position Detail (tap a position) -->
+    <!-- SCREEN 2B: Active picks overview -->
     <div class="screen-col">
-      <div class="screen-label">2B · Position Detail (tap)</div>
+      <div class="screen-label">2B · Active Picks</div>
       <div class="phone">
         <div class="status-bar"><span class="st-time">9:41</span><div class="st-icons"><div class="signal-bar" style="height:6px"></div><div class="signal-bar" style="height:8px"></div><div class="signal-bar" style="height:10px"></div><div class="signal-bar" style="height:12px"></div></div></div>
         <div class="profile-header">
           <div class="back-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg></div>
-          <div class="header-title">Position</div>
-          <div class="active-badge"><div class="connected-dot"></div><span class="active-badge-text">Open</span></div>
+          <div class="header-title">Profile</div>
+          <div class="header-actions">
+            <div class="header-action-btn deposit"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Deposit</div>
+            <div class="header-action-btn withdraw"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Withdraw</div>
+          </div>
         </div>
-        <div class="scroll-content" style="padding-bottom: 140px">
+        <div class="scroll-content">
+          <div class="identity">
+            <div class="avatar-ring gradient"><div class="avatar-inner">M</div></div>
+            <div class="identity-info">
+              <div class="handle">marcopolofi</div>
+              <div class="addr-row"><span class="addr-text">7xKXt···4nPq</span><svg class="addr-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></div>
+              <div class="connected-chip"><div class="connected-dot"></div><span class="connected-text">Passkey</span></div>
+            </div>
+            <div class="active-badge"><div class="connected-dot"></div><span class="active-badge-text">Active</span></div>
+          </div>
 
-          <!-- Market question -->
-          <div class="pos-detail-hero">
-            <div class="pos-detail-question">Will BTC reach $150K by Dec 2026?</div>
-            <div class="pos-detail-meta">
-              <span class="side-badge yes">YES</span>
-              <span class="pos-detail-status" style="color: var(--pos)">50 shares</span>
-              <span style="font-family: var(--mono); font-size: 7.5px; color: var(--lo)">Expires Dec 31, 2026</span>
+          <div class="equity-card">
+            <div class="equity-row">
+              <div class="eq-item"><span class="eq-label">Predict value</span><span class="eq-val">$2,847.30</span></div>
+              <div class="eq-item center"><span class="eq-label">Cash</span><span class="eq-val">$412.50</span></div>
+              <div class="eq-item right"><span class="eq-label">Active picks</span><span class="eq-val">$1,822</span></div>
+            </div>
+            <div class="equity-row">
+              <div class="eq-item"><span class="eq-label">Cash out now</span><span class="eq-val">$1,764</span></div>
+              <div class="eq-item center"><span class="eq-label">Ready to collect</span><span class="eq-val">$0</span></div>
+              <div class="eq-item right"><span class="eq-label">Collected</span><span class="eq-val" style="color: var(--pos)">$1,284</span></div>
             </div>
           </div>
 
-          <!-- Position stats grid -->
-          <div class="pos-detail-grid">
-            <div class="pos-detail-cell">
-              <span class="pos-detail-cell-label">Avg Entry</span>
-              <span class="pos-detail-cell-val">42¢</span>
-              <span class="pos-detail-cell-sub">$21.00 cost basis</span>
-            </div>
-            <div class="pos-detail-cell">
-              <span class="pos-detail-cell-label">Current Price</span>
-              <span class="pos-detail-cell-val" style="color: var(--pos)">61¢</span>
-              <span class="pos-detail-cell-sub">$30.50 market value</span>
-            </div>
-            <div class="pos-detail-cell">
-              <span class="pos-detail-cell-label">Unrealized P&L</span>
-              <span class="pos-detail-cell-val" style="color: var(--pos)">+$9.50</span>
-              <span class="pos-detail-cell-sub" style="color: var(--pos)">+45.2%</span>
-            </div>
-            <div class="pos-detail-cell">
-              <span class="pos-detail-cell-label">Max Payout</span>
-              <span class="pos-detail-cell-val">$50.00</span>
-              <span class="pos-detail-cell-sub">if resolved YES</span>
-            </div>
-          </div>
-
-          <!-- Sell form -->
-          <div class="sell-form">
-            <div class="sell-form-label">Sell Shares</div>
-            <div class="sell-input-row">
-              <div class="sell-input">25</div>
-              <button class="sell-max">MAX</button>
-            </div>
-            <div class="sell-summary">
-              <div class="sell-summary-row">
-                <span class="sell-summary-label">Shares to sell</span>
-                <span class="sell-summary-val">25 of 50</span>
-              </div>
-              <div class="sell-summary-row">
-                <span class="sell-summary-label">Est. price</span>
-                <span class="sell-summary-val">60¢</span>
-              </div>
-              <div class="sell-summary-row">
-                <span class="sell-summary-label">Est. proceeds</span>
-                <span class="sell-summary-val" style="color: var(--pos)">$15.00</span>
-              </div>
-              <div class="sell-summary-row">
-                <span class="sell-summary-label">Realized P&L</span>
-                <span class="sell-summary-val" style="color: var(--pos)">+$4.50</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Trade history for this market -->
           <div class="section-wrap">
-            <div class="section-header"><span class="section-title">Your Trades</span><span class="section-count">this market</span></div>
-            <div class="activity-row">
-              <span class="side-badge buy">BUY</span>
-              <div class="activity-info"><div class="activity-title">30 shares @ 40¢</div><div class="activity-time">Apr 24 · 14:32</div></div>
-              <span class="activity-amt" style="color: var(--hi)">$12.00</span>
+            <div class="picks-heading">
+              <span class="section-title">Your Picks</span>
+              <div class="picks-heading-side">
+                <span class="section-count">5 live</span>
+                <button class="scope-switch" aria-pressed="false"><span class="scope-switch-knob"></span>All</button>
+              </div>
             </div>
-            <div class="activity-row">
-              <span class="side-badge buy">BUY</span>
-              <div class="activity-info"><div class="activity-title">20 shares @ 45¢</div><div class="activity-time">Apr 20 · 09:15</div></div>
-              <span class="activity-amt" style="color: var(--hi)">$9.00</span>
+            <div class="pos-row pick-row">
+              <div class="pos-info"><div class="pos-question">Liverpool <span>68% now</span></div><div class="pos-meta">Liverpool vs Crystal Palace · avg entry 58%</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cash">$56 cash out now</button>
+                <button class="pick-action add">Back more</button>
+              </div>
+            </div>
+            <div class="pos-row pick-row no">
+              <div class="pos-info"><div class="pos-question">No <span>93% now</span></div><div class="pos-meta">China invade Taiwan by 2026 · avg entry 88%</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cash">$20 cash out now</button>
+                <button class="pick-action add">Back more</button>
+              </div>
+            </div>
+            <div class="pos-row pick-row">
+              <div class="pos-info"><div class="pos-question">Yes <span>61% now</span></div><div class="pos-meta">BTC reaches $150K by Dec 2026 · avg entry 42%</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cash">$31 cash out now</button>
+                <button class="pick-action add">Back more</button>
+              </div>
+            </div>
+            <div class="pos-row pick-row draw">
+              <div class="pos-info"><div class="pos-question">45% on Draw</div><div class="pos-meta">Yet to be placed</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cancel">Cancel</button>
+              </div>
             </div>
           </div>
-        </div>
-
-        <!-- Fixed bottom sell + view market -->
-        <div class="bottom-dock">
-          <button class="cta-danger" style="flex: 1">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-            Sell 25
-          </button>
-          <button class="cta-secondary" style="flex: 1">View Market</button>
+          <div style="height: 16px"></div>
         </div>
         <div class="nav-bar"><div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="1.8"><path d="M4 11h6V4H4zM14 4h6v7h-6zM14 14h6v6h-6zM4 17h6v3H4z"/></svg></div><span class="nav-label">Feed</span></div><div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="var(--a)" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div class="nav-dot"></div><span class="nav-label active">Predict</span></div><div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><span class="nav-label">Swap</span></div><div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--hi)" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 5-9"/></svg></div><span class="nav-label">Trade</span></div></div>
       </div>
@@ -1737,15 +1737,15 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════
-       PHASE 3 — RESOLUTION + REDEMPTION
+       PHASE 3 — ALL PICKS
   ═══════════════════════════════════════════════ -->
-  <div class="flow-label">Phase 3 — Resolution + Redemption</div>
+  <div class="flow-label">Phase 3 — All Picks</div>
 
   <div class="screens-row">
 
-    <!-- SCREEN 3A: Redeemable positions -->
+    <!-- SCREEN 3A: Full lifecycle account -->
     <div class="screen-col">
-      <div class="screen-label">3A · Redeemable Positions</div>
+      <div class="screen-label">3A · All Lifecycle States</div>
       <div class="phone">
         <div class="status-bar"><span class="st-time">9:41</span><div class="st-icons"><div class="signal-bar" style="height:6px"></div><div class="signal-bar" style="height:8px"></div><div class="signal-bar" style="height:10px"></div><div class="signal-bar" style="height:12px"></div></div></div>
         <div class="profile-header">
@@ -1767,103 +1767,78 @@
             <div class="active-badge"><div class="connected-dot"></div><span class="active-badge-text">Active</span></div>
           </div>
 
-          <div class="perf-strip">
-            <div class="perf-cell"><span class="perf-label">Win Rate</span><span class="perf-val pos">72%</span></div>
-            <div class="perf-cell"><span class="perf-label">ROI</span><span class="perf-val pos">+34%</span></div>
-            <div class="perf-cell"><span class="perf-label">Streak</span><span class="perf-val pos">W4</span></div>
-            <div class="perf-cell"><span class="perf-label">Trades</span><span class="perf-val">31</span></div>
+          <div class="equity-card">
+            <div class="equity-row">
+              <div class="eq-item"><span class="eq-label">Predict value</span><span class="eq-val">$3,139.30</span></div>
+              <div class="eq-item center"><span class="eq-label">Cash</span><span class="eq-val">$412.50</span></div>
+              <div class="eq-item right"><span class="eq-label">Ready</span><span class="eq-val" style="color: var(--pos)">$292</span></div>
+            </div>
+            <div class="equity-row">
+              <div class="eq-item"><span class="eq-label">Cash out now</span><span class="eq-val">$612</span></div>
+              <div class="eq-item center"><span class="eq-label">Active picks</span><span class="eq-val">52</span></div>
+              <div class="eq-item right"><span class="eq-label">Collected</span><span class="eq-val" style="color: var(--pos)">$1,284</span></div>
+            </div>
           </div>
 
-          <!-- Redeemable section — highlighted -->
           <div class="section-wrap">
-            <div class="section-header">
-              <span class="section-title" style="color: var(--pos)">Redeemable</span>
-              <span class="section-count" style="color: var(--pos)">2 markets resolved</span>
-            </div>
-
-            <div class="redeem-card">
-              <div class="redeem-card-top">
-                <span class="result-badge won">WON</span>
-                <div class="redeem-card-question">Will China ban crypto mining again?</div>
-                <span class="redeem-payout">+$82</span>
+            <div class="picks-heading">
+              <span class="section-title">Your Picks</span>
+              <div class="picks-heading-side">
+                <span class="section-count">52 active · 2 ready</span>
+                <button class="scope-switch active" aria-pressed="true"><span class="scope-switch-knob"></span>Active</button>
               </div>
-              <div class="redeem-card-meta">
-                <span class="redeem-card-resolved">Resolved NO — your position won</span>
-                <span class="redeem-card-date">Apr 27</span>
+            </div>
+            <div class="pos-row pick-row attention">
+              <div class="pos-info"><div class="pos-question">No <span class="win">won</span></div><div class="pos-meta">China bans crypto mining again · ready to collect</div></div>
+              <div class="pick-actions">
+                <button class="pick-action redeem">Redeem $82</button>
               </div>
-              <button class="redeem-btn">Redeem $82.00</button>
             </div>
-
-            <div class="redeem-card">
-              <div class="redeem-card-top">
-                <span class="result-badge won">WON</span>
-                <div class="redeem-card-question">US-China tariff deal before May?</div>
-                <span class="redeem-payout">+$210</span>
+            <div class="pos-row pick-row attention">
+              <div class="pos-info"><div class="pos-question">Yes <span class="win">won</span></div><div class="pos-meta">US-China tariff deal before May · ready to collect</div></div>
+              <div class="pick-actions">
+                <button class="pick-action redeem">Redeem $210</button>
               </div>
-              <div class="redeem-card-meta">
-                <span class="redeem-card-resolved">Resolved YES — your position won</span>
-                <span class="redeem-card-date">Apr 18</span>
+            </div>
+            <div class="pos-row pick-row">
+              <div class="pos-info"><div class="pos-question">Liverpool <span>68% now</span></div><div class="pos-meta">Liverpool vs Crystal Palace · avg entry 58%</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cash">$56 cash out now</button>
+                <button class="pick-action add">Back more</button>
               </div>
-              <button class="redeem-btn">Redeem $210.00</button>
             </div>
-          </div>
-
-          <!-- Lost positions -->
-          <div class="section-wrap">
-            <div class="section-header">
-              <span class="section-title">Resolved</span>
-              <span class="section-count">recently closed</span>
+            <div class="pos-row pick-row no">
+              <div class="pos-info"><div class="pos-question">No <span>93% now</span></div><div class="pos-meta">China invade Taiwan by 2026 · avg entry 88%</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cash">$20 cash out now</button>
+                <button class="pick-action add">Back more</button>
+              </div>
             </div>
-            <div class="activity-row" style="opacity: 0.7">
-              <span class="result-badge lost">LOST</span>
-              <div class="activity-info"><div class="activity-title">Apple to announce AI chip partnership?</div><div class="activity-time">Apr 25 · Resolved YES — your NO position lost</div></div>
-              <span class="activity-amt neg">-$25.00</span>
+            <div class="pos-row pick-row away">
+              <div class="pos-info"><div class="pos-question">Crystal Palace <span>16% now</span></div><div class="pos-meta">Liverpool vs Crystal Palace · avg entry 18%</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cash">$17 cash out now</button>
+                <button class="pick-action add">Back more</button>
+              </div>
             </div>
-          </div>
-
-          <!-- Active positions below -->
-          <div class="section-wrap">
-            <div class="section-header"><span class="section-title">Open Positions</span><span class="section-count">3 active</span></div>
-            <div class="pos-row">
-              <span class="side-badge yes">YES</span>
-              <div class="pos-info"><div class="pos-question">Will BTC reach $150K by Dec 2026?</div><div class="pos-meta"><span>42¢ → 61¢</span><span>·</span><span>50 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl pos">+$9.50</span><span class="pos-pnl-pct pos">+45%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            <div class="pos-row pick-row draw">
+              <div class="pos-info"><div class="pos-question">45% on Draw</div><div class="pos-meta">Yet to be placed</div></div>
+              <div class="pick-actions">
+                <button class="pick-action cancel">Cancel</button>
+              </div>
             </div>
-            <div class="pos-row">
-              <span class="side-badge yes">YES</span>
-              <div class="pos-info"><div class="pos-question">Iran nuclear deal signed by 2027?</div><div class="pos-meta"><span>18¢ → 24¢</span><span>·</span><span>200 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl pos">+$12.00</span><span class="pos-pnl-pct pos">+33%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            <div class="pos-row pick-row away">
+              <div class="pos-info"><div class="pos-question">Boston <span>lost</span></div><div class="pos-meta">NBA Finals winner · settled</div></div>
+              <div class="pick-actions">
+                <button class="pick-action settled">No payout</button>
+              </div>
             </div>
-            <div class="pos-row">
-              <span class="side-badge yes">YES</span>
-              <div class="pos-info"><div class="pos-question">Arsenal to win EPL 2025-26?</div><div class="pos-meta"><span>30¢ → 38¢</span><span>·</span><span>75 shares</span></div></div>
-              <div class="pos-pnl-wrap"><span class="pos-pnl pos">+$6.00</span><span class="pos-pnl-pct pos">+27%</span></div>
-              <svg class="pos-arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            <div class="pos-row pick-row finished">
+              <div class="pos-info"><div class="pos-question">Democrat <span class="win">won</span></div><div class="pos-meta">Election popular vote · collected $144</div></div>
+              <div class="pick-actions">
+                <button class="pick-action settled">Collected</button>
+              </div>
             </div>
-          </div>
-
-          <!-- Best call + addresses at bottom -->
-          <div class="best-call">
-            <div class="best-call-header">
-              <svg class="best-call-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              <span class="best-call-label">Best Call</span>
-            </div>
-            <div class="best-call-question">US-China tariff deal before May?</div>
-            <div class="best-call-stats">
-              <div class="best-call-stat"><span class="best-call-stat-label">Entry</span><span class="best-call-stat-val">21¢</span></div>
-              <div class="best-call-stat"><span class="best-call-stat-label">Resolved</span><span class="best-call-stat-val">$1.00</span></div>
-              <div class="best-call-stat"><span class="best-call-stat-label">Return</span><span class="best-call-stat-val">+376%</span></div>
-              <div class="best-call-stat"><span class="best-call-stat-label">Payout</span><span class="best-call-stat-val">$210</span></div>
-            </div>
-          </div>
-
-          <div class="addresses-section">
-            <div class="section-header" style="margin-bottom: 0"><span class="section-title">Addresses</span></div>
-            <div class="address-row"><span class="chain-label">SOL</span><span class="address-mono">7xKXt···4nPq</span></div>
-            <div class="address-row"><span class="chain-label">EOA</span><span class="address-mono">0x3F2···8c1D</span></div>
-            <div class="address-row"><span class="chain-label">SAFE</span><span class="address-mono">0xA91···6e4B</span></div>
           </div>
           <div style="height: 24px"></div>
         </div>
