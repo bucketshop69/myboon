@@ -1,6 +1,8 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import { redeemPosition } from '@/features/predict/predict.api';
 import { semantic, tokens } from '@/theme';
 
 type DetailPickScope = 'market' | 'all';
@@ -14,10 +16,12 @@ interface DetailPicksPanelProps {
   redeemablePositions: PortfolioPosition[];
   openOrders: OpenOrder[];
   cancellingOrderId?: string | null;
+  polygonAddress?: string | null;
   onScopeChange: (scope: DetailPickScope) => void;
   onBackMore: (position: PortfolioPosition) => void;
   onCashOut: (position: PortfolioPosition) => void;
   onCancelOrder?: (orderId: string) => void;
+  onRedeemed?: () => void;
 }
 
 function formatUsd(value: number): string {
@@ -68,10 +72,12 @@ export function DetailPicksPanel({
   redeemablePositions,
   openOrders,
   cancellingOrderId,
+  polygonAddress,
   onScopeChange,
   onBackMore,
   onCashOut,
   onCancelOrder,
+  onRedeemed,
 }: DetailPicksPanelProps) {
   const marketRedeemables = redeemablePositions.filter((position) => isSameMarket(position, marketSlug));
   const marketOrders = openOrders.filter((order) => isMarketOrder(order, marketSlug));
@@ -101,7 +107,7 @@ export function DetailPicksPanel({
         <Text style={styles.title}>Your Picks</Text>
         <View style={styles.headingSide}>
           <Text style={styles.subtitle}>
-            {scope === 'market' ? `${marketPositions.length} here` : `${rows.length} total`}
+            {scope === 'market' ? `${rows.length} here` : `${rows.length} total`}
           </Text>
           <Pressable
             style={[styles.scopeSwitch, scope === 'all' && styles.scopeSwitchActive]}
@@ -147,7 +153,14 @@ export function DetailPicksPanel({
           );
         }
         if (row.kind === 'redeemable') {
-          return <RedeemableRow key={row.id} position={row.position} />;
+          return (
+            <RedeemableRow
+              key={row.id}
+              position={row.position}
+              polygonAddress={polygonAddress}
+              onRedeemed={onRedeemed}
+            />
+          );
         }
         return (
           <PositionRow
@@ -224,7 +237,35 @@ function OrderRow({
   );
 }
 
-function RedeemableRow({ position }: { position: PortfolioPosition }) {
+function RedeemableRow({
+  position,
+  polygonAddress,
+  onRedeemed,
+}: {
+  position: PortfolioPosition;
+  polygonAddress?: string | null;
+  onRedeemed?: () => void;
+}) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  async function handleRedeem() {
+    if (!polygonAddress || status === 'loading' || status === 'success') return;
+    setStatus('loading');
+    try {
+      const result = await redeemPosition(polygonAddress, {
+        conditionId: position.conditionId,
+        asset: position.asset,
+        outcomeIndex: position.outcomeIndex,
+        negativeRisk: position.negativeRisk,
+      });
+      if (!result.ok) throw new Error(result.error || 'Redeem failed');
+      setStatus('success');
+      onRedeemed?.();
+    } catch {
+      setStatus('error');
+    }
+  }
+
   return (
     <View style={[styles.rowCard, styles.readyCard]}>
       <View style={styles.rowMain}>
@@ -232,10 +273,22 @@ function RedeemableRow({ position }: { position: PortfolioPosition }) {
           <Text style={styles.rowTitle}>{formatOutcome(position.outcome)} <Text style={styles.winText}>won</Text></Text>
           <Text style={styles.rowMeta} numberOfLines={1}>{position.title || position.slug} · ready to collect</Text>
         </View>
-        <View style={styles.redeemAction}>
-          <MaterialIcons name="redeem" size={12} color={tokens.colors.viridian} />
-          <Text style={styles.redeemActionText}>Redeem {formatUsd(position.currentValue ?? 0)}</Text>
-        </View>
+        <Pressable
+          style={[styles.redeemAction, status === 'error' && styles.redeemActionError]}
+          disabled={!polygonAddress || status === 'loading' || status === 'success'}
+          onPress={handleRedeem}
+        >
+          {status === 'loading' ? (
+            <ActivityIndicator size="small" color={tokens.colors.viridian} />
+          ) : (
+            <>
+              <MaterialIcons name={status === 'success' ? 'check' : 'redeem'} size={12} color={tokens.colors.viridian} />
+              <Text style={styles.redeemActionText}>
+                {status === 'success' ? 'Redeemed' : status === 'error' ? 'Try again' : `Redeem ${formatUsd(position.currentValue ?? 0)}`}
+              </Text>
+            </>
+          )}
+        </Pressable>
       </View>
     </View>
   );
@@ -448,6 +501,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
     paddingHorizontal: 8,
+  },
+  redeemActionError: {
+    borderWidth: 1,
+    borderColor: 'rgba(244,88,78,0.30)',
+    backgroundColor: 'rgba(244,88,78,0.10)',
   },
   redeemActionText: {
     fontFamily: 'monospace',

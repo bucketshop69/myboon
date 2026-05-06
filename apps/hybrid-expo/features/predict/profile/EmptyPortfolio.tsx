@@ -45,6 +45,7 @@ export function EmptyPortfolio({ mode, onPrimaryAction, primaryLabel }: EmptyPor
   const [trending, setTrending] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const copy = EMPTY_COPY[mode];
+  const signedOut = mode === 'no-account' && primaryLabel.toLowerCase().includes('sign');
 
   useEffect(() => {
     fetchTrendingMarkets(5)
@@ -60,17 +61,25 @@ export function EmptyPortfolio({ mode, onPrimaryAction, primaryLabel }: EmptyPor
           <View style={styles.onboardIcon}>
             <MaterialIcons name={copy.icon} size={24} color={tokens.colors.viridian} />
           </View>
-          <Text style={styles.onboardTitle}>{copy.title}</Text>
-          <Text style={styles.onboardSubtitle}>{copy.description}</Text>
+          <Text style={styles.onboardTitle}>
+            {signedOut ? 'Sign in to use Predict' : copy.title}
+          </Text>
+          <Text style={styles.onboardSubtitle}>
+            {signedOut
+              ? 'Connect your wallet to set up Predict, make picks, and collect winnings in one place.'
+              : copy.description}
+          </Text>
         </View>
 
         <View style={styles.ctaPad}>
           <Pressable style={styles.ctaBtn} onPress={onPrimaryAction}>
             <Text style={styles.ctaBtnText}>{primaryLabel}</Text>
           </Pressable>
-          <Text style={styles.reassurance}>
-            Signs a message to prepare your Predict account.{'\n'}No transaction. No gas. Reversible anytime.
-          </Text>
+          {!signedOut && (
+            <Text style={styles.reassurance}>
+              Signs a message to prepare your Predict account.{'\n'}No transaction. No gas. Reversible anytime.
+            </Text>
+          )}
         </View>
       </View>
     );

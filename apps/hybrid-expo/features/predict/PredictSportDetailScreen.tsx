@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +33,11 @@ interface PredictSportDetailScreenProps {
 
 type Interval = '5m' | '1h' | '1d';
 type ActiveView = 'picks' | 'stats' | 'chart' | 'orderbook';
+type LivePick = {
+  label: string;
+  amount: number;
+  price: number;
+};
 
 const SOFT_COLLAPSED = 280; // handle + stats + ~3 selection rows
 const SOFT_EXPANDED = 720;
@@ -67,7 +72,7 @@ function DisplayTab({
   );
 }
 
-function marketHrefForSlug(rowSlug: string): string | { pathname: '/predict-sport/[sport]/[slug]'; params: { sport: string; slug: string } } {
+function marketHrefForSlug(rowSlug: string): Href {
   const sportMatch = rowSlug.match(/^cric(epl|ucl|ipl)-/);
   if (sportMatch) {
     return {
@@ -75,7 +80,10 @@ function marketHrefForSlug(rowSlug: string): string | { pathname: '/predict-spor
       params: { sport: sportMatch[1], slug: rowSlug },
     };
   }
-  return `/predict-market/${encodeURIComponent(rowSlug)}`;
+  return {
+    pathname: '/predict-market/[slug]',
+    params: { slug: rowSlug },
+  };
 }
 
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
@@ -104,7 +112,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [livePick, setLivePick] = useState<LivePick | null>(null);
   const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
@@ -271,7 +279,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   });
 
   function tapOdd(outcomeIdx: number) {
-    setSuccessMessage(null);
+    setLivePick(null);
     if (numpadOpen && selectedOutcomeIdx === outcomeIdx) {
       setNumpadOpen(false);
       setSelectedOutcomeIdx(null);
@@ -350,7 +358,11 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
-      setSuccessMessage(`${sportOutcomeLabel(outcome)} is live with $${amount}. Follow it in Your Picks.`);
+      setLivePick({
+        label: sportOutcomeLabel(outcome),
+        amount,
+        price,
+      });
       collapseNumpad();
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
@@ -442,6 +454,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   redeemablePositions={redeemablePositions}
                   openOrders={openOrders}
                   cancellingOrderId={cancellingOrderId}
+                  polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}
                   onCashOut={(position) => router.push({
                     pathname: '/predict-position/[conditionId]',
@@ -453,6 +466,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   })}
                   onBackMore={backMorePosition}
                   onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
+                  onRedeemed={() => void loadPicks()}
                 />
               ) : activeView === 'stats' ? (
                 <View style={styles.statsView}>
@@ -512,10 +526,51 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               </Pressable>
             </View>
 
-            {successMessage && (
-              <View style={styles.successBanner}>
-                <MaterialIcons name="check-circle" size={14} color={tokens.colors.viridian} />
-                <Text style={styles.successText}>{successMessage}</Text>
+            {livePick && (
+              <View style={styles.successPanel}>
+                <View style={styles.successPanelTop}>
+                  <MaterialIcons name="check-circle" size={16} color={tokens.colors.viridian} />
+                  <View style={styles.successPanelCopy}>
+                    <Text style={styles.successTitle}>Your pick is live</Text>
+                    <Text style={styles.successSub}>{livePick.label} at {Math.round(livePick.price * 100)}%</Text>
+                  </View>
+                </View>
+                <View style={styles.successStats}>
+                  <View style={styles.successStat}>
+                    <Text style={styles.successStatLabel}>Put in</Text>
+                    <Text style={styles.successStatValue}>${livePick.amount.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.successStat}>
+                    <Text style={styles.successStatLabel}>Worth now</Text>
+                    <Text style={styles.successStatValue}>${livePick.amount.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.successStat}>
+                    <Text style={styles.successStatLabel}>Possible win</Text>
+                    <Text style={styles.successStatValue}>${(livePick.amount / livePick.price).toFixed(2)}</Text>
+                  </View>
+                </View>
+                <View style={styles.successActions}>
+                  <Pressable style={styles.successPrimaryAction} onPress={() => {
+                    setActiveView('picks');
+                    setPickScope('market');
+                    void loadPicks();
+                  }}>
+                    <Text style={styles.successPrimaryActionText}>View My Picks</Text>
+                  </Pressable>
+                  <Pressable style={styles.successSecondaryAction} onPress={() => {
+                    setActiveView('picks');
+                    setPickScope('market');
+                    void loadPicks();
+                  }}>
+                    <Text style={styles.successSecondaryActionText}>Cash Out</Text>
+                  </Pressable>
+                  <Pressable style={styles.successSecondaryAction} onPress={() => {
+                    const index = sortedOutcomes.findIndex((outcome) => sportOutcomeLabel(outcome) === livePick.label);
+                    tapOdd(index >= 0 ? index : 0);
+                  }}>
+                    <Text style={styles.successSecondaryActionText}>Add More</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
 
@@ -867,6 +922,96 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 13,
     color: semantic.text.primary,
+  },
+  successPanel: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(74,140,111,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.24)',
+    gap: 10,
+  },
+  successPanelTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  successPanelCopy: {
+    flex: 1,
+  },
+  successTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  successSub: {
+    marginTop: 2,
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.dim,
+    textTransform: 'uppercase',
+  },
+  successStats: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  successStat: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    padding: 8,
+  },
+  successStatLabel: {
+    fontFamily: 'monospace',
+    fontSize: 7,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  successStatValue: {
+    marginTop: 2,
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  successActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  successPrimaryAction: {
+    flex: 1.3,
+    minHeight: 34,
+    borderRadius: 9,
+    backgroundColor: tokens.colors.viridian,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  successPrimaryActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '800',
+    color: tokens.colors.backgroundDark,
+    textTransform: 'uppercase',
+  },
+  successSecondaryAction: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+  },
+  successSecondaryActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '800',
+    color: semantic.text.primary,
+    textTransform: 'uppercase',
   },
 
   // ── Selection rows ──

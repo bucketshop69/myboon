@@ -141,7 +141,6 @@ function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPre
         <Text style={styles.volBadge}>{formatUsdCompact(item.volume)} vol</Text>
         <Text style={styles.pctNo}>{formatOdds(1 - item.price)}</Text>
       </View>
-      <Text style={styles.cardActionHint}>Make Pick</Text>
     </Pressable>
   );
 }
@@ -194,12 +193,9 @@ function FeaturedCard({
           </View>
         </View>
 
-        <View style={styles.featuredActionRow}>
-          <Text style={styles.featuredActionPrimary}>Make Pick</Text>
-          <Text style={styles.featuredActionSecondary}>
-            {drawOutcome ? `Draw ${formatOdds(drawOutcome.price)}` : 'View chances'}
-          </Text>
-        </View>
+        {drawOutcome ? (
+          <Text style={styles.featuredContextText}>Draw {formatOdds(drawOutcome.price)}</Text>
+        ) : null}
       </Pressable>
     );
   }
@@ -228,10 +224,7 @@ function FeaturedCard({
         </View>
       </View>
 
-      <View style={styles.featuredActionRow}>
-        <Text style={styles.featuredActionPrimary}>Make Pick</Text>
-        <Text style={styles.featuredActionSecondary}>No {formatOdds(1 - item.price)}</Text>
-      </View>
+      <Text style={styles.featuredContextText}>No {formatOdds(1 - item.price)}</Text>
     </Pressable>
   );
 }
@@ -307,7 +300,6 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
         )}
         <Text style={[styles.oddsPct, styles.oddsPctNeg]}>{formatOdds(teamBPrice)}</Text>
       </View>
-      <Text style={styles.cardActionHint}>Make Pick</Text>
     </Pressable>
   );
 }
@@ -847,37 +839,11 @@ const styles = StyleSheet.create({
   featuredOddNeg: {
     color: tokens.colors.vermillion,
   },
-  featuredActionRow: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-  },
-  featuredActionPrimary: {
-    flex: 1,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: tokens.colors.accent,
-    color: semantic.background.screen,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    fontSize: 12,
-    fontWeight: '800',
-    overflow: 'hidden',
-    paddingTop: 8,
-  },
-  featuredActionSecondary: {
-    flex: 1,
-    height: 32,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.lift,
-    color: semantic.text.primary,
-    textAlign: 'center',
-    textAlignVertical: 'center',
+  featuredContextText: {
+    fontFamily: 'monospace',
     fontSize: 12,
     fontWeight: '700',
-    overflow: 'hidden',
-    paddingTop: 8,
+    color: semantic.text.dim,
   },
   featuredBinaryMain: {
     flexDirection: 'row',
@@ -1081,21 +1047,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 3,
-  },
-  cardActionHint: {
-    marginTop: 9,
-    alignSelf: 'flex-start',
-    fontFamily: 'monospace',
-    fontSize: 9,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: semantic.background.screen,
-    backgroundColor: tokens.colors.accent,
-    borderRadius: 7,
-    overflow: 'hidden',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    fontWeight: '800',
   },
   // ─── sport card (mockup: sport-card) ───
   sportCard: {
