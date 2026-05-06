@@ -23,7 +23,6 @@ import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
-import { StatsStrip } from '@/features/predict/components/StatsStrip';
 import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
 import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
 
@@ -436,6 +435,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               {activeView === 'picks' ? (
                 <DetailPicksPanel
                   scope={pickScope}
+                  marketSlug={slug}
                   loading={picksLoading}
                   marketPositions={marketPositions}
                   allPositions={allPositions}
@@ -511,16 +511,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                 <View style={styles.dragHandlePill} />
               </Pressable>
             </View>
-
-            {/* Stats strip */}
-            <StatsStrip stats={[
-              { value: formatUsdCompact(detail.volume24h), label: 'Volume' },
-              { value: formatUsdCompact(detail.liquidity), label: 'Liquidity' },
-              { value: '--', label: 'Traders' },
-            ]} />
-
-            {/* Separator */}
-            <View style={styles.separator} />
 
             {successMessage && (
               <View style={styles.successBanner}>

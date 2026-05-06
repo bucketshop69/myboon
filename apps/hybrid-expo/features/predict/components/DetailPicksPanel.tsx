@@ -7,6 +7,7 @@ type DetailPickScope = 'market' | 'all';
 
 interface DetailPicksPanelProps {
   scope: DetailPickScope;
+  marketSlug: string;
   loading: boolean;
   marketPositions: PortfolioPosition[];
   allPositions: PortfolioPosition[];
@@ -37,8 +38,30 @@ function pickId(prefix: string, position: PortfolioPosition, index: number): str
   return `${prefix}-${position.conditionId}-${position.outcomeIndex}-${index}`;
 }
 
+function orderCost(order: OpenOrder): number {
+  const size = Number.parseFloat(order.original_size) || 0;
+  const price = Number.parseFloat(order.price) || 0;
+  return size * price;
+}
+
+function positionCost(position: PortfolioPosition): number {
+  return (position.avgPrice ?? 0) * (position.size ?? 0);
+}
+
+function isSameMarket(position: PortfolioPosition, marketSlug: string): boolean {
+  return position.slug === marketSlug || position.eventSlug === marketSlug;
+}
+
+function isMarketOrder(order: OpenOrder, marketSlug: string): boolean {
+  const market = order.market?.toLowerCase() ?? '';
+  const slug = marketSlug.toLowerCase();
+  if (!market) return false;
+  return market.includes(slug) || slug.includes(market);
+}
+
 export function DetailPicksPanel({
   scope,
+  marketSlug,
   loading,
   marketPositions,
   allPositions,
@@ -50,8 +73,14 @@ export function DetailPicksPanel({
   onCashOut,
   onCancelOrder,
 }: DetailPicksPanelProps) {
+  const marketRedeemables = redeemablePositions.filter((position) => isSameMarket(position, marketSlug));
+  const marketOrders = openOrders.filter((order) => isMarketOrder(order, marketSlug));
   const rows = scope === 'market'
-    ? marketPositions.map((position, index) => ({ kind: 'position' as const, id: pickId('market', position, index), position }))
+    ? [
+        ...marketPositions.map((position, index) => ({ kind: 'position' as const, id: pickId('market', position, index), position })),
+        ...marketOrders.map((order) => ({ kind: 'order' as const, id: `market-order-${order.id}`, order })),
+        ...marketRedeemables.map((position, index) => ({ kind: 'redeemable' as const, id: pickId('market-ready', position, index), position })),
+      ]
     : [
         ...redeemablePositions.map((position, index) => ({ kind: 'redeemable' as const, id: pickId('ready', position, index), position })),
         ...allPositions.map((position, index) => ({ kind: 'position' as const, id: pickId('all', position, index), position })),
@@ -60,6 +89,10 @@ export function DetailPicksPanel({
   const worthNow = rows.reduce((sum, row) => {
     if (row.kind === 'order') return sum;
     return sum + (row.position.currentValue ?? 0);
+  }, 0);
+  const putIn = rows.reduce((sum, row) => {
+    if (row.kind === 'order') return sum + orderCost(row.order);
+    return sum + positionCost(row.position);
   }, 0);
 
   return (
@@ -84,8 +117,8 @@ export function DetailPicksPanel({
 
       <View style={styles.summary}>
         <View>
-          <Text style={styles.summaryLabel}>{scope === 'market' ? 'Picks here' : 'Active picks'}</Text>
-          <Text style={styles.summaryValue}>{rows.length}</Text>
+          <Text style={styles.summaryLabel}>{scope === 'market' ? 'You put in' : 'Active picks'}</Text>
+          <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : rows.length}</Text>
         </View>
         <View>
           <Text style={styles.summaryLabel}>Worth now</Text>
