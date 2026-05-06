@@ -360,6 +360,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             {/* Odds format toggle + Binary odds buttons */}
             <View style={styles.oddsSection}>
               <View style={styles.oddsHeader}>
+                <Text style={styles.oddsTitle}>{"What's your pick?"}</Text>
                 <OddsFormatToggle format={format} onFormatChange={setFormat} />
               </View>
               <View style={styles.binaryBtns}>
@@ -367,13 +368,13 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   style={[styles.bnBtn, styles.bnBtnYes, selectedSide === 'yes' && styles.bnBtnYesSelected]}
                   onPress={() => tapOdd('yes')}>
                   <Text style={styles.bnBtnYesPrice}>{yesPrice !== null ? formatOdds(yesPrice) : '--'}</Text>
-                  <Text style={styles.bnBtnYesLabel}>Yes</Text>
+                  <Text style={styles.bnBtnYesLabel}>Back YES</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnNo, selectedSide === 'no' && styles.bnBtnNoSelected]}
                   onPress={() => tapOdd('no')}>
                   <Text style={styles.bnBtnNoPrice}>{noPrice !== null ? formatOdds(noPrice) : '--'}</Text>
-                  <Text style={styles.bnBtnNoLabel}>No</Text>
+                  <Text style={styles.bnBtnNoLabel}>Back NO</Text>
                 </Pressable>
               </View>
             </View>
@@ -382,6 +383,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             <InlineNumpad
               visible={numpadOpen}
               side={selectedSide ?? 'yes'}
+              pickLabel={selectedSide === 'no' ? 'NO' : 'YES'}
               price={selectedSide === 'no' ? (noPrice ?? 0.5) : (yesPrice ?? 0.5)}
               amount={numpadAmount}
               onAmountChange={setNumpadAmount}
@@ -555,8 +557,15 @@ const styles = StyleSheet.create({
   },
   oddsHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  oddsTitle: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: '700',
+    color: semantic.text.primary,
   },
   binaryBtns: {
     flexDirection: 'row',
