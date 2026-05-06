@@ -110,7 +110,6 @@ function CategoryBadge({ category }: { category: string }) {
 
 function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPress: () => void; formatOdds: (p: number | null) => string }) {
   const yesPct = Math.round(item.price * 100);
-  const noPct = 100 - yesPct;
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.binaryCard, pressed && styles.cardPressed]}>
@@ -142,6 +141,7 @@ function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPre
         <Text style={styles.volBadge}>{formatUsdCompact(item.volume)} vol</Text>
         <Text style={styles.pctNo}>{formatOdds(1 - item.price)}</Text>
       </View>
+      <Text style={styles.cardActionHint}>Make Pick</Text>
     </Pressable>
   );
 }
@@ -195,9 +195,9 @@ function FeaturedCard({
         </View>
 
         <View style={styles.featuredActionRow}>
-          <Text style={styles.featuredActionPrimary}>Trade {shortTeamName(teamA?.label ?? 'Yes')}</Text>
+          <Text style={styles.featuredActionPrimary}>Make Pick</Text>
           <Text style={styles.featuredActionSecondary}>
-            {drawOutcome ? `Draw ${formatOdds(drawOutcome.price)}` : 'Open market'}
+            {drawOutcome ? `Draw ${formatOdds(drawOutcome.price)}` : 'View chances'}
           </Text>
         </View>
       </Pressable>
@@ -229,7 +229,7 @@ function FeaturedCard({
       </View>
 
       <View style={styles.featuredActionRow}>
-        <Text style={styles.featuredActionPrimary}>Trade Yes</Text>
+        <Text style={styles.featuredActionPrimary}>Make Pick</Text>
         <Text style={styles.featuredActionSecondary}>No {formatOdds(1 - item.price)}</Text>
       </View>
     </Pressable>
@@ -307,6 +307,7 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
         )}
         <Text style={[styles.oddsPct, styles.oddsPctNeg]}>{formatOdds(teamBPrice)}</Text>
       </View>
+      <Text style={styles.cardActionHint}>Make Pick</Text>
     </Pressable>
   );
 }
@@ -1080,6 +1081,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 3,
+  },
+  cardActionHint: {
+    marginTop: 9,
+    alignSelf: 'flex-start',
+    fontFamily: 'monospace',
+    fontSize: 9,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: semantic.background.screen,
+    backgroundColor: tokens.colors.accent,
+    borderRadius: 7,
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontWeight: '800',
   },
   // ─── sport card (mockup: sport-card) ───
   sportCard: {
