@@ -13,7 +13,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fetchSportMarketDetail, fetchPriceHistory, fetchOrderbook, placeBet } from '@/features/predict/predict.api';
+import { cancelOrder, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -24,6 +25,7 @@ import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
 import { StatsStrip } from '@/features/predict/components/StatsStrip';
 import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
+import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -45,6 +47,11 @@ function sportOutcomeLabel(outcome: SportOutcomeDetail): string {
   return outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
 }
 
+function formatPositionOutcome(outcome: string | null | undefined): string {
+  if (!outcome) return '';
+  return outcome.toLowerCase().includes('draw') ? 'Draw' : outcome;
+}
+
 function DisplayTab({
   label,
   active,
@@ -59,6 +66,17 @@ function DisplayTab({
       <Text style={[styles.displayTabText, active && styles.displayTabTextActive]}>{label}</Text>
     </Pressable>
   );
+}
+
+function marketHrefForSlug(rowSlug: string): string | { pathname: '/predict-sport/[sport]/[slug]'; params: { sport: string; slug: string } } {
+  const sportMatch = rowSlug.match(/^cric(epl|ucl|ipl)-/);
+  if (sportMatch) {
+    return {
+      pathname: '/predict-sport/[sport]/[slug]',
+      params: { sport: sportMatch[1], slug: rowSlug },
+    };
+  }
+  return `/predict-market/${encodeURIComponent(rowSlug)}`;
 }
 
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
@@ -88,6 +106,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
+  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+  const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
+  const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [picksLoading, setPicksLoading] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -162,6 +187,44 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     }
   }
 
+  async function loadPicks() {
+    const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
+    if (!gammaAddr) {
+      setMarketPositions([]);
+      setAllPositions([]);
+      setRedeemablePositions([]);
+      setOpenOrders([]);
+      return;
+    }
+    setPicksLoading(true);
+    try {
+      const [market, portfolio, orders] = await Promise.all([
+        fetchMarketPositions(gammaAddr, slug).catch(() => []),
+        fetchPortfolio(gammaAddr).catch(() => null),
+        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress).catch(() => []) : Promise.resolve([]),
+      ]);
+      setMarketPositions(market);
+      setAllPositions(portfolio?.positions ?? []);
+      setRedeemablePositions(portfolio?.redeemablePositions ?? []);
+      setOpenOrders(orders);
+    } finally {
+      setPicksLoading(false);
+    }
+  }
+
+  async function handleCancelOrder(orderId: string) {
+    if (!poly.polygonAddress || cancellingOrderId) return;
+    setCancellingOrderId(orderId);
+    try {
+      const result = await cancelOrder(poly.polygonAddress, orderId);
+      if (result.ok) {
+        setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+      }
+    } finally {
+      setCancellingOrderId(null);
+    }
+  }
+
   useEffect(() => { void loadDetail(); }, [slug, sport]);
 
   useEffect(() => {
@@ -171,6 +234,10 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   useEffect(() => {
     if (activeView === 'orderbook' && sortedOutcomes.length > 0) void loadOrderbook(obOutcomeIdx);
   }, [activeView, detail, obOutcomeIdx]);
+
+  useEffect(() => {
+    if (activeView === 'picks') void loadPicks();
+  }, [activeView, slug, poly.polygonAddress, poly.tradingAddress]);
 
   // LIVE pulse
   useEffect(() => {
@@ -214,6 +281,22 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     setSelectedOutcomeIdx(outcomeIdx);
     setNumpadAmount('50');
     setNumpadOpen(true);
+  }
+
+  function backMorePosition(position: PortfolioPosition) {
+    if (position.slug && position.slug !== slug) {
+      router.push(marketHrefForSlug(position.slug));
+      return;
+    }
+    const byOutcome = sortedOutcomes.findIndex((outcome) =>
+      sportOutcomeLabel(outcome).toLowerCase() === formatPositionOutcome(position.outcome).toLowerCase()
+    );
+    if (byOutcome >= 0) {
+      tapOdd(byOutcome);
+      return;
+    }
+    const byIndex = sortedOutcomes.findIndex((outcome) => outcome.conditionId === position.conditionId);
+    tapOdd(byIndex >= 0 ? byIndex : 0);
   }
 
   function collapseNumpad() {
@@ -351,16 +434,26 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
             {/* Chart or Orderbook */}
             <View style={styles.viewContainer}>
               {activeView === 'picks' ? (
-                <View style={styles.picksView}>
-                  <View style={styles.picksHeading}>
-                    <Text style={styles.picksTitle}>Your Picks</Text>
-                    <Text style={styles.picksSubtitle}>This match</Text>
-                  </View>
-                  <View style={styles.picksEmptyCard}>
-                    <Text style={styles.picksEmptyTitle}>No picks here yet</Text>
-                    <Text style={styles.picksEmptyText}>Back Liverpool, Draw, or Crystal Palace below. Live picks show cash out, back more, or collect actions here.</Text>
-                  </View>
-                </View>
+                <DetailPicksPanel
+                  scope={pickScope}
+                  loading={picksLoading}
+                  marketPositions={marketPositions}
+                  allPositions={allPositions}
+                  redeemablePositions={redeemablePositions}
+                  openOrders={openOrders}
+                  cancellingOrderId={cancellingOrderId}
+                  onScopeChange={setPickScope}
+                  onCashOut={(position) => router.push({
+                    pathname: '/predict-position/[conditionId]',
+                    params: {
+                      conditionId: position.conditionId,
+                      slug: position.slug,
+                      outcomeIndex: String(position.outcomeIndex),
+                    },
+                  })}
+                  onBackMore={backMorePosition}
+                  onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
+                />
               ) : activeView === 'stats' ? (
                 <View style={styles.statsView}>
                   <View style={styles.picksHeading}>

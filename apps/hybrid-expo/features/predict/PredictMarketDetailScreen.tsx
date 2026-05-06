@@ -13,7 +13,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory, fetchOrderbook, placeBet } from '@/features/predict/predict.api';
+import { cancelOrder, fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
@@ -25,6 +26,7 @@ import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
 import { StatsStrip } from '@/features/predict/components/StatsStrip';
 import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
+import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -62,6 +64,17 @@ function DisplayTab({
   );
 }
 
+function marketHrefForSlug(rowSlug: string): string | { pathname: '/predict-sport/[sport]/[slug]'; params: { sport: string; slug: string } } {
+  const sportMatch = rowSlug.match(/^cric(epl|ucl|ipl)-/);
+  if (sportMatch) {
+    return {
+      pathname: '/predict-sport/[sport]/[slug]',
+      params: { sport: sportMatch[1], slug: rowSlug },
+    };
+  }
+  return `/predict-market/${encodeURIComponent(rowSlug)}`;
+}
+
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
@@ -91,6 +104,13 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
+  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+  const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
+  const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [picksLoading, setPicksLoading] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -157,6 +177,44 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
   }
 
+  async function loadPicks() {
+    const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
+    if (!gammaAddr) {
+      setMarketPositions([]);
+      setAllPositions([]);
+      setRedeemablePositions([]);
+      setOpenOrders([]);
+      return;
+    }
+    setPicksLoading(true);
+    try {
+      const [market, portfolio, orders] = await Promise.all([
+        fetchMarketPositions(gammaAddr, slug).catch(() => []),
+        fetchPortfolio(gammaAddr).catch(() => null),
+        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress).catch(() => []) : Promise.resolve([]),
+      ]);
+      setMarketPositions(market);
+      setAllPositions(portfolio?.positions ?? []);
+      setRedeemablePositions(portfolio?.redeemablePositions ?? []);
+      setOpenOrders(orders);
+    } finally {
+      setPicksLoading(false);
+    }
+  }
+
+  async function handleCancelOrder(orderId: string) {
+    if (!poly.polygonAddress || cancellingOrderId) return;
+    setCancellingOrderId(orderId);
+    try {
+      const result = await cancelOrder(poly.polygonAddress, orderId);
+      if (result.ok) {
+        setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+      }
+    } finally {
+      setCancellingOrderId(null);
+    }
+  }
+
   async function refreshPrice() {
     try {
       setLivePrice(await fetchMarketPrice(slug));
@@ -179,6 +237,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   useEffect(() => {
     if (activeView === 'orderbook' && detail) void loadOrderbook();
   }, [activeView, detail]);
+
+  useEffect(() => {
+    if (activeView === 'picks') void loadPicks();
+  }, [activeView, slug, poly.polygonAddress, poly.tradingAddress]);
 
   // Animate soft zone
   useEffect(() => {
@@ -328,16 +390,32 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             {/* Chart or Orderbook */}
             <View style={styles.viewContainer}>
               {activeView === 'picks' ? (
-                <View style={styles.picksView}>
-                  <View style={styles.picksHeading}>
-                    <Text style={styles.picksTitle}>Your Picks</Text>
-                    <Text style={styles.picksSubtitle}>This market</Text>
-                  </View>
-                  <View style={styles.picksEmptyCard}>
-                    <Text style={styles.picksEmptyTitle}>No picks here yet</Text>
-                    <Text style={styles.picksEmptyText}>Pick YES or NO below. Once it is live, this panel shows cash out, back more, or collect actions.</Text>
-                  </View>
-                </View>
+                <DetailPicksPanel
+                  scope={pickScope}
+                  loading={picksLoading}
+                  marketPositions={marketPositions}
+                  allPositions={allPositions}
+                  redeemablePositions={redeemablePositions}
+                  openOrders={openOrders}
+                  cancellingOrderId={cancellingOrderId}
+                  onScopeChange={setPickScope}
+                  onCashOut={(position) => router.push({
+                    pathname: '/predict-position/[conditionId]',
+                    params: {
+                      conditionId: position.conditionId,
+                      slug: position.slug,
+                      outcomeIndex: String(position.outcomeIndex),
+                    },
+                  })}
+                  onBackMore={(position) => {
+                    if (position.slug && position.slug !== slug) {
+                      router.push(marketHrefForSlug(position.slug));
+                      return;
+                    }
+                    tapOdd(position.outcome === 'No' ? 'no' : 'yes');
+                  }}
+                  onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
+                />
               ) : activeView === 'stats' ? (
                 <View style={styles.statsView}>
                   <View style={styles.picksHeading}>
