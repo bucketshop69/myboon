@@ -1,6 +1,8 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import { redeemPosition } from '@/features/predict/predict.api';
 import { semantic, tokens } from '@/theme';
 
 type YourPick =
@@ -12,7 +14,12 @@ interface YourPicksSectionProps {
   positions: PortfolioPosition[];
   openOrders: OpenOrder[];
   redeemablePositions: PortfolioPosition[];
+  polygonAddress: string | null;
+  cancellingOrderId: string | null;
   onPositionPress: (position: PortfolioPosition) => void;
+  onMarketPress: (slug: string) => void;
+  onCancelOrder: (orderId: string) => void;
+  onRedeemed: () => void;
 }
 
 function formatPnl(value: number): string {
@@ -56,10 +63,21 @@ export function YourPicksSection({
   positions,
   openOrders,
   redeemablePositions,
+  polygonAddress,
+  cancellingOrderId,
   onPositionPress,
+  onMarketPress,
+  onCancelOrder,
+  onRedeemed,
 }: YourPicksSectionProps) {
-  const picks = getYourPicks(positions, openOrders, redeemablePositions);
-  if (picks.length === 0) return null;
+  const [scope, setScope] = useState<'active' | 'all'>('active');
+  const picks = getYourPicks(
+    positions,
+    openOrders,
+    scope === 'all' ? redeemablePositions : [],
+  );
+  const allCount = positions.length + openOrders.length + redeemablePositions.length;
+  if (allCount === 0) return null;
 
   const activeCount = positions.length + openOrders.length;
 
@@ -67,23 +85,63 @@ export function YourPicksSection({
     <View style={styles.section}>
       <View style={styles.header}>
         <Text style={styles.title}>Your Picks</Text>
-        <Text style={styles.count}>
-          {activeCount} active · {picks.length} total
-        </Text>
+        <View style={styles.scopeToggle} accessibilityRole="tablist">
+          <Pressable
+            style={[styles.scopeBtn, scope === 'active' && styles.scopeBtnActive]}
+            onPress={() => setScope('active')}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: scope === 'active' }}
+          >
+            <Text style={[styles.scopeText, scope === 'active' && styles.scopeTextActive]}>
+              Active {activeCount}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.scopeBtn, scope === 'all' && styles.scopeBtnActive]}
+            onPress={() => setScope('all')}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: scope === 'all' }}
+          >
+            <Text style={[styles.scopeText, scope === 'all' && styles.scopeTextActive]}>
+              All {allCount}
+            </Text>
+          </Pressable>
+        </View>
       </View>
+
+      {picks.length === 0 && (
+        <View style={styles.emptyScope}>
+          <Text style={styles.emptyScopeText}>No active picks right now</Text>
+        </View>
+      )}
 
       {picks.map((pick) => {
         if (pick.kind === 'order') {
-          return <OrderRow key={pick.id} order={pick.order} />;
+          return (
+            <OrderRow
+              key={pick.id}
+              order={pick.order}
+              cancelling={cancellingOrderId === pick.order.id}
+              onCancel={() => onCancelOrder(pick.order.id)}
+            />
+          );
         }
         if (pick.kind === 'redeemable') {
-          return <RedeemableRow key={pick.id} position={pick.position} />;
+          return (
+            <RedeemableRow
+              key={pick.id}
+              position={pick.position}
+              polygonAddress={polygonAddress}
+              onRedeemed={onRedeemed}
+            />
+          );
         }
         return (
           <PositionRow
             key={pick.id}
             position={pick.position}
             onPress={() => onPositionPress(pick.position)}
+            onMarketPress={() => onMarketPress(pick.position.slug)}
           />
         );
       })}
@@ -91,37 +149,65 @@ export function YourPicksSection({
   );
 }
 
-function PositionRow({ position: p, onPress }: { position: PortfolioPosition; onPress: () => void }) {
+function PositionRow({
+  position: p,
+  onPress,
+  onMarketPress,
+}: {
+  position: PortfolioPosition;
+  onPress: () => void;
+  onMarketPress: () => void;
+}) {
   const pnl = p.cashPnl ?? 0;
   const isUp = pnl >= 0;
 
   return (
     <Pressable
-      style={styles.row}
+      style={styles.card}
       onPress={onPress}
       accessibilityLabel={`View position: ${p.title}`}
     >
-      <OutcomeBadge label={p.outcome ?? 'YES'} positive={p.outcome !== 'No'} />
-      <View style={styles.info}>
-        <Text style={styles.question} numberOfLines={2}>
-          {p.title || p.slug || '--'}
-        </Text>
-        <Text style={styles.meta}>
-          Live · {p.size.toFixed(2)} shares · {formatUsd(p.currentValue ?? 0)} value
-        </Text>
+      <View style={styles.row}>
+        <OutcomeBadge label={p.outcome ?? 'YES'} positive={p.outcome !== 'No'} />
+        <View style={styles.info}>
+          <Text style={styles.question} numberOfLines={2}>
+            {p.title || p.slug || '--'}
+          </Text>
+          <Text style={styles.meta}>
+            Live · {p.size.toFixed(2)} shares · {formatUsd(p.currentValue ?? 0)} value
+          </Text>
+        </View>
+        <View style={styles.trailing}>
+          <Text style={[styles.value, isUp ? styles.posText : styles.negText]}>{formatPnl(pnl)}</Text>
+          <Text style={styles.subValue}>
+            {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
       </View>
-      <View style={styles.trailing}>
-        <Text style={[styles.value, isUp ? styles.posText : styles.negText]}>{formatPnl(pnl)}</Text>
-        <Text style={styles.subValue}>
-          {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
-        </Text>
+      <View style={styles.actions}>
+        <Pressable style={styles.secondaryAction} onPress={onPress}>
+          <MaterialIcons name="payments" size={12} color={tokens.colors.viridian} />
+          <Text style={styles.secondaryActionText}>Cash out</Text>
+        </Pressable>
+        <Pressable style={styles.secondaryAction} onPress={onMarketPress}>
+          <MaterialIcons name="add-chart" size={12} color={tokens.colors.primary} />
+          <Text style={[styles.secondaryActionText, styles.primaryActionText]}>Back more</Text>
+        </Pressable>
       </View>
-      <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
     </Pressable>
   );
 }
 
-function OrderRow({ order: o }: { order: OpenOrder }) {
+function OrderRow({
+  order: o,
+  cancelling,
+  onCancel,
+}: {
+  order: OpenOrder;
+  cancelling: boolean;
+  onCancel: () => void;
+}) {
   const sizeNum = Number.parseFloat(o.original_size) || 0;
   const matched = Number.parseFloat(o.size_matched) || 0;
   const priceNum = Number.parseFloat(o.price) || 0;
@@ -129,42 +215,114 @@ function OrderRow({ order: o }: { order: OpenOrder }) {
   const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
 
   return (
-    <View style={styles.row}>
-      <OutcomeBadge label={o.side} positive={o.side === 'BUY'} />
-      <View style={styles.info}>
-        <Text style={styles.question} numberOfLines={2}>
-          {o.outcome || o.market || '--'}
-        </Text>
-        <Text style={styles.meta}>
-          Waiting · {sizeNum.toFixed(2)} shares at {Math.round(priceNum * 100)}¢ · {fillPct}% filled
-        </Text>
+    <View style={styles.card}>
+      <View style={styles.row}>
+        <OutcomeBadge label={o.side} positive={o.side === 'BUY'} />
+        <View style={styles.info}>
+          <Text style={styles.question} numberOfLines={2}>
+            {o.outcome || o.market || '--'}
+          </Text>
+          <Text style={styles.meta}>
+            Waiting · {sizeNum.toFixed(2)} shares at {Math.round(priceNum * 100)}¢ · {fillPct}% filled
+          </Text>
+        </View>
+        <View style={styles.trailing}>
+          <Text style={styles.value}>{formatUsd(cost)}</Text>
+          <Text style={styles.subValue}>{o.status || o.order_type}</Text>
+        </View>
       </View>
-      <View style={styles.trailing}>
-        <Text style={styles.value}>{formatUsd(cost)}</Text>
-        <Text style={styles.subValue}>{o.status || o.order_type}</Text>
-      </View>
+      <Pressable
+        style={styles.dangerAction}
+        disabled={cancelling}
+        onPress={onCancel}
+        accessibilityLabel={`Cancel ${o.side.toLowerCase()} order`}
+      >
+        {cancelling ? (
+          <ActivityIndicator size="small" color={semantic.sentiment.negative} />
+        ) : (
+          <>
+            <MaterialIcons name="close" size={12} color={semantic.sentiment.negative} />
+            <Text style={styles.dangerActionText}>Cancel waiting order</Text>
+          </>
+        )}
+      </Pressable>
     </View>
   );
 }
 
-function RedeemableRow({ position: p }: { position: PortfolioPosition }) {
+function RedeemableRow({
+  position: p,
+  polygonAddress,
+  onRedeemed,
+}: {
+  position: PortfolioPosition;
+  polygonAddress: string | null;
+  onRedeemed: () => void;
+}) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const value = p.currentValue ?? 0;
 
+  async function handleRedeem() {
+    if (!polygonAddress || status === 'loading' || status === 'success') return;
+
+    setStatus('loading');
+    try {
+      const result = await redeemPosition(polygonAddress, {
+        conditionId: p.conditionId,
+        asset: p.asset,
+        outcomeIndex: p.outcomeIndex,
+        negativeRisk: p.negativeRisk,
+      });
+      if (!result.ok) throw new Error(result.error || 'Redeem failed');
+      setStatus('success');
+      onRedeemed();
+    } catch {
+      setStatus('error');
+    }
+  }
+
   return (
-    <View style={styles.row}>
-      <OutcomeBadge label={p.outcome ?? 'YES'} positive />
-      <View style={styles.info}>
-        <Text style={styles.question} numberOfLines={2}>
-          {p.title || p.slug || '--'}
-        </Text>
-        <Text style={styles.meta}>
-          Ready · {p.size.toFixed(2)} shares won
-        </Text>
+    <View style={styles.card}>
+      <View style={styles.row}>
+        <OutcomeBadge label={p.outcome ?? 'YES'} positive />
+        <View style={styles.info}>
+          <Text style={styles.question} numberOfLines={2}>
+            {p.title || p.slug || '--'}
+          </Text>
+          <Text style={styles.meta}>
+            Ready · {p.size.toFixed(2)} winning shares
+          </Text>
+        </View>
+        <View style={styles.trailing}>
+          <Text style={[styles.value, styles.posText]}>{formatUsd(value)}</Text>
+          <Text style={styles.subValue}>Payout</Text>
+        </View>
       </View>
-      <View style={styles.trailing}>
-        <Text style={[styles.value, styles.posText]}>{formatUsd(value)}</Text>
-        <Text style={styles.subValue}>Redeemable</Text>
-      </View>
+      <Pressable
+        style={[
+          styles.redeemAction,
+          status === 'success' && styles.redeemActionSuccess,
+          status === 'error' && styles.redeemActionError,
+        ]}
+        disabled={status === 'loading' || status === 'success'}
+        onPress={handleRedeem}
+        accessibilityLabel={`Redeem ${formatUsd(value)} payout`}
+      >
+        {status === 'loading' ? (
+          <ActivityIndicator size="small" color={tokens.colors.viridian} />
+        ) : (
+          <>
+            <MaterialIcons
+              name={status === 'success' ? 'check' : 'redeem'}
+              size={12}
+              color={status === 'error' ? tokens.colors.vermillion : tokens.colors.viridian}
+            />
+            <Text style={[styles.redeemActionText, status === 'error' && styles.errorText]}>
+              {status === 'success' ? 'Redeemed' : status === 'error' ? 'Redeem failed' : `Redeem ${formatUsd(value)}`}
+            </Text>
+          </>
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -202,16 +360,62 @@ const styles = StyleSheet.create({
     fontSize: 7.5,
     color: semantic.text.faint,
   },
-  row: {
+  emptyScope: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+  },
+  emptyScopeText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  scopeToggle: {
+    flexDirection: 'row',
+    backgroundColor: semantic.background.lift,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 7,
+    padding: 2,
+  },
+  scopeBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 5,
+    minHeight: 24,
+    justifyContent: 'center',
+  },
+  scopeBtnActive: {
+    backgroundColor: semantic.background.surface,
+  },
+  scopeText: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    fontWeight: '700',
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  scopeTextActive: {
+    color: semantic.text.primary,
+  },
+  card: {
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: 8,
     padding: 11,
+    gap: 9,
+    marginBottom: 5,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 5,
   },
   badge: {
     paddingHorizontal: 5,
@@ -254,6 +458,80 @@ const styles = StyleSheet.create({
     fontSize: 7.5,
     color: semantic.text.faint,
     textTransform: 'uppercase',
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.lift,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  secondaryActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: tokens.colors.viridian,
+  },
+  primaryActionText: {
+    color: tokens.colors.primary,
+  },
+  dangerAction: {
+    minHeight: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,69,58,0.25)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  dangerActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: semantic.sentiment.negative,
+  },
+  redeemAction: {
+    minHeight: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.25)',
+    backgroundColor: 'rgba(74,140,111,0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  redeemActionSuccess: {
+    backgroundColor: 'rgba(74,140,111,0.25)',
+  },
+  redeemActionError: {
+    borderColor: 'rgba(217,83,79,0.4)',
+    backgroundColor: 'rgba(217,83,79,0.1)',
+  },
+  redeemActionText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: tokens.colors.viridian,
+  },
+  errorText: {
+    color: tokens.colors.vermillion,
   },
   posText: { color: tokens.colors.viridian },
   negText: { color: tokens.colors.vermillion },

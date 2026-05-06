@@ -15,7 +15,7 @@ import { useRouter, useNavigation } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioData } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
@@ -60,7 +60,26 @@ export default function PredictProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
 
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
   const isEnabled = poly.isReady && poly.polygonAddress;
+
+  const handleCancel = useCallback(async (orderId: string) => {
+    if (!poly.polygonAddress) return;
+    setCancellingId(orderId);
+    try {
+      const result = await cancelOrder(poly.polygonAddress, orderId);
+      if (result.ok) {
+        setOpenOrders((prev) => prev.filter((o) => o.id !== orderId));
+      } else {
+        Alert.alert('Cancel failed', result.error ?? 'Unknown error');
+      }
+    } catch {
+      Alert.alert('Cancel failed', 'Network error');
+    } finally {
+      setCancellingId(null);
+    }
+  }, [poly.polygonAddress]);
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
@@ -171,6 +190,17 @@ export default function PredictProfileScreen() {
     }
   }, [connected, poly, loadPortfolio]);
 
+  const handleOpenMarket = useCallback((slug: string) => {
+    const sportMatch = slug.match(/^cric(epl|ucl|ipl)-/);
+    if (sportMatch) {
+      router.push({
+        pathname: '/predict-sport/[sport]/[slug]',
+        params: { sport: sportMatch[1], slug },
+      });
+    } else {
+      router.push(`/predict-market/${encodeURIComponent(slug)}`);
+    }
+  }, [router]);
 
   const positions = portfolio?.positions ?? [];
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
@@ -325,6 +355,8 @@ export default function PredictProfileScreen() {
               positions={positions}
               openOrders={openOrders}
               redeemablePositions={redeemablePositions}
+              polygonAddress={poly.polygonAddress}
+              cancellingOrderId={cancellingId}
               onPositionPress={(p) =>
                 router.push({
                   pathname: '/predict-position/[conditionId]',
@@ -335,6 +367,9 @@ export default function PredictProfileScreen() {
                   },
                 })
               }
+              onMarketPress={handleOpenMarket}
+              onCancelOrder={(orderId) => void handleCancel(orderId)}
+              onRedeemed={() => void loadPortfolio()}
             />
 
             {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && (
