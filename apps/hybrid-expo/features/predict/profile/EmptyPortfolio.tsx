@@ -26,17 +26,17 @@ const EMPTY_COPY: Record<EmptyPortfolioProps['mode'], {
   'no-account': {
     icon: 'account-balance-wallet',
     title: 'Set up your Predict account',
-    description: 'Sign in once to create the trading account for your picks, payouts, and open orders.',
+    description: 'Sign in once to set up the account that keeps your picks, payouts, and waiting picks together.',
   },
   'no-balance': {
     icon: 'add-card',
     title: 'Add funds for your first pick',
-    description: 'Deposit USDC, then back a market. Your live picks and waiting orders will appear here.',
+    description: 'Deposit USDC, then back a market. Your live picks and waiting picks will appear here.',
   },
   'no-picks': {
     icon: 'touch-app',
     title: 'Make your first pick',
-    description: 'Choose a market below. Once you buy shares, this page will track what is live, waiting, or ready to redeem.',
+    description: 'Choose a market below. This page will show what is live, waiting, or ready to collect.',
   },
 };
 

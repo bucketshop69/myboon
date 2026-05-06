@@ -15,8 +15,8 @@ import { useRouter, useNavigation } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
-import type { ActivityItem, OpenOrder, PortfolioData } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioData } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
@@ -55,7 +55,6 @@ export default function PredictProfileScreen() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
-  const [tradeHistory, setTradeHistory] = useState<ActivityItem[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -86,15 +85,13 @@ export default function PredictProfileScreen() {
     // Gamma data-api tracks by trading wallet address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
     const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
-    const [portfolioData, balanceData, ordersData, activityData] = await Promise.all([
+    const [portfolioData, balanceData, ordersData] = await Promise.all([
       fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
-      fetchActivity(gammaAddr).catch(() => []),
     ]);
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
-    setTradeHistory(activityData);
     if (balanceData) {
       setCashBalance(balanceData.balance);
       setSessionExpired(false);
@@ -389,37 +386,6 @@ export default function PredictProfileScreen() {
                   onPrimaryAction={(cashBalance ?? 0) > 0 ? () => router.push('/predict') : () => setDepositOpen(true)}
                   primaryLabel={(cashBalance ?? 0) > 0 ? 'Browse Markets' : 'Deposit'}
                 />
-              </View>
-            )}
-
-            {/* Trade History */}
-            {tradeHistory.length > 0 && (
-              <View style={styles.positionsSection}>
-                <View style={styles.posHeader}>
-                  <Text style={styles.posTitle}>Trade History</Text>
-                  <Text style={styles.posCount}>{tradeHistory.length} trades</Text>
-                </View>
-                {tradeHistory.slice(0, 20).map((t, i) => {
-                  const isBuy = t.side === 'BUY';
-                  const date = new Date(t.timestamp * 1000);
-                  const timeStr = `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
-                  return (
-                    <View key={`${t.timestamp}-${i}`} style={styles.posRow}>
-                      <View style={[styles.sideBadge, isBuy ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-                        <Text style={[styles.sideBadgeText, isBuy ? styles.posText : styles.negText]}>
-                          {t.side}
-                        </Text>
-                      </View>
-                      <View style={styles.tradeInfoWrap}>
-                        <Text style={styles.posQuestion} numberOfLines={1}>{t.title || t.slug}</Text>
-                        <Text style={styles.tradeTime}>{timeStr}</Text>
-                      </View>
-                      <Text style={[styles.posPnl, isBuy ? styles.posText : styles.negText]}>
-                        ${t.usdcSize.toFixed(2)}
-                      </Text>
-                    </View>
-                  );
-                })}
               </View>
             )}
 

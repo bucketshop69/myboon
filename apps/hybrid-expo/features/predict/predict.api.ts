@@ -683,7 +683,7 @@ export async function redeemPosition(
   };
 }
 
-export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' = '1h'): Promise<PriceHistory> {
+export async function fetchPriceHistory(tokenId: string, interval: '5m' | '1h' | '1d' = '1h'): Promise<PriceHistory> {
   const payload = await getJson(`/predict/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid history response');
   const p = payload as Record<string, unknown>;

@@ -1,5 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -36,17 +36,6 @@ type ActiveView = 'chart' | 'orderbook';
 const SOFT_COLLAPSED = 280; // handle + stats + ~3 selection rows
 const SOFT_EXPANDED = 720;
 
-function formatKickoff(isoDate: string | null): string {
-  if (!isoDate) return 'TBD';
-  const time = Date.parse(isoDate);
-  if (Number.isNaN(time)) return 'TBD';
-  const date = new Date(time);
-  const month = date.toLocaleString('en-US', { month: 'short' });
-  const day = date.getDate();
-  const clock = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${month} ${day} \u00B7 ${clock}`;
-}
-
 function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
   if (outcome.label.toLowerCase().includes('draw')) return semantic.text.accent;
   return isLead ? semantic.sentiment.positive : semantic.sentiment.negative;
@@ -82,6 +71,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -199,6 +189,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   });
 
   function tapOdd(outcomeIdx: number) {
+    setSuccessMessage(null);
     if (numpadOpen && selectedOutcomeIdx === outcomeIdx) {
       setNumpadOpen(false);
       setSelectedOutcomeIdx(null);
@@ -261,7 +252,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
-      Alert.alert('Order placed', `${sportOutcomeLabel(outcome)} $${amount} @ ${Math.round(price * 100)}\u00A2`);
+      setSuccessMessage(`${sportOutcomeLabel(outcome)} is live with $${amount}. Follow it in Your Picks.`);
       collapseNumpad();
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
@@ -402,6 +393,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
             {/* Separator */}
             <View style={styles.separator} />
+
+            {successMessage && (
+              <View style={styles.successBanner}>
+                <MaterialIcons name="check-circle" size={14} color={tokens.colors.viridian} />
+                <Text style={styles.successText}>{successMessage}</Text>
+              </View>
+            )}
 
             {/* Selection rows */}
             <View style={styles.oddsSection}>
@@ -624,6 +622,26 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: semantic.predict.rowBorderSoft,
     marginHorizontal: 20,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,140,111,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.24)',
+  },
+  successText: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    lineHeight: 13,
+    color: semantic.text.primary,
   },
 
   // ── Selection rows ──

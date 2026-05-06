@@ -31,6 +31,16 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+function formatChance(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatOutcome(label: string | null | undefined): string {
+  if (!label) return 'Yes';
+  return label.toLowerCase().includes('draw') ? 'Draw' : label;
+}
+
 function makePositionId(prefix: string, p: PortfolioPosition, index: number): string {
   return `${prefix}-${p.conditionId}-${p.outcomeIndex}-${index}`;
 }
@@ -71,15 +81,11 @@ export function YourPicksSection({
   onRedeemed,
 }: YourPicksSectionProps) {
   const [scope, setScope] = useState<'active' | 'all'>('active');
-  const picks = getYourPicks(
-    positions,
-    openOrders,
-    scope === 'all' ? redeemablePositions : [],
-  );
+  const picks = getYourPicks(positions, openOrders, redeemablePositions);
   const allCount = positions.length + openOrders.length + redeemablePositions.length;
   if (allCount === 0) return null;
 
-  const activeCount = positions.length + openOrders.length;
+  const activeCount = allCount;
 
   return (
     <View style={styles.section}>
@@ -168,19 +174,19 @@ function PositionRow({
       accessibilityLabel={`View position: ${p.title}`}
     >
       <View style={styles.row}>
-        <OutcomeBadge label={p.outcome ?? 'YES'} positive={p.outcome !== 'No'} />
+        <OutcomeBadge label={formatOutcome(p.outcome)} positive={p.outcome !== 'No'} />
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
-            {p.title || p.slug || '--'}
+            {formatOutcome(p.outcome)} {formatChance(p.curPrice)} now
           </Text>
           <Text style={styles.meta}>
-            Live · {p.size.toFixed(2)} shares · {formatUsd(p.currentValue ?? 0)} value
+            {p.title || p.slug || '--'} · Picked at {formatChance(p.avgPrice)}
           </Text>
         </View>
         <View style={styles.trailing}>
-          <Text style={[styles.value, isUp ? styles.posText : styles.negText]}>{formatPnl(pnl)}</Text>
+          <Text style={[styles.value, isUp ? styles.posText : styles.negText]}>{formatUsd(p.currentValue ?? 0)}</Text>
           <Text style={styles.subValue}>
-            {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
+            {formatPnl(pnl)}
           </Text>
         </View>
         <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
@@ -188,7 +194,7 @@ function PositionRow({
       <View style={styles.actions}>
         <Pressable style={styles.secondaryAction} onPress={onPress}>
           <MaterialIcons name="payments" size={12} color={tokens.colors.viridian} />
-          <Text style={styles.secondaryActionText}>Cash out</Text>
+          <Text style={styles.secondaryActionText}>Cash out now</Text>
         </Pressable>
         <Pressable style={styles.secondaryAction} onPress={onMarketPress}>
           <MaterialIcons name="add-chart" size={12} color={tokens.colors.primary} />
@@ -213,17 +219,18 @@ function OrderRow({
   const priceNum = Number.parseFloat(o.price) || 0;
   const cost = sizeNum * priceNum;
   const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
+  const outcomeLabel = formatOutcome(o.outcome);
 
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <OutcomeBadge label={o.side} positive={o.side === 'BUY'} />
+        <OutcomeBadge label={outcomeLabel} positive={o.side !== 'SELL'} />
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
-            {o.outcome || o.market || '--'}
+            {formatChance(priceNum)} on {outcomeLabel}
           </Text>
           <Text style={styles.meta}>
-            Waiting · {sizeNum.toFixed(2)} shares at {Math.round(priceNum * 100)}¢ · {fillPct}% filled
+            Yet to be placed{fillPct > 0 ? ` · ${fillPct}% matched` : ''}
           </Text>
         </View>
         <View style={styles.trailing}>
@@ -242,7 +249,7 @@ function OrderRow({
         ) : (
           <>
             <MaterialIcons name="close" size={12} color={semantic.sentiment.negative} />
-            <Text style={styles.dangerActionText}>Cancel waiting order</Text>
+            <Text style={styles.dangerActionText}>Cancel</Text>
           </>
         )}
       </Pressable>
@@ -284,13 +291,13 @@ function RedeemableRow({
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <OutcomeBadge label={p.outcome ?? 'YES'} positive />
+        <OutcomeBadge label={formatOutcome(p.outcome)} positive />
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
-            {p.title || p.slug || '--'}
+            {formatOutcome(p.outcome)} won
           </Text>
           <Text style={styles.meta}>
-            Ready · {p.size.toFixed(2)} winning shares
+            {p.title || p.slug || '--'} · Ready to collect
           </Text>
         </View>
         <View style={styles.trailing}>

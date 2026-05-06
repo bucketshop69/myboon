@@ -1,5 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -74,6 +74,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -174,10 +175,8 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice = livePrice?.noPrice ?? (detail?.outcomePrices[1] ?? null);
-  const yesPct = yesPrice !== null ? Math.round(yesPrice * 100) : null;
-  const noPct = noPrice !== null ? Math.round(noPrice * 100) : null;
-
   function tapOdd(side: 'yes' | 'no') {
+    setSuccessMessage(null);
     if (numpadOpen && selectedSide === side) {
       // same tap — collapse
       setNumpadOpen(false);
@@ -242,7 +241,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
-      Alert.alert('Order placed', `${selectedSide.toUpperCase()} $${amount} @ ${Math.round(price * 100)}\u00A2`);
+      setSuccessMessage(`${selectedSide.toUpperCase()} is live with $${amount}. Follow it in Your Picks.`);
       collapseNumpad();
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
@@ -356,6 +355,13 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
             {/* Separator */}
             <View style={styles.separator} />
+
+            {successMessage && (
+              <View style={styles.successBanner}>
+                <MaterialIcons name="check-circle" size={14} color={tokens.colors.viridian} />
+                <Text style={styles.successText}>{successMessage}</Text>
+              </View>
+            )}
 
             {/* Odds format toggle + Binary odds buttons */}
             <View style={styles.oddsSection}>
@@ -548,6 +554,26 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: semantic.predict.rowBorderSoft,
     marginHorizontal: 20,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74,140,111,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.24)',
+  },
+  successText: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    lineHeight: 13,
+    color: semantic.text.primary,
   },
 
   // ── Binary odds ──
