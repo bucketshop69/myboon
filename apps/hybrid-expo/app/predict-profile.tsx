@@ -15,15 +15,13 @@ import { useRouter, useNavigation } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
-import type { ActivityItem, PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity } from '@/features/predict/predict.api';
+import type { ActivityItem, PortfolioData } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
-import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
-import { PerfStrip } from '@/features/predict/profile/PerfStrip';
-import { RedeemableSection } from '@/features/predict/profile/RedeemableSection';
 import { EmptyPortfolio } from '@/features/predict/profile/EmptyPortfolio';
+import { YourPicksSection } from '@/features/predict/profile/YourPicksSection';
 import { semantic, tokens } from '@/theme';
 
 function truncate(addr: string, start = 6, end = 4): string {
@@ -47,7 +45,6 @@ export default function PredictProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { connected, address: solanaAddress, source } = useWallet();
-  const privy = usePrivyWallet();
   const poly = usePolymarketWallet();
   const { open: openDrawer } = useDrawer();
   const [busy, setBusy] = useState(false);
@@ -63,26 +60,7 @@ export default function PredictProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
 
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-
   const isEnabled = poly.isReady && poly.polygonAddress;
-
-  const handleCancel = useCallback(async (orderId: string) => {
-    if (!poly.polygonAddress) return;
-    setCancellingId(orderId);
-    try {
-      const result = await cancelOrder(poly.polygonAddress, orderId);
-      if (result.ok) {
-        setOpenOrders((prev) => prev.filter((o) => o.id !== orderId));
-      } else {
-        Alert.alert('Cancel failed', result.error ?? 'Unknown error');
-      }
-    } catch {
-      Alert.alert('Cancel failed', 'Network error');
-    } finally {
-      setCancellingId(null);
-    }
-  }, [poly.polygonAddress]);
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
@@ -343,134 +321,30 @@ export default function PredictProfileScreen() {
               </View>
             </View>
 
-            {/* Open Orders */}
-            {openOrders.length > 0 && (
-              <View style={styles.positionsSection}>
-                <View style={styles.posHeader}>
-                  <Text style={styles.posTitle}>Open Orders</Text>
-                  <Text style={styles.posCount}>{openOrders.length} pending</Text>
-                </View>
-                {openOrders.map((o: OpenOrder) => {
-                  const sizeNum = parseFloat(o.original_size) || 0;
-                  const matched = parseFloat(o.size_matched) || 0;
-                  const priceNum = parseFloat(o.price) || 0;
-                  const cost = sizeNum * priceNum;
-                  const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
-                  return (
-                    <View key={o.id} style={styles.orderCard}>
-                      <View style={styles.orderCardTop}>
-                        <View style={[styles.sideBadge, o.side === 'BUY' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-                          <Text style={[styles.sideBadgeText, o.side === 'BUY' ? styles.posText : styles.negText]}>
-                            {o.side}
-                          </Text>
-                        </View>
-                        <Text style={styles.orderOutcome} numberOfLines={1}>{o.outcome || '--'}</Text>
-                        <Text style={styles.orderStatus}>{o.status}</Text>
-                      </View>
-                      <View style={styles.orderCardStats}>
-                        <View>
-                          <Text style={styles.orderStatLabel}>Price</Text>
-                          <Text style={styles.orderStatVal}>{Math.round(priceNum * 100)}¢</Text>
-                        </View>
-                        <View>
-                          <Text style={styles.orderStatLabel}>Shares</Text>
-                          <Text style={styles.orderStatVal}>{sizeNum.toFixed(2)}</Text>
-                        </View>
-                        <View>
-                          <Text style={styles.orderStatLabel}>Cost</Text>
-                          <Text style={styles.orderStatVal}>${cost.toFixed(2)}</Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={styles.orderStatLabel}>Filled</Text>
-                          <Text style={styles.orderStatVal}>{fillPct}%</Text>
-                        </View>
-                      </View>
-                      <Pressable
-                        style={styles.cancelBtn}
-                        disabled={cancellingId === o.id}
-                        onPress={() => handleCancel(o.id)}
-                      >
-                        {cancellingId === o.id ? (
-                          <ActivityIndicator size="small" color={semantic.sentiment.negative} />
-                        ) : (
-                          <Text style={styles.cancelBtnText}>Cancel</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
+            <YourPicksSection
+              positions={positions}
+              openOrders={openOrders}
+              redeemablePositions={redeemablePositions}
+              onPositionPress={(p) =>
+                router.push({
+                  pathname: '/predict-position/[conditionId]',
+                  params: {
+                    conditionId: p.conditionId,
+                    slug: p.slug,
+                    outcomeIndex: String(p.outcomeIndex),
+                  },
+                })
+              }
+            />
 
-            {/* Open positions */}
-            <View style={styles.positionsSection}>
-              <View style={styles.posHeader}>
-                <Text style={styles.posTitle}>Positions</Text>
-                <Text style={styles.posCount}>{positions.length} active</Text>
-              </View>
-              {positions.length === 0 && openOrders.length === 0 && (
+            {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && (
+              <View style={styles.positionsSection}>
                 <EmptyPortfolio
                   hasBalance={(cashBalance ?? 0) > 0}
                   onDeposit={() => setDepositOpen(true)}
                 />
-              )}
-              {positions.map((p: PortfolioPosition, i: number) => {
-                const pnl = p.cashPnl ?? 0;
-                const isUp = pnl >= 0;
-                return (
-                  <Pressable
-                    key={`${p.conditionId}-${p.outcomeIndex}-${i}`}
-                    style={styles.posRow}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/predict-position/[conditionId]',
-                        params: {
-                          conditionId: p.conditionId,
-                          slug: p.slug,
-                          outcomeIndex: String(p.outcomeIndex),
-                        },
-                      })
-                    }
-                    accessibilityLabel={`View position: ${p.title}`}
-                  >
-                    <View
-                      style={[
-                        styles.sideBadge,
-                        p.outcome === 'No' ? styles.sideBadgeNo : styles.sideBadgeYes,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.sideBadgeText,
-                          p.outcome === 'No' ? styles.negText : styles.posText,
-                        ]}
-                      >
-                        {p.outcome?.toUpperCase() ?? 'YES'}
-                      </Text>
-                    </View>
-                    <Text style={styles.posQuestion} numberOfLines={1}>
-                      {p.title || p.slug || '—'}
-                    </Text>
-                    <View style={styles.posPnlWrap}>
-                      <Text style={[styles.posPnl, isUp ? styles.posText : styles.negText]}>
-                        {formatPnl(pnl)}
-                      </Text>
-                      <Text style={styles.posEntry}>
-                        {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
-                      </Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* Redeemable Positions */}
-            <RedeemableSection
-              positions={redeemablePositions}
-              polygonAddress={poly.polygonAddress}
-              onRedeemed={() => void loadPortfolio()}
-            />
+              </View>
+            )}
 
             {/* Trade History */}
             {tradeHistory.length > 0 && (
