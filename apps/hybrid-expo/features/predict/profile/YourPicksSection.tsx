@@ -103,13 +103,19 @@ export function YourPicksSection({
   onRedeemed,
 }: YourPicksSectionProps) {
   const [scope, setScope] = useState<'active' | 'all'>('active');
-  const picks = getYourPicks(positions, openOrders, redeemablePositions, closedPositions, scope);
+  const hasActiveRows = positions.length + openOrders.length + redeemablePositions.length > 0;
+  const effectiveScope = hasActiveRows ? scope : 'all';
+  const picks = getYourPicks(positions, openOrders, redeemablePositions, closedPositions, effectiveScope);
   const allCount = positions.length + openOrders.length + redeemablePositions.length + closedPositions.length;
   if (allCount === 0) return null;
 
   const activeCount = positions.length + openOrders.length;
   const readyCount = redeemablePositions.length;
-  const scopeSwitchLabel = scope === 'active' ? 'All' : 'Active';
+  const closedCount = closedPositions.length;
+  const scopeSwitchLabel = effectiveScope === 'active' ? 'All' : 'Active';
+  const countLabel = hasActiveRows
+    ? `${activeCount} active${readyCount > 0 ? ` · ${readyCount} ready` : ''}${closedCount > 0 ? ` · ${closedCount} history` : ''}`
+    : `${closedCount} history`;
 
   return (
     <View style={styles.section}>
@@ -117,17 +123,19 @@ export function YourPicksSection({
         <Text style={styles.title}>Your Picks</Text>
         <View style={styles.headerSide}>
           <Text style={styles.count}>
-            {activeCount} active{readyCount > 0 ? ` · ${readyCount} ready` : ''}
+            {countLabel}
           </Text>
-          <Pressable
-            style={[styles.scopeSwitch, scope === 'all' && styles.scopeSwitchActive]}
-            onPress={() => setScope(scope === 'active' ? 'all' : 'active')}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: scope === 'all' }}
-          >
-            <View style={styles.scopeSwitchKnob} />
-            <Text style={styles.scopeSwitchText}>{scopeSwitchLabel}</Text>
-          </Pressable>
+          {hasActiveRows && closedCount > 0 && (
+            <Pressable
+              style={[styles.scopeSwitch, effectiveScope === 'all' && styles.scopeSwitchActive]}
+              onPress={() => setScope(scope === 'active' ? 'all' : 'active')}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: effectiveScope === 'all' }}
+            >
+              <View style={styles.scopeSwitchKnob} />
+              <Text style={styles.scopeSwitchText}>{scopeSwitchLabel}</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 

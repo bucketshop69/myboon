@@ -213,6 +213,35 @@ type ActivityFallbackGroup = {
   outcomeIndex: number
 }
 
+function activityDedupeKey(input: unknown): string {
+  const activity = asRecord(input)
+  if (!activity) return JSON.stringify(input)
+  return [
+    activity.transactionHash,
+    activity.type,
+    activity.side,
+    activity.conditionId,
+    activity.asset,
+    activity.outcomeIndex,
+    activity.size,
+    activity.usdcSize,
+    activity.price,
+    activity.timestamp,
+  ].join(':')
+}
+
+function dedupeActivity(input: unknown[]): unknown[] {
+  const seen = new Set<string>()
+  const deduped: unknown[] = []
+  for (const item of input) {
+    const key = activityDedupeKey(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(item)
+  }
+  return deduped
+}
+
 async function fetchGammaMarketsForSlug(slug: string): Promise<Record<string, unknown>[]> {
   const eventRes = await gammaFetch(`events?slug=${encodeURIComponent(slug)}`)
   if (eventRes.ok) {
@@ -1143,12 +1172,14 @@ app.get('/predict/portfolio/:address', async (c) => {
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    // Fetch value, active positions, positive-payout redeemables, closed picks, and profile in parallel
-    const [valueRes, posRes, redeemableRes, closedRes, profileRes] = await Promise.allSettled([
+    // Fetch value, active positions, positive-payout redeemables, closed picks,
+    // recent activity, and profile in parallel.
+    const [valueRes, posRes, redeemableRes, closedRes, activityRes, profileRes] = await Promise.allSettled([
       dataApiFetch(`value?user=${encodeURIComponent(address)}`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=false&limit=100&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`closed-positions?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
+      dataApiFetch(`activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
@@ -1185,6 +1216,14 @@ app.get('/predict/portfolio/:address', async (c) => {
       closedPositions = Array.isArray(body) ? body : []
     }
 
+    // Parse recent activity. Keep it separate from picks so the UI can acknowledge
+    // trades/deposits/redeems without pretending they are actionable positions.
+    let activity: unknown[] = []
+    if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
+      const body = await activityRes.value.json() as unknown
+      activity = Array.isArray(body) ? dedupeActivity(body) : []
+    }
+
     // Some deposit-wallet trades appear in data-api /activity before they appear in
     // /positions or /closed-positions. If portfolio state is otherwise empty, expose
     // closed historical picks reconstructed from activity and final Gamma prices.
@@ -1210,11 +1249,17 @@ app.get('/predict/portfolio/:address', async (c) => {
 
     // Compute summary from positions
     let totalPnl = 0
+    let cashOutNow = 0
     let openCount = 0
     for (const p of positions) {
       const pos = p as Record<string, unknown>
       totalPnl += parseNullableNumber(pos.cashPnl) ?? 0
+      cashOutNow += parseNullableNumber(pos.currentValue) ?? 0
       openCount++
+    }
+    let readyToCollect = 0
+    for (const p of redeemablePositions) {
+      readyToCollect += parseNullableNumber((p as Record<string, unknown>).currentValue) ?? 0
     }
     let totalCollected = 0
     for (const p of closedPositions) {
@@ -1230,6 +1275,7 @@ app.get('/predict/portfolio/:address', async (c) => {
       positions,
       redeemablePositions,
       closedPositions,
+      activity,
       profile: profile ? {
         name: profile.name ?? profile.pseudonym ?? null,
         bio: profile.bio ?? null,
@@ -1239,6 +1285,13 @@ app.get('/predict/portfolio/:address', async (c) => {
       summary: {
         openPositions: openCount,
         totalPnl: Math.round(totalPnl * 100) / 100,
+        cashOutNow: Math.round(cashOutNow * 100) / 100,
+        readyToCollect: Math.round(readyToCollect * 100) / 100,
+        activePickCount: openCount,
+        closedPickCount: closedPositions.length,
+        activityCount: activity.length,
+        hasActivity: activity.length > 0,
+        hasAnyPicks: openCount + redeemablePositions.length + closedPositions.length > 0,
         totalCollected: Math.round(totalCollected * 100) / 100,
       },
     })

@@ -16,7 +16,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
-import type { OpenOrder, PortfolioData } from '@/features/predict/predict.api';
+import type { ActivityItem, OpenOrder, PortfolioData } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
@@ -40,6 +40,29 @@ function getOrderCost(order: OpenOrder): number {
   const size = Number.parseFloat(order.original_size) || 0;
   const price = Number.parseFloat(order.price) || 0;
   return size * price;
+}
+
+function formatActivityTime(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return 'just now';
+  const then = timestamp > 10_000_000_000 ? timestamp : timestamp * 1000;
+  const diffMs = Date.now() - then;
+  if (diffMs < 60_000) return 'just now';
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function activityVerb(item: ActivityItem): string {
+  if (item.type === 'TRADE') return item.side === 'SELL' ? 'Sold' : 'Bought';
+  if (item.type === 'REDEEM') return 'Redeemed';
+  if (item.type === 'MERGE') return 'Merged';
+  if (item.type === 'SPLIT') return 'Split';
+  if (item.type === 'CONVERSION') return 'Converted';
+  return item.type ? item.type.toLowerCase().replace(/_/g, ' ') : 'Activity';
 }
 
 export default function PredictProfileScreen() {
@@ -202,9 +225,10 @@ export default function PredictProfileScreen() {
   const positions = portfolio?.positions ?? [];
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
   const closedPositions = portfolio?.closedPositions ?? [];
+  const activity = portfolio?.activity ?? [];
   const portfolioValue = portfolio?.portfolioValue ?? null;
-  const cashOutNow = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
-  const readyToCollect = redeemablePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const cashOutNow = portfolio?.summary.cashOutNow ?? positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const readyToCollect = portfolio?.summary.readyToCollect ?? redeemablePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
   const waitingPickValue = openOrders.reduce((sum, order) => sum + getOrderCost(order), 0);
   const activePickCount = positions.length + openOrders.length;
   const hasAnyPicks = activePickCount + redeemablePositions.length + closedPositions.length > 0;
@@ -392,7 +416,12 @@ export default function PredictProfileScreen() {
               onRedeemed={() => void loadPortfolio()}
             />
 
-            {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && closedPositions.length === 0 && (
+            <RecentActivitySection
+              activity={activity}
+              onMarketPress={handleOpenMarket}
+            />
+
+            {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && closedPositions.length === 0 && activity.length === 0 && (
               <View style={styles.positionsSection}>
                 <EmptyPortfolio
                   mode={(cashBalance ?? 0) > 0 ? 'no-picks' : 'no-balance'}
@@ -424,6 +453,56 @@ export default function PredictProfileScreen() {
           onSuccess={loadPortfolio}
         />
       )}
+    </View>
+  );
+}
+
+function RecentActivitySection({
+  activity,
+  onMarketPress,
+}: {
+  activity: ActivityItem[];
+  onMarketPress: (slug: string) => void;
+}) {
+  if (activity.length === 0) return null;
+  const visible = activity.slice(0, 6);
+
+  return (
+    <View style={styles.activitySection}>
+      <View style={styles.activityHeader}>
+        <Text style={styles.activityTitle}>Recent Activity</Text>
+        <Text style={styles.activityCount}>{activity.length} events</Text>
+      </View>
+      {visible.map((item, index) => {
+        const isPositive = item.type === 'REDEEM' || item.side === 'SELL';
+        const amount = Number.isFinite(item.usdcSize) ? item.usdcSize : 0;
+        return (
+          <Pressable
+            key={`${item.timestamp}-${item.slug}-${item.side}-${index}`}
+            style={styles.activityRow}
+            onPress={() => item.slug ? onMarketPress(item.slug) : undefined}
+          >
+            <View style={[styles.activityIcon, isPositive ? styles.activityIconPositive : styles.activityIconNegative]}>
+              <MaterialIcons
+                name={isPositive ? 'arrow-upward' : 'arrow-downward'}
+                size={12}
+                color={isPositive ? tokens.colors.viridian : tokens.colors.vermillion}
+              />
+            </View>
+            <View style={styles.activityInfo}>
+              <Text style={styles.activityRowTitle} numberOfLines={1}>
+                {activityVerb(item)} {item.outcome || 'pick'}
+              </Text>
+              <Text style={styles.activityMeta} numberOfLines={1}>
+                {item.title || item.slug || 'Predict market'} · {formatActivityTime(item.timestamp)}
+              </Text>
+            </View>
+            <Text style={[styles.activityAmount, isPositive ? styles.posText : styles.negText]}>
+              {isPositive ? '+' : '-'}{formatUsd(amount)}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -806,6 +885,82 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: semantic.text.faint,
     letterSpacing: 0.5,
+  },
+
+  activitySection: {
+    marginHorizontal: tokens.spacing.lg,
+    marginTop: 14,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  activityTitle: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: semantic.text.primary,
+    fontWeight: '700',
+  },
+  activityCount: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+  },
+  activityRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 11,
+    marginBottom: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+  },
+  activityIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  activityIconPositive: {
+    borderColor: 'rgba(74,140,111,0.28)',
+    backgroundColor: 'rgba(74,140,111,0.10)',
+  },
+  activityIconNegative: {
+    borderColor: 'rgba(244,88,78,0.24)',
+    backgroundColor: 'rgba(244,88,78,0.08)',
+  },
+  activityInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  activityRowTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: semantic.text.primary,
+    lineHeight: 15,
+  },
+  activityMeta: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+  },
+  activityAmount: {
+    width: 58,
+    textAlign: 'right',
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: '700',
   },
 
 

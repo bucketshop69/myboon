@@ -559,6 +559,7 @@ export interface PortfolioData {
   positions: PortfolioPosition[];
   redeemablePositions: PortfolioPosition[];
   closedPositions: ClosedPortfolioPosition[];
+  activity: ActivityItem[];
   profile: {
     name: string | null;
     bio: string | null;
@@ -568,6 +569,13 @@ export interface PortfolioData {
   summary: {
     openPositions: number;
     totalPnl: number;
+    cashOutNow?: number;
+    readyToCollect?: number;
+    activePickCount?: number;
+    closedPickCount?: number;
+    activityCount?: number;
+    hasActivity?: boolean;
+    hasAnyPicks?: boolean;
     totalCollected?: number;
   };
 }
@@ -584,6 +592,7 @@ export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioD
       ? (p.redeemablePositions as PortfolioPosition[]).filter((position) => (position.currentValue ?? 0) >= 0.01)
       : [],
     closedPositions: Array.isArray(p.closedPositions) ? (p.closedPositions as ClosedPortfolioPosition[]) : [],
+    activity: Array.isArray(p.activity) ? (p.activity as ActivityItem[]) : [],
     profile: p.profile as PortfolioData['profile'] ?? null,
     summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0, totalCollected: 0 },
   };
