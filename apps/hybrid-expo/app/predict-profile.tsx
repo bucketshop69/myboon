@@ -409,7 +409,6 @@ export default function PredictProfileScreen() {
           onClose={() => setDepositOpen(false)}
           polygonAddress={poly.polygonAddress}
           depositWalletAddress={poly.tradingAddress ?? poly.polygonAddress}
-          cashBalance={cashBalance}
           onFundsAvailable={loadPortfolio}
         />
       )}

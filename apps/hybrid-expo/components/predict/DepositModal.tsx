@@ -23,7 +23,6 @@ interface DepositModalProps {
   polygonAddress: string;
   /** Trading/deposit wallet address used to create bridge deposit addresses. */
   depositWalletAddress: string;
-  cashBalance: number | null;
   onFundsAvailable?: () => void | Promise<void>;
 }
 
@@ -53,6 +52,9 @@ interface TrackedDeposit {
   chain: string;
   address: string;
   baselineBalance: number | null;
+  baselineKnown: boolean;
+  baselineTransactionKeys: string[];
+  hasStatusSnapshot: boolean;
   startedAt: number;
 }
 
@@ -64,10 +66,42 @@ interface DepositStatusView {
 
 const DEPOSIT_POLL_MS = 10_000;
 const DELAYED_AFTER_MS = 5 * 60_000;
+const TRANSACTION_TIME_TOLERANCE_MS = 30_000;
+
+function transactionKey(transaction: DepositBridgeTransaction): string {
+  return [
+    transaction.fromChainId ?? '',
+    transaction.fromTokenAddress ?? '',
+    transaction.fromAmountBaseUnit ?? '',
+    transaction.toChainId ?? '',
+    transaction.toTokenAddress ?? '',
+    transaction.status ?? '',
+    transaction.txHash ?? '',
+    transaction.createdTimeMs ?? '',
+  ].join(':');
+}
+
+function trackingTransactions(
+  transactions: DepositBridgeTransaction[],
+  trackedDeposit: TrackedDeposit,
+): DepositBridgeTransaction[] {
+  const baselineKeys = new Set(trackedDeposit.baselineTransactionKeys);
+  return transactions.filter((transaction) => {
+    if (baselineKeys.has(transactionKey(transaction))) return false;
+    if (typeof transaction.createdTimeMs === 'number') {
+      return transaction.createdTimeMs >= trackedDeposit.startedAt - TRANSACTION_TIME_TOLERANCE_MS;
+    }
+    return trackedDeposit.hasStatusSnapshot;
+  });
+}
 
 function latestTransaction(transactions: DepositBridgeTransaction[]): DepositBridgeTransaction | null {
   if (transactions.length === 0) return null;
-  return [...transactions].sort((a, b) => (b.createdTimeMs ?? 0) - (a.createdTimeMs ?? 0))[0] ?? null;
+  return [...transactions].sort((a, b) => {
+    const aTime = a.createdTimeMs ?? Number.MAX_SAFE_INTEGER;
+    const bTime = b.createdTimeMs ?? Number.MAX_SAFE_INTEGER;
+    return bTime - aTime;
+  })[0] ?? null;
 }
 
 function statusFromTransaction(transaction: DepositBridgeTransaction | null, startedAt: number): DepositStatusView {
@@ -127,7 +161,6 @@ export function DepositModal({
   onClose,
   polygonAddress,
   depositWalletAddress,
-  cashBalance,
   onFundsAvailable,
 }: DepositModalProps) {
   const [addresses, setAddresses] = useState<DepositAddresses | null>(null);
@@ -180,11 +213,9 @@ export function DepositModal({
         fetchClobBalance(polygonAddress).catch(() => null),
       ]);
 
-      const baseline = trackedDeposit.baselineBalance;
-      const balanceReady = balance
-        ? baseline === null
-          ? balance.balance > 0
-          : balance.balance > baseline + 0.000001
+      const baseline = trackedDeposit.baselineBalance ?? 0;
+      const balanceReady = trackedDeposit.baselineKnown && balance
+        ? balance.balance > baseline + 0.000001
         : false;
 
       if (balanceReady) {
@@ -201,6 +232,12 @@ export function DepositModal({
         return;
       }
 
+      if (!trackedDeposit.baselineKnown && balance) {
+        setTrackedDeposit((prev) => prev && prev.address === trackedDeposit.address
+          ? { ...prev, baselineBalance: balance.balance, baselineKnown: true }
+          : prev);
+      }
+
       if (balance?.wrap?.error) {
         setStatusView({
           label: 'Deposit delayed',
@@ -210,7 +247,10 @@ export function DepositModal({
         return;
       }
 
-      const bridgeView = statusFromTransaction(latestTransaction(transactions), trackedDeposit.startedAt);
+      const bridgeView = statusFromTransaction(
+        latestTransaction(trackingTransactions(transactions, trackedDeposit)),
+        trackedDeposit.startedAt,
+      );
       setStatusView(bridgeView);
     } finally {
       setStatusLoading(false);
@@ -231,18 +271,38 @@ export function DepositModal({
   const handleCopy = async (chain: string, address: string) => {
     await Clipboard.setStringAsync(address);
     setCopied(chain);
+    const startedAt = Date.now();
+    setStatusLoading(true);
+    setStatusView({
+      label: 'Waiting for deposit',
+      detail: 'Checking current balance before tracking this deposit.',
+      tone: 'waiting',
+    });
+    fundsNotifiedRef.current = false;
+
+    const [baseline, existingTransactions] = await Promise.all([
+      polygonAddress ? fetchClobBalance(polygonAddress).catch(() => null) : Promise.resolve(null),
+      fetchDepositStatus(address).then(
+        (transactions) => ({ transactions, ok: true }),
+        () => ({ transactions: [] as DepositBridgeTransaction[], ok: false }),
+      ),
+    ]);
+
     setTrackedDeposit({
       chain,
       address,
-      baselineBalance: cashBalance,
-      startedAt: Date.now(),
+      baselineBalance: baseline?.balance ?? null,
+      baselineKnown: !!baseline,
+      baselineTransactionKeys: existingTransactions.transactions.map(transactionKey),
+      hasStatusSnapshot: existingTransactions.ok,
+      startedAt,
     });
     setStatusView({
       label: 'Waiting for deposit',
       detail: 'Send funds to the copied address. We will keep checking while this is open.',
       tone: 'waiting',
     });
-    fundsNotifiedRef.current = false;
+    setStatusLoading(false);
     setTimeout(() => setCopied(null), 2000);
   };
 
