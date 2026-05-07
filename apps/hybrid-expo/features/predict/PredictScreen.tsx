@@ -15,10 +15,12 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
-import { fetchPredictFeed } from '@/features/predict/predict.api';
+import { fetchClobBalance, fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
+import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
+import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 
@@ -331,6 +333,7 @@ function SectionHeader({ label, count, onPress, isLive }: { label: string; count
 export default function PredictScreen() {
   const router = useRouter();
   const { format, setFormat, formatOdds } = useOddsFormat();
+  const poly = usePolymarketWallet();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -339,6 +342,7 @@ export default function PredictScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
 
   async function loadFeed() {
     setLoading(true);
@@ -358,6 +362,20 @@ export default function PredictScreen() {
   useEffect(() => {
     void loadFeed();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCashBalance() {
+      if (!poly.polygonAddress) {
+        setCashBalance(null);
+        return;
+      }
+      const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+      if (!cancelled) setCashBalance(balance?.balance ?? null);
+    }
+    void loadCashBalance();
+    return () => { cancelled = true; };
+  }, [poly.polygonAddress]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -463,7 +481,13 @@ export default function PredictScreen() {
       <View style={styles.predictHeader}>
         <AvatarTrigger />
         <Text style={styles.predictTitle}>Predict</Text>
+        {/*
         <OddsFormatToggle format={format} onFormatChange={setFormat} />
+        */}
+        <View style={styles.cashPill}>
+          <Text style={styles.cashPillLabel}>Cash</Text>
+          <Text style={styles.cashPillValue}>{truncateUsd(cashBalance)}</Text>
+        </View>
       </View>
 
       {/* feed scroll */}
@@ -492,6 +516,7 @@ export default function PredictScreen() {
           </View>
         ) : null}
 
+        {/*
         {!loading && !errorMessage && featuredItems.length > 0 ? (
           <>
             <View style={styles.featuredHeader}>
@@ -525,6 +550,7 @@ export default function PredictScreen() {
             </ScrollView>
           </>
         ) : null}
+        */}
 
         {!loading && !errorMessage ? (
           <View style={styles.filterStripShell}>
@@ -649,6 +675,31 @@ const styles = StyleSheet.create({
     letterSpacing: 2.5,
     textTransform: 'uppercase',
     fontFamily: 'monospace',
+  },
+  cashPill: {
+    minHeight: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.25)',
+    backgroundColor: semantic.background.lift,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  cashPillLabel: {
+    fontFamily: 'monospace',
+    fontSize: 6,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  cashPillValue: {
+    fontFamily: 'monospace',
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: semantic.text.primary,
   },
   // ─── filter strip ───
   filterStripShell: {

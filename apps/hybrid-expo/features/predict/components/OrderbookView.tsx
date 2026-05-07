@@ -7,8 +7,8 @@ interface OrderbookViewProps {
   loading: boolean;
 }
 
-function formatCents(price: number): string {
-  return `${(price * 100).toFixed(1)}\u00A2`;
+function formatProbability(price: number): string {
+  return `${Math.round(price * 100)}%`;
 }
 
 function formatShares(size: number): string {
@@ -66,7 +66,7 @@ export function OrderbookView({ book, loading }: OrderbookViewProps) {
         return (
           <View key={`ask-${i}`} style={styles.row}>
             <View style={[styles.depthBar, styles.depthAsk, { width: `${depthPct}%` }]} />
-            <Text style={[styles.price, styles.askPrice]}>{formatCents(level.price)}</Text>
+            <Text style={[styles.price, styles.askPrice]}>{formatProbability(level.price)}</Text>
             <Text style={[styles.shares]}>{formatShares(level.size)}</Text>
             <Text style={[styles.total]}>{formatTotal(runningAskTotal)}</Text>
           </View>
@@ -76,10 +76,10 @@ export function OrderbookView({ book, loading }: OrderbookViewProps) {
       {/* Spread */}
       <View style={styles.spreadRow}>
         <Text style={styles.spreadLabel}>
-          Last: {book.lastPrice !== null ? formatCents(book.lastPrice) : '--'}
+          Last: {book.lastPrice !== null ? formatProbability(book.lastPrice) : '--'}
         </Text>
         <Text style={styles.spreadVal}>
-          Spread: {book.spread !== null ? formatCents(book.spread) : '--'}
+          Spread: {book.spread !== null ? formatProbability(book.spread) : '--'}
         </Text>
       </View>
 
@@ -90,7 +90,7 @@ export function OrderbookView({ book, loading }: OrderbookViewProps) {
         return (
           <View key={`bid-${i}`} style={styles.row}>
             <View style={[styles.depthBar, styles.depthBid, { width: `${depthPct}%` }]} />
-            <Text style={[styles.price, styles.bidPrice]}>{formatCents(level.price)}</Text>
+            <Text style={[styles.price, styles.bidPrice]}>{formatProbability(level.price)}</Text>
             <Text style={[styles.shares]}>{formatShares(level.size)}</Text>
             <Text style={[styles.total]}>{formatTotal(runningBidTotal)}</Text>
           </View>

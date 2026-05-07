@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { fetchMarketPositions, fetchActivity, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
+import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -201,7 +202,9 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
               {position.outcome?.toUpperCase() ?? 'YES'}
             </Text>
           </View>
-          <Text style={styles.marketTitle}>{position.title}</Text>
+          <Text style={styles.marketTitle}>
+            {formatPredictTitle({ title: position.title, slug: position.slug || position.eventSlug })}
+          </Text>
           {position.endDate && (
             <Text style={styles.endDate}>
               Ends {new Date(position.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}

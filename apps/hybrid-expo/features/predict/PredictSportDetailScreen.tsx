@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { cancelOrder, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
+import { cancelOrder, fetchClobBalance, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
@@ -25,6 +25,9 @@ import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
 import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
 import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
+import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
+import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
+import { truncateUsd } from '@/features/predict/formatPredictMoney';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -33,11 +36,6 @@ interface PredictSportDetailScreenProps {
 
 type Interval = '5m' | '1h' | '1d';
 type ActiveView = 'picks' | 'stats' | 'chart' | 'orderbook';
-type LivePick = {
-  label: string;
-  amount: number;
-  price: number;
-};
 
 const SOFT_COLLAPSED = 280; // handle + stats + ~3 selection rows
 const SOFT_EXPANDED = 720;
@@ -49,6 +47,30 @@ function outcomeColor(outcome: SportOutcomeDetail, isLead: boolean): string {
 
 function sportOutcomeLabel(outcome: SportOutcomeDetail): string {
   return outcome.label.toLowerCase().includes('draw') ? 'Draw' : outcome.label;
+}
+
+function outcomeTone(outcome: SportOutcomeDetail, index: number): 'lead' | 'draw' | 'trail' {
+  if (outcome.label.toLowerCase().includes('draw')) return 'draw';
+  return index === 0 ? 'lead' : 'trail';
+}
+
+function sortSportOutcomes(outcomes: SportOutcomeDetail[]): SportOutcomeDetail[] {
+  const list = [...outcomes];
+  const byPriceDesc = (a: SportOutcomeDetail, b: SportOutcomeDetail) => (b.price ?? -1) - (a.price ?? -1);
+  const draw = list.find((outcome) => outcome.label.toLowerCase().includes('draw'));
+
+  if (list.length === 3 && draw) {
+    const teams = list.filter((outcome) => outcome !== draw).sort(byPriceDesc);
+    if (teams.length === 2) return [teams[0], draw, teams[1]];
+  }
+
+  return list.sort((a, b) => {
+    const aIsDraw = a.label.toLowerCase().includes('draw');
+    const bIsDraw = b.label.toLowerCase().includes('draw');
+    if (aIsDraw && !bIsDraw) return 1;
+    if (!aIsDraw && bIsDraw) return -1;
+    return byPriceDesc(a, b);
+  });
 }
 
 function formatPositionOutcome(outcome: string | null | undefined): string {
@@ -112,7 +134,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
-  const [livePick, setLivePick] = useState<LivePick | null>(null);
   const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
@@ -120,6 +141,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -138,16 +161,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // Live badge pulse
   const livePulse = useRef(new Animated.Value(1)).current;
 
-  // Sort outcomes: lead first, draw in middle
-  const sortedOutcomes = detail
-    ? [...detail.outcomes].sort((a, b) => {
-        const aIsDraw = a.label.toLowerCase().includes('draw');
-        const bIsDraw = b.label.toLowerCase().includes('draw');
-        if (aIsDraw && !bIsDraw) return 1;
-        if (!aIsDraw && bIsDraw) return -1;
-        return (b.price ?? -1) - (a.price ?? -1);
-      })
-    : [];
+  const sortedOutcomes = detail ? sortSportOutcomes(detail.outcomes) : [];
   const leadPrice = sortedOutcomes[0]?.price ?? null;
 
   async function loadDetail() {
@@ -246,6 +260,20 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     if (activeView === 'picks') void loadPicks();
   }, [activeView, slug, poly.polygonAddress, poly.tradingAddress]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCashBalance() {
+      if (!poly.polygonAddress) {
+        setCashBalance(null);
+        return;
+      }
+      const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+      if (!cancelled) setCashBalance(balance?.balance ?? null);
+    }
+    void loadCashBalance();
+    return () => { cancelled = true; };
+  }, [poly.polygonAddress]);
+
   // LIVE pulse
   useEffect(() => {
     if (detail?.status !== 'live') return;
@@ -279,7 +307,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   });
 
   function tapOdd(outcomeIdx: number) {
-    setLivePick(null);
     if (numpadOpen && selectedOutcomeIdx === outcomeIdx) {
       setNumpadOpen(false);
       setSelectedOutcomeIdx(null);
@@ -315,6 +342,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     if (!detail || selectedOutcomeIdx === null || submitting) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
+    if (cashBalance !== null && amount > cashBalance + 0.000001) return;
 
     const outcome = sortedOutcomes[selectedOutcomeIdx];
     if (!outcome) return;
@@ -358,17 +386,20 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
-      setLivePick({
-        label: sportOutcomeLabel(outcome),
-        amount,
-        price,
-      });
       collapseNumpad();
+      setActiveView('picks');
+      setPickScope('market');
+      void loadPicks();
+      void fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleCashOut(position: PortfolioPosition) {
+    setCashOutPosition(position);
   }
 
   const numpadPrice = (() => {
@@ -379,6 +410,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   })();
   const selectedOutcome = selectedOutcomeIdx !== null ? sortedOutcomes[selectedOutcomeIdx] : null;
   const selectedOutcomeLabel = selectedOutcome ? sportOutcomeLabel(selectedOutcome) : undefined;
+  const displayTitle = detail
+    ? formatPredictTitle({
+        title: detail.title,
+        slug: detail.slug,
+        outcomes: detail.outcomes.map((outcome) => outcome.label),
+      })
+    : 'Loading...';
 
   const chartWidth = screenWidth - 40;
   const chartHeight = 180;
@@ -392,15 +430,21 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         </Pressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {detail?.title ?? 'Loading...'}
+            {displayTitle}
           </Text>
         </View>
-        {detail?.status === 'live' && (
-          <View style={styles.liveBadge}>
-            <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
-            <Text style={styles.liveText}>LIVE</Text>
+        <View style={styles.headerRight}>
+          {detail?.status === 'live' && (
+            <View style={styles.liveBadge}>
+              <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          )}
+          <View style={styles.cashPill}>
+            <Text style={styles.cashPillLabel}>Cash</Text>
+            <Text style={styles.cashPillValue}>{truncateUsd(cashBalance)}</Text>
           </View>
-        )}
+        </View>
       </View>
 
       {/* ── LOADING / ERROR ── */}
@@ -456,14 +500,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}
-                  onCashOut={(position) => router.push({
-                    pathname: '/predict-position/[conditionId]',
-                    params: {
-                      conditionId: position.conditionId,
-                      slug: position.slug,
-                      outcomeIndex: String(position.outcomeIndex),
-                    },
-                  })}
+                  onCashOut={handleCashOut}
                   onBackMore={backMorePosition}
                   onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
                   onRedeemed={() => void loadPicks()}
@@ -526,63 +563,18 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               </Pressable>
             </View>
 
-            {livePick && (
-              <View style={styles.successPanel}>
-                <View style={styles.successPanelTop}>
-                  <MaterialIcons name="check-circle" size={16} color={tokens.colors.viridian} />
-                  <View style={styles.successPanelCopy}>
-                    <Text style={styles.successTitle}>Your pick is live</Text>
-                    <Text style={styles.successSub}>{livePick.label} at {Math.round(livePick.price * 100)}%</Text>
-                  </View>
-                </View>
-                <View style={styles.successStats}>
-                  <View style={styles.successStat}>
-                    <Text style={styles.successStatLabel}>Put in</Text>
-                    <Text style={styles.successStatValue}>${livePick.amount.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.successStat}>
-                    <Text style={styles.successStatLabel}>Worth now</Text>
-                    <Text style={styles.successStatValue}>${livePick.amount.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.successStat}>
-                    <Text style={styles.successStatLabel}>Possible win</Text>
-                    <Text style={styles.successStatValue}>${(livePick.amount / livePick.price).toFixed(2)}</Text>
-                  </View>
-                </View>
-                <View style={styles.successActions}>
-                  <Pressable style={styles.successPrimaryAction} onPress={() => {
-                    setActiveView('picks');
-                    setPickScope('market');
-                    void loadPicks();
-                  }}>
-                    <Text style={styles.successPrimaryActionText}>View My Picks</Text>
-                  </Pressable>
-                  <Pressable style={styles.successSecondaryAction} onPress={() => {
-                    setActiveView('picks');
-                    setPickScope('market');
-                    void loadPicks();
-                  }}>
-                    <Text style={styles.successSecondaryActionText}>Manage</Text>
-                  </Pressable>
-                  <Pressable style={styles.successSecondaryAction} onPress={() => {
-                    const index = sortedOutcomes.findIndex((outcome) => sportOutcomeLabel(outcome) === livePick.label);
-                    tapOdd(index >= 0 ? index : 0);
-                  }}>
-                    <Text style={styles.successSecondaryActionText}>Add More</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-
             {/* Selection rows */}
             <View style={styles.oddsSection}>
               <View style={styles.selHeader}>
                 <Text style={styles.selHeaderLabel}>{"What's your pick?"}</Text>
+                {/*
                 <OddsFormatToggle format={format} onFormatChange={setFormat} />
+                */}
               </View>
               {sortedOutcomes.map((outcome, i) => {
                 const label = sportOutcomeLabel(outcome);
                 const isSelected = selectedOutcomeIdx === i;
+                const tone = outcomeTone(outcome, i);
                 return (
                   <View key={`${outcome.conditionId ?? outcome.label}-${i}`} style={[styles.selRow, i > 0 && styles.selRowBorder]}>
                     <View style={styles.selInfo}>
@@ -591,10 +583,18 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                     </View>
                     <View style={styles.selBtns}>
                       <Pressable
-                        style={[styles.selBtn, isSelected && styles.selBtnSelected]}
+                        style={[
+                          styles.selBtn,
+                          tone === 'lead' ? styles.selBtnLead : tone === 'draw' ? styles.selBtnDraw : styles.selBtnTrail,
+                          isSelected && (tone === 'lead' ? styles.selBtnLeadSelected : tone === 'draw' ? styles.selBtnDrawSelected : styles.selBtnTrailSelected),
+                        ]}
                         onPress={() => tapOdd(i)}>
-                        <Text style={styles.selBtnPct}>{outcome.price !== null ? formatOdds(outcome.price) : '--'}</Text>
-                        <Text style={styles.selBtnLabel} numberOfLines={1}>Back {label}</Text>
+                        <Text style={[
+                          styles.selBtnPct,
+                          tone === 'lead' ? styles.selBtnPctLead : tone === 'draw' ? styles.selBtnPctDraw : styles.selBtnPctTrail,
+                        ]}>
+                          {outcome.price !== null ? formatOdds(outcome.price) : '--'}
+                        </Text>
                       </Pressable>
                     </View>
                   </View>
@@ -609,6 +609,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               pickLabel={selectedOutcomeLabel}
               price={numpadPrice}
               amount={numpadAmount}
+              availableCash={cashBalance}
               onAmountChange={setNumpadAmount}
               onConfirm={() => { void submitOrder(); }}
               submitting={submitting}
@@ -617,6 +618,11 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
           </Animated.View>
         </View>
       ) : null}
+      <CashOutConfirmModal
+        visible={cashOutPosition !== null}
+        position={cashOutPosition}
+        onClose={() => setCashOutPosition(null)}
+      />
     </View>
   );
 }
@@ -649,6 +655,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'monospace',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    flexShrink: 0,
+  },
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -668,6 +680,31 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: semantic.sentiment.negative,
+  },
+  cashPill: {
+    minHeight: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.25)',
+    backgroundColor: semantic.background.lift,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  cashPillLabel: {
+    fontFamily: 'monospace',
+    fontSize: 6,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  cashPillValue: {
+    fontFamily: 'monospace',
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: semantic.text.primary,
   },
 
   // ── States ──
@@ -903,117 +940,6 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.predict.rowBorderSoft,
     marginHorizontal: 20,
   },
-  successBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 20,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(74,140,111,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.24)',
-  },
-  successText: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: 9,
-    lineHeight: 13,
-    color: semantic.text.primary,
-  },
-  successPanel: {
-    marginHorizontal: 20,
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(74,140,111,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.24)',
-    gap: 10,
-  },
-  successPanelTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  successPanelCopy: {
-    flex: 1,
-  },
-  successTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: semantic.text.primary,
-  },
-  successSub: {
-    marginTop: 2,
-    fontFamily: 'monospace',
-    fontSize: 8,
-    color: semantic.text.dim,
-    textTransform: 'uppercase',
-  },
-  successStats: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  successStat: {
-    flex: 1,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    padding: 8,
-  },
-  successStatLabel: {
-    fontFamily: 'monospace',
-    fontSize: 7,
-    color: semantic.text.faint,
-    textTransform: 'uppercase',
-  },
-  successStatValue: {
-    marginTop: 2,
-    fontFamily: 'monospace',
-    fontSize: 10,
-    fontWeight: '800',
-    color: semantic.text.primary,
-  },
-  successActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  successPrimaryAction: {
-    flex: 1.3,
-    minHeight: 34,
-    borderRadius: 9,
-    backgroundColor: tokens.colors.viridian,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  successPrimaryActionText: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    fontWeight: '800',
-    color: tokens.colors.backgroundDark,
-    textTransform: 'uppercase',
-  },
-  successSecondaryAction: {
-    flex: 1,
-    minHeight: 34,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-  },
-  successSecondaryActionText: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    fontWeight: '800',
-    color: semantic.text.primary,
-    textTransform: 'uppercase',
-  },
-
   // ── Selection rows ──
   oddsSection: {
     paddingHorizontal: 20,
@@ -1056,30 +982,48 @@ const styles = StyleSheet.create({
   selBtns: { flexDirection: 'row', gap: 8, flexShrink: 0 },
   selBtn: {
     width: 92,
-    height: 42,
+    height: 38,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
+  },
+  selBtnLead: {
     backgroundColor: semantic.predict.outcomeYesBg,
   },
-  selBtnSelected: {
+  selBtnDraw: {
+    backgroundColor: semantic.predict.outcomeDrawBg,
+  },
+  selBtnTrail: {
+    backgroundColor: semantic.predict.outcomeNoBg,
+  },
+  selBtnLeadSelected: {
     backgroundColor: 'rgba(74,140,111,0.25)',
     borderWidth: 1,
     borderColor: 'rgba(74,140,111,0.35)',
   },
+  selBtnDrawSelected: {
+    backgroundColor: 'rgba(199,183,112,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(199,183,112,0.35)',
+  },
+  selBtnTrailSelected: {
+    backgroundColor: 'rgba(217,83,79,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.35)',
+  },
   selBtnPct: {
     fontFamily: 'monospace',
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '700',
-    color: semantic.sentiment.positive,
-    lineHeight: 14,
+    lineHeight: 18,
   },
-  selBtnLabel: {
-    fontFamily: 'monospace',
-    fontSize: 6.5,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: 'rgba(74,140,111,0.55)',
+  selBtnPctLead: {
+    color: semantic.sentiment.positive,
+  },
+  selBtnPctDraw: {
+    color: semantic.text.accent,
+  },
+  selBtnPctTrail: {
+    color: semantic.sentiment.negative,
   },
 });

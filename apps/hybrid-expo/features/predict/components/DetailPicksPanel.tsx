@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
+import { portfolioPositionCost } from '@/features/predict/formatPredictMoney';
+import { PredictPositionRow } from '@/features/predict/components/PredictPositionRow';
 import { semantic, tokens } from '@/theme';
 
 type DetailPickScope = 'market' | 'all';
@@ -49,7 +51,7 @@ function orderCost(order: OpenOrder): number {
 }
 
 function positionCost(position: PortfolioPosition): number {
-  return (position.avgPrice ?? 0) * (position.size ?? 0);
+  return portfolioPositionCost(position);
 }
 
 function isSameMarket(position: PortfolioPosition, marketSlug: string): boolean {
@@ -163,46 +165,15 @@ export function DetailPicksPanel({
           );
         }
         return (
-          <PositionRow
+          <PredictPositionRow
             key={row.id}
             position={row.position}
+            showMarketTitle={scope === 'all'}
             onCashOut={() => onCashOut(row.position)}
             onBackMore={() => onBackMore(row.position)}
           />
         );
       })}
-    </View>
-  );
-}
-
-function PositionRow({
-  position,
-  onCashOut,
-  onBackMore,
-}: {
-  position: PortfolioPosition;
-  onCashOut: () => void;
-  onBackMore: () => void;
-}) {
-  const outcome = formatOutcome(position.outcome);
-  return (
-    <View style={[styles.rowCard, position.outcome === 'No' ? styles.noCard : styles.liveCard]}>
-      <View style={styles.rowMain}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.rowTitle}>{outcome} <Text style={styles.rowNow}>{formatChance(position.curPrice)} now</Text></Text>
-          <Text style={styles.rowMeta} numberOfLines={1}>
-            {position.title || position.slug} · avg entry {formatChance(position.avgPrice)}
-          </Text>
-        </View>
-        <View style={styles.rowActions}>
-          <Pressable style={styles.cashAction} onPress={onCashOut}>
-            <Text style={styles.cashActionText}>{formatUsd(position.currentValue ?? 0)} cash out now</Text>
-          </Pressable>
-          <Pressable style={styles.backAction} onPress={onBackMore}>
-            <Text style={styles.backActionText}>Back more</Text>
-          </Pressable>
-        </View>
-      </View>
     </View>
   );
 }
@@ -219,7 +190,7 @@ function OrderRow({
   const price = Number.parseFloat(order.price) || 0;
   const outcome = formatOutcome(order.outcome);
   return (
-    <View style={[styles.rowCard, styles.waitingCard]}>
+    <View style={[styles.rowCard, styles.waitingCard, styles.limitStrip]}>
       <View style={styles.rowMain}>
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>{formatChance(price)} on {outcome}</Text>
@@ -267,11 +238,11 @@ function RedeemableRow({
   }
 
   return (
-    <View style={[styles.rowCard, styles.readyCard]}>
+    <View style={[styles.rowCard, styles.readyCard, styles.readyStrip]}>
       <View style={styles.rowMain}>
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>{formatOutcome(position.outcome)} <Text style={styles.winText}>won</Text></Text>
-          <Text style={styles.rowMeta} numberOfLines={1}>{position.title || position.slug} · ready to collect</Text>
+          <Text style={styles.rowMeta} numberOfLines={1}>Ready to collect</Text>
         </View>
         <Pressable
           style={[styles.redeemAction, status === 'error' && styles.redeemActionError]}
@@ -396,25 +367,32 @@ const styles = StyleSheet.create({
   },
   rowCard: {
     borderWidth: 1,
+    borderLeftWidth: 3,
     borderRadius: 12,
-    padding: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 7,
   },
-  liveCard: {
-    borderColor: 'rgba(74,140,111,0.22)',
-    backgroundColor: 'rgba(74,140,111,0.07)',
+  activeCard: {
+    borderColor: 'rgba(74,140,111,0.24)',
+    backgroundColor: 'rgba(74,140,111,0.10)',
   },
-  noCard: {
-    borderColor: 'rgba(244,88,78,0.22)',
-    backgroundColor: 'rgba(244,88,78,0.07)',
+  activeStrip: {
+    borderLeftColor: tokens.colors.viridian,
   },
   waitingCard: {
     borderColor: 'rgba(232,197,71,0.25)',
     backgroundColor: 'rgba(232,197,71,0.08)',
   },
+  limitStrip: {
+    borderLeftColor: tokens.colors.primary,
+  },
   readyCard: {
     borderColor: 'rgba(74,140,111,0.28)',
     backgroundColor: 'rgba(74,140,111,0.10)',
+  },
+  readyStrip: {
+    borderLeftColor: tokens.colors.viridian,
   },
   rowMain: {
     flexDirection: 'row',
@@ -426,21 +404,32 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    fontSize: 13,
+    fontSize: 17,
     fontWeight: '800',
     color: semantic.text.primary,
-  },
-  rowNow: {
-    color: tokens.colors.viridian,
-    fontSize: 11,
   },
   winText: {
     color: tokens.colors.viridian,
   },
   rowMeta: {
-    marginTop: 3,
+    marginTop: 4,
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: 11,
+    color: semantic.text.dim,
+  },
+  rowPnl: {
+    marginTop: 4,
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  pnlPositive: {
+    color: tokens.colors.viridian,
+  },
+  pnlNegative: {
+    color: tokens.colors.vermillion,
+  },
+  pnlFlat: {
     color: semantic.text.faint,
   },
   rowActions: {
@@ -451,29 +440,50 @@ const styles = StyleSheet.create({
     minHeight: 32,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: 'rgba(232,197,71,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 5,
   },
+  cashActionPositive: {
+    borderColor: 'rgba(74,140,111,0.34)',
+    backgroundColor: 'rgba(74,140,111,0.12)',
+  },
+  cashActionNegative: {
+    borderColor: 'rgba(244,88,78,0.30)',
+    backgroundColor: 'rgba(244,88,78,0.10)',
+  },
+  cashActionFlat: {
+    borderColor: semantic.border.muted,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+  },
   cashActionText: {
     fontFamily: 'monospace',
     fontSize: 7.5,
-    color: tokens.colors.primary,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  cashActionTextPositive: {
+    color: tokens.colors.viridian,
+  },
+  cashActionTextNegative: {
+    color: tokens.colors.vermillion,
+  },
+  cashActionTextFlat: {
+    color: semantic.text.dim,
   },
   backAction: {
     minHeight: 30,
     borderRadius: 9,
-    backgroundColor: 'rgba(74,140,111,0.12)',
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: 'rgba(255,255,255,0.025)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   backActionText: {
     fontFamily: 'monospace',
     fontSize: 8,
-    color: tokens.colors.viridian,
+    color: semantic.text.dim,
     fontWeight: '800',
   },
   cancelAction: {

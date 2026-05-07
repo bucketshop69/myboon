@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
+import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
+import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { PredictPositionRow } from '@/features/predict/components/PredictPositionRow';
 import { semantic, tokens } from '@/theme';
 
 type YourPick =
@@ -28,7 +31,7 @@ function formatUsd(value: number): string {
 }
 
 function formatActionUsd(value: number): string {
-  return `$${Math.round(value)}`;
+  return truncateUsd(value);
 }
 
 function formatChance(value: number | null | undefined): string {
@@ -39,6 +42,14 @@ function formatChance(value: number | null | undefined): string {
 function formatOutcome(label: string | null | undefined): string {
   if (!label) return 'Yes';
   return label.toLowerCase().includes('draw') ? 'Draw' : label;
+}
+
+function formatMarketTitle(position: PortfolioPosition | ClosedPortfolioPosition): string {
+  return formatPredictTitle({
+    title: position.title,
+    slug: position.slug || position.eventSlug,
+    outcomes: 'oppositeOutcome' in position ? [position.outcome, position.oppositeOutcome] : [],
+  });
 }
 
 function getClosedPayout(position: ClosedPortfolioPosition): number {
@@ -175,11 +186,12 @@ export function YourPicksSection({
           );
         }
         return (
-          <PositionRow
+          <PredictPositionRow
             key={pick.id}
             position={pick.position}
+            showMarketTitle
             onCashOut={() => onCashOutPress(pick.position)}
-            onMarketPress={() => onMarketPress(pick.position.slug)}
+            onBackMore={() => onMarketPress(pick.position.slug)}
           />
         );
       })}
@@ -199,48 +211,13 @@ function ClosedRow({ position: p }: { position: ClosedPortfolioPosition }) {
             {formatOutcome(p.outcome)} {won ? 'won' : 'lost'}
           </Text>
           <Text style={styles.meta}>
-            {p.title || p.slug || '--'} · {won ? `collected ${formatActionUsd(payout)}` : 'settled'}
+            {formatMarketTitle(p)} · {won ? `collected ${formatActionUsd(payout)}` : 'settled'}
           </Text>
         </View>
         <View style={styles.actions}>
           <View style={styles.settledAction}>
             <Text style={styles.settledActionText}>{won ? 'Collected' : 'No payout'}</Text>
           </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function PositionRow({
-  position: p,
-  onCashOut,
-  onMarketPress,
-}: {
-  position: PortfolioPosition;
-  onCashOut: () => void;
-  onMarketPress: () => void;
-}) {
-  return (
-    <View
-      style={[styles.card, p.outcome === 'No' ? styles.noCard : styles.liveCard]}
-    >
-      <View style={styles.row}>
-        <View style={styles.info}>
-          <Text style={styles.question} numberOfLines={2}>
-            {formatOutcome(p.outcome)} {formatChance(p.curPrice)} now
-          </Text>
-          <Text style={styles.meta}>
-            {p.title || p.slug || '--'} · avg entry {formatChance(p.avgPrice)}
-          </Text>
-        </View>
-        <View style={styles.actions}>
-          <Pressable style={styles.cashAction} onPress={onCashOut}>
-            <Text style={styles.cashActionText}>{formatActionUsd(p.currentValue ?? 0)} cash out now</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryAction} onPress={onMarketPress}>
-            <Text style={styles.secondaryActionText}>Back more</Text>
-          </Pressable>
         </View>
       </View>
     </View>
@@ -331,7 +308,7 @@ function RedeemableRow({
             {formatOutcome(p.outcome)} won
           </Text>
           <Text style={styles.meta}>
-            {p.title || p.slug || '--'} · Ready to collect
+            {formatMarketTitle(p)} · Ready to collect
           </Text>
         </View>
         <View style={styles.actions}>
