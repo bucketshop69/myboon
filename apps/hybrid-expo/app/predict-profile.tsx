@@ -407,7 +407,9 @@ export default function PredictProfileScreen() {
         <DepositModal
           isOpen={depositOpen}
           onClose={() => setDepositOpen(false)}
-          polygonAddress={poly.tradingAddress ?? poly.polygonAddress}
+          polygonAddress={poly.polygonAddress}
+          depositWalletAddress={poly.tradingAddress ?? poly.polygonAddress}
+          onFundsAvailable={loadPortfolio}
         />
       )}
 

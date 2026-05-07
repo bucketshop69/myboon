@@ -493,6 +493,13 @@ export async function cancelOrder(polygonAddress: string, orderId: string): Prom
 export interface ClobBalance {
   balance: number;
   allowance: number;
+  wrap?: {
+    attempted: boolean;
+    wrapped: boolean;
+    amount: number;
+    txHash: string | null;
+    error: string | null;
+  };
 }
 
 export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance | null> {
@@ -506,7 +513,41 @@ export async function fetchClobBalance(polygonAddress: string): Promise<ClobBala
   return {
     balance: typeof data.balance === 'number' ? data.balance : 0,
     allowance: typeof data.allowance === 'number' ? data.allowance : 0,
+    wrap: data.wrap && typeof data.wrap === 'object'
+      ? data.wrap as ClobBalance['wrap']
+      : undefined,
   };
+}
+
+// --- Deposit Status ---
+
+export type DepositBridgeStatus =
+  | 'DEPOSIT_DETECTED'
+  | 'PROCESSING'
+  | 'ORIGIN_TX_CONFIRMED'
+  | 'SUBMITTED'
+  | 'COMPLETED'
+  | 'FAILED';
+
+export interface DepositBridgeTransaction {
+  fromChainId?: string;
+  fromTokenAddress?: string;
+  fromAmountBaseUnit?: string;
+  toChainId?: string;
+  toTokenAddress?: string;
+  status?: DepositBridgeStatus;
+  txHash?: string;
+  createdTimeMs?: number;
+}
+
+export async function fetchDepositStatus(depositAddress: string): Promise<DepositBridgeTransaction[]> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetchWithTimeout(`${baseUrl}/clob/deposit-status/${encodeURIComponent(depositAddress)}`);
+  if (!response.ok) return [];
+  const data = await response.json() as Record<string, unknown>;
+  return Array.isArray(data.transactions)
+    ? data.transactions.filter((entry): entry is DepositBridgeTransaction => !!entry && typeof entry === 'object')
+    : [];
 }
 
 // --- Portfolio & Positions (Gamma data-api, proxied through VPS) ---
