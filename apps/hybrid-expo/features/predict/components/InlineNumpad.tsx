@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface InlineNumpadProps {
@@ -7,6 +8,14 @@ interface InlineNumpadProps {
   side: 'yes' | 'no';
   price: number;
   amount: string;
+  /** Label for the selected outcome, e.g. YES, NO, or a team name */
+  pickLabel?: string;
+  /** Override for the confirm button label */
+  confirmLabel?: string;
+  /** Override for the payout helper label */
+  payoutLabel?: string;
+  /** Available cash for the Max quick action. */
+  availableCash?: number | null;
   onAmountChange: (amount: string) => void;
   onConfirm: () => void;
   /** Whether an order is currently being submitted */
@@ -15,7 +24,13 @@ interface InlineNumpadProps {
   disabled?: boolean;
 }
 
-const QUICK_AMOUNTS = ['10', '25', '50', '100'];
+const QUICK_AMOUNTS = ['10', '25', '50'] as const;
+
+function formatAmountInput(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  const truncated = Math.trunc(value * 100) / 100;
+  return truncated.toFixed(2).replace(/\.00$/u, '').replace(/(\.\d)0$/u, '$1');
+}
 
 function numpadKey(current: string, key: string): string {
   if (key === '.' && current.includes('.')) return current;
@@ -31,7 +46,20 @@ function numpadDel(current: string): string {
   return current.slice(0, -1);
 }
 
-export function InlineNumpad({ visible, side, price, amount, onAmountChange, onConfirm, submitting = false, disabled = false }: InlineNumpadProps) {
+export function InlineNumpad({
+  visible,
+  side,
+  price,
+  amount,
+  pickLabel,
+  confirmLabel,
+  payoutLabel = 'You could receive',
+  availableCash,
+  onAmountChange,
+  onConfirm,
+  submitting = false,
+  disabled = false,
+}: InlineNumpadProps) {
   const heightAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -43,9 +71,13 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
   }, [visible, heightAnim]);
 
   const amountNum = parseFloat(amount) || 0;
+  const hasCashLimit = availableCash !== null && availableCash !== undefined && Number.isFinite(availableCash);
+  const exceedsCash = hasCashLimit && amountNum > (availableCash ?? 0) + 0.000001;
   const payout = price > 0 ? amountNum / price : 0;
-  const sideLabel = side === 'yes' ? 'Yes' : 'No';
+  const outcomeLabel = pickLabel ?? (side === 'yes' ? 'YES' : 'NO');
   const isYes = side === 'yes';
+  const backLabel = confirmLabel ?? `Back ${outcomeLabel} with $${amountNum.toFixed(amountNum % 1 === 0 ? 0 : 2)}`;
+  const confirmDisabled = disabled || submitting || amountNum <= 0 || exceedsCash;
 
   return (
     <Animated.View style={[styles.container, { maxHeight: heightAnim }]}>
@@ -63,6 +95,12 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
               <Text style={styles.quickBtnText}>${q}</Text>
             </Pressable>
           ))}
+          <Pressable
+            style={styles.quickBtn}
+            onPress={() => onAmountChange(formatAmountInput(availableCash ?? 0))}
+          >
+            <Text style={styles.quickBtnText}>Max</Text>
+          </Pressable>
         </View>
 
         {/* Numpad grid */}
@@ -84,17 +122,25 @@ export function InlineNumpad({ visible, side, price, amount, onAmountChange, onC
 
         {/* Payout row */}
         <View style={styles.payoutRow}>
-          <Text style={styles.payoutLabel}>Potential payout</Text>
+          <Text style={styles.payoutLabel}>{payoutLabel}</Text>
           <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
+        </View>
+        <View style={styles.downsideRow}>
+          <Text style={[styles.downsideLabel, exceedsCash && styles.errorText]}>
+            {exceedsCash ? 'Not enough cash' : 'If you are wrong, you lose'}
+          </Text>
+          <Text style={[styles.downsideValue, exceedsCash && styles.errorText]}>
+            {exceedsCash ? `Cash ${truncateUsd(availableCash)}` : `$${amountNum.toFixed(2)}`}
+          </Text>
         </View>
 
         {/* Confirm button */}
         <Pressable
-          style={[styles.confirmBtn, isYes ? styles.confirmYes : styles.confirmNo, (disabled || submitting || amountNum <= 0) && styles.confirmDisabled]}
-          disabled={disabled || submitting || amountNum <= 0}
+          style={[styles.confirmBtn, isYes ? styles.confirmYes : styles.confirmNo, confirmDisabled && styles.confirmDisabled]}
+          disabled={confirmDisabled}
           onPress={onConfirm}>
           <Text style={styles.confirmText}>
-            {submitting ? 'Placing order\u2026' : `Confirm ${sideLabel} \u2014 $${amountNum}`}
+            {submitting ? 'Placing order\u2026' : exceedsCash ? 'Not enough cash' : backLabel}
           </Text>
         </Pressable>
       </View>
@@ -191,6 +237,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: semantic.sentiment.positive,
+  },
+  downsideRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 2,
+  },
+  downsideLabel: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 0.5,
+    color: semantic.text.faint,
+  },
+  downsideValue: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
+    color: semantic.text.dim,
+  },
+  errorText: {
+    color: tokens.colors.vermillion,
   },
   confirmBtn: {
     height: 44,

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
+import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { semantic, tokens } from '@/theme';
 
 interface RedeemableSectionProps {
@@ -82,7 +83,9 @@ function RedeemRow({
         </Text>
       </View>
       <View style={styles.info}>
-        <Text style={styles.rowTitle} numberOfLines={1}>{p.title || p.slug}</Text>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {formatPredictTitle({ title: p.title, slug: p.slug || p.eventSlug })}
+        </Text>
         <Text style={styles.rowShares}>{p.size.toFixed(2)} shares</Text>
       </View>
       <Pressable

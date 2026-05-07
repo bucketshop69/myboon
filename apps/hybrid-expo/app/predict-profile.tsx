@@ -15,15 +15,14 @@ import { useRouter, useNavigation } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, fetchActivity, cancelOrder } from '@/features/predict/predict.api';
-import type { ActivityItem, PortfolioData, PortfolioPosition, OpenOrder } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
-import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
-import { PerfStrip } from '@/features/predict/profile/PerfStrip';
-import { RedeemableSection } from '@/features/predict/profile/RedeemableSection';
 import { EmptyPortfolio } from '@/features/predict/profile/EmptyPortfolio';
+import { YourPicksSection } from '@/features/predict/profile/YourPicksSection';
+import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { semantic, tokens } from '@/theme';
 
 function truncate(addr: string, start = 6, end = 4): string {
@@ -33,21 +32,21 @@ function truncate(addr: string, start = 6, end = 4): string {
 function formatUsd(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return '--';
   const abs = Math.abs(value);
-  const prefix = value < 0 ? '-' : value > 0 ? '+' : '';
+  const prefix = value < 0 ? '-' : '';
   if (abs >= 1000) return `${prefix}$${(abs / 1000).toFixed(1)}K`;
   return `${prefix}$${abs.toFixed(2)}`;
 }
 
-function formatPnl(value: number): string {
-  const prefix = value >= 0 ? '+$' : '-$';
-  return `${prefix}${Math.abs(value).toFixed(2)}`;
+function getOrderCost(order: OpenOrder): number {
+  const size = Number.parseFloat(order.original_size) || 0;
+  const price = Number.parseFloat(order.price) || 0;
+  return size * price;
 }
 
 export default function PredictProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { connected, address: solanaAddress, source } = useWallet();
-  const privy = usePrivyWallet();
   const poly = usePolymarketWallet();
   const { open: openDrawer } = useDrawer();
   const [busy, setBusy] = useState(false);
@@ -58,10 +57,10 @@ export default function PredictProfileScreen() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
-  const [tradeHistory, setTradeHistory] = useState<ActivityItem[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -89,15 +88,13 @@ export default function PredictProfileScreen() {
     // Gamma data-api tracks by trading wallet address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
     const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
-    const [portfolioData, balanceData, ordersData, activityData] = await Promise.all([
+    const [portfolioData, balanceData, ordersData] = await Promise.all([
       fetchPortfolio(gammaAddr).catch(() => null),
       fetchClobBalance(poly.polygonAddress),
       fetchOpenOrders(poly.polygonAddress).catch(() => []),
-      fetchActivity(gammaAddr).catch(() => []),
     ]);
     if (portfolioData) setPortfolio(portfolioData);
     setOpenOrders(ordersData);
-    setTradeHistory(activityData);
     if (balanceData) {
       setCashBalance(balanceData.balance);
       setSessionExpired(false);
@@ -161,12 +158,11 @@ export default function PredictProfileScreen() {
     }
 
     Alert.alert(
-      'Connect Predict Account',
-      'Sign once to restore or set up the prediction account linked to this wallet.\n\n' +
+        'Connect Predict Account',
+        'Sign once to restore or set up the prediction account linked to this wallet.\n\n' +
         '• Sign a message to verify ownership (no transaction)\n' +
-        '• Your trading address is derived deterministically\n' +
         '• No extra seed phrases or wallets to manage\n' +
-        '• Deposit & trade on prediction markets — gasless',
+        '• Deposit and make picks without gas',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -193,11 +189,35 @@ export default function PredictProfileScreen() {
     }
   }, [connected, poly, loadPortfolio]);
 
+  const handleOpenMarket = useCallback((slug: string) => {
+    const sportMatch = slug.match(/^cric(epl|ucl|ipl)-/);
+    if (sportMatch) {
+      router.push({
+        pathname: '/predict-sport/[sport]/[slug]',
+        params: { sport: sportMatch[1], slug },
+      });
+    } else {
+      router.push(`/predict-market/${encodeURIComponent(slug)}`);
+    }
+  }, [router]);
+
+  const handleCashOut = useCallback((position: PortfolioPosition) => {
+    setCashOutPosition(position);
+  }, []);
 
   const positions = portfolio?.positions ?? [];
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
-  const portfolioValue = portfolio?.portfolioValue;
-  const totalPnl = portfolio?.summary.totalPnl ?? 0;
+  const closedPositions = portfolio?.closedPositions ?? [];
+  const portfolioValue = portfolio?.portfolioValue ?? null;
+  const cashOutNow = portfolio?.summary.cashOutNow ?? positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const readyToCollect = portfolio?.summary.readyToCollect ?? redeemablePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const waitingPickValue = openOrders.reduce((sum, order) => sum + getOrderCost(order), 0);
+  const activePickCount = positions.length + openOrders.length;
+  const hasAnyPicks = activePickCount + redeemablePositions.length + closedPositions.length > 0;
+  const hasActiveOrReadyPicks = activePickCount + redeemablePositions.length > 0;
+  const activePicksValue = cashOutNow + waitingPickValue;
+  const collectedValue = portfolio?.summary.totalCollected ?? 0;
+  const collectedDisplay = hasAnyPicks || (cashBalance ?? 0) > 0 ? formatUsd(collectedValue) : '--';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -250,14 +270,8 @@ export default function PredictProfileScreen() {
           </View>
           <View style={styles.identityInfo}>
             <Text style={styles.handle}>
-              {portfolio?.profile?.name ?? (poly.polygonAddress ? truncate(poly.polygonAddress) : '—')}
+              {portfolio?.profile?.name ?? (solanaAddress ? truncate(solanaAddress) : poly.polygonAddress ? truncate(poly.polygonAddress) : '—')}
             </Text>
-            <View style={styles.addrRow}>
-              <Text style={styles.addrText}>
-                {solanaAddress ? truncate(solanaAddress) : '—'}
-              </Text>
-              <MaterialIcons name="content-copy" size={10} color={semantic.text.faint} />
-            </View>
             {connected && (
               <View style={styles.connectedChip}>
                 <View style={styles.connectedDot} />
@@ -275,19 +289,6 @@ export default function PredictProfileScreen() {
             >
               <MaterialIcons name="login" size={14} color={tokens.colors.backgroundDark} />
               <Text style={styles.passkeyCtaText}>Sign In</Text>
-            </Pressable>
-          )}
-          {!isEnabled && !poly.isLoading && connected && (
-            <Pressable
-              onPress={handleConnectPredictAccount}
-              disabled={busy}
-              style={[styles.passkeyCta, busy && styles.btnDisabled]}
-            >
-              {busy ? (
-                <ActivityIndicator color={tokens.colors.backgroundDark} size="small" />
-              ) : (
-                <Text style={styles.passkeyCtaText}>Connect Predict</Text>
-              )}
             </Pressable>
           )}
           {isEnabled && (
@@ -313,6 +314,16 @@ export default function PredictProfileScreen() {
           </Pressable>
         )}
 
+        {!isEnabled && !poly.isLoading && (
+          <View style={styles.positionsSection}>
+            <EmptyPortfolio
+              mode="no-account"
+              onPrimaryAction={!connected ? openDrawer : handleConnectPredictAccount}
+              primaryLabel={!connected ? 'Sign In' : 'Open Prediction Account'}
+            />
+          </View>
+        )}
+
         {/* ── Enabled: real portfolio ── */}
         {isEnabled && !portfolioLoading && (
           <>
@@ -323,7 +334,7 @@ export default function PredictProfileScreen() {
             <View style={styles.equityCard}>
               <View style={styles.equityRow}>
                 <View style={styles.eqItem}>
-                  <Text style={styles.eqLabel}>Portfolio</Text>
+                  <Text style={styles.eqLabel}>Predict value</Text>
                   <Text style={styles.eqVal}>
                     {portfolioValue !== null ? formatUsd(portfolioValue) : '--'}
                   </Text>
@@ -335,171 +346,56 @@ export default function PredictProfileScreen() {
                   </Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemRight]}>
-                  <Text style={styles.eqLabel}>P&L</Text>
-                  <Text style={[styles.eqVal, totalPnl >= 0 ? styles.posText : styles.negText]}>
-                    {formatPnl(totalPnl)}
+                  <Text style={styles.eqLabel}>
+                    {!hasActiveOrReadyPicks ? 'Collected' : readyToCollect > 0 ? 'Ready' : 'Active picks'}
+                  </Text>
+                  <Text style={[styles.eqVal, readyToCollect > 0 && styles.posText]}>
+                    {!hasActiveOrReadyPicks
+                      ? collectedDisplay
+                      : readyToCollect > 0
+                        ? formatUsd(readyToCollect)
+                        : formatUsd(activePicksValue)}
                   </Text>
                 </View>
               </View>
-            </View>
-
-            {/* Open Orders */}
-            {openOrders.length > 0 && (
-              <View style={styles.positionsSection}>
-                <View style={styles.posHeader}>
-                  <Text style={styles.posTitle}>Open Orders</Text>
-                  <Text style={styles.posCount}>{openOrders.length} pending</Text>
+              {hasActiveOrReadyPicks && (
+                <View style={[styles.equityRow, styles.equityRowSecond]}>
+                  <View style={styles.eqItem}>
+                    <Text style={styles.eqLabel}>Cash out now</Text>
+                    <Text style={styles.eqVal}>{formatUsd(cashOutNow)}</Text>
+                  </View>
+                  <View style={[styles.eqItem, styles.eqItemCenter]}>
+                    <Text style={styles.eqLabel}>Active picks</Text>
+                    <Text style={styles.eqVal}>{activePickCount}</Text>
+                  </View>
+                  <View style={[styles.eqItem, styles.eqItemRight]}>
+                    <Text style={styles.eqLabel}>Collected</Text>
+                    <Text style={styles.eqVal}>{collectedDisplay}</Text>
+                  </View>
                 </View>
-                {openOrders.map((o: OpenOrder) => {
-                  const sizeNum = parseFloat(o.original_size) || 0;
-                  const matched = parseFloat(o.size_matched) || 0;
-                  const priceNum = parseFloat(o.price) || 0;
-                  const cost = sizeNum * priceNum;
-                  const fillPct = sizeNum > 0 ? Math.round((matched / sizeNum) * 100) : 0;
-                  return (
-                    <View key={o.id} style={styles.orderCard}>
-                      <View style={styles.orderCardTop}>
-                        <View style={[styles.sideBadge, o.side === 'BUY' ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-                          <Text style={[styles.sideBadgeText, o.side === 'BUY' ? styles.posText : styles.negText]}>
-                            {o.side}
-                          </Text>
-                        </View>
-                        <Text style={styles.orderOutcome} numberOfLines={1}>{o.outcome || '--'}</Text>
-                        <Text style={styles.orderStatus}>{o.status}</Text>
-                      </View>
-                      <View style={styles.orderCardStats}>
-                        <View>
-                          <Text style={styles.orderStatLabel}>Price</Text>
-                          <Text style={styles.orderStatVal}>{Math.round(priceNum * 100)}¢</Text>
-                        </View>
-                        <View>
-                          <Text style={styles.orderStatLabel}>Shares</Text>
-                          <Text style={styles.orderStatVal}>{sizeNum.toFixed(2)}</Text>
-                        </View>
-                        <View>
-                          <Text style={styles.orderStatLabel}>Cost</Text>
-                          <Text style={styles.orderStatVal}>${cost.toFixed(2)}</Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={styles.orderStatLabel}>Filled</Text>
-                          <Text style={styles.orderStatVal}>{fillPct}%</Text>
-                        </View>
-                      </View>
-                      <Pressable
-                        style={styles.cancelBtn}
-                        disabled={cancellingId === o.id}
-                        onPress={() => handleCancel(o.id)}
-                      >
-                        {cancellingId === o.id ? (
-                          <ActivityIndicator size="small" color={semantic.sentiment.negative} />
-                        ) : (
-                          <Text style={styles.cancelBtnText}>Cancel</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Open positions */}
-            <View style={styles.positionsSection}>
-              <View style={styles.posHeader}>
-                <Text style={styles.posTitle}>Positions</Text>
-                <Text style={styles.posCount}>{positions.length} active</Text>
-              </View>
-              {positions.length === 0 && openOrders.length === 0 && (
-                <EmptyPortfolio
-                  hasBalance={(cashBalance ?? 0) > 0}
-                  onDeposit={() => setDepositOpen(true)}
-                />
               )}
-              {positions.map((p: PortfolioPosition, i: number) => {
-                const pnl = p.cashPnl ?? 0;
-                const isUp = pnl >= 0;
-                return (
-                  <Pressable
-                    key={`${p.conditionId}-${p.outcomeIndex}-${i}`}
-                    style={styles.posRow}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/predict-position/[conditionId]',
-                        params: {
-                          conditionId: p.conditionId,
-                          slug: p.slug,
-                          outcomeIndex: String(p.outcomeIndex),
-                        },
-                      })
-                    }
-                    accessibilityLabel={`View position: ${p.title}`}
-                  >
-                    <View
-                      style={[
-                        styles.sideBadge,
-                        p.outcome === 'No' ? styles.sideBadgeNo : styles.sideBadgeYes,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.sideBadgeText,
-                          p.outcome === 'No' ? styles.negText : styles.posText,
-                        ]}
-                      >
-                        {p.outcome?.toUpperCase() ?? 'YES'}
-                      </Text>
-                    </View>
-                    <Text style={styles.posQuestion} numberOfLines={1}>
-                      {p.title || p.slug || '—'}
-                    </Text>
-                    <View style={styles.posPnlWrap}>
-                      <Text style={[styles.posPnl, isUp ? styles.posText : styles.negText]}>
-                        {formatPnl(pnl)}
-                      </Text>
-                      <Text style={styles.posEntry}>
-                        {p.avgPrice?.toFixed(2) ?? '--'}→{p.curPrice?.toFixed(2) ?? '--'}
-                      </Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
-                  </Pressable>
-                );
-              })}
             </View>
 
-            {/* Redeemable Positions */}
-            <RedeemableSection
-              positions={redeemablePositions}
+            <YourPicksSection
+              positions={positions}
+              openOrders={openOrders}
+              redeemablePositions={redeemablePositions}
+              closedPositions={closedPositions}
               polygonAddress={poly.polygonAddress}
+              cancellingOrderId={cancellingId}
+              onCashOutPress={handleCashOut}
+              onMarketPress={handleOpenMarket}
+              onCancelOrder={(orderId) => void handleCancel(orderId)}
               onRedeemed={() => void loadPortfolio()}
             />
 
-            {/* Trade History */}
-            {tradeHistory.length > 0 && (
+            {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && closedPositions.length === 0 && (
               <View style={styles.positionsSection}>
-                <View style={styles.posHeader}>
-                  <Text style={styles.posTitle}>Trade History</Text>
-                  <Text style={styles.posCount}>{tradeHistory.length} trades</Text>
-                </View>
-                {tradeHistory.slice(0, 20).map((t, i) => {
-                  const isBuy = t.side === 'BUY';
-                  const date = new Date(t.timestamp * 1000);
-                  const timeStr = `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
-                  return (
-                    <View key={`${t.timestamp}-${i}`} style={styles.posRow}>
-                      <View style={[styles.sideBadge, isBuy ? styles.sideBadgeYes : styles.sideBadgeNo]}>
-                        <Text style={[styles.sideBadgeText, isBuy ? styles.posText : styles.negText]}>
-                          {t.side}
-                        </Text>
-                      </View>
-                      <View style={styles.tradeInfoWrap}>
-                        <Text style={styles.posQuestion} numberOfLines={1}>{t.title || t.slug}</Text>
-                        <Text style={styles.tradeTime}>{timeStr}</Text>
-                      </View>
-                      <Text style={[styles.posPnl, isBuy ? styles.posText : styles.negText]}>
-                        ${t.usdcSize.toFixed(2)}
-                      </Text>
-                    </View>
-                  );
-                })}
+                <EmptyPortfolio
+                  mode={(cashBalance ?? 0) > 0 ? 'no-picks' : 'no-balance'}
+                  onPrimaryAction={(cashBalance ?? 0) > 0 ? () => router.push('/predict') : () => setDepositOpen(true)}
+                  primaryLabel={(cashBalance ?? 0) > 0 ? 'Browse Markets' : 'Deposit'}
+                />
               </View>
             )}
 
@@ -525,6 +421,12 @@ export default function PredictProfileScreen() {
           onSuccess={loadPortfolio}
         />
       )}
+
+      <CashOutConfirmModal
+        visible={cashOutPosition !== null}
+        position={cashOutPosition}
+        onClose={() => setCashOutPosition(null)}
+      />
     </View>
   );
 }
@@ -631,17 +533,6 @@ const styles = StyleSheet.create({
     color: semantic.text.primary,
     marginBottom: 3,
   },
-  addrRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  addrText: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    color: semantic.text.dim,
-    letterSpacing: 0.3,
-  },
   connectedChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -743,6 +634,9 @@ const styles = StyleSheet.create({
   },
   equityRow: {
     flexDirection: 'row',
+  },
+  equityRowSecond: {
+    marginTop: 14,
   },
   eqItem: { flex: 1, gap: 3 },
   eqItemCenter: { alignItems: 'center' },
@@ -916,7 +810,6 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
     letterSpacing: 0.5,
   },
-
 
   // Color helpers
   posText: { color: tokens.colors.viridian },

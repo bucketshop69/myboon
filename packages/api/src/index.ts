@@ -190,6 +190,200 @@ function isPositivePositionValue(position: unknown): boolean {
   return value >= 0.01
 }
 
+function asRecord(input: unknown): Record<string, unknown> | null {
+  return input && typeof input === 'object' ? input as Record<string, unknown> : null
+}
+
+function parseBoolean(input: unknown): boolean {
+  return input === true || input === 'true'
+}
+
+type ActivityFallbackGroup = {
+  proxyWallet: string
+  asset: string
+  conditionId: string
+  totalSize: number
+  totalUsdc: number
+  timestamp: number
+  title: string
+  slug: string
+  icon: string | null
+  eventSlug: string
+  outcome: string
+  outcomeIndex: number
+}
+
+function activityDedupeKey(input: unknown): string {
+  const activity = asRecord(input)
+  if (!activity) return JSON.stringify(input)
+  return [
+    activity.transactionHash,
+    activity.type,
+    activity.side,
+    activity.conditionId,
+    activity.asset,
+    activity.outcomeIndex,
+    activity.size,
+    activity.usdcSize,
+    activity.price,
+    activity.timestamp,
+  ].join(':')
+}
+
+function dedupeActivity(input: unknown[]): unknown[] {
+  const seen = new Set<string>()
+  const deduped: unknown[] = []
+  for (const item of input) {
+    const key = activityDedupeKey(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(item)
+  }
+  return deduped
+}
+
+async function fetchGammaMarketsForSlug(slug: string): Promise<Record<string, unknown>[]> {
+  const eventRes = await gammaFetch(`events?slug=${encodeURIComponent(slug)}`)
+  if (eventRes.ok) {
+    const body = await eventRes.json() as unknown
+    if (Array.isArray(body)) {
+      const markets = body.flatMap((event) => {
+        const record = asRecord(event)
+        return Array.isArray(record?.markets) ? record.markets : []
+      })
+      if (markets.length > 0) return markets.filter((market): market is Record<string, unknown> => !!asRecord(market))
+    }
+  }
+
+  const marketRes = await gammaFetch(`markets?slug=${encodeURIComponent(slug)}`)
+  if (!marketRes.ok) return []
+  const body = await marketRes.json() as unknown
+  return Array.isArray(body) ? body.filter((market): market is Record<string, unknown> => !!asRecord(market)) : []
+}
+
+async function buildClosedPositionsFromActivity(address: string): Promise<unknown[]> {
+  const activityRes = await dataApiFetch(
+    `activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`
+  )
+  if (!activityRes.ok) return []
+
+  const body = await activityRes.json() as unknown
+  if (!Array.isArray(body)) return []
+
+  const seenTrades = new Set<string>()
+  const groups = new Map<string, ActivityFallbackGroup>()
+
+  for (const raw of body) {
+    const activity = asRecord(raw)
+    if (!activity) continue
+    if (activity.type !== 'TRADE' || activity.side !== 'BUY') continue
+
+    const slug = typeof activity.slug === 'string' ? activity.slug : null
+    const conditionId = typeof activity.conditionId === 'string' ? activity.conditionId : null
+    const asset = typeof activity.asset === 'string' ? activity.asset : ''
+    const size = parseNullableNumber(activity.size) ?? parseNullableNumber(activity.amount) ?? 0
+    const usdcSize = parseNullableNumber(activity.usdcSize) ?? 0
+    const outcomeIndex = parseNullableNumber(activity.outcomeIndex)
+    const timestamp = parseNullableNumber(activity.timestamp) ?? 0
+
+    if (!slug || !conditionId || outcomeIndex === null || size <= 0 || usdcSize <= 0 || timestamp <= 0) continue
+
+    const dedupeKey = [
+      activity.transactionHash,
+      asset,
+      conditionId,
+      outcomeIndex,
+      size,
+      usdcSize,
+      activity.price,
+    ].join(':')
+    if (seenTrades.has(dedupeKey)) continue
+    seenTrades.add(dedupeKey)
+
+    const groupKey = `${conditionId}:${outcomeIndex}:${asset}`
+    const existing = groups.get(groupKey)
+    if (existing) {
+      existing.totalSize += size
+      existing.totalUsdc += usdcSize
+      existing.timestamp = Math.max(existing.timestamp, timestamp)
+      continue
+    }
+
+    groups.set(groupKey, {
+      proxyWallet: typeof activity.proxyWallet === 'string' ? activity.proxyWallet : address,
+      asset,
+      conditionId,
+      totalSize: size,
+      totalUsdc: usdcSize,
+      timestamp,
+      title: typeof activity.title === 'string' ? activity.title : slug,
+      slug,
+      icon: typeof activity.icon === 'string' ? activity.icon : null,
+      eventSlug: typeof activity.eventSlug === 'string' ? activity.eventSlug : slug,
+      outcome: typeof activity.outcome === 'string' ? activity.outcome : 'Yes',
+      outcomeIndex,
+    })
+  }
+
+  const marketsBySlug = new Map<string, Record<string, unknown>[]>()
+  await Promise.all([...new Set([...groups.values()].map((group) => group.slug))].map(async (slug) => {
+    try {
+      marketsBySlug.set(slug, await fetchGammaMarketsForSlug(slug))
+    } catch (err) {
+      console.warn(`[api] Activity fallback market lookup failed for ${slug}:`, err instanceof Error ? err.message : err)
+      marketsBySlug.set(slug, [])
+    }
+  }))
+
+  const closedPositions: unknown[] = []
+  for (const group of groups.values()) {
+    const markets = marketsBySlug.get(group.slug) ?? []
+    const market = markets.find((candidate) => candidate.conditionId === group.conditionId)
+      ?? markets.find((candidate) => candidate.slug === group.slug)
+    if (!market || !parseBoolean(market.closed)) continue
+
+    const outcomePrices = parseStringArray(market.outcomePrices)
+    const outcomes = parseStringArray(market.outcomes)
+    const finalPrice = parseNullableNumber(outcomePrices[group.outcomeIndex])
+    if (finalPrice === null) continue
+
+    // The current app renders closed winners as "Collected"; avoid implying a payout
+    // was collected when we only know about raw trade activity.
+    if (finalPrice >= 0.99) continue
+
+    const payout = 0
+    const totalBought = Math.round(group.totalUsdc * 100) / 100
+    const realizedPnl = Math.round((payout - group.totalUsdc) * 100) / 100
+
+    closedPositions.push({
+      proxyWallet: group.proxyWallet,
+      asset: group.asset,
+      conditionId: group.conditionId,
+      avgPrice: group.totalSize > 0 ? Math.round((group.totalUsdc / group.totalSize) * 100) / 100 : 0,
+      totalBought,
+      realizedPnl,
+      curPrice: finalPrice,
+      timestamp: group.timestamp,
+      title: group.title,
+      slug: group.slug,
+      icon: group.icon,
+      eventSlug: group.eventSlug,
+      outcome: group.outcome,
+      outcomeIndex: group.outcomeIndex,
+      oppositeOutcome: outcomes.find((_, index) => index !== group.outcomeIndex) ?? '',
+      oppositeAsset: '',
+      endDate: typeof market.endDate === 'string' ? market.endDate : null,
+      fallbackSource: 'activity',
+    })
+  }
+
+  return closedPositions.sort((a, b) => {
+    const left = parseNullableNumber(asRecord(a)?.timestamp) ?? 0
+    const right = parseNullableNumber(asRecord(b)?.timestamp) ?? 0
+    return right - left
+  })
+}
+
 // --- dome fallback wrapper ---
 
 async function withDomeFallback<T>(
@@ -978,11 +1172,14 @@ app.get('/predict/portfolio/:address', async (c) => {
   if (!address?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    // Fetch value, active positions, positive-payout redeemables, and profile in parallel
-    const [valueRes, posRes, redeemableRes, profileRes] = await Promise.allSettled([
+    // Fetch value, active positions, positive-payout redeemables, closed picks,
+    // recent activity, and profile in parallel.
+    const [valueRes, posRes, redeemableRes, closedRes, activityRes, profileRes] = await Promise.allSettled([
       dataApiFetch(`value?user=${encodeURIComponent(address)}`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=false&limit=100&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT&sortDirection=DESC`),
+      dataApiFetch(`closed-positions?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
+      dataApiFetch(`activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
@@ -1012,6 +1209,38 @@ app.get('/predict/portfolio/:address', async (c) => {
       redeemablePositions = Array.isArray(body) ? body.filter(isPositivePositionValue) : []
     }
 
+    // Parse closed picks
+    let closedPositions: unknown[] = []
+    if (closedRes.status === 'fulfilled' && closedRes.value.ok) {
+      const body = await closedRes.value.json() as unknown
+      closedPositions = Array.isArray(body) ? body : []
+    }
+
+    // Parse recent activity. Keep it separate from picks so the UI can acknowledge
+    // trades/deposits/redeems without pretending they are actionable positions.
+    let activity: unknown[] = []
+    if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
+      const body = await activityRes.value.json() as unknown
+      activity = Array.isArray(body) ? dedupeActivity(body) : []
+    }
+
+    // Some deposit-wallet trades appear in data-api /activity before they appear in
+    // /positions or /closed-positions. If portfolio state is otherwise empty, expose
+    // closed historical picks reconstructed from activity and final Gamma prices.
+    if (positions.length === 0 && redeemablePositions.length === 0 && closedPositions.length === 0) {
+      try {
+        closedPositions = await buildClosedPositionsFromActivity(address)
+        if (closedPositions.length > 0) {
+          console.log(`[api] Portfolio ${address}: using ${closedPositions.length} activity fallback closed positions`)
+        }
+      } catch (fallbackErr) {
+        console.warn(
+          `[api] Portfolio ${address}: activity fallback failed:`,
+          fallbackErr instanceof Error ? fallbackErr.message : fallbackErr,
+        )
+      }
+    }
+
     // Parse profile
     let profile: Record<string, unknown> | null = null
     if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
@@ -1020,11 +1249,24 @@ app.get('/predict/portfolio/:address', async (c) => {
 
     // Compute summary from positions
     let totalPnl = 0
+    let cashOutNow = 0
     let openCount = 0
     for (const p of positions) {
       const pos = p as Record<string, unknown>
       totalPnl += parseNullableNumber(pos.cashPnl) ?? 0
+      cashOutNow += parseNullableNumber(pos.currentValue) ?? 0
       openCount++
+    }
+    let readyToCollect = 0
+    for (const p of redeemablePositions) {
+      readyToCollect += parseNullableNumber((p as Record<string, unknown>).currentValue) ?? 0
+    }
+    let totalCollected = 0
+    for (const p of closedPositions) {
+      const closed = p as Record<string, unknown>
+      const realized = parseNullableNumber(closed.realizedPnl) ?? 0
+      const putIn = parseNullableNumber(closed.totalBought) ?? 0
+      if (realized > 0) totalCollected += Math.max(putIn + realized, 0)
     }
 
     return c.json({
@@ -1032,6 +1274,8 @@ app.get('/predict/portfolio/:address', async (c) => {
       portfolioValue: portfolioValue !== null ? Math.round(portfolioValue * 100) / 100 : null,
       positions,
       redeemablePositions,
+      closedPositions,
+      activity,
       profile: profile ? {
         name: profile.name ?? profile.pseudonym ?? null,
         bio: profile.bio ?? null,
@@ -1041,6 +1285,14 @@ app.get('/predict/portfolio/:address', async (c) => {
       summary: {
         openPositions: openCount,
         totalPnl: Math.round(totalPnl * 100) / 100,
+        cashOutNow: Math.round(cashOutNow * 100) / 100,
+        readyToCollect: Math.round(readyToCollect * 100) / 100,
+        activePickCount: openCount,
+        closedPickCount: closedPositions.length,
+        activityCount: activity.length,
+        hasActivity: activity.length > 0,
+        hasAnyPicks: openCount + redeemablePositions.length + closedPositions.length > 0,
+        totalCollected: Math.round(totalCollected * 100) / 100,
       },
     })
   } catch (err) {

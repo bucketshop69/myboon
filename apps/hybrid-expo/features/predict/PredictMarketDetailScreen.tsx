@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter, type Href } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fetchCuratedMarketDetail, fetchMarketPrice, fetchPriceHistory, fetchOrderbook, placeBet } from '@/features/predict/predict.api';
+import { cancelOrder, fetchClobBalance, fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
+import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
@@ -23,15 +24,17 @@ import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
 import { MultiLineChart } from '@/features/predict/components/MultiLineChart';
 import { OrderbookView } from '@/features/predict/components/OrderbookView';
-import { StatsStrip } from '@/features/predict/components/StatsStrip';
 import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
+import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
+import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
+import { truncateUsd } from '@/features/predict/formatPredictMoney';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
 }
 
 type Interval = '5m' | '1h' | '1d';
-type ActiveView = 'chart' | 'orderbook';
+type ActiveView = 'picks' | 'stats' | 'chart' | 'orderbook';
 
 const SOFT_COLLAPSED = 230; // handle + stats + odds
 const SOFT_EXPANDED = 680;  // + numpad
@@ -44,6 +47,36 @@ function formatDeadline(endDate: string | null, active: boolean | null): string 
   const month = date.toLocaleString('en-US', { month: 'short' });
   const day = date.getDate();
   return `${active === false ? 'Ended' : 'Ends'} ${month} ${day}`;
+}
+
+function DisplayTab({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={[styles.displayTab, active && styles.displayTabActive]} onPress={onPress}>
+      <Text style={[styles.displayTabText, active && styles.displayTabTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function marketHrefForSlug(rowSlug: string): Href {
+  const sportMatch = rowSlug.match(/^cric(epl|ucl|ipl)-/);
+  if (sportMatch) {
+    return {
+      pathname: '/predict-sport/[sport]/[slug]',
+      params: { sport: sportMatch[1], slug: rowSlug },
+    };
+  }
+  return {
+    pathname: '/predict-market/[slug]',
+    params: { slug: rowSlug },
+  };
 }
 
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
@@ -74,6 +107,15 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
+  const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
+  const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
+  const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
+  const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [picksLoading, setPicksLoading] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
+  const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
@@ -140,6 +182,44 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
   }
 
+  async function loadPicks() {
+    const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
+    if (!gammaAddr) {
+      setMarketPositions([]);
+      setAllPositions([]);
+      setRedeemablePositions([]);
+      setOpenOrders([]);
+      return;
+    }
+    setPicksLoading(true);
+    try {
+      const [market, portfolio, orders] = await Promise.all([
+        fetchMarketPositions(gammaAddr, slug).catch(() => []),
+        fetchPortfolio(gammaAddr).catch(() => null),
+        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress).catch(() => []) : Promise.resolve([]),
+      ]);
+      setMarketPositions(market);
+      setAllPositions(portfolio?.positions ?? []);
+      setRedeemablePositions(portfolio?.redeemablePositions ?? []);
+      setOpenOrders(orders);
+    } finally {
+      setPicksLoading(false);
+    }
+  }
+
+  async function handleCancelOrder(orderId: string) {
+    if (!poly.polygonAddress || cancellingOrderId) return;
+    setCancellingOrderId(orderId);
+    try {
+      const result = await cancelOrder(poly.polygonAddress, orderId);
+      if (result.ok) {
+        setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+      }
+    } finally {
+      setCancellingOrderId(null);
+    }
+  }
+
   async function refreshPrice() {
     try {
       setLivePrice(await fetchMarketPrice(slug));
@@ -163,6 +243,24 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     if (activeView === 'orderbook' && detail) void loadOrderbook();
   }, [activeView, detail]);
 
+  useEffect(() => {
+    if (activeView === 'picks') void loadPicks();
+  }, [activeView, slug, poly.polygonAddress, poly.tradingAddress]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCashBalance() {
+      if (!poly.polygonAddress) {
+        setCashBalance(null);
+        return;
+      }
+      const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+      if (!cancelled) setCashBalance(balance?.balance ?? null);
+    }
+    void loadCashBalance();
+    return () => { cancelled = true; };
+  }, [poly.polygonAddress]);
+
   // Animate soft zone
   useEffect(() => {
     Animated.timing(softZoneAnim, {
@@ -174,9 +272,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice = livePrice?.noPrice ?? (detail?.outcomePrices[1] ?? null);
-  const yesPct = yesPrice !== null ? Math.round(yesPrice * 100) : null;
-  const noPct = noPrice !== null ? Math.round(noPrice * 100) : null;
-
   function tapOdd(side: 'yes' | 'no') {
     if (numpadOpen && selectedSide === side) {
       // same tap — collapse
@@ -198,6 +293,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     if (!detail || !selectedSide || submitting) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
+    if (cashBalance !== null && amount > cashBalance + 0.000001) return;
 
     // Resolve token ID: yes = clobTokenIds[0], no = clobTokenIds[1]
     const tokenID = selectedSide === 'yes' ? detail.clobTokenIds[0] : detail.clobTokenIds[1];
@@ -242,13 +338,20 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
-      Alert.alert('Order placed', `${selectedSide.toUpperCase()} $${amount} @ ${Math.round(price * 100)}\u00A2`);
       collapseNumpad();
+      setActiveView('picks');
+      setPickScope('market');
+      void loadPicks();
+      void fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleCashOut(position: PortfolioPosition) {
+    setCashOutPosition(position);
   }
 
   const chartWidth = screenWidth - 40;
@@ -266,9 +369,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             {detail?.question ?? 'Loading...'}
           </Text>
         </View>
-        <Text style={styles.headerEnd}>
-          {detail ? formatDeadline(detail.endDate, detail.active) : ''}
-        </Text>
+        <View style={styles.cashPill}>
+          <Text style={styles.cashPillLabel}>Cash</Text>
+          <Text style={styles.cashPillValue}>{truncateUsd(cashBalance)}</Text>
+        </View>
       </View>
 
       {/* ── LOADING / ERROR ── */}
@@ -289,8 +393,12 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         <View style={styles.body}>
           {/* ══ DARK ZONE ══ */}
           <View style={[styles.darkZone, { paddingBottom: SOFT_COLLAPSED }]}>
-            {/* Range chips + view toggle */}
-            <View style={styles.chipRow}>
+            <View style={styles.displayRow}>
+              <View style={styles.displayTabGroup}>
+                <DisplayTab label="Your Picks" active={activeView === 'picks'} onPress={() => setActiveView('picks')} />
+                <DisplayTab label="Stats" active={activeView === 'stats'} onPress={() => setActiveView('stats')} />
+              </View>
+              <View style={styles.displayTabGroup}>
               {activeView === 'chart' && (['5m', '1h', '1d'] as Interval[]).map((iv) => (
                 <Pressable
                   key={iv}
@@ -301,23 +409,50 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   </Text>
                 </Pressable>
               ))}
-              <View style={styles.toggleIcons}>
-                <Pressable
-                  style={[styles.toggleBtn, activeView === 'chart' && styles.toggleBtnActive]}
-                  onPress={() => setActiveView('chart')}>
-                  <MaterialIcons name="show-chart" size={14} color={activeView === 'chart' ? semantic.text.primary : semantic.text.faint} />
-                </Pressable>
-                <Pressable
-                  style={[styles.toggleBtn, activeView === 'orderbook' && styles.toggleBtnActive]}
-                  onPress={() => setActiveView('orderbook')}>
-                  <MaterialIcons name="view-list" size={14} color={activeView === 'orderbook' ? semantic.text.primary : semantic.text.faint} />
-                </Pressable>
+                <DisplayTab label="Chart" active={activeView === 'chart'} onPress={() => setActiveView('chart')} />
+                <DisplayTab label="Book" active={activeView === 'orderbook'} onPress={() => setActiveView('orderbook')} />
               </View>
             </View>
 
             {/* Chart or Orderbook */}
             <View style={styles.viewContainer}>
-              {activeView === 'chart' ? (
+              {activeView === 'picks' ? (
+                <DetailPicksPanel
+                  scope={pickScope}
+                  marketSlug={slug}
+                  loading={picksLoading}
+                  marketPositions={marketPositions}
+                  allPositions={allPositions}
+                  redeemablePositions={redeemablePositions}
+                  openOrders={openOrders}
+                  cancellingOrderId={cancellingOrderId}
+                  polygonAddress={poly.polygonAddress}
+                  onScopeChange={setPickScope}
+                  onCashOut={handleCashOut}
+                  onBackMore={(position) => {
+                    if (position.slug && position.slug !== slug) {
+                      router.push(marketHrefForSlug(position.slug));
+                      return;
+                    }
+                    tapOdd(position.outcome === 'No' ? 'no' : 'yes');
+                  }}
+                  onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
+                  onRedeemed={() => void loadPicks()}
+                />
+              ) : activeView === 'stats' ? (
+                <View style={styles.statsView}>
+                  <View style={styles.picksHeading}>
+                    <Text style={styles.picksTitle}>Stats</Text>
+                    <Text style={styles.picksSubtitle}>Market health</Text>
+                  </View>
+                  <View style={styles.statsGrid}>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Volume</Text><Text style={styles.statsValue}>{formatUsdCompact(detail.volume24h)}</Text></View>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Liquidity</Text><Text style={styles.statsValue}>{formatUsdCompact(detail.liquidity)}</Text></View>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>No chance</Text><Text style={styles.statsValue}>{noPrice !== null ? `${Math.round(noPrice * 100)}%` : '--'}</Text></View>
+                    <View style={styles.statsCard}><Text style={styles.statsLabel}>Resolves</Text><Text style={styles.statsValue}>{formatDeadline(detail.endDate, detail.active)}</Text></View>
+                  </View>
+                </View>
+              ) : activeView === 'chart' ? (
                 historyLoading ? (
                   <View style={styles.chartSkeleton}>
                     <ActivityIndicator size="small" color={semantic.text.faint} />
@@ -347,33 +482,26 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               </Pressable>
             </View>
 
-            {/* Stats strip */}
-            <StatsStrip stats={[
-              { value: formatUsdCompact(detail.volume24h), label: 'Volume' },
-              { value: formatUsdCompact(detail.liquidity), label: 'Liquidity' },
-              { value: '--', label: 'Traders' },
-            ]} />
-
-            {/* Separator */}
-            <View style={styles.separator} />
-
             {/* Odds format toggle + Binary odds buttons */}
             <View style={styles.oddsSection}>
               <View style={styles.oddsHeader}>
+                <Text style={styles.oddsTitle}>{"What's your pick?"}</Text>
+                {/*
                 <OddsFormatToggle format={format} onFormatChange={setFormat} />
+                */}
               </View>
               <View style={styles.binaryBtns}>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnYes, selectedSide === 'yes' && styles.bnBtnYesSelected]}
                   onPress={() => tapOdd('yes')}>
                   <Text style={styles.bnBtnYesPrice}>{yesPrice !== null ? formatOdds(yesPrice) : '--'}</Text>
-                  <Text style={styles.bnBtnYesLabel}>Yes</Text>
+                  <Text style={styles.bnBtnYesLabel}>Back YES</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnNo, selectedSide === 'no' && styles.bnBtnNoSelected]}
                   onPress={() => tapOdd('no')}>
                   <Text style={styles.bnBtnNoPrice}>{noPrice !== null ? formatOdds(noPrice) : '--'}</Text>
-                  <Text style={styles.bnBtnNoLabel}>No</Text>
+                  <Text style={styles.bnBtnNoLabel}>Back NO</Text>
                 </Pressable>
               </View>
             </View>
@@ -382,8 +510,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
             <InlineNumpad
               visible={numpadOpen}
               side={selectedSide ?? 'yes'}
+              pickLabel={selectedSide === 'no' ? 'NO' : 'YES'}
               price={selectedSide === 'no' ? (noPrice ?? 0.5) : (yesPrice ?? 0.5)}
               amount={numpadAmount}
+              availableCash={cashBalance}
               onAmountChange={setNumpadAmount}
               onConfirm={() => { void submitOrder(); }}
               submitting={submitting}
@@ -392,6 +522,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
           </Animated.View>
         </View>
       ) : null}
+      <CashOutConfirmModal
+        visible={cashOutPosition !== null}
+        position={cashOutPosition}
+        onClose={() => setCashOutPosition(null)}
+      />
     </View>
   );
 }
@@ -429,6 +564,31 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: semantic.text.faint,
     flexShrink: 0,
+  },
+  cashPill: {
+    minHeight: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(232,197,71,0.25)',
+    backgroundColor: semantic.background.lift,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  cashPillLabel: {
+    fontFamily: 'monospace',
+    fontSize: 6,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  cashPillValue: {
+    fontFamily: 'monospace',
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: semantic.text.primary,
   },
 
   // ── States ──
@@ -475,6 +635,40 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 10,
   },
+  displayRow: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  displayTabGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexShrink: 1,
+  },
+  displayTab: {
+    height: 28,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  displayTabActive: {
+    backgroundColor: tokens.colors.surface,
+  },
+  displayTabText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  displayTabTextActive: {
+    color: semantic.text.primary,
+  },
   rangeChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -519,6 +713,79 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  picksView: {
+    flex: 1,
+    paddingTop: 10,
+  },
+  picksHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  picksTitle: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: semantic.text.primary,
+    fontWeight: '700',
+  },
+  picksSubtitle: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  picksEmptyCard: {
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    borderRadius: 12,
+    padding: 14,
+  },
+  picksEmptyTitle: {
+    color: semantic.text.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  picksEmptyText: {
+    color: semantic.text.dim,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  statsView: {
+    flex: 1,
+    paddingTop: 10,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statsCard: {
+    width: '48%',
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    borderRadius: 12,
+    padding: 10,
+  },
+  statsLabel: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 1,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  statsValue: {
+    marginTop: 4,
+    fontFamily: 'monospace',
+    fontSize: 15,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
 
   // ── Soft zone ──
   softZone: {
@@ -547,7 +814,6 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.predict.rowBorderSoft,
     marginHorizontal: 20,
   },
-
   // ── Binary odds ──
   oddsSection: {
     paddingHorizontal: 20,
@@ -555,8 +821,15 @@ const styles = StyleSheet.create({
   },
   oddsHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  oddsTitle: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: '700',
+    color: semantic.text.primary,
   },
   binaryBtns: {
     flexDirection: 'row',

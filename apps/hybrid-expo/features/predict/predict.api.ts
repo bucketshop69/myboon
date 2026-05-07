@@ -533,11 +533,33 @@ export interface PortfolioPosition {
   negativeRisk: boolean;
 }
 
+export interface ClosedPortfolioPosition {
+  proxyWallet: string;
+  asset: string;
+  conditionId: string;
+  avgPrice: number;
+  totalBought: number;
+  realizedPnl: number;
+  curPrice: number;
+  timestamp: number;
+  title: string;
+  slug: string;
+  icon: string | null;
+  eventSlug: string;
+  outcome: string;
+  outcomeIndex: number;
+  oppositeOutcome: string;
+  oppositeAsset: string;
+  endDate: string | null;
+}
+
 export interface PortfolioData {
   address: string;
   portfolioValue: number | null;
   positions: PortfolioPosition[];
   redeemablePositions: PortfolioPosition[];
+  closedPositions: ClosedPortfolioPosition[];
+  activity: ActivityItem[];
   profile: {
     name: string | null;
     bio: string | null;
@@ -547,6 +569,14 @@ export interface PortfolioData {
   summary: {
     openPositions: number;
     totalPnl: number;
+    cashOutNow?: number;
+    readyToCollect?: number;
+    activePickCount?: number;
+    closedPickCount?: number;
+    activityCount?: number;
+    hasActivity?: boolean;
+    hasAnyPicks?: boolean;
+    totalCollected?: number;
   };
 }
 
@@ -561,8 +591,10 @@ export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioD
     redeemablePositions: Array.isArray(p.redeemablePositions)
       ? (p.redeemablePositions as PortfolioPosition[]).filter((position) => (position.currentValue ?? 0) >= 0.01)
       : [],
+    closedPositions: Array.isArray(p.closedPositions) ? (p.closedPositions as ClosedPortfolioPosition[]) : [],
+    activity: Array.isArray(p.activity) ? (p.activity as ActivityItem[]) : [],
     profile: p.profile as PortfolioData['profile'] ?? null,
-    summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0 },
+    summary: (p.summary as PortfolioData['summary']) ?? { openPositions: 0, totalPnl: 0, totalCollected: 0 },
   };
 }
 
@@ -685,7 +717,7 @@ export async function redeemPosition(
   };
 }
 
-export async function fetchPriceHistory(tokenId: string, interval: '1h' | '1d' = '1h'): Promise<PriceHistory> {
+export async function fetchPriceHistory(tokenId: string, interval: '5m' | '1h' | '1d' = '1h'): Promise<PriceHistory> {
   const payload = await getJson(`/predict/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid history response');
   const p = payload as Record<string, unknown>;

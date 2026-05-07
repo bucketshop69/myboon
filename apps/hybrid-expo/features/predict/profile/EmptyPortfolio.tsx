@@ -13,14 +13,39 @@ import type { TrendingMarket } from '@/features/predict/predict.types';
 import { semantic, tokens } from '@/theme';
 
 interface EmptyPortfolioProps {
-  onDeposit: () => void;
-  hasBalance: boolean;
+  mode: 'no-account' | 'no-balance' | 'no-picks';
+  onPrimaryAction: () => void;
+  primaryLabel: string;
 }
 
-export function EmptyPortfolio({ onDeposit, hasBalance }: EmptyPortfolioProps) {
+const EMPTY_COPY: Record<EmptyPortfolioProps['mode'], {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  title: string;
+  description: string;
+}> = {
+  'no-account': {
+    icon: 'check-circle',
+    title: 'Wallet connected.\nOne more step.',
+    description: 'Create your prediction account to start making picks. One signature, no transaction, no gas, no cost.',
+  },
+  'no-balance': {
+    icon: 'add-card',
+    title: 'Deposit USDC to make your first pick',
+    description: 'Send USDC on Polygon. Funds show up here when ready.',
+  },
+  'no-picks': {
+    icon: 'touch-app',
+    title: 'No picks yet',
+    description: 'Your cash is ready. Pick an outcome and it will show up here with its status and next action.',
+  },
+};
+
+export function EmptyPortfolio({ mode, onPrimaryAction, primaryLabel }: EmptyPortfolioProps) {
   const router = useRouter();
   const [trending, setTrending] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
+  const copy = EMPTY_COPY[mode];
+  const signedOut = mode === 'no-account' && primaryLabel.toLowerCase().includes('sign');
 
   useEffect(() => {
     fetchTrendingMarkets(5)
@@ -29,30 +54,71 @@ export function EmptyPortfolio({ onDeposit, hasBalance }: EmptyPortfolioProps) {
       .finally(() => setLoading(false));
   }, []);
 
+  if (mode === 'no-account') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.onboardHero}>
+          <View style={styles.onboardIcon}>
+            <MaterialIcons name={copy.icon} size={24} color={tokens.colors.viridian} />
+          </View>
+          <Text style={styles.onboardTitle}>
+            {signedOut ? 'Sign in to use Predict' : copy.title}
+          </Text>
+          <Text style={styles.onboardSubtitle}>
+            {signedOut
+              ? 'Connect your wallet to set up Predict, make picks, and collect winnings in one place.'
+              : copy.description}
+          </Text>
+        </View>
+
+        <View style={styles.ctaPad}>
+          <Pressable style={styles.ctaBtn} onPress={onPrimaryAction}>
+            <Text style={styles.ctaBtnText}>{primaryLabel}</Text>
+          </Pressable>
+          {!signedOut && (
+            <Text style={styles.reassurance}>
+              Signs a message to prepare your Predict account.{'\n'}No transaction. No gas. Reversible anytime.
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {/* CTA */}
-      <View style={styles.ctaCard}>
-        <MaterialIcons name="rocket-launch" size={20} color={tokens.colors.primary} />
-        <Text style={styles.ctaTitle}>
-          {hasBalance ? 'Ready to trade' : 'Fund your account'}
-        </Text>
-        <Text style={styles.ctaDesc}>
-          {hasBalance
-            ? 'Pick a market below and place your first prediction'
-            : 'Deposit USDC to start trading on prediction markets'}
-        </Text>
-        {!hasBalance && (
-          <Pressable style={styles.ctaBtn} onPress={onDeposit}>
+      {mode === 'no-balance' ? (
+        <View style={styles.depositPrompt}>
+          <Text style={styles.eyebrow}>Get started</Text>
+          <Text style={styles.promptTitle}>{copy.title}</Text>
+          <Text style={styles.promptCopy}>{copy.description}</Text>
+          <Pressable style={styles.ctaBtn} onPress={onPrimaryAction}>
             <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.backgroundDark} />
-            <Text style={styles.ctaBtnText}>Deposit</Text>
+            <Text style={styles.ctaBtnText}>{primaryLabel}</Text>
           </Pressable>
-        )}
-      </View>
+        </View>
+      ) : (
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Your Picks</Text>
+            <Text style={styles.sectionCount}>none yet</Text>
+          </View>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateTitle}>{copy.title}</Text>
+            <Text style={styles.emptyStateCopy}>{copy.description}</Text>
+            <Pressable style={styles.ctaBtn} onPress={onPrimaryAction}>
+              <Text style={styles.ctaBtnText}>{primaryLabel}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* Trending markets */}
-      <View style={styles.trendingSection}>
-        <Text style={styles.trendingTitle}>TRENDING MARKETS</Text>
+      <View style={styles.sectionWrap}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{mode === 'no-picks' ? 'Markets to watch' : 'Trending Markets'}</Text>
+          <Text style={styles.sectionCount}>{mode === 'no-picks' ? 'popular now' : 'explore'}</Text>
+        </View>
         {loading ? (
           <ActivityIndicator size="small" color={semantic.text.faint} style={{ paddingVertical: 20 }} />
         ) : trending.length === 0 ? (
@@ -71,17 +137,20 @@ export function EmptyPortfolio({ onDeposit, hasBalance }: EmptyPortfolioProps) {
                   <Text style={styles.marketQuestion} numberOfLines={2}>
                     {m.question}
                   </Text>
+                  <View style={styles.oddsBar}>
+                    <View style={[styles.oddsSegment, styles.yesSegment, { flex: Math.max(yesPrice, 0.01) }]}>
+                      <Text style={styles.oddsText}>Yes {Math.round(yesPrice * 100)}%</Text>
+                    </View>
+                    <View style={[styles.oddsSegment, styles.noSegment, { flex: Math.max(1 - yesPrice, 0.01) }]}>
+                      <Text style={styles.oddsText}>No {Math.round((1 - yesPrice) * 100)}%</Text>
+                    </View>
+                  </View>
                   {m.volume24h != null && m.volume24h > 0 && (
                     <Text style={styles.marketVol}>
                       ${m.volume24h >= 1000 ? `${(m.volume24h / 1000).toFixed(0)}K` : m.volume24h.toFixed(0)} vol
                     </Text>
                   )}
                 </View>
-                <View style={styles.marketPrice}>
-                  <Text style={styles.marketPriceVal}>{Math.round(yesPrice * 100)}{'\u00A2'}</Text>
-                  <Text style={styles.marketPriceLabel}>YES</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
               </Pressable>
             );
           })
@@ -96,30 +165,77 @@ const styles = StyleSheet.create({
     gap: 16,
   },
 
-  // CTA card
-  ctaCard: {
-    backgroundColor: semantic.background.surface,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 10,
-    padding: 20,
+  onboardHero: {
+    paddingTop: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
     alignItems: 'center',
     gap: 8,
   },
-  ctaTitle: {
-    fontFamily: 'monospace',
-    fontSize: 12,
+  onboardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.22)',
+    backgroundColor: 'rgba(74,140,111,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  onboardTitle: {
+    fontSize: 18,
     fontWeight: '700',
     color: semantic.text.primary,
-    letterSpacing: 0.3,
+    textAlign: 'center',
+    lineHeight: 24,
   },
-  ctaDesc: {
+  onboardSubtitle: {
     fontFamily: 'monospace',
     fontSize: 9,
     color: semantic.text.dim,
     textAlign: 'center',
-    lineHeight: 14,
-    letterSpacing: 0.2,
+    lineHeight: 15,
+    maxWidth: 280,
+  },
+  ctaPad: {
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 6,
+  },
+  reassurance: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  depositPrompt: {
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  eyebrow: {
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: semantic.text.dim,
+  },
+  promptTitle: {
+    fontSize: 12,
+    color: semantic.text.primary,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  promptCopy: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    textAlign: 'center',
+    lineHeight: 13,
+    marginBottom: 6,
   },
   ctaBtn: {
     flexDirection: 'row',
@@ -141,16 +257,47 @@ const styles = StyleSheet.create({
     color: tokens.colors.backgroundDark,
   },
 
-  // Trending
-  trendingSection: {
-    gap: 6,
+  sectionWrap: {
+    gap: 8,
   },
-  trendingTitle: {
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: semantic.text.primary,
+    fontWeight: '700',
+  },
+  sectionCount: {
     fontFamily: 'monospace',
     fontSize: 7.5,
-    letterSpacing: 2,
-    color: semantic.text.dim,
-    marginBottom: 2,
+    color: semantic.text.faint,
+  },
+  emptyState: {
+    backgroundColor: semantic.background.surface,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    padding: 18,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyStateTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: semantic.text.primary,
+  },
+  emptyStateCopy: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    textAlign: 'center',
+    lineHeight: 13,
   },
   trendingEmpty: {
     fontFamily: 'monospace',
@@ -160,19 +307,16 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   marketRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     backgroundColor: semantic.background.surface,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     borderRadius: 8,
-    padding: 10,
-    minHeight: 48,
+    padding: 12,
+    minHeight: 72,
+    gap: 8,
   },
   marketInfo: {
-    flex: 1,
-    gap: 3,
+    gap: 7,
   },
   marketQuestion: {
     fontSize: 10,
@@ -184,21 +328,28 @@ const styles = StyleSheet.create({
     fontSize: 7.5,
     color: semantic.text.faint,
   },
-  marketPrice: {
+  oddsBar: {
+    flexDirection: 'row',
+    minHeight: 24,
+    borderRadius: 6,
+    overflow: 'hidden',
+    gap: 2,
+  },
+  oddsSegment: {
     alignItems: 'center',
-    gap: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
-  marketPriceVal: {
+  yesSegment: {
+    backgroundColor: 'rgba(74,140,111,0.22)',
+  },
+  noSegment: {
+    backgroundColor: 'rgba(244,88,78,0.16)',
+  },
+  oddsText: {
     fontFamily: 'monospace',
-    fontSize: 13,
+    fontSize: 8,
     fontWeight: '700',
-    color: tokens.colors.viridian,
-  },
-  marketPriceLabel: {
-    fontFamily: 'monospace',
-    fontSize: 6.5,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: 'rgba(74,140,111,0.55)',
+    color: semantic.text.primary,
   },
 });
