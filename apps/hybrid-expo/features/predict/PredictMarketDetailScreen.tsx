@@ -509,7 +509,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                     setPickScope('market');
                     void loadPicks();
                   }}>
-                    <Text style={styles.successSecondaryActionText}>Cash Out</Text>
+                    <Text style={styles.successSecondaryActionText}>Manage</Text>
                   </Pressable>
                   <Pressable style={styles.successSecondaryAction} onPress={() => tapOdd(livePick.label === 'NO' ? 'no' : 'yes')}>
                     <Text style={styles.successSecondaryActionText}>Add More</Text>

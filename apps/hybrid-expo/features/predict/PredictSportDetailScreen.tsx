@@ -562,7 +562,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                     setPickScope('market');
                     void loadPicks();
                   }}>
-                    <Text style={styles.successSecondaryActionText}>Cash Out</Text>
+                    <Text style={styles.successSecondaryActionText}>Manage</Text>
                   </Pressable>
                   <Pressable style={styles.successSecondaryAction} onPress={() => {
                     const index = sortedOutcomes.findIndex((outcome) => sportOutcomeLabel(outcome) === livePick.label);
