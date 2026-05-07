@@ -134,7 +134,19 @@ async function getUsdceBalance(walletAddress: string): Promise<bigint> {
   return BigInt(res)
 }
 
-async function autoWrapUsdce(session: ClobSession): Promise<{ wrapped: boolean; amount: number; txHash: string | null }> {
+type AutoWrapResult = { wrapped: boolean; amount: number; txHash: string | null }
+
+async function autoWrapUsdce(session: ClobSession): Promise<AutoWrapResult> {
+  if (session.wrapInFlight) return session.wrapInFlight
+
+  session.wrapInFlight = doAutoWrapUsdce(session).finally(() => {
+    session.wrapInFlight = undefined
+  })
+
+  return session.wrapInFlight
+}
+
+async function doAutoWrapUsdce(session: ClobSession): Promise<AutoWrapResult> {
   if (!relayerBuilderConfig) return { wrapped: false, amount: 0, txHash: null }
 
   const usdceBalance = await getUsdceBalance(session.tradingAddress)
@@ -217,6 +229,7 @@ interface ClobSession {
   walletMode: WalletMode
   tradingAddress: string
   depositWalletAddress?: string
+  wrapInFlight?: Promise<AutoWrapResult>
   createdAt: number
 }
 
@@ -574,6 +587,32 @@ clobRoutes.get('/deposit/:polygonAddress', async (c) => {
 })
 
 /**
+ * GET /clob/deposit-status/:depositAddress
+ * Proxies Polymarket Bridge status for a copied deposit address.
+ */
+clobRoutes.get('/deposit-status/:depositAddress', async (c) => {
+  const depositAddress = c.req.param('depositAddress')
+  if (!depositAddress) {
+    return c.json({ error: 'Missing deposit address' }, 400)
+  }
+
+  try {
+    const res = await fetch(`https://bridge.polymarket.com/status/${encodeURIComponent(depositAddress)}`)
+
+    if (!res.ok) {
+      const text = await res.text()
+      console.error(`[clob] Bridge status API error ${res.status}: ${text}`)
+      return c.json({ error: 'Bridge status API error', detail: text }, 502)
+    }
+
+    return c.json(await res.json())
+  } catch (err: any) {
+    console.error('[clob] Deposit status fetch failed:', err.message || err)
+    return c.json({ error: 'Failed to fetch deposit status', detail: err.message }, 500)
+  }
+})
+
+/**
  * GET /clob/balance/:polygonAddress
  */
 clobRoutes.get('/balance/:polygonAddress', async (c) => {
@@ -585,13 +624,23 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   }
 
   try {
+    let wrapMeta: {
+      attempted: boolean
+      wrapped: boolean
+      amount: number
+      txHash: string | null
+      error: string | null
+    } = { attempted: false, wrapped: false, amount: 0, txHash: null, error: null }
+
     // Auto-wrap any USDC.e sitting in the trading wallet (bridge deposits arrive as USDC.e)
     try {
       const wrapResult = await autoWrapUsdce(session)
+      wrapMeta = { attempted: wrapResult.amount > 0, wrapped: wrapResult.wrapped, amount: wrapResult.amount, txHash: wrapResult.txHash, error: null }
       if (wrapResult.wrapped) {
         console.log(`[clob] Auto-wrapped ${wrapResult.amount} USDC.e before balance check`)
       }
     } catch (wrapErr: any) {
+      wrapMeta = { attempted: true, wrapped: false, amount: 0, txHash: null, error: wrapErr.message ?? 'Auto-wrap failed' }
       console.warn(`[clob] Auto-wrap failed (non-fatal): ${wrapErr.message}`)
     }
 
@@ -604,7 +653,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
     const allowance = rawAllowance >= 1000 ? rawAllowance / 1e6 : rawAllowance
 
     console.log(`[clob] Balance for ${polygonAddress} (${session.walletMode}: ${session.tradingAddress}): raw=${rawBalance} -> ${balance} pUSD`)
-    return c.json({ balance, allowance, raw: result })
+    return c.json({ balance, allowance, wrap: wrapMeta, raw: result })
   } catch (err: any) {
     console.error('[clob] Balance fetch failed:', err.message || err)
     return c.json({ error: 'Failed to fetch balance', detail: err.message }, 500)
