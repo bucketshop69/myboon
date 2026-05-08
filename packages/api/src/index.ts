@@ -47,11 +47,20 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
-const AI_EXPLANATION_API_KEY = process.env.AI_EXPLANATION_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.XAI_API_KEY
+const AI_EXPLANATION_PROVIDER = process.env.AI_EXPLANATION_PROVIDER
+  ?? (process.env.MINIMAX_API_KEY ? 'minimax' : (process.env.OPENAI_API_KEY ? 'openai' : 'xai'))
+const AI_EXPLANATION_API_KEY = process.env.AI_EXPLANATION_API_KEY
+  ?? (AI_EXPLANATION_PROVIDER === 'minimax' ? process.env.MINIMAX_API_KEY : undefined)
+  ?? process.env.OPENAI_API_KEY
+  ?? process.env.XAI_API_KEY
 const AI_EXPLANATION_BASE_URL = process.env.AI_EXPLANATION_BASE_URL
-  ?? (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : 'https://api.x.ai/v1')
+  ?? (AI_EXPLANATION_PROVIDER === 'minimax'
+    ? 'https://api.minimax.io/anthropic/v1'
+    : (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : 'https://api.x.ai/v1'))
 const AI_EXPLANATION_MODEL = process.env.AI_EXPLANATION_MODEL
-  ?? (process.env.OPENAI_API_KEY ? 'gpt-4o-mini' : (process.env.XAI_MODEL ?? 'grok-3-mini'))
+  ?? (AI_EXPLANATION_PROVIDER === 'minimax'
+    ? (process.env.RESEARCHER_MODEL ?? 'MiniMax-M2.7')
+    : (process.env.OPENAI_API_KEY ? 'gpt-4o-mini' : (process.env.XAI_MODEL ?? 'grok-3-mini')))
 
 const missing: string[] = []
 if (!SUPABASE_URL) missing.push('SUPABASE_URL')
@@ -514,25 +523,33 @@ async function generateSimpleExplanation(title: string, content: string): Promis
     throw new Error('AI provider is not configured')
   }
 
-  const res = await fetch(`${AI_EXPLANATION_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+  const system = 'You are explaining crypto, prediction-market, sports, or finance news to a beginner. Concisely explain the context and why it matters in simple language. Avoid jargon. Do not give financial advice. Keep it to 2-4 short sentences.'
+  const user = `Title: ${title || 'Untitled'}\n\nContent: ${content}`
+  const isMiniMax = AI_EXPLANATION_PROVIDER === 'minimax'
+
+  const res = await fetch(`${AI_EXPLANATION_BASE_URL.replace(/\/$/, '')}/${isMiniMax ? 'messages' : 'chat/completions'}`, {
     method: 'POST',
-    headers: {
+    headers: isMiniMax ? {
+      'x-api-key': AI_EXPLANATION_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+    } : {
       Authorization: `Bearer ${AI_EXPLANATION_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
+    body: JSON.stringify(isMiniMax ? {
+      model: AI_EXPLANATION_MODEL,
+      temperature: 0.2,
+      max_tokens: 160,
+      system,
+      messages: [{ role: 'user', content: user }],
+    } : {
       model: AI_EXPLANATION_MODEL,
       temperature: 0.2,
       max_tokens: 160,
       messages: [
-        {
-          role: 'system',
-          content: 'You are explaining crypto, prediction-market, sports, or finance news to a beginner. Concisely explain the context and why it matters in simple language. Avoid jargon. Do not give financial advice. Keep it to 2-4 short sentences.',
-        },
-        {
-          role: 'user',
-          content: `Title: ${title || 'Untitled'}\n\nContent: ${content}`,
-        },
+        { role: 'system', content: system },
+        { role: 'user', content: user },
       ],
     }),
   })
@@ -542,8 +559,13 @@ async function generateSimpleExplanation(title: string, content: string): Promis
     throw new Error(`AI provider failed (${res.status}) ${body.slice(0, 180)}`.trim())
   }
 
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
-  const text = data.choices?.[0]?.message?.content?.trim()
+  const data = await res.json() as {
+    choices?: Array<{ message?: { content?: string } }>
+    content?: Array<{ type?: string; text?: string }>
+  }
+  const text = isMiniMax
+    ? data.content?.find((block) => block.type === 'text')?.text?.trim()
+    : data.choices?.[0]?.message?.content?.trim()
   if (!text) throw new Error('AI provider returned an empty explanation')
   return text.replace(/\s+\n/g, '\n').trim()
 }
