@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { teamInitials } from '@/features/predict/formatPredictTitle';
 import type { PredictOrderGuardrail } from '@/features/predict/predictActivityState';
 import { semantic, tokens } from '@/theme';
 
@@ -32,6 +33,21 @@ function formatAmountInput(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0';
   const truncated = Math.trunc(value * 100) / 100;
   return truncated.toFixed(2).replace(/\.00$/u, '').replace(/(\.\d)0$/u, '$1');
+}
+
+function formatButtonUsd(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '$0';
+  return `$${value.toFixed(value % 1 === 0 ? 0 : 2).replace(/\.00$/u, '').replace(/(\.\d)0$/u, '$1')}`;
+}
+
+function formatButtonReturn(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '$0';
+  return `$${value.toFixed(0)}`;
+}
+
+function formatButtonPickLabel(label: string): string {
+  if (/^(yes|no|draw)$/iu.test(label)) return label;
+  return teamInitials(label) ?? label;
 }
 
 function numpadKey(current: string, key: string): string {
@@ -79,7 +95,7 @@ export function InlineNumpad({
   const payout = price > 0 ? amountNum / price : 0;
   const outcomeLabel = pickLabel ?? (side === 'yes' ? 'YES' : 'NO');
   const isYes = side === 'yes';
-  const backLabel = confirmLabel ?? `Back ${outcomeLabel} with $${amountNum.toFixed(amountNum % 1 === 0 ? 0 : 2)}`;
+  const backLabel = confirmLabel ?? `Back ${formatButtonPickLabel(outcomeLabel)} ${formatButtonUsd(amountNum)} get ${formatButtonReturn(payout)}`;
   const confirmDisabled = disabled || submitting || amountNum <= 0 || exceedsCash || guardrail?.blocking === true;
   const feedbackText = guardrail?.message ?? (exceedsCash ? 'Not enough cash' : 'If you are wrong, you lose');
   const feedbackValue = guardrail
