@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
-import { AppTopBar, AppTopBarTitle } from '@/components/AppTopBar';
+import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import {
   fetchPerpsMarkets,
@@ -115,9 +115,8 @@ export function TradeListScreen() {
       ) : (
         <>
           <AppTopBar
-            left={<AvatarTrigger />}
-            center={<AppTopBarTitle>Trade</AppTopBarTitle>}
-            right={<View style={styles.topBarSpacer} />}
+            left={<AppTopBarLogo />}
+            right={<AvatarTrigger />}
           />
 
           {/* Markets table */}
@@ -215,11 +214,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: semantic.background.screen,
-  },
-
-  topBarSpacer: {
-    width: 28,
-    height: 28,
   },
 
   // State (loading / error)

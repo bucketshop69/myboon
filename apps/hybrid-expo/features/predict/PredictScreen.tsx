@@ -14,14 +14,12 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppTopBar, AppTopBarCashPill, AppTopBarTitle } from '@/components/AppTopBar';
+import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
-import { fetchClobBalance, fetchPredictFeed } from '@/features/predict/predict.api';
+import { fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
-import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
-import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 
@@ -334,7 +332,6 @@ function SectionHeader({ label, count, onPress, isLive }: { label: string; count
 export default function PredictScreen() {
   const router = useRouter();
   const { format, setFormat, formatOdds } = useOddsFormat();
-  const poly = usePolymarketWallet();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -343,7 +340,6 @@ export default function PredictScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cashBalance, setCashBalance] = useState<number | null>(null);
 
   async function loadFeed() {
     setLoading(true);
@@ -363,20 +359,6 @@ export default function PredictScreen() {
   useEffect(() => {
     void loadFeed();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadCashBalance() {
-      if (!poly.polygonAddress) {
-        setCashBalance(null);
-        return;
-      }
-      const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
-      if (!cancelled) setCashBalance(balance?.balance ?? null);
-    }
-    void loadCashBalance();
-    return () => { cancelled = true; };
-  }, [poly.polygonAddress]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -479,9 +461,8 @@ export default function PredictScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <AppTopBar
-        left={<AvatarTrigger />}
-        center={<AppTopBarTitle>Predict</AppTopBarTitle>}
-        right={<AppTopBarCashPill value={truncateUsd(cashBalance)} />}
+        left={<AppTopBarLogo />}
+        right={<AvatarTrigger />}
       />
 
       {/* feed scroll */}
