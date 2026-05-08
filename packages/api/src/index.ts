@@ -540,13 +540,13 @@ async function generateSimpleExplanation(title: string, content: string): Promis
     body: JSON.stringify(isMiniMax ? {
       model: AI_EXPLANATION_MODEL,
       temperature: 0.2,
-      max_tokens: 160,
+      max_tokens: 240,
       system,
       messages: [{ role: 'user', content: user }],
     } : {
       model: AI_EXPLANATION_MODEL,
       temperature: 0.2,
-      max_tokens: 160,
+      max_tokens: 240,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
