@@ -6,10 +6,12 @@ import { semantic, tokens } from '@/theme';
 interface CashOutConfirmModalProps {
   position: PortfolioPosition | null;
   visible: boolean;
+  submitting?: boolean;
   onClose: () => void;
+  onConfirm: () => void;
 }
 
-export function CashOutConfirmModal({ position, visible, onClose }: CashOutConfirmModalProps) {
+export function CashOutConfirmModal({ position, visible, submitting = false, onClose, onConfirm }: CashOutConfirmModalProps) {
   const cashOutValue = position?.currentValue ?? 0;
   const pnl = position ? cashOutValue - portfolioPositionCost(position) : 0;
 
@@ -34,11 +36,11 @@ export function CashOutConfirmModal({ position, visible, onClose }: CashOutConfi
             </Text>
           </View>
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryAction} onPress={onClose}>
+            <Pressable style={styles.secondaryAction} onPress={onClose} disabled={submitting}>
               <Text style={styles.secondaryActionText}>Not now</Text>
             </Pressable>
-            <Pressable style={styles.primaryAction} onPress={onClose}>
-              <Text style={styles.primaryActionText}>Cash out</Text>
+            <Pressable style={[styles.primaryAction, submitting && styles.primaryActionDisabled]} onPress={onConfirm} disabled={submitting || !position}>
+              <Text style={styles.primaryActionText}>{submitting ? 'Cashing out...' : 'Cash out'}</Text>
             </Pressable>
           </View>
         </View>
@@ -146,6 +148,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.viridian,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  primaryActionDisabled: {
+    opacity: 0.65,
   },
   primaryActionText: {
     fontFamily: 'monospace',

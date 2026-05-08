@@ -422,6 +422,49 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     setCashOutPosition(position);
   }
 
+  async function confirmCashOut() {
+    const position = cashOutPosition;
+    if (!position || submitting) return;
+    if (!position.asset) {
+      Alert.alert('Cash out failed', 'Missing token ID for this position');
+      return;
+    }
+
+    if (!poly.canSignLocally) {
+      try {
+        await poly.enable();
+      } catch (err: any) {
+        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      if (!poly.polygonAddress) throw new Error('Wallet session not ready');
+      const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
+      const result = await placeBet({
+        polygonAddress: poly.polygonAddress,
+        tokenID: position.asset,
+        price,
+        size: position.size,
+        side: 'SELL',
+        negRisk: !!position.negativeRisk,
+        orderType: 'FOK',
+      });
+      if (!result.success) throw new Error(result.error || 'Cash out failed');
+
+      setCashOutPosition(null);
+      setActiveView('picks');
+      void loadPicks();
+      void fetchClobBalance(poly.polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
+    } catch (err: any) {
+      Alert.alert('Cash out failed', err.message || 'Unknown error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const chartWidth = screenWidth - 40;
   const chartHeight = 180;
   const amountNum = parseFloat(numpadAmount) || 0;
@@ -611,7 +654,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       <CashOutConfirmModal
         visible={cashOutPosition !== null}
         position={cashOutPosition}
+        submitting={submitting}
         onClose={() => setCashOutPosition(null)}
+        onConfirm={confirmCashOut}
       />
     </View>
   );

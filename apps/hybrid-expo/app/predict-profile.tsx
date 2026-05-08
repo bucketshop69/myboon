@@ -16,7 +16,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
-import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
+import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
@@ -69,6 +69,7 @@ export default function PredictProfileScreen() {
     error: null,
   });
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
+  const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -122,6 +123,54 @@ export default function PredictProfileScreen() {
       error: failed ? 'Could not refresh' : null,
     });
   }, [poly.polygonAddress, poly.tradingAddress]);
+
+  const handleConfirmCashOut = useCallback(async () => {
+    const position = cashOutPosition;
+    if (!position || cashOutSubmitting) return;
+
+    if (!position.asset) {
+      Alert.alert('Cash out failed', 'Missing token ID for this position.');
+      return;
+    }
+
+    if (!poly.canSignLocally) {
+      try {
+        await poly.enable();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to enable Predict account';
+        Alert.alert('Wallet', msg);
+        return;
+      }
+    }
+
+    if (!poly.polygonAddress) {
+      Alert.alert('Cash out failed', 'Wallet session not ready.');
+      return;
+    }
+
+    setCashOutSubmitting(true);
+    try {
+      const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
+      const result = await placeBet({
+        polygonAddress: poly.polygonAddress,
+        tokenID: position.asset,
+        price,
+        size: position.size,
+        side: 'SELL',
+        negRisk: !!position.negativeRisk,
+        orderType: 'FOK',
+      });
+      if (!result.success) throw new Error(result.error || 'Cash out failed');
+
+      setCashOutPosition(null);
+      await loadPortfolio();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      Alert.alert('Cash out failed', msg);
+    } finally {
+      setCashOutSubmitting(false);
+    }
+  }, [cashOutPosition, cashOutSubmitting, loadPortfolio, poly]);
 
   // Fetch portfolio when enabled
   useEffect(() => {
@@ -451,7 +500,9 @@ export default function PredictProfileScreen() {
       <CashOutConfirmModal
         visible={cashOutPosition !== null}
         position={cashOutPosition}
+        submitting={cashOutSubmitting}
         onClose={() => setCashOutPosition(null)}
+        onConfirm={handleConfirmCashOut}
       />
     </View>
   );
