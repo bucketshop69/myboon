@@ -132,11 +132,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    gap: 7,
   },
   rowMarket: {
-    flex: 1,
+    flexShrink: 1,
     fontFamily: 'monospace',
     fontSize: 11,
     color: semantic.text.faint,
