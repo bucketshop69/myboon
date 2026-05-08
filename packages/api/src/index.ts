@@ -526,52 +526,62 @@ async function generateSimpleExplanation(title: string, content: string): Promis
   const system = 'You explain crypto, prediction-market, sports, or finance news to beginners. Output ONLY the final user-facing explanation. Do not include analysis, chain-of-thought, bullet planning, preambles, or labels. Use simple language, avoid jargon, and do not give financial advice. Keep it to 2-4 short sentences.'
   const user = `Title: ${title || 'Untitled'}\n\nContent: ${content}`
   const isMiniMax = AI_EXPLANATION_PROVIDER === 'minimax'
+  const attempts = isMiniMax ? 2 : 1
+  let lastError: Error | null = null
 
-  const res = await fetch(`${AI_EXPLANATION_BASE_URL.replace(/\/$/, '')}/${isMiniMax ? 'messages' : 'chat/completions'}`, {
-    method: 'POST',
-    headers: isMiniMax ? {
-      'x-api-key': AI_EXPLANATION_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    } : {
-      Authorization: `Bearer ${AI_EXPLANATION_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(isMiniMax ? {
-      model: AI_EXPLANATION_MODEL,
-      temperature: 0.2,
-      max_tokens: 240,
-      system,
-      messages: [{ role: 'user', content: user }],
-    } : {
-      model: AI_EXPLANATION_MODEL,
-      temperature: 0.2,
-      max_tokens: 240,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-    }),
-  })
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const res = await fetch(`${AI_EXPLANATION_BASE_URL.replace(/\/$/, '')}/${isMiniMax ? 'messages' : 'chat/completions'}`, {
+      method: 'POST',
+      headers: isMiniMax ? {
+        'x-api-key': AI_EXPLANATION_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      } : {
+        Authorization: `Bearer ${AI_EXPLANATION_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(isMiniMax ? {
+        model: AI_EXPLANATION_MODEL,
+        temperature: 0.2,
+        max_tokens: 240,
+        system,
+        messages: [{ role: 'user', content: user }],
+      } : {
+        model: AI_EXPLANATION_MODEL,
+        temperature: 0.2,
+        max_tokens: 240,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+      }),
+    })
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`AI provider failed (${res.status}) ${body.slice(0, 180)}`.trim())
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      lastError = new Error(`AI provider failed (${res.status}) ${body.slice(0, 180)}`.trim())
+      if (attempt < attempts && [429, 500, 502, 503, 520, 529].includes(res.status)) continue
+      throw lastError
+    }
+
+    const data = await res.json() as {
+      choices?: Array<{ message?: { content?: string } }>
+      content?: Array<{ type?: string; text?: string }>
+    }
+    const text = isMiniMax
+      ? data.content?.find((block) => block.type === 'text')?.text?.trim()
+      : data.choices?.[0]?.message?.content?.trim()
+    const cleaned = text
+      ?.replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/^\s*(?:Let me|I need to|Breaking down|Analysis:)[\s\S]*?(?:\n\s*\n|$)/i, '')
+      .replace(/\s+\n/g, '\n')
+      .trim()
+    if (cleaned) return cleaned
+
+    lastError = new Error('AI provider returned an empty explanation')
   }
 
-  const data = await res.json() as {
-    choices?: Array<{ message?: { content?: string } }>
-    content?: Array<{ type?: string; text?: string }>
-  }
-  const text = isMiniMax
-    ? data.content?.find((block) => block.type === 'text')?.text?.trim()
-    : data.choices?.[0]?.message?.content?.trim()
-  if (!text) throw new Error('AI provider returned an empty explanation')
-  return text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/^\s*(?:Let me|I need to|Breaking down|Analysis:)[\s\S]*?(?:\n\s*\n|$)/i, '')
-    .replace(/\s+\n/g, '\n')
-    .trim()
+  throw lastError ?? new Error('AI provider returned an empty explanation')
 }
 
 // POST /ai/explain-simply
