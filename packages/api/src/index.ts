@@ -59,7 +59,7 @@ const AI_EXPLANATION_BASE_URL = process.env.AI_EXPLANATION_BASE_URL
     : (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : 'https://api.x.ai/v1'))
 const AI_EXPLANATION_MODEL = process.env.AI_EXPLANATION_MODEL
   ?? (AI_EXPLANATION_PROVIDER === 'minimax'
-    ? (process.env.RESEARCHER_MODEL ?? 'MiniMax-M2.7')
+    ? (process.env.CLASSIFIER_MODEL ?? 'MiniMax-M2.7-lightning')
     : (process.env.OPENAI_API_KEY ? 'gpt-4o-mini' : (process.env.XAI_MODEL ?? 'grok-3-mini')))
 
 const missing: string[] = []
