@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>myboon V3.1 - Teal Finance OS Mockup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+    :root {
+      --page: #073b4c;
+      --ink: #f5fafc;
+      --phone: #073b4c;
+      --panel: #063343;
+      --panel2: #083d50;
+      --panel3: #0a4a60;
+      --line: rgba(245,250,252,0.10);
+      --line2: rgba(245,250,252,0.16);
+      --line3: rgba(245,250,252,0.25);
+      --text: #f5fafc;
+      --muted: #9cb8c2;
+      --faint: #6b95a1;
+      --headline: #ffd166;
+      --brass: #ffd166;
+      --brass2: #e8b94f;
+      --brassWash: rgba(255,209,102,0.10);
+      --copper: #118ab2;
+      --copperWash: rgba(17,138,178,0.16);
+      --wine: #ef476f;
+      --wineWash: rgba(239,71,111,0.16);
+      --moss: #06d6a0;
+      --mossWash: rgba(6,214,160,0.14);
+      --mono: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
+      --serif: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(255,209,102,0.10), transparent 260px),
+        radial-gradient(circle at 90% 6%, rgba(17,138,178,0.18), transparent 320px),
+        linear-gradient(180deg, #073b4c 0%, #052f3d 520px),
+        var(--page);
+      color: var(--text);
+      font-family: var(--sans);
+      padding: 44px 28px 80px;
+    }
+
+    .board {
+      width: min(100%, 1780px);
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 28px;
+      margin-bottom: 34px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 24px;
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--headline);
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-family: var(--sans);
+      font-size: clamp(34px, 4vw, 68px);
+      line-height: 0.96;
+      font-weight: 760;
+      letter-spacing: -2px;
+      max-width: 960px;
+      color: var(--headline);
+    }
+
+    .thesis {
+      width: 420px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .screens {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 32px;
+      align-items: flex-start;
+    }
+
+    .screen-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 2.2px;
+      text-transform: uppercase;
+      color: var(--faint);
+      text-align: center;
+    }
+
+    .label strong {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 4px;
+    }
+
+    .phone {
+      width: 375px;
+      height: 812px;
+      border-radius: 48px;
+      background: var(--phone);
+      border: 1px solid rgba(245,250,252,0.08);
+      box-shadow:
+        0 0 0 8px #03151c,
+        0 0 0 9px rgba(245,250,252,0.06),
+        0 44px 96px rgba(0,0,0,0.44);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 50;
+      top: 0;
+      left: 50%;
+      width: 112px;
+      height: 30px;
+      transform: translateX(-50%);
+      border-radius: 0 0 22px 22px;
+      background: #03151c;
+    }
+
+    .status {
+      height: 48px;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px 23px 0;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      position: relative;
+      z-index: 4;
+    }
+
+    .bars {
+      display: flex;
+      align-items: end;
+      gap: 3px;
+      height: 12px;
+    }
+
+    .bars i {
+      width: 3px;
+      border-radius: 2px;
+      background: var(--text);
+      display: block;
+      opacity: 0.85;
+    }
+
+    .bars i:nth-child(1) { height: 5px }
+    .bars i:nth-child(2) { height: 7px }
+    .bars i:nth-child(3) { height: 10px }
+    .bars i:nth-child(4) { height: 12px }
+
+    .app {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+    }
+
+    .header {
+      flex: 0 0 auto;
+      padding: 10px 18px 13px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(7,59,76,0.86);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,209,102,0.24);
+      background:
+        linear-gradient(135deg, #118ab2, #06d6a0);
+      display: grid;
+      place-items: center;
+      color: #ffffff;
+      font-family: var(--serif);
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2.3px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .subtitle {
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--faint);
+    }
+
+    .avatar {
+      width: 31px;
+      height: 31px;
+      border-radius: 999px;
+      border: 1px solid var(--line3);
+      display: grid;
+      place-items: center;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text);
+      background: var(--panel2);
+      position: relative;
+    }
+
+    .avatar::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--moss);
+      position: absolute;
+      right: 1px;
+      bottom: 1px;
+      box-shadow: 0 0 0 2px var(--phone);
+    }
+
+    .content {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      padding: 15px 14px 0;
+    }
+
+    .scroll {
+      height: 100%;
+      overflow: hidden;
+      padding-bottom: 96px;
+    }
+
+    .section-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 1.7px;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+
+    .live {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      color: var(--copper);
+      font-size: 9px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+    }
+
+    .live::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--moss);
+      box-shadow: 0 0 0 5px rgba(6,214,160,0.10);
+    }
+
+    .signal-card {
+      background: var(--panel);
+      border: 1px solid var(--line2);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 14px 34px rgba(0,0,0,0.13);
+    }
+
+    .signal-card.hero {
+      padding: 16px;
+      border-color: rgba(17,138,178,0.42);
+      background:
+        linear-gradient(135deg, rgba(17,138,178,0.18), transparent 42%),
+        linear-gradient(215deg, rgba(255,209,102,0.08), transparent 42%),
+        var(--panel);
+    }
+
+    .signal-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .tags {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .tag {
+      min-height: 19px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: rgba(245,250,252,0.05);
+      padding: 0 7px;
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .tag.hot {
+      border-color: rgba(17,138,178,0.42);
+      background: var(--copperWash);
+      color: #8ed7f0;
+    }
+
+    .tag.market {
+      border-color: rgba(255,209,102,0.28);
+      background: var(--brassWash);
+      color: var(--brass);
+    }
+
+    .time {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--faint);
+      white-space: nowrap;
+    }
+
+    .headline {
+      font-size: 20px;
+      line-height: 1.12;
+      letter-spacing: -0.38px;
+      color: var(--headline);
+      margin-bottom: 9px;
+      font-weight: 650;
+    }
+
+    .signal-card:not(.hero) .headline {
+      font-size: 15px;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .body-copy {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+      margin-bottom: 13px;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-bottom: 13px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      background: rgba(245,250,252,0.045);
+      border-radius: 11px;
+      padding: 8px 8px 7px;
+    }
+
+    .metric-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--headline);
+      letter-spacing: -0.3px;
+    }
+
+    .odds-line {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(245,250,252,0.08);
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .odds-line span {
+      display: block;
+      height: 100%;
+      width: 52%;
+      background: linear-gradient(90deg, var(--wine) 0%, var(--brass) 50%, var(--moss) 100%);
+      border-radius: 999px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+    }
+
+    .btn {
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: rgba(245,250,252,0.06);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      letter-spacing: 0;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      padding: 0 13px;
+    }
+
+    .btn.primary {
+      border-color: rgba(17,138,178,0.64);
+      background: rgba(17,138,178,0.22);
+      color: #8ed7f0;
+      box-shadow: none;
+    }
+
+    .btn.danger {
+      border-color: rgba(214,75,75,0.20);
+      background: var(--wineWash);
+      color: var(--wine);
+    }
+
+    .btn.icon {
+      width: 38px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    .compact-data {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .delta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--moss);
+    }
+
+    .delta.down {
+      color: var(--wine);
+    }
+
+    .nav {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 80px;
+      border-top: 1px solid var(--line);
+      background: rgba(4,31,42,0.86);
+      backdrop-filter: blur(22px);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 9px 18px 14px;
+      z-index: 10;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      color: var(--faint);
+      font-family: var(--sans);
+      font-size: 10px;
+      letter-spacing: 0;
+      text-transform: none;
+      font-weight: 700;
+      position: relative;
+    }
+
+    .nav-ico {
+      width: 29px;
+      height: 25px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      display: grid;
+      place-items: center;
+    }
+
+    .nav-ico svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .nav-item.active {
+      color: var(--headline);
+    }
+
+    .nav-item.active .nav-ico {
+      border-color: rgba(255,209,102,0.24);
+      background: rgba(255,209,102,0.10);
+    }
+
+    .nav-item.active::after { content: none }
+
+    /* Brief */
+    .brief-hero {
+      border: 1px solid rgba(17,138,178,0.42);
+      background:
+        linear-gradient(135deg, rgba(17,138,178,0.16), transparent 42%),
+        var(--panel);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .brief-title {
+      font-family: var(--serif);
+      font-size: 27px;
+      line-height: 1.02;
+      letter-spacing: -1px;
+      font-weight: 760;
+      margin: 10px 0 12px;
+      color: var(--headline);
+    }
+
+    .brief-body {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      margin-bottom: 14px;
+    }
+
+    .timeline {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 13px;
+      margin-bottom: 12px;
+    }
+
+    .move-row {
+      display: grid;
+      grid-template-columns: 68px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .move-row:last-child { border-bottom: 0 }
+
+    .move-time {
+      font-family: var(--mono);
+      color: var(--faint);
+      font-size: 9px;
+    }
+
+    .move-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .move-val {
+      font-family: var(--mono);
+      color: var(--text);
+      font-size: 11px;
+    }
+
+    .order-block {
+      border-radius: 18px;
+      border: 1px solid var(--line2);
+      background: var(--panel);
+      padding: 13px;
+    }
+
+    .market-question {
+      font-size: 13px;
+      line-height: 1.36;
+      color: var(--text);
+      margin-bottom: 13px;
+    }
+
+    .ticket-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 11px;
+    }
+
+    .ticket {
+      border-radius: 13px;
+      border: 1px solid var(--line);
+      background: var(--panel2);
+      padding: 10px;
+    }
+
+    .ticket-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+      margin-bottom: 8px;
+    }
+
+    .ticket-price {
+      font-family: var(--mono);
+      font-size: 23px;
+      color: var(--text);
+      letter-spacing: -1px;
+    }
+
+    /* Markets */
+    .seg {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 4px;
+      margin-bottom: 13px;
+    }
+
+    .seg div {
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+
+    .seg .on {
+      color: #8ed7f0;
+      background: var(--copperWash);
+      border: 1px solid rgba(17,138,178,0.38);
+    }
+
+    .market-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 13px;
+      padding: 12px;
+      margin-bottom: 9px;
+    }
+
+    .route-card {
+      border: 1px solid rgba(17,138,178,0.42);
+      border-radius: 16px;
+      background:
+        linear-gradient(135deg, rgba(17,138,178,0.16), transparent 44%),
+        var(--panel);
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .route-title {
+      font-size: 16px;
+      line-height: 1.18;
+      color: var(--headline);
+      font-weight: 760;
+      letter-spacing: -0.2px;
+      margin: 10px 0 7px;
+    }
+
+    .route-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+
+    .route-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-bottom: 14px;
+    }
+
+    .app-card {
+      min-height: 126px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--panel);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .app-card.wide {
+      grid-column: span 2;
+      min-height: 112px;
+      background:
+        linear-gradient(120deg, rgba(17,138,178,0.20), transparent 56%),
+        var(--panel);
+    }
+
+    .app-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .protocol-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(245,250,252,0.08);
+      border: 1px solid var(--line2);
+      color: var(--text);
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .protocol-icon.yellow { background: var(--brassWash); color: var(--brass); border-color: rgba(255,209,102,0.24) }
+    .protocol-icon.green { background: var(--mossWash); color: var(--moss); border-color: rgba(6,214,160,0.24) }
+    .protocol-icon.red { background: var(--wineWash); color: var(--wine); border-color: rgba(239,71,111,0.24) }
+    .protocol-icon.blue { background: var(--copperWash); color: #7fd1ec; border-color: rgba(17,138,178,0.30) }
+
+    .app-name {
+      font-size: 15px;
+      font-weight: 760;
+      color: var(--headline);
+      letter-spacing: -0.2px;
+      margin-bottom: 3px;
+    }
+
+    .app-desc {
+      font-size: 11px;
+      line-height: 1.36;
+      color: var(--muted);
+    }
+
+    .app-signal {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.7px;
+      color: #8ed7f0;
+    }
+
+    .market-name {
+      font-size: 13px;
+      line-height: 1.3;
+      color: var(--headline);
+      margin-bottom: 6px;
+    }
+
+    .market-meta {
+      display: flex;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .price-stack {
+      text-align: right;
+      font-family: var(--mono);
+    }
+
+    .big-price {
+      font-size: 18px;
+      color: var(--brass);
+      letter-spacing: -0.7px;
+    }
+
+    .small-price {
+      font-size: 9px;
+      color: var(--faint);
+      margin-top: 4px;
+    }
+
+    .search {
+      height: 42px;
+      border-radius: 14px;
+      border: 1px solid var(--line2);
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 13px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.8px;
+      margin-bottom: 13px;
+    }
+
+    /* Positions */
+    .pnl-card {
+      border-radius: 16px;
+      background:
+        linear-gradient(135deg, rgba(17,138,178,0.16), transparent 48%),
+        linear-gradient(220deg, rgba(6,214,160,0.08), transparent 50%),
+        var(--panel);
+      border: 1px solid rgba(17,138,178,0.38);
+      padding: 16px;
+      margin-bottom: 13px;
+    }
+
+    .pnl-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--faint);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .pnl-value {
+      font-family: var(--mono);
+      font-size: 34px;
+      letter-spacing: -1.8px;
+      color: var(--moss);
+      margin-bottom: 8px;
+    }
+
+    .pnl-sub {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .position {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 13px;
+      margin-bottom: 10px;
+    }
+
+    .pos-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .pos-name {
+      font-size: 14px;
+      line-height: 1.25;
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .pos-pnl {
+      font-family: var(--mono);
+      color: var(--moss);
+      font-size: 13px;
+    }
+
+    .origin {
+      border-left: 2px solid rgba(17,138,178,0.70);
+      padding-left: 9px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.38;
+      margin-bottom: 11px;
+    }
+
+    .pos-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* Wallet */
+    .wallet-card {
+      border: 1px solid var(--line2);
+      border-radius: 16px;
+      background: var(--panel);
+      padding: 16px;
+      margin-bottom: 13px;
+    }
+
+    .wallet-id {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .wallet-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      border: 1px solid rgba(17,138,178,0.44);
+      background: linear-gradient(135deg, var(--copper), var(--moss));
+      display: grid;
+      place-items: center;
+      color: #042432;
+      font-family: var(--serif);
+      font-size: 26px;
+    }
+
+    .address {
+      font-family: var(--mono);
+      color: var(--text);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .auth {
+      font-family: var(--mono);
+      color: var(--faint);
+      font-size: 9px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .balance-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-bottom: 13px;
+    }
+
+    .balance {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel2);
+      padding: 12px;
+    }
+
+    .balance span {
+      display: block;
+      font-family: var(--mono);
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 8px;
+      margin-bottom: 7px;
+    }
+
+    .balance strong {
+      font-family: var(--mono);
+      font-size: 17px;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      font-weight: 500;
+    }
+
+    .wallet-menu {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    .wallet-menu div {
+      height: 48px;
+      padding: 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .wallet-menu div:last-child { border-bottom: 0 }
+
+    .arrow {
+      color: var(--faint);
+      font-family: var(--mono);
+    }
+
+    .notes {
+      margin-top: 34px;
+      border-top: 1px solid var(--line);
+      padding-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+    }
+
+    .note {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(255,255,255,0.55);
+    }
+
+    .note h2 {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--brass);
+      margin-bottom: 8px;
+    }
+
+    .note p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 980px) {
+      .topbar { grid-template-columns: 1fr }
+      .thesis { width: auto }
+      .notes { grid-template-columns: 1fr 1fr }
+    }
+
+    @media (max-width: 520px) {
+      body { padding: 28px 14px 60px }
+      .phone { width: 345px; height: 746px; border-radius: 42px }
+      .notes { grid-template-columns: 1fr }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">myboon V3.1 / teal finance OS</div>
+        <h1>The feed finds the move. The rest of the app helps you act on it.</h1>
+      </div>
+      <p class="thesis">
+        This direction treats myboon as a dark market-action OS: newsroom first,
+        wallet-native underneath, and every protocol one tap away when a signal
+        becomes something you want to do.
+      </p>
+    </header>
+
+    <section class="screens">
+      <div class="screen-col">
+        <div class="label"><strong>Feed</strong>live signal desk</div>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <div class="bars"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="app">
+            <div class="header">
+              <div class="brand">
+                <div class="mark">m</div>
+                <div>
+                  <div class="title">myboon</div>
+                  <div class="subtitle">market intelligence</div>
+                </div>
+              </div>
+              <div class="avatar">B</div>
+            </div>
+            <div class="content">
+              <div class="scroll">
+                <div class="section-row">
+                  <div class="section-title">Today&apos;s edge</div>
+                  <div class="live">watching 247 markets</div>
+                </div>
+
+                <article class="signal-card hero">
+                  <div class="signal-top">
+                    <div class="tags">
+                      <span class="tag hot">whale bet</span>
+                      <span class="tag market">btc</span>
+                    </div>
+                    <span class="time">12m</span>
+                  </div>
+                  <h2 class="headline">$240K just hit BTC $100K YES.</h2>
+                  <p class="body-copy">Three wallets followed within 90 minutes. Odds moved from 41% to 52% before the weekly close.</p>
+                  <div class="metric-row">
+                    <div class="metric">
+                      <div class="metric-label">odds</div>
+                      <div class="metric-value">41 -> 52</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">volume</div>
+                      <div class="metric-value">$240K</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">conviction</div>
+                      <div class="metric-value">8.6</div>
+                    </div>
+                  </div>
+                  <div class="odds-line"><span></span></div>
+                  <div class="actions">
+                    <div class="btn primary">Buy YES 52c</div>
+                    <div class="btn">More actions</div>
+                  </div>
+                </article>
+
+                <article class="signal-card">
+                  <div class="signal-top">
+                    <div class="tags">
+                      <span class="tag">sports</span>
+                      <span class="tag market">epl</span>
+                    </div>
+                    <span class="time">34m</span>
+                  </div>
+                  <h2 class="headline">Arsenal draw price compressed into kickoff.</h2>
+                  <p class="body-copy">The market is paying more for a slow match than the headline odds suggest.</p>
+                  <div class="compact-data">
+                    <span class="delta">Draw 29% -> 35%</span>
+                    <span class="time">$91K vol</span>
+                  </div>
+                </article>
+
+                <article class="signal-card">
+                  <div class="signal-top">
+                    <div class="tags">
+                      <span class="tag">macro</span>
+                      <span class="tag market">fed</span>
+                    </div>
+                    <span class="time">1h</span>
+                  </div>
+                  <h2 class="headline">June cut odds faded after wage data.</h2>
+                  <p class="body-copy">Prediction markets moved faster than the bond commentary. The repricing is still open.</p>
+                  <div class="compact-data">
+                    <span class="delta down">68% -> 54%</span>
+                    <span class="time">priority 7.8</span>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item active"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M5 12h10"/><path d="M5 18h7"/></svg></div><span>Feed</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-5 4 3 4-7"/></svg></div><span>Markets</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg></div><span>Positions</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M16 12h4v4h-4z"/><path d="M6 7V5h10v2"/></svg></div><span>Wallet</span></div>
+          </nav>
+        </div>
+      </div>
+
+      <div class="screen-col">
+        <div class="label"><strong>Signal Brief</strong>story becomes action</div>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <div class="bars"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="app">
+            <div class="header">
+              <div class="brand">
+                <div class="mark">m</div>
+                <div>
+                  <div class="title">signal brief</div>
+                  <div class="subtitle">BTC / prediction + perps</div>
+                </div>
+              </div>
+              <div class="avatar">B</div>
+            </div>
+            <div class="content">
+              <div class="scroll">
+                <section class="brief-hero">
+                  <div class="tags">
+                    <span class="tag hot">priority 8.6</span>
+                    <span class="tag market">actionable</span>
+                  </div>
+                  <h2 class="brief-title">BTC $100K odds are moving before the close.</h2>
+                  <p class="brief-body">This is not just one large ticket. The follow-through matters: three wallets added exposure after the first buy, and the order book repriced instead of fading it.</p>
+                  <div class="metric-row">
+                    <div class="metric">
+                      <div class="metric-label">move</div>
+                      <div class="metric-value">+11 pts</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">window</div>
+                      <div class="metric-value">90m</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">resolve</div>
+                      <div class="metric-value">6d</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="timeline">
+                  <div class="move-row">
+                    <span class="move-time">08:11</span>
+                    <span class="move-copy">Lead wallet bought YES into thin liquidity.</span>
+                    <span class="move-val">$121K</span>
+                  </div>
+                  <div class="move-row">
+                    <span class="move-time">08:44</span>
+                    <span class="move-copy">Second wallet followed on same market.</span>
+                    <span class="move-val">$73K</span>
+                  </div>
+                  <div class="move-row">
+                    <span class="move-time">09:21</span>
+                    <span class="move-copy">Odds broke above the prior 7-day range.</span>
+                    <span class="move-val">52c</span>
+                  </div>
+                </section>
+
+                <section class="order-block">
+                  <div class="section-row">
+                    <div class="section-title">Attached market</div>
+                    <div class="time">$2.8M vol</div>
+                  </div>
+                  <p class="market-question">Will Bitcoin hit $100,000 before June?</p>
+                  <div class="ticket-row">
+                    <div class="ticket">
+                      <div class="ticket-label">yes</div>
+                      <div class="ticket-price">52c</div>
+                    </div>
+                    <div class="ticket">
+                      <div class="ticket-label">no</div>
+                      <div class="ticket-price">48c</div>
+                    </div>
+                  </div>
+                  <div class="actions">
+                    <div class="btn primary">Buy yes</div>
+                    <div class="btn">More actions</div>
+                    <div class="btn icon">+</div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item active"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M5 12h10"/><path d="M5 18h7"/></svg></div><span>Feed</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-5 4 3 4-7"/></svg></div><span>Markets</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg></div><span>Positions</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M16 12h4v4h-4z"/><path d="M6 7V5h10v2"/></svg></div><span>Wallet</span></div>
+          </nav>
+        </div>
+      </div>
+
+      <div class="screen-col">
+        <div class="label"><strong>Markets</strong>integrated app hub</div>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <div class="bars"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="app">
+            <div class="header">
+              <div class="brand">
+                <div class="mark">m</div>
+                <div>
+                  <div class="title">markets</div>
+                  <div class="subtitle">protocols / actions / apps</div>
+                </div>
+              </div>
+              <div class="avatar">B</div>
+            </div>
+            <div class="content">
+              <div class="scroll">
+                <div class="search">
+                  <span>Search actions, protocols, markets</span>
+                  <span>12 apps</span>
+                </div>
+
+                <div class="section-row">
+                  <div class="section-title">Continue from feed</div>
+                  <div class="time">signal ready</div>
+                </div>
+
+                <div class="route-card">
+                  <div class="tags">
+                    <span class="tag hot">btc signal</span>
+                    <span class="tag market">3 routes</span>
+                  </div>
+                  <div class="route-title">$240K moved into BTC $100K YES.</div>
+                  <div class="route-copy">Open the prediction market, express it as a perp, or swap into BTC exposure from one signal.</div>
+                  <div class="route-actions">
+                    <div class="btn primary">Polymarket</div>
+                    <div class="btn">Pacifica</div>
+                  </div>
+                </div>
+
+                <div class="seg">
+                  <div class="on">All</div>
+                  <div>Perps</div>
+                  <div>Swap</div>
+                </div>
+
+                <div class="section-row">
+                  <div class="section-title">App hub</div>
+                  <div class="time">feed aware</div>
+                </div>
+
+                <div class="app-grid">
+                  <div class="app-card wide">
+                    <div class="app-top">
+                      <div class="protocol-icon yellow">P</div>
+                      <span class="tag hot">5 signals</span>
+                    </div>
+                    <div>
+                      <div class="app-name">Polymarket</div>
+                      <div class="app-desc">Prediction markets attached to narratives, sports, macro, and crypto odds shifts.</div>
+                    </div>
+                    <div class="app-signal">BTC, Fed, Arsenal active</div>
+                  </div>
+
+                  <div class="app-card">
+                    <div class="app-top">
+                      <div class="protocol-icon green">Pa</div>
+                      <span class="tag">perps</span>
+                    </div>
+                    <div>
+                      <div class="app-name">Pacifica</div>
+                      <div class="app-desc">Fast thesis trades from feed signals.</div>
+                    </div>
+                    <div class="app-signal">2 trades ready</div>
+                  </div>
+
+                  <div class="app-card">
+                    <div class="app-top">
+                      <div class="protocol-icon blue">H</div>
+                      <span class="tag">perps</span>
+                    </div>
+                    <div>
+                      <div class="app-name">Hyperliquid</div>
+                      <div class="app-desc">Advanced orderbook perps when you want depth.</div>
+                    </div>
+                    <div class="app-signal">connect</div>
+                  </div>
+
+                  <div class="app-card">
+                    <div class="app-top">
+                      <div class="protocol-icon yellow">J</div>
+                      <span class="tag">swap</span>
+                    </div>
+                    <div>
+                      <div class="app-name">Jupiter</div>
+                      <div class="app-desc">Best-route swaps linked to token narratives.</div>
+                    </div>
+                    <div class="app-signal">ETH route live</div>
+                  </div>
+
+                  <div class="app-card">
+                    <div class="app-top">
+                      <div class="protocol-icon red">O</div>
+                      <span class="tag">dex</span>
+                    </div>
+                    <div>
+                      <div class="app-name">Orca / Raydium</div>
+                      <div class="app-desc">Pools, LPs, and DEX routes without app switching.</div>
+                    </div>
+                    <div class="app-signal">3 pools watched</div>
+                  </div>
+
+                  <div class="app-card">
+                    <div class="app-top">
+                      <div class="protocol-icon blue">D</div>
+                      <span class="tag">perps</span>
+                    </div>
+                    <div>
+                      <div class="app-name">Drift</div>
+                      <div class="app-desc">Solana perps and lending rails.</div>
+                    </div>
+                    <div class="app-signal">coming soon</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M5 12h10"/><path d="M5 18h7"/></svg></div><span>Feed</span></div>
+            <div class="nav-item active"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-5 4 3 4-7"/></svg></div><span>Markets</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg></div><span>Positions</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M16 12h4v4h-4z"/><path d="M6 7V5h10v2"/></svg></div><span>Wallet</span></div>
+          </nav>
+        </div>
+      </div>
+
+      <div class="screen-col">
+        <div class="label"><strong>Positions</strong>prove the feed mattered</div>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <div class="bars"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="app">
+            <div class="header">
+              <div class="brand">
+                <div class="mark">m</div>
+                <div>
+                  <div class="title">positions</div>
+                  <div class="subtitle">open exposure + origin</div>
+                </div>
+              </div>
+              <div class="avatar">B</div>
+            </div>
+            <div class="content">
+              <div class="scroll">
+                <section class="pnl-card">
+                  <div class="pnl-label">net result from myboon ideas</div>
+                  <div class="pnl-value">+$428.60</div>
+                  <p class="pnl-sub">5 open positions. 3 came from feed signals, 2 were manual market entries.</p>
+                </section>
+
+                <div class="section-row">
+                  <div class="section-title">Open positions</div>
+                  <div class="time">5 active</div>
+                </div>
+
+                <article class="position">
+                  <div class="pos-head">
+                    <div>
+                      <div class="pos-name">BTC $100K YES</div>
+                      <div class="market-meta"><span>entry 52c</span><span>now 61c</span></div>
+                    </div>
+                    <div class="pos-pnl">+$184</div>
+                  </div>
+                  <div class="origin">Opened from: $240K just hit BTC $100K YES. Three wallets followed within 90 minutes.</div>
+                  <div class="pos-actions">
+                    <div class="btn">Add</div>
+                    <div class="btn danger">Exit</div>
+                  </div>
+                </article>
+
+                <article class="position">
+                  <div class="pos-head">
+                    <div>
+                      <div class="pos-name">BTC-PERP long</div>
+                      <div class="market-meta"><span>10x</span><span>liq 82,420</span></div>
+                    </div>
+                    <div class="pos-pnl">+$96</div>
+                  </div>
+                  <div class="origin">Opened from same BTC signal. Perp is tracking the prediction market thesis.</div>
+                  <div class="pos-actions">
+                    <div class="btn">TP/SL</div>
+                    <div class="btn danger">Close</div>
+                  </div>
+                </article>
+
+                <article class="position">
+                  <div class="pos-head">
+                    <div>
+                      <div class="pos-name">Fed cut YES</div>
+                      <div class="market-meta"><span>entry 58c</span><span>now 54c</span></div>
+                    </div>
+                    <div class="pos-pnl" style="color:#d18882;">-$38</div>
+                  </div>
+                  <div class="origin">Manual market entry. No feed signal attached.</div>
+                  <div class="pos-actions">
+                    <div class="btn">Set alert</div>
+                    <div class="btn danger">Exit</div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M5 12h10"/><path d="M5 18h7"/></svg></div><span>Feed</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-5 4 3 4-7"/></svg></div><span>Markets</span></div>
+            <div class="nav-item active"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg></div><span>Positions</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M16 12h4v4h-4z"/><path d="M6 7V5h10v2"/></svg></div><span>Wallet</span></div>
+          </nav>
+        </div>
+      </div>
+
+      <div class="screen-col">
+        <div class="label"><strong>Wallet</strong>quiet account surface</div>
+        <div class="phone">
+          <div class="status">
+            <span>9:41</span>
+            <div class="bars"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="app">
+            <div class="header">
+              <div class="brand">
+                <div class="mark">m</div>
+                <div>
+                  <div class="title">wallet</div>
+                  <div class="subtitle">balances + protocol accounts</div>
+                </div>
+              </div>
+              <div class="avatar">B</div>
+            </div>
+            <div class="content">
+              <div class="scroll">
+                <section class="wallet-card">
+                  <div class="wallet-id">
+                    <div class="wallet-avatar">B</div>
+                    <div>
+                      <div class="address">7xK3...9mQ2</div>
+                      <div class="auth">passkey secured / mfa on trade</div>
+                    </div>
+                  </div>
+                  <div class="balance-grid">
+                    <div class="balance">
+                      <span>available</span>
+                      <strong>$2,814</strong>
+                    </div>
+                    <div class="balance">
+                      <span>in markets</span>
+                      <strong>$1,390</strong>
+                    </div>
+                    <div class="balance">
+                      <span>polymarket</span>
+                      <strong>$842</strong>
+                    </div>
+                    <div class="balance">
+                      <span>pacific</span>
+                      <strong>$548</strong>
+                    </div>
+                  </div>
+                  <div class="actions">
+                    <div class="btn primary">Deposit</div>
+                    <div class="btn">Withdraw</div>
+                    <div class="btn icon">...</div>
+                  </div>
+                </section>
+
+                <div class="section-row">
+                  <div class="section-title">Account</div>
+                  <div class="time">v3.0</div>
+                </div>
+
+                <div class="wallet-menu">
+                  <div><span>Protocol accounts</span><span class="arrow">></span></div>
+                  <div><span>Open orders</span><span class="arrow">></span></div>
+                  <div><span>Funding history</span><span class="arrow">></span></div>
+                  <div><span>Security</span><span class="arrow">></span></div>
+                  <div><span>Preferences</span><span class="arrow">></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nav class="nav">
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M5 12h10"/><path d="M5 18h7"/></svg></div><span>Feed</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-5 4 3 4-7"/></svg></div><span>Markets</span></div>
+            <div class="nav-item"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h8"/></svg></div><span>Positions</span></div>
+            <div class="nav-item active"><div class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M16 12h4v4h-4z"/><path d="M6 7V5h10v2"/></svg></div><span>Wallet</span></div>
+          </nav>
+        </div>
+      </div>
+    </section>
+
+    <section class="notes">
+      <div class="note">
+        <h2>Navigation</h2>
+        <p>Feed, Markets, Positions, Wallet maps to the user&apos;s journey. Markets becomes the app hub: predictions, perps, swaps, DEXs, funding, and future integrations.</p>
+      </div>
+      <div class="note">
+        <h2>Feed Cards</h2>
+        <p>Cards lead with the move, then the evidence, then the action. The layout avoids article behavior and makes the feed feel like a live desk.</p>
+      </div>
+      <div class="note">
+        <h2>Positions</h2>
+        <p>Each position keeps its originating signal. That makes myboon accountable: the user can see whether feed intelligence turned into better trades.</p>
+      </div>
+      <div class="note">
+        <h2>Visual Tone</h2>
+        <p>The palette uses #073B4C as the base, #FFD166 and #118AB2 as text/accent colors, and #06D6A0 / #EF476F strictly for financial up/down movement.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

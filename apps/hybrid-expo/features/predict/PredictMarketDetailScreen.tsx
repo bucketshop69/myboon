@@ -1,4 +1,3 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 import {
@@ -13,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { cancelOrder, fetchClobBalance, fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
 import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
@@ -440,21 +440,15 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* ── HEADER ── */}
-      <View style={styles.headerBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={16} color={semantic.text.primary} />
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={2}>
+      <AppTopBar
+        left={<AppTopBarIconButton icon="arrow-back" onPress={() => router.back()} accessibilityLabel="Go back" />}
+        center={(
+          <AppTopBarTitle align="left" numberOfLines={2} tone="primary" uppercase={false}>
             {detail?.question ?? 'Loading...'}
-          </Text>
-        </View>
-        <View style={styles.cashPill}>
-          <Text style={styles.cashPillLabel}>Cash</Text>
-          <Text style={styles.cashPillValue}>{truncateUsd(cashBalance)}</Text>
-        </View>
-      </View>
+          </AppTopBarTitle>
+        )}
+        right={<AppTopBarCashPill value={truncateUsd(cashBalance)} />}
+      />
 
       {/* ── LOADING / ERROR ── */}
       {loading ? (
@@ -625,63 +619,6 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.background.screen },
-
-  // ── Header ──
-  headerBar: {
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    gap: 10,
-    flexShrink: 0,
-  },
-  backBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: tokens.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  headerCenter: { flex: 1 },
-  headerTitle: {
-    color: semantic.text.primary,
-    fontSize: 11,
-    fontWeight: '600',
-    fontFamily: 'monospace',
-  },
-  headerEnd: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    color: semantic.text.faint,
-    flexShrink: 0,
-  },
-  cashPill: {
-    minHeight: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(232,197,71,0.25)',
-    backgroundColor: semantic.background.lift,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    flexShrink: 0,
-  },
-  cashPillLabel: {
-    fontFamily: 'monospace',
-    fontSize: 6,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  cashPillValue: {
-    fontFamily: 'monospace',
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: semantic.text.primary,
-  },
 
   // ── States ──
   stateWrap: {

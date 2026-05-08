@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppTopBar } from '@/components/AppTopBar';
 import {
   fetchPerpsMarkets,
   fetchPerpsAccount,
@@ -469,16 +470,17 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* Header — back | price centered | wallet */}
-      <View style={styles.detailHeader}>
+      <AppTopBar
+        left={(
         <Pressable
           style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
           onPress={() => router.back()}>
           <MaterialIcons name="arrow-back-ios" size={14} color={semantic.text.primary} />
           <Text style={styles.detailSym}>{symbol}</Text>
         </Pressable>
-
-        <View style={styles.headerPriceCenter}>
+        )}
+        center={(
+          <View style={styles.headerPriceCenter}>
           <View style={styles.headerPriceRow}>
             {livePrice !== null && (
               <Animated.View style={[styles.liveDot, { opacity: dotOpacity }]} />
@@ -493,13 +495,15 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
             </Text>
           )}
         </View>
-
+        )}
+        right={(
         <Pressable onPress={() => router.push('/trade?view=profile')} style={styles.avatarRing}>
           <View style={styles.avatarInner}>
             <MaterialIcons name="person" size={12} color={semantic.text.primary} />
           </View>
         </Pressable>
-      </View>
+        )}
+      />
 
       {loadingMarket ? (
         <View style={styles.centeredState}>
@@ -956,15 +960,6 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',

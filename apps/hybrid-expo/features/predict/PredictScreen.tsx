@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppTopBar, AppTopBarCashPill, AppTopBarTitle } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { fetchClobBalance, fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
@@ -477,18 +478,11 @@ export default function PredictScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* header */}
-      <View style={styles.predictHeader}>
-        <AvatarTrigger />
-        <Text style={styles.predictTitle}>Predict</Text>
-        {/*
-        <OddsFormatToggle format={format} onFormatChange={setFormat} />
-        */}
-        <View style={styles.cashPill}>
-          <Text style={styles.cashPillLabel}>Cash</Text>
-          <Text style={styles.cashPillValue}>{truncateUsd(cashBalance)}</Text>
-        </View>
-      </View>
+      <AppTopBar
+        left={<AvatarTrigger />}
+        center={<AppTopBarTitle>Predict</AppTopBarTitle>}
+        right={<AppTopBarCashPill value={truncateUsd(cashBalance)} />}
+      />
 
       {/* feed scroll */}
       <ScrollView
@@ -657,49 +651,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: semantic.background.screen,
-  },
-  // ─── header ───
-  predictHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  predictTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xs,
-    letterSpacing: 2.5,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
-  },
-  cashPill: {
-    minHeight: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(232,197,71,0.25)',
-    backgroundColor: semantic.background.lift,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    flexShrink: 0,
-  },
-  cashPillLabel: {
-    fontFamily: 'monospace',
-    fontSize: 6,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  cashPillValue: {
-    fontFamily: 'monospace',
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: semantic.text.primary,
   },
   // ─── filter strip ───
   filterStripShell: {

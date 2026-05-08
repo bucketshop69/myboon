@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { fetchMarketPositions, fetchActivity, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
@@ -301,13 +302,11 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
 
 function Header({ onBack, title }: { onBack: () => void; title: string }) {
   return (
-    <View style={styles.header}>
-      <Pressable onPress={onBack} style={styles.headerBtn} accessibilityLabel="Go back">
-        <MaterialIcons name="arrow-back" size={14} color={semantic.text.primary} />
-      </Pressable>
-      <Text style={styles.headerTitle}>{title}</Text>
-      <View style={{ width: 28 }} />
-    </View>
+    <AppTopBar
+      left={<AppTopBarIconButton icon="arrow-back" onPress={onBack} accessibilityLabel="Go back" />}
+      center={<AppTopBarTitle>{title}</AppTopBarTitle>}
+      right={<View style={styles.headerSpacer} />}
+    />
   );
 }
 
@@ -327,34 +326,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   scroll: { flex: 1 },
 
-  // Header
-  header: {
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  headerBtn: {
+  headerSpacer: {
     width: 28,
     height: 28,
-    borderRadius: 7,
-    backgroundColor: semantic.background.lift,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: 9,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-    textAlign: 'center',
   },
 
   // Title section

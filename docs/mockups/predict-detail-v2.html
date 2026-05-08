@@ -9,30 +9,30 @@
 
     :root {
       /* backgrounds — from semantic.ts / tokens.ts */
-      --bg0: #131209;       /* page bg — darker than screen for phone shell contrast */
-      --bg1: #1d1c15;       /* semantic.background.screen (tokens.backgroundDark) */
-      --bg2: #222318;       /* semantic.background.surface (tokens.ground) */
-      --bg3: #2C2D1F;       /* semantic.background.surfaceRaised (tokens.surface) */
-      --bg4: #333424;       /* semantic.background.lift (tokens.lift) */
-      --bg5: #3b3c2c;
-      --border0: rgba(48,47,32,0.35);   /* semantic.predict.rowBorderSoft */
-      --border1: rgba(208,202,168,0.10);
-      --border2: rgba(208,202,168,0.16);
+      --bg0: #073b4c;       /* page bg — darker than screen for phone shell contrast */
+      --bg1: #073b4c;       /* semantic.background.screen (tokens.backgroundDark) */
+      --bg2: #063343;       /* semantic.background.surface (tokens.ground) */
+      --bg3: #083d50;       /* semantic.background.surfaceRaised (tokens.surface) */
+      --bg4: #0a4a60;       /* semantic.background.lift (tokens.lift) */
+      --bg5: #0c5870;
+      --border0: rgba(245,250,252,0.10);   /* semantic.predict.rowBorderSoft */
+      --border1: rgba(245,250,252,0.13);
+      --border2: rgba(245,250,252,0.18);
       /* accent — muted earthy gold */
-      --a:  #c7b770;        /* tokens.primary */
-      --a2: #8A7A50;        /* tokens.primaryDim */
-      --a3: rgba(199,183,112,0.12);
-      --a4: rgba(199,183,112,0.06);
+      --a:  #ffd166;        /* tokens.primary */
+      --a2: #118ab2;        /* tokens.primaryDim */
+      --a3: rgba(255,209,102,0.12);
+      --a4: rgba(17,138,178,0.12);
       /* pos/neg — subdued viridian & vermillion */
-      --pos:  #4A8C6F;      /* tokens.viridian */
-      --pos2: rgba(74,140,111,0.12);
-      --neg:  #D9534F;      /* tokens.vermillion */
-      --neg2: rgba(217,83,79,0.12);
+      --pos:  #06d6a0;      /* tokens.viridian */
+      --pos2: rgba(6,214,160,0.14);
+      --neg:  #ef476f;      /* tokens.vermillion */
+      --neg2: rgba(239,71,111,0.14);
       /* text — bone tones */
-      --hi:  #D0CAA8;       /* tokens.bone */
-      --mid: #9b9580;       /* tokens.textDim */
-      --lo:  #5c5a50;       /* tokens.textFaint */
-      --soft: #222318;      /* tokens.ground — same as bg2, darker than surface */
+      --hi:  #f5fafc;       /* tokens.bone */
+      --mid: #9cb8c2;       /* tokens.textDim */
+      --lo:  #6b95a1;       /* tokens.textFaint */
+      --soft: #063343;      /* tokens.ground — same as bg2, darker than surface */
       --mono: 'SF Mono','Fira Code','JetBrains Mono',monospace;
       --sans: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
     }
@@ -99,7 +99,7 @@
       border-radius: 50px;
       border: 1px solid var(--border1);
       box-shadow:
-        0 0 0 8px #131209,
+        0 0 0 8px #052f3d,
         0 0 0 9px rgba(255,255,255,0.04),
         0 60px 100px rgba(0,0,0,0.85);
       overflow: hidden;
@@ -115,7 +115,7 @@
       top: 0; left: 50%;
       transform: translateX(-50%);
       width: 110px; height: 30px;
-      background: #131209;
+      background: #052f3d;
       border-radius: 0 0 22px 22px;
       z-index: 200;
     }
@@ -181,13 +181,13 @@
       width: 4px; height: 4px;
       background: var(--a);
       border-radius: 50%;
-      box-shadow: 0 0 8px rgba(199,183,112,0.6);
+      box-shadow: 0 0 8px rgba(255,209,102,0.6);
       margin-top: -3px;
       animation: dot-pulse 2s ease-in-out infinite;
     }
     @keyframes dot-pulse {
-      0%,100% { box-shadow: 0 0 4px rgba(199,183,112,0.5) }
-      50%      { box-shadow: 0 0 12px rgba(199,183,112,0.9), 0 0 24px rgba(199,183,112,0.4) }
+      0%,100% { box-shadow: 0 0 4px rgba(255,209,102,0.5) }
+      50%      { box-shadow: 0 0 12px rgba(255,209,102,0.9), 0 0 24px rgba(255,209,102,0.4) }
     }
 
     /* ─── HEADER ─── */
@@ -240,8 +240,8 @@
       animation: dot-pulse-live 1.2s ease-in-out infinite;
     }
     @keyframes dot-pulse-live {
-      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(217,83,79,0.5) }
-      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(217,83,79,0.9) }
+      0%,100% { opacity: 1; box-shadow: 0 0 3px rgba(239,71,111,0.5) }
+      50%     { opacity: 0.5; box-shadow: 0 0 8px rgba(239,71,111,0.9) }
     }
     .header-end {
       font-family: var(--mono);
@@ -258,7 +258,7 @@
     .cash-pill {
       min-height: 24px;
       border-radius: 12px;
-      border: 1px solid rgba(232,197,71,0.25);
+      border: 1px solid rgba(255,209,102,0.25);
       background: var(--bg3);
       display: flex;
       flex-direction: column;
@@ -282,7 +282,7 @@
     .profile-avatar-ring {
       width: 26px; height: 26px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #c7b770 0%, #4A8C6F 100%);
+      background: linear-gradient(135deg, #ffd166 0%, #06d6a0 100%);
       display: flex; align-items: center; justify-content: center;
       cursor: pointer;
       flex-shrink: 0;
@@ -406,8 +406,8 @@
       border-radius: 3px;
       z-index: -1;
     }
-    .ob-row.ask::before { background: rgba(217,83,79,0.08); width: var(--depth, 50%) }
-    .ob-row.bid::before { background: rgba(74,140,111,0.08); width: var(--depth, 50%) }
+    .ob-row.ask::before { background: rgba(239,71,111,0.08); width: var(--depth, 50%) }
+    .ob-row.bid::before { background: rgba(6,214,160,0.08); width: var(--depth, 50%) }
 
     .ob-spread {
       display: flex;
@@ -539,8 +539,8 @@
     }
     .scope-switch.active {
       color: var(--hi);
-      border-color: rgba(199,183,112,0.28);
-      background: rgba(199,183,112,0.10);
+      border-color: rgba(255,209,102,0.28);
+      background: rgba(255,209,102,0.10);
     }
     .scope-switch.active .scope-switch-knob {
       background: var(--a);
@@ -588,7 +588,7 @@
       border: none;
       border-radius: 12px;
       background: var(--a);
-      color: #131209;
+      color: #052f3d;
       font-family: var(--sans);
       font-size: 10px;
       font-weight: 800;
@@ -611,24 +611,24 @@
       justify-content: space-between;
       gap: 12px;
       border-radius: 12px;
-      background: rgba(74,140,111,0.10);
-      border: 1px solid rgba(74,140,111,0.24);
+      background: rgba(6,214,160,0.10);
+      border: 1px solid rgba(6,214,160,0.24);
       border-left: 3px solid var(--pos);
       padding: 10px 12px;
       min-height: 82px;
     }
     .position-row.draw {
-      background: rgba(199,183,112,0.10);
-      border-color: rgba(199,183,112,0.24);
+      background: rgba(255,209,102,0.10);
+      border-color: rgba(255,209,102,0.24);
     }
     .position-row.away,
     .position-row.no {
-      background: rgba(217,83,79,0.10);
-      border-color: rgba(217,83,79,0.24);
+      background: rgba(239,71,111,0.10);
+      border-color: rgba(239,71,111,0.24);
     }
     .position-row.limit {
-      background: rgba(199,183,112,0.08);
-      border-color: rgba(199,183,112,0.24);
+      background: rgba(255,209,102,0.08);
+      border-color: rgba(255,209,102,0.24);
       border-left-color: var(--a);
     }
     .position-row.redeemable {
@@ -716,13 +716,13 @@
     }
     .position-action.sell.up {
       color: var(--pos);
-      border-color: rgba(74,140,111,0.34);
-      background: rgba(74,140,111,0.12);
+      border-color: rgba(6,214,160,0.34);
+      background: rgba(6,214,160,0.12);
     }
     .position-action.sell.down {
       color: var(--neg);
-      border-color: rgba(217,83,79,0.30);
-      background: rgba(217,83,79,0.10);
+      border-color: rgba(239,71,111,0.30);
+      background: rgba(239,71,111,0.10);
     }
     .position-action.add {
       color: var(--mid);
@@ -731,7 +731,7 @@
     }
     .position-action.redeem {
       height: 34px;
-      color: #131209;
+      color: #052f3d;
       border-color: transparent;
       background: var(--pos);
     }
@@ -745,8 +745,8 @@
     .position-action.cancel {
       height: 34px;
       color: var(--neg);
-      border-color: rgba(217,83,79,0.28);
-      background: rgba(217,83,79,0.08);
+      border-color: rgba(239,71,111,0.28);
+      background: rgba(239,71,111,0.08);
     }
     .stats-grid {
       display: grid;
@@ -955,10 +955,10 @@
       transition: all 0.15s;
     }
     .bn-btn:active { transform: scale(0.97) }
-    .bn-btn.yes { background: rgba(74,140,111,0.14) }
-    .bn-btn.no  { background: rgba(217,83,79,0.12) }
-    .bn-btn.yes.selected { background: rgba(74,140,111,0.25); box-shadow: 0 0 0 1px rgba(74,140,111,0.35) }
-    .bn-btn.no.selected  { background: rgba(217,83,79,0.20); box-shadow: 0 0 0 1px rgba(217,83,79,0.35) }
+    .bn-btn.yes { background: rgba(6,214,160,0.14) }
+    .bn-btn.no  { background: rgba(239,71,111,0.12) }
+    .bn-btn.yes.selected { background: rgba(6,214,160,0.25); box-shadow: 0 0 0 1px rgba(6,214,160,0.35) }
+    .bn-btn.no.selected  { background: rgba(239,71,111,0.20); box-shadow: 0 0 0 1px rgba(239,71,111,0.35) }
     .bn-btn-price {
       font-family: var(--mono);
       font-size: 18px;
@@ -973,8 +973,8 @@
       letter-spacing: 1.5px;
       text-transform: uppercase;
     }
-    .bn-btn.yes .bn-btn-label { color: rgba(74,140,111,0.55) }
-    .bn-btn.no .bn-btn-label  { color: rgba(217,83,79,0.45) }
+    .bn-btn.yes .bn-btn-label { color: rgba(6,214,160,0.55) }
+    .bn-btn.no .bn-btn-label  { color: rgba(239,71,111,0.45) }
 
     /* sport outcomes */
     .outcome-list {
@@ -995,16 +995,16 @@
     }
     .sel-row:active { transform: scale(0.985) }
     .sel-row.selected {
-      background: rgba(74,140,111,0.14);
-      border-color: rgba(74,140,111,0.35);
+      background: rgba(6,214,160,0.14);
+      border-color: rgba(6,214,160,0.35);
     }
     .sel-row.draw.selected {
-      background: rgba(199,183,112,0.14);
-      border-color: rgba(199,183,112,0.35);
+      background: rgba(255,209,102,0.14);
+      border-color: rgba(255,209,102,0.35);
     }
     .sel-row.away.selected {
-      background: rgba(217,83,79,0.12);
-      border-color: rgba(217,83,79,0.35);
+      background: rgba(239,71,111,0.12);
+      border-color: rgba(239,71,111,0.35);
     }
     .sel-info { flex: 1; min-width: 0 }
     .sel-name {
@@ -1026,10 +1026,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(74,140,111,0.12);
+      background: rgba(6,214,160,0.12);
     }
-    .sel-row.draw .sel-odds { background: rgba(199,183,112,0.12) }
-    .sel-row.away .sel-odds { background: rgba(217,83,79,0.12) }
+    .sel-row.draw .sel-odds { background: rgba(255,209,102,0.12) }
+    .sel-row.away .sel-odds { background: rgba(239,71,111,0.12) }
     .sel-odds-pct {
       font-family: var(--mono);
       font-size: 13px;
@@ -1217,7 +1217,7 @@
       font-family: var(--sans);
       font-size: 14px;
       font-weight: 700;
-      color: #131209;
+      color: #052f3d;
       cursor: pointer;
       margin-top: 6px;
       transition: opacity 0.12s;
@@ -1322,7 +1322,7 @@
     .cashout-primary {
       border: none;
       background: var(--pos);
-      color: #131209;
+      color: #052f3d;
     }
 
     /* ─── Y-AXIS LABELS ─── */
@@ -1381,9 +1381,9 @@
               <div class="signal-bar" style="height:11px"></div>
             </div>
             <svg width="14" height="10" fill="none" style="margin-left:3px">
-              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#D0CAA8" stroke-width="1.2"/>
-              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#D0CAA8"/>
-              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#D0CAA8"/>
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#f5fafc" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#f5fafc"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#f5fafc"/>
             </svg>
           </div>
         </div>
@@ -1391,7 +1391,7 @@
         <!-- header -->
         <div class="detail-header">
           <div class="back-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
           <span class="detail-header-title">China invade Taiwan by 2026?</span>
           <div class="cash-pill">
@@ -1660,10 +1660,10 @@
         </div>
 
         <div class="nav-bar">
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
-          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#c7b770" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
+          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
         </div>
       </div>
     </div>
@@ -1685,9 +1685,9 @@
               <div class="signal-bar" style="height:11px"></div>
             </div>
             <svg width="14" height="10" fill="none" style="margin-left:3px">
-              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#D0CAA8" stroke-width="1.2"/>
-              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#D0CAA8"/>
-              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#D0CAA8"/>
+              <rect x="1" y="1" width="11" height="8" rx="2" stroke="#f5fafc" stroke-width="1.2"/>
+              <rect x="13" y="3.5" width="1.5" height="3" rx="0.75" fill="#f5fafc"/>
+              <rect x="2.2" y="2.2" width="8" height="5.6" rx="1" fill="#f5fafc"/>
             </svg>
           </div>
         </div>
@@ -1695,7 +1695,7 @@
         <!-- header -->
         <div class="detail-header">
           <div class="back-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </div>
           <span class="detail-header-title">Liverpool vs Crystal Palace</span>
           <div class="header-right">
@@ -2016,10 +2016,10 @@
         </div>
 
         <div class="nav-bar">
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
-          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#c7b770" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
-          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#D0CAA8" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="1.5"><path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/></svg></div><div class="nav-label">Feed</div></div>
+          <div class="nav-item"><div class="nav-icon active"><svg viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></div><div class="nav-dot"></div><div class="nav-label active">Predict</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div><div class="nav-label">Trade</div></div>
+          <div class="nav-item"><div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f5fafc" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="nav-label">Profile</div></div>
         </div>
       </div>
     </div>

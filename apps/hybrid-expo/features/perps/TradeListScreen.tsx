@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
+import { AppTopBar, AppTopBarTitle } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import {
   fetchPerpsMarkets,
@@ -113,12 +114,11 @@ export function TradeListScreen() {
         <ProfileView onBack={() => setView('markets')} />
       ) : (
         <>
-          {/* Header — matches Predict pattern */}
-          <View style={styles.tradeHeader}>
-            <AvatarTrigger />
-            <Text style={styles.tradeTitle}>Trade</Text>
-            <View style={{ width: 30 }} />
-          </View>
+          <AppTopBar
+            left={<AvatarTrigger />}
+            center={<AppTopBarTitle>Trade</AppTopBarTitle>}
+            right={<View style={styles.topBarSpacer} />}
+          />
 
           {/* Markets table */}
           {loading ? (
@@ -217,23 +217,9 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.background.screen,
   },
 
-  // Header — Predict pattern
-  tradeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  tradeTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: semantic.text.faint,
-    fontSize: tokens.fontSize.xs,
-    letterSpacing: 2.5,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
+  topBarSpacer: {
+    width: 28,
+    height: 28,
   },
 
   // State (loading / error)

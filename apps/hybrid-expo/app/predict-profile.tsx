@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useNavigation } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder } from '@/features/predict/predict.api';
@@ -239,28 +240,32 @@ export default function PredictProfileScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.headerBtn}>
-          <MaterialIcons name="arrow-back" size={14} color={semantic.text.primary} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Profile</Text>
-        {isEnabled && (
+      <AppTopBar
+        left={<AppTopBarIconButton icon="arrow-back" onPress={() => router.back()} accessibilityLabel="Go back" />}
+        center={<AppTopBarTitle align="left">Profile</AppTopBarTitle>}
+        right={(
           <View style={styles.headerActions}>
-            <Pressable onPress={() => setDepositOpen(true)} style={styles.headerActionBtn}>
-              <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.viridian} />
-              <Text style={styles.headerActionText}>Deposit</Text>
-            </Pressable>
-            <Pressable onPress={() => setWithdrawOpen(true)} style={styles.headerActionBtn}>
-              <MaterialIcons name="arrow-upward" size={12} color={tokens.colors.primary} />
-              <Text style={[styles.headerActionText, { color: tokens.colors.primary }]}>Withdraw</Text>
-            </Pressable>
+            {isEnabled && (
+              <>
+                <Pressable onPress={() => setDepositOpen(true)} style={styles.headerActionBtn}>
+                  <MaterialIcons name="arrow-downward" size={12} color={tokens.colors.viridian} />
+                  <Text style={styles.headerActionText}>Deposit</Text>
+                </Pressable>
+                <Pressable onPress={() => setWithdrawOpen(true)} style={styles.headerActionBtn}>
+                  <MaterialIcons name="arrow-upward" size={12} color={tokens.colors.primary} />
+                  <Text style={[styles.headerActionText, { color: tokens.colors.primary }]}>Withdraw</Text>
+                </Pressable>
+              </>
+            )}
+            <AppTopBarIconButton
+              icon="settings"
+              onPress={openDrawer}
+              accessibilityLabel="Open wallet settings"
+              color={semantic.text.dim}
+            />
           </View>
         )}
-        <Pressable style={[styles.headerBtn, styles.headerBtnGhost]}>
-          <MaterialIcons name="settings" size={16} color={semantic.text.dim} />
-        </Pressable>
-      </View>
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -457,40 +462,9 @@ export default function PredictProfileScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.background.screen },
 
-  // Header
-  header: {
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-  },
-  headerBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 7,
-    backgroundColor: semantic.background.lift,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerBtnGhost: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-  },
-  headerTitle: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: 9,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-  },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
   headerActionBtn: {
@@ -498,11 +472,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     backgroundColor: semantic.background.lift,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    minHeight: 26,
   },
   headerActionText: {
     fontFamily: 'monospace',

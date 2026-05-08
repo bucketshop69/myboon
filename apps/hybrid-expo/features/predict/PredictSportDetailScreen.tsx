@@ -1,4 +1,3 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 import {
@@ -13,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { cancelOrder, fetchClobBalance, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
 import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
@@ -505,29 +505,21 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* ── HEADER ── */}
-      <View style={styles.headerBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={16} color={semantic.text.primary} />
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {displayTitle}
-          </Text>
-        </View>
-        <View style={styles.headerRight}>
+      <AppTopBar
+        left={<AppTopBarIconButton icon="arrow-back" onPress={() => router.back()} accessibilityLabel="Go back" />}
+        center={<AppTopBarTitle align="left" tone="primary" uppercase={false}>{displayTitle}</AppTopBarTitle>}
+        right={(
+          <View style={styles.headerRight}>
           {detail?.status === 'live' && (
             <View style={styles.liveBadge}>
               <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
           )}
-          <View style={styles.cashPill}>
-            <Text style={styles.cashPillLabel}>Cash</Text>
-            <Text style={styles.cashPillValue}>{truncateUsd(cashBalance)}</Text>
+            <AppTopBarCashPill value={truncateUsd(cashBalance)} />
           </View>
-        </View>
-      </View>
+        )}
+      />
 
       {/* ── LOADING / ERROR ── */}
       {loading ? (
@@ -722,31 +714,6 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.background.screen },
 
-  // ── Header ──
-  headerBar: {
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    gap: 10,
-    flexShrink: 0,
-  },
-  backBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: tokens.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  headerCenter: { flex: 1 },
-  headerTitle: {
-    color: semantic.text.primary,
-    fontSize: 11,
-    fontWeight: '600',
-    fontFamily: 'monospace',
-  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -773,32 +740,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: semantic.sentiment.negative,
   },
-  cashPill: {
-    minHeight: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(232,197,71,0.25)',
-    backgroundColor: semantic.background.lift,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    flexShrink: 0,
-  },
-  cashPillLabel: {
-    fontFamily: 'monospace',
-    fontSize: 6,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  cashPillValue: {
-    fontFamily: 'monospace',
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: semantic.text.primary,
-  },
-
   // ── States ──
   stateWrap: {
     flex: 1,

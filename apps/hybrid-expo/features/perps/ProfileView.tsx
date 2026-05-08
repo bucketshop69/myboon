@@ -27,6 +27,7 @@ import {
 import type { PerpsAccount, PerpsPosition, PerpsOrder } from '@/features/perps/perps.types';
 import { DepositModal } from '@/features/perps/DepositModal';
 import { WithdrawModal } from '@/features/perps/WithdrawModal';
+import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { semantic, tokens } from '@/theme';
 
 // C-15: Trade history stored in AsyncStorage
@@ -335,13 +336,10 @@ export function ProfileView({ onBack }: ProfileViewProps) {
 
   return (
     <View style={styles.container}>
-      {/* Header with deposit/withdraw pills (C-17) */}
-      <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.headerBtn}>
-          <MaterialIcons name="arrow-back" size={14} color={semantic.text.primary} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Profile</Text>
-        {hasPacificAccount && (
+      <AppTopBar
+        left={<AppTopBarIconButton icon="arrow-back" onPress={onBack} accessibilityLabel="Go back" />}
+        center={<AppTopBarTitle align="left">Profile</AppTopBarTitle>}
+        right={hasPacificAccount ? (
           <View style={styles.headerActions}>
             <Pressable
               style={styles.headerActionBtn}
@@ -356,13 +354,14 @@ export function ProfileView({ onBack }: ProfileViewProps) {
               <Text style={styles.headerActionText}>Withdraw</Text>
             </Pressable>
           </View>
+        ) : (
+          <AppTopBarIconButton
+            icon="settings"
+            accessibilityLabel="Open trade settings"
+            color={semantic.text.dim}
+          />
         )}
-        {!hasPacificAccount && (
-          <Pressable style={[styles.headerBtn, styles.headerBtnGhost]}>
-            <MaterialIcons name="settings" size={16} color={semantic.text.dim} />
-          </Pressable>
-        )}
-      </View>
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -837,39 +836,10 @@ const styles = StyleSheet.create({
   },
 
   // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: semantic.border.muted,
-    gap: 8,
-  },
-  headerBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerBtnGhost: {
-    backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-  },
-  headerTitle: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '700',
-    letterSpacing: 2.5,
-    textTransform: 'uppercase',
-    color: semantic.text.dim,
-  },
   // C-17: Header action buttons
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
   headerActionBtn: {
@@ -877,11 +847,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     backgroundColor: semantic.background.surfaceRaised,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    minHeight: 26,
   },
   headerActionText: {
     fontFamily: 'monospace',
