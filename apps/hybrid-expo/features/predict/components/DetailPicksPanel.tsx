@@ -13,6 +13,7 @@ interface DetailPicksPanelProps {
   scope: DetailPickScope;
   marketSlug: string;
   loading: boolean;
+  marketTokenIds?: string[];
   marketPositions: PortfolioPosition[];
   allPositions: PortfolioPosition[];
   redeemablePositions: PortfolioPosition[];
@@ -58,7 +59,10 @@ function isSameMarket(position: PortfolioPosition, marketSlug: string): boolean 
   return position.slug === marketSlug || position.eventSlug === marketSlug;
 }
 
-function isMarketOrder(order: OpenOrder, marketSlug: string): boolean {
+function isMarketOrder(order: OpenOrder, marketSlug: string, marketTokenIds: readonly string[]): boolean {
+  const orderAsset = order.asset_id?.toLowerCase();
+  if (orderAsset && marketTokenIds.some((id) => id.toLowerCase() === orderAsset)) return true;
+
   const market = order.market?.toLowerCase() ?? '';
   const slug = marketSlug.toLowerCase();
   if (!market) return false;
@@ -69,6 +73,7 @@ export function DetailPicksPanel({
   scope,
   marketSlug,
   loading,
+  marketTokenIds = [],
   marketPositions,
   allPositions,
   redeemablePositions,
@@ -82,7 +87,7 @@ export function DetailPicksPanel({
   onRedeemed,
 }: DetailPicksPanelProps) {
   const marketRedeemables = redeemablePositions.filter((position) => isSameMarket(position, marketSlug));
-  const marketOrders = openOrders.filter((order) => isMarketOrder(order, marketSlug));
+  const marketOrders = openOrders.filter((order) => isMarketOrder(order, marketSlug, marketTokenIds));
   const rows = scope === 'market'
     ? [
         ...marketPositions.map((position, index) => ({ kind: 'position' as const, id: pickId('market', position, index), position })),
@@ -109,23 +114,30 @@ export function DetailPicksPanel({
         <Text style={styles.title}>Your Picks</Text>
         <View style={styles.headingSide}>
           <Text style={styles.subtitle}>
-            {scope === 'market' ? `${rows.length} here` : `${rows.length} total`}
+            {scope === 'market' ? `${rows.length} this market` : `${rows.length} all picks`}
           </Text>
-          <Pressable
-            style={[styles.scopeSwitch, scope === 'all' && styles.scopeSwitchActive]}
-            onPress={() => onScopeChange(scope === 'market' ? 'all' : 'market')}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: scope === 'all' }}
-          >
-            <View style={styles.scopeKnob} />
-            <Text style={styles.scopeText}>{scope === 'market' ? 'All' : 'This'}</Text>
-          </Pressable>
+          <View style={styles.scopeTabs}>
+            <Pressable
+              style={[styles.scopeTab, scope === 'market' && styles.scopeTabActive]}
+              onPress={() => onScopeChange('market')}
+              accessibilityState={{ selected: scope === 'market' }}
+            >
+              <Text style={[styles.scopeTabText, scope === 'market' && styles.scopeTabTextActive]}>This market</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.scopeTab, scope === 'all' && styles.scopeTabActive]}
+              onPress={() => onScopeChange('all')}
+              accessibilityState={{ selected: scope === 'all' }}
+            >
+              <Text style={[styles.scopeTabText, scope === 'all' && styles.scopeTabTextActive]}>All picks</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
       <View style={styles.summary}>
         <View>
-          <Text style={styles.summaryLabel}>{scope === 'market' ? 'You put in' : 'Active picks'}</Text>
+          <Text style={styles.summaryLabel}>{scope === 'market' ? 'In this market' : 'All active picks'}</Text>
           <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : rows.length}</Text>
         </View>
         <View>
@@ -189,14 +201,15 @@ function OrderRow({
 }) {
   const price = Number.parseFloat(order.price) || 0;
   const outcome = formatOutcome(order.outcome);
+  const pending = order.status === 'local-pending';
   return (
     <View style={[styles.rowCard, styles.waitingCard, styles.limitStrip]}>
       <View style={styles.rowMain}>
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>{formatChance(price)} on {outcome}</Text>
-          <Text style={styles.rowMeta}>Yet to be placed</Text>
+          <Text style={styles.rowMeta}>{pending ? 'Syncing with market' : 'Waiting to match'}</Text>
         </View>
-        <Pressable style={styles.cancelAction} disabled={!onCancel || cancelling} onPress={onCancel}>
+        <Pressable style={styles.cancelAction} disabled={pending || !onCancel || cancelling} onPress={onCancel}>
           {cancelling ? (
             <ActivityIndicator size="small" color={semantic.sentiment.negative} />
           ) : (
@@ -285,9 +298,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headingSide: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-end',
+    gap: 4,
   },
   subtitle: {
     fontFamily: 'monospace',
@@ -295,32 +307,34 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
     textTransform: 'uppercase',
   },
-  scopeSwitch: {
-    minHeight: 26,
+  scopeTabs: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 7,
-    borderRadius: 999,
+    padding: 2,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: 'rgba(232,197,71,0.25)',
     backgroundColor: semantic.background.lift,
   },
-  scopeSwitchActive: {
-    borderColor: 'rgba(232,197,71,0.45)',
+  scopeTab: {
+    minHeight: 24,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scopeKnob: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: tokens.colors.accent,
+  scopeTabActive: {
+    backgroundColor: tokens.colors.surface,
   },
-  scopeText: {
+  scopeTabText: {
     fontFamily: 'monospace',
-    fontSize: 8,
-    color: semantic.text.primary,
+    fontSize: 7.5,
+    color: semantic.text.faint,
     fontWeight: '800',
     textTransform: 'uppercase',
+  },
+  scopeTabTextActive: {
+    color: semantic.text.primary,
   },
   summary: {
     flexDirection: 'row',

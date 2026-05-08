@@ -447,7 +447,13 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
 
   return {
     success: true,
-    orderID: typeof data.orderID === 'string' ? data.orderID : undefined,
+    orderID: typeof data.orderID === 'string'
+      ? data.orderID
+      : typeof data.orderId === 'string'
+        ? data.orderId
+        : typeof data.id === 'string'
+          ? data.id
+          : undefined,
   };
 }
 

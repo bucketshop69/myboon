@@ -28,6 +28,7 @@ import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
 import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -112,6 +113,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
   const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [pendingOpenOrders, setPendingOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
@@ -189,6 +191,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setAllPositions([]);
       setRedeemablePositions([]);
       setOpenOrders([]);
+      setPendingOpenOrders([]);
       return;
     }
     setPicksLoading(true);
@@ -202,6 +205,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setAllPositions(portfolio?.positions ?? []);
       setRedeemablePositions(portfolio?.redeemablePositions ?? []);
       setOpenOrders(orders);
+      setPendingOpenOrders((pending) =>
+        prunePendingOpenOrders(pending, orders, [...market, ...(portfolio?.positions ?? [])])
+      );
     } finally {
       setPicksLoading(false);
     }
@@ -272,6 +278,8 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
   const noPrice = livePrice?.noPrice ?? (detail?.outcomePrices[1] ?? null);
+  const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
+
   function tapOdd(side: 'yes' | 'no') {
     if (numpadOpen && selectedSide === side) {
       // same tap — collapse
@@ -338,6 +346,15 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
+      const pendingOrder = makePendingOpenOrder({
+        id: result.orderID,
+        slug,
+        tokenID,
+        price,
+        size,
+        outcome: selectedSide === 'no' ? 'No' : 'Yes',
+      });
+      setPendingOpenOrders((prev) => [pendingOrder, ...prev.filter((order) => order.id !== pendingOrder.id)]);
       collapseNumpad();
       setActiveView('picks');
       setPickScope('market');
@@ -420,11 +437,12 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 <DetailPicksPanel
                   scope={pickScope}
                   marketSlug={slug}
+                  marketTokenIds={detail.clobTokenIds}
                   loading={picksLoading}
                   marketPositions={marketPositions}
                   allPositions={allPositions}
                   redeemablePositions={redeemablePositions}
-                  openOrders={openOrders}
+                  openOrders={visibleOpenOrders}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}

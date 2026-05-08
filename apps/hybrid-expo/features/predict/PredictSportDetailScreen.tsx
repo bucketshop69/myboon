@@ -28,6 +28,7 @@ import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -139,6 +140,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
   const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [pendingOpenOrders, setPendingOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
@@ -215,6 +217,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       setAllPositions([]);
       setRedeemablePositions([]);
       setOpenOrders([]);
+      setPendingOpenOrders([]);
       return;
     }
     setPicksLoading(true);
@@ -228,6 +231,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       setAllPositions(portfolio?.positions ?? []);
       setRedeemablePositions(portfolio?.redeemablePositions ?? []);
       setOpenOrders(orders);
+      setPendingOpenOrders((pending) =>
+        prunePendingOpenOrders(pending, orders, [...market, ...(portfolio?.positions ?? [])])
+      );
     } finally {
       setPicksLoading(false);
     }
@@ -386,6 +392,15 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
+      const pendingOrder = makePendingOpenOrder({
+        id: result.orderID,
+        slug,
+        tokenID,
+        price,
+        size,
+        outcome: sportOutcomeLabel(outcome),
+      });
+      setPendingOpenOrders((prev) => [pendingOrder, ...prev.filter((order) => order.id !== pendingOrder.id)]);
       collapseNumpad();
       setActiveView('picks');
       setPickScope('market');
@@ -410,6 +425,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   })();
   const selectedOutcome = selectedOutcomeIdx !== null ? sortedOutcomes[selectedOutcomeIdx] : null;
   const selectedOutcomeLabel = selectedOutcome ? sportOutcomeLabel(selectedOutcome) : undefined;
+  const marketTokenIds = sortedOutcomes.flatMap((outcome) => outcome.clobTokenIds);
+  const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
   const displayTitle = detail
     ? formatPredictTitle({
         title: detail.title,
@@ -492,11 +509,12 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                 <DetailPicksPanel
                   scope={pickScope}
                   marketSlug={slug}
+                  marketTokenIds={marketTokenIds}
                   loading={picksLoading}
                   marketPositions={marketPositions}
                   allPositions={allPositions}
                   redeemablePositions={redeemablePositions}
-                  openOrders={openOrders}
+                  openOrders={visibleOpenOrders}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}
