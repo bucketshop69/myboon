@@ -17,6 +17,12 @@ function formatChance(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatSignedPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || Math.abs(value) < 0.05) return '0.0%';
+  const sign = value > 0 ? '+' : '-';
+  return `${sign}${Math.abs(value).toFixed(1)}%`;
+}
+
 function formatOutcome(label: string | null | undefined): string {
   if (!label) return 'Yes';
   return label.toLowerCase().includes('draw') ? 'Draw' : label;
@@ -40,6 +46,8 @@ export function PredictPositionRow({
   const priceLine = `${formatChance(position.avgPrice)} entry -> ${formatChance(position.curPrice)} now`;
   const cost = portfolioPositionCost(position);
   const pnl = (position.currentValue ?? 0) - cost;
+  const pnlPercent = cost > 0 ? (pnl / cost) * 100 : null;
+  const pnlText = `${truncateSignedUsd(pnl)} (${formatSignedPercent(pnlPercent)})`;
   const pnlState = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'flat';
   const pnlStyle = pnlState === 'positive' ? styles.pnlPositive : pnlState === 'negative' ? styles.pnlNegative : styles.pnlFlat;
 
@@ -52,11 +60,11 @@ export function PredictPositionRow({
           {showMarketTitle && (
             <View style={styles.rowMarketLine}>
               <Text style={styles.rowMarket} numberOfLines={1}>{formatPositionTitle(position)}</Text>
-              <Text style={[styles.rowPnl, pnlStyle]}>{truncateSignedUsd(pnl)}</Text>
+              <Text style={[styles.rowPnl, pnlStyle]}>{pnlText}</Text>
             </View>
           )}
           {!showMarketTitle && (
-            <Text style={[styles.rowPnl, styles.rowPnlSolo, pnlStyle]}>{truncateSignedUsd(pnl)}</Text>
+            <Text style={[styles.rowPnl, styles.rowPnlSolo, pnlStyle]}>{pnlText}</Text>
           )}
         </View>
         <View style={styles.rowActions}>

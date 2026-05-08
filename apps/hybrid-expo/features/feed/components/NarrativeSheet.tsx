@@ -14,9 +14,8 @@ import {
 import { useRouter } from 'expo-router';
 import { fetchNarrativeDetail, fetchPredictMarket, extractSport, toRelativeTime } from '@/features/feed/feed.api';
 import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
-import type { NarrativeAction } from '@/features/feed/feed.types';
 import type { PredictMarketData } from '@/features/feed/feed.api';
-import type { FeedCategory } from '@/features/feed/feed.types';
+import type { FeedCategory, NarrativeAction } from '@/features/feed/feed.types';
 import { semantic, tokens } from '@/theme';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -464,6 +463,71 @@ const predictStyles = StyleSheet.create({
 
 // ─── Sheet ────────────────────────────────────────────────────────────────────
 
+function normalizeArticleText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .trim();
+}
+
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+function ArticleBody({ content }: { content: string }) {
+  const normalized = normalizeArticleText(content);
+
+  if (!normalized) {
+    return <Text style={styles.fullText} />;
+  }
+
+  const blocks = normalized.split(/\n\s*\n+/).filter(Boolean);
+
+  return (
+    <View style={styles.articleBody}>
+      {blocks.map((block, blockIndex) => {
+        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+        const firstLine = lines[0] ?? '';
+        const heading = firstLine.match(/^#{1,3}\s+(.+)$/);
+        const bullets = lines
+          .map((line) => line.match(/^(?:[-*•]|\d+[.)])\s+(.+)$/)?.[1])
+          .filter((line): line is string => Boolean(line));
+
+        if (heading && lines.length === 1) {
+          return (
+            <Text key={`heading-${blockIndex}`} style={styles.articleHeading}>
+              {stripInlineMarkdown(heading[1])}
+            </Text>
+          );
+        }
+
+        if (bullets.length === lines.length) {
+          return (
+            <View key={`bullets-${blockIndex}`} style={styles.bulletList}>
+              {bullets.map((line, lineIndex) => (
+                <View key={`bullet-${blockIndex}-${lineIndex}`} style={styles.bulletRow}>
+                  <Text style={styles.bulletMarker}>•</Text>
+                  <Text style={[styles.fullText, styles.bulletText]}>{stripInlineMarkdown(line)}</Text>
+                </View>
+              ))}
+            </View>
+          );
+        }
+
+        return (
+          <Text key={`paragraph-${blockIndex}`} style={styles.fullText}>
+            {stripInlineMarkdown(lines.join('\n'))}
+          </Text>
+        );
+      })}
+    </View>
+  );
+}
+
 export interface NarrativeSheetItem {
   id: string;
   category: FeedCategory;
@@ -480,6 +544,7 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
   const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const [contentFull, setContentFull] = useState<string | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
+  const itemId = item?.id;
 
   // Animate open/close
   useEffect(() => {
@@ -501,14 +566,14 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
 
   // Fetch full content when item changes
   useEffect(() => {
-    if (!item) {
+    if (!itemId) {
       setContentFull(null);
       return;
     }
     setContentLoading(true);
     setContentFull(null);
 
-    fetchNarrativeDetail(item.id)
+    fetchNarrativeDetail(itemId)
       .then((detail) => {
         setContentFull(detail.content_full ?? detail.content_small ?? '');
         setContentLoading(false);
@@ -517,7 +582,7 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
         setContentFull('');
         setContentLoading(false);
       });
-  }, [item?.id]);
+  }, [itemId]);
 
   // Drag-to-dismiss
   const panResponder = useRef(
@@ -594,7 +659,7 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
           {contentLoading ? (
             <Text style={styles.loadingText}>Loading...</Text>
           ) : (
-            <Text style={styles.fullText}>{contentFull ?? ''}</Text>
+            <ArticleBody content={contentFull ?? ''} />
           )}
 
           {/* Prediction blocks — up to 3 predict actions */}
@@ -670,6 +735,32 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xs,   // 10
     fontFamily: 'monospace',
     color: semantic.text.faint,
+  },
+  articleBody: {
+    gap: 14,
+  },
+  articleHeading: {
+    fontSize: 16,
+    color: semantic.text.primary,
+    lineHeight: 24,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  bulletList: {
+    gap: 10,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  bulletMarker: {
+    fontSize: 15,
+    color: semantic.text.primary,
+    lineHeight: 25,
+  },
+  bulletText: {
+    flex: 1,
   },
   fullText: {
     fontSize: 15,
