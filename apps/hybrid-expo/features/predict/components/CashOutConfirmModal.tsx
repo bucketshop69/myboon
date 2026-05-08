@@ -1,4 +1,5 @@
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Modal, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import { portfolioPositionCost, truncateSignedUsd, truncateUsd } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
@@ -8,12 +9,34 @@ interface CashOutConfirmModalProps {
   visible: boolean;
   submitting?: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (size: number) => void;
 }
 
 export function CashOutConfirmModal({ position, visible, submitting = false, onClose, onConfirm }: CashOutConfirmModalProps) {
-  const cashOutValue = position?.currentValue ?? 0;
-  const pnl = position ? cashOutValue - portfolioPositionCost(position) : 0;
+  const [percent, setPercent] = useState(100);
+  const [sliderWidth, setSliderWidth] = useState(1);
+
+  useEffect(() => {
+    if (visible) setPercent(100);
+  }, [visible, position?.asset, position?.conditionId, position?.outcomeIndex]);
+
+  const updatePercentFromX = useCallback((x: number) => {
+    const next = Math.max(0, Math.min(100, Math.round((x / sliderWidth) * 100)));
+    setPercent(next);
+  }, [sliderWidth]);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (event) => updatePercentFromX(event.nativeEvent.locationX),
+    onPanResponderMove: (event) => updatePercentFromX(event.nativeEvent.locationX),
+  }), [updatePercentFromX]);
+
+  const selectedRatio = percent / 100;
+  const selectedSize = position ? position.size * selectedRatio : 0;
+  const cashOutValue = (position?.currentValue ?? 0) * selectedRatio;
+  const pnl = position ? (position.currentValue - portfolioPositionCost(position)) * selectedRatio : 0;
+  const canConfirm = !!position && selectedSize > 0 && !submitting;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -25,6 +48,23 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
           <Text style={styles.copy}>
             You are cashing out {position?.outcome || 'this pick'}.
           </Text>
+          <View style={styles.percentHeader}>
+            <Text style={styles.amountLabel}>Cash out amount</Text>
+            <Text style={styles.percentValue}>{percent}%</Text>
+          </View>
+          <View
+            style={styles.slider}
+            onLayout={(event) => setSliderWidth(Math.max(1, event.nativeEvent.layout.width))}
+            {...panResponder.panHandlers}
+          >
+            <View style={styles.sliderTrack} />
+            <View style={[styles.sliderFill, { width: `${percent}%` }]} />
+            <View style={[styles.sliderThumb, { left: `${percent}%` }]} />
+          </View>
+          <View style={styles.sliderScale}>
+            <Text style={styles.sliderScaleText}>0%</Text>
+            <Text style={styles.sliderScaleText}>100%</Text>
+          </View>
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>You will get</Text>
             <Text style={styles.amountValue}>{truncateUsd(cashOutValue)}</Text>
@@ -39,7 +79,7 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
             <Pressable style={styles.secondaryAction} onPress={onClose} disabled={submitting}>
               <Text style={styles.secondaryActionText}>Not now</Text>
             </Pressable>
-            <Pressable style={[styles.primaryAction, submitting && styles.primaryActionDisabled]} onPress={onConfirm} disabled={submitting || !position}>
+            <Pressable style={[styles.primaryAction, !canConfirm && styles.primaryActionDisabled]} onPress={() => onConfirm(selectedSize)} disabled={!canConfirm}>
               <Text style={styles.primaryActionText}>{submitting ? 'Cashing out...' : 'Cash out'}</Text>
             </Pressable>
           </View>
@@ -84,6 +124,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     color: semantic.text.dim,
+  },
+  percentHeader: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  percentValue: {
+    fontFamily: 'monospace',
+    fontSize: 14,
+    fontWeight: '800',
+    color: tokens.colors.viridian,
+  },
+  slider: {
+    height: 30,
+    justifyContent: 'center',
+  },
+  sliderTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: semantic.border.muted,
+  },
+  sliderFill: {
+    position: 'absolute',
+    left: 0,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: tokens.colors.viridian,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    borderRadius: 9,
+    backgroundColor: tokens.colors.viridian,
+    borderWidth: 3,
+    borderColor: tokens.colors.ground,
+  },
+  sliderScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  sliderScaleText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
   },
   amountRow: {
     marginTop: 12,

@@ -124,7 +124,7 @@ export default function PredictProfileScreen() {
     });
   }, [poly.polygonAddress, poly.tradingAddress]);
 
-  const handleConfirmCashOut = useCallback(async () => {
+  const handleConfirmCashOut = useCallback(async (size: number) => {
     const position = cashOutPosition;
     if (!position || cashOutSubmitting) return;
 
@@ -155,7 +155,7 @@ export default function PredictProfileScreen() {
         polygonAddress: poly.polygonAddress,
         tokenID: position.asset,
         price,
-        size: position.size,
+        size,
         side: 'SELL',
         negRisk: !!position.negativeRisk,
         orderType: 'FOK',

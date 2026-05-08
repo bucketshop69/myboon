@@ -469,7 +469,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     setCashOutPosition(position);
   }
 
-  async function confirmCashOut() {
+  async function confirmCashOut(size: number) {
     const position = cashOutPosition;
     if (!position || submitting) return;
     if (!position.asset) {
@@ -494,7 +494,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         polygonAddress: poly.polygonAddress,
         tokenID: position.asset,
         price,
-        size: position.size,
+        size,
         side: 'SELL',
         negRisk: !!position.negativeRisk,
         orderType: 'FOK',
