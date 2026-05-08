@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { fetchNarrativeDetail, fetchPredictMarket, extractSport, toRelativeTime } from '@/features/feed/feed.api';
+import { fetchNarrativeDetail, fetchPredictMarket, fetchSimpleExplanation, extractSport, toRelativeTime } from '@/features/feed/feed.api';
 import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
 import type { PredictMarketData } from '@/features/feed/feed.api';
 import type { FeedCategory, NarrativeAction } from '@/features/feed/feed.types';
@@ -544,6 +544,9 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
   const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const [contentFull, setContentFull] = useState<string | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explanationLoading, setExplanationLoading] = useState(false);
+  const [explanationError, setExplanationError] = useState<string | null>(null);
   const itemId = item?.id;
 
   // Animate open/close
@@ -568,10 +571,14 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
   useEffect(() => {
     if (!itemId) {
       setContentFull(null);
+      setExplanation(null);
+      setExplanationError(null);
       return;
     }
     setContentLoading(true);
     setContentFull(null);
+    setExplanation(null);
+    setExplanationError(null);
 
     fetchNarrativeDetail(itemId)
       .then((detail) => {
@@ -608,6 +615,27 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
       },
     })
   ).current;
+
+  const explainContent = contentFull ?? '';
+
+  async function handleExplainSimply() {
+    if (!itemId || !explainContent.trim() || explanationLoading) return;
+    setExplanationLoading(true);
+    setExplanationError(null);
+    try {
+      const result = await fetchSimpleExplanation({
+        contentId: itemId,
+        contentType: 'narrative',
+        title: explainContent.split('\n')[0]?.slice(0, 180) ?? '',
+        content: explainContent,
+      });
+      setExplanation(result.explanation);
+    } catch (err) {
+      setExplanationError(err instanceof Error ? err.message : 'Could not explain this yet');
+    } finally {
+      setExplanationLoading(false);
+    }
+  }
 
   const catStyle = item
     ? (CATEGORY_STYLES[item.category] ?? DEFAULT_CATEGORY_STYLE)
@@ -659,7 +687,31 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
           {contentLoading ? (
             <Text style={styles.loadingText}>Loading...</Text>
           ) : (
-            <ArticleBody content={contentFull ?? ''} />
+            <>
+              <ArticleBody content={contentFull ?? ''} />
+              {explainContent.trim() ? (
+                <View style={styles.explainBox}>
+                  <Pressable
+                    style={[styles.explainButton, explanationLoading && styles.explainButtonDisabled]}
+                    onPress={handleExplainSimply}
+                    disabled={explanationLoading}
+                  >
+                    <Text style={styles.explainButtonText}>
+                      {explanationLoading ? 'Explaining...' : explanation ? 'Refresh simple explain' : 'Explain simply'}
+                    </Text>
+                  </Pressable>
+                  {explanation ? (
+                    <View style={styles.explanationCard}>
+                      <Text style={styles.explanationLabel}>Simple version</Text>
+                      <Text style={styles.explanationText}>{explanation}</Text>
+                    </View>
+                  ) : null}
+                  {explanationError ? (
+                    <Text style={styles.explanationError}>{explanationError}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </>
           )}
 
           {/* Prediction blocks — up to 3 predict actions */}
@@ -772,6 +824,55 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     color: semantic.text.faint,
     fontFamily: 'monospace',
+  },
+  explainBox: {
+    gap: 10,
+  },
+  explainButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.34)',
+    backgroundColor: 'rgba(74,140,111,0.12)',
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+  explainButtonDisabled: {
+    opacity: 0.65,
+  },
+  explainButtonText: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: tokens.colors.viridian,
+  },
+  explanationCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.lift,
+    padding: 14,
+    gap: 7,
+  },
+  explanationLabel: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  explanationText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: semantic.text.primary,
+  },
+  explanationError: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: tokens.colors.vermillion,
   },
   divider: {
     height: 1,

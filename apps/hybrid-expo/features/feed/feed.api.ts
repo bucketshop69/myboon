@@ -120,6 +120,14 @@ export interface NarrativeDetail {
   created_at: string;
 }
 
+export interface SimpleExplanation {
+  id?: string;
+  explanation: string;
+  cached: boolean;
+  model?: string | null;
+  createdAt?: string;
+}
+
 export async function fetchNarrativeDetail(id: string): Promise<NarrativeDetail> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetchWithTimeout(`${baseUrl}/narratives/${encodeURIComponent(id)}`);
@@ -134,6 +142,34 @@ export async function fetchNarrativeDetail(id: string): Promise<NarrativeDetail>
   }
 
   return payload as NarrativeDetail;
+}
+
+export async function fetchSimpleExplanation(params: {
+  contentId: string;
+  contentType?: string;
+  title?: string;
+  content: string;
+}): Promise<SimpleExplanation> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetchWithTimeout(`${baseUrl}/ai/explain-simply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && 'error' in payload && typeof (payload as { error?: unknown }).error === 'string'
+      ? (payload as { error: string }).error
+      : `Explain request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  if (!payload || typeof payload !== 'object' || typeof (payload as { explanation?: unknown }).explanation !== 'string') {
+    throw new Error('Invalid explanation response');
+  }
+
+  return payload as SimpleExplanation;
 }
 
 export interface PredictMarketData {

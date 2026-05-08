@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { createHash } from 'crypto'
 import { readFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -46,6 +47,11 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
+const AI_EXPLANATION_API_KEY = process.env.AI_EXPLANATION_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.XAI_API_KEY
+const AI_EXPLANATION_BASE_URL = process.env.AI_EXPLANATION_BASE_URL
+  ?? (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : 'https://api.x.ai/v1')
+const AI_EXPLANATION_MODEL = process.env.AI_EXPLANATION_MODEL
+  ?? (process.env.OPENAI_API_KEY ? 'gpt-4o-mini' : (process.env.XAI_MODEL ?? 'grok-3-mini'))
 
 const missing: string[] = []
 if (!SUPABASE_URL) missing.push('SUPABASE_URL')
@@ -68,6 +74,14 @@ function supabaseHeaders(): Record<string, string> {
 
 async function supabaseFetch(path: string): Promise<Response> {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: supabaseHeaders() })
+}
+
+async function supabaseWrite(path: string, method: 'POST' | 'PATCH', body: unknown, extraHeaders: Record<string, string> = {}): Promise<Response> {
+  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: { ...supabaseHeaders(), ...extraHeaders },
+    body: JSON.stringify(body),
+  })
 }
 
 // --- polymarket helpers ---
@@ -470,6 +484,142 @@ app.get('/narratives/:id', async (c) => {
   } catch (err) {
     console.error(`[api] Unexpected error in GET /narratives/${id}:`, err)
     return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// --- AI explain-simply routes ---
+
+type AiExplanationRow = {
+  id: string
+  content_id: string
+  content_type: string
+  source_hash: string
+  explanation: string
+  model: string | null
+  created_at: string
+  updated_at: string
+}
+
+function normalizeExplainInput(value: unknown, maxLength: number): string {
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+function sourceHashFor(title: string, content: string): string {
+  return createHash('sha256').update(`${title}\n\n${content}`).digest('hex')
+}
+
+async function generateSimpleExplanation(title: string, content: string): Promise<string> {
+  if (!AI_EXPLANATION_API_KEY) {
+    throw new Error('AI provider is not configured')
+  }
+
+  const res = await fetch(`${AI_EXPLANATION_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${AI_EXPLANATION_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: AI_EXPLANATION_MODEL,
+      temperature: 0.2,
+      max_tokens: 160,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are explaining crypto, prediction-market, sports, or finance news to a beginner. Concisely explain the context and why it matters in simple language. Avoid jargon. Do not give financial advice. Keep it to 2-4 short sentences.',
+        },
+        {
+          role: 'user',
+          content: `Title: ${title || 'Untitled'}\n\nContent: ${content}`,
+        },
+      ],
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`AI provider failed (${res.status}) ${body.slice(0, 180)}`.trim())
+  }
+
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+  const text = data.choices?.[0]?.message?.content?.trim()
+  if (!text) throw new Error('AI provider returned an empty explanation')
+  return text.replace(/\s+\n/g, '\n').trim()
+}
+
+// POST /ai/explain-simply
+app.post('/ai/explain-simply', async (c) => {
+  let body: Record<string, unknown>
+  try {
+    body = await c.req.json() as Record<string, unknown>
+  } catch {
+    return c.json({ error: 'Bad request' }, 400)
+  }
+
+  const contentId = normalizeExplainInput(body.contentId, 180)
+  const contentType = normalizeExplainInput(body.contentType, 40) || 'narrative'
+  const title = normalizeExplainInput(body.title, 240)
+  const content = normalizeExplainInput(body.content, 6000)
+
+  if (!contentId || !content) {
+    return c.json({ error: 'contentId and content are required' }, 400)
+  }
+
+  const sourceHash = sourceHashFor(title, content)
+
+  try {
+    const cacheRes = await supabaseFetch(
+      `ai_explanations?content_id=eq.${encodeURIComponent(contentId)}&source_hash=eq.${encodeURIComponent(sourceHash)}&select=*&limit=1`
+    )
+
+    if (cacheRes.ok) {
+      const rows = await cacheRes.json() as AiExplanationRow[]
+      const cached = Array.isArray(rows) ? rows[0] : null
+      if (cached?.explanation) {
+        return c.json({
+          id: cached.id,
+          explanation: cached.explanation,
+          cached: true,
+          model: cached.model,
+          createdAt: cached.created_at,
+        })
+      }
+    } else {
+      console.error(`[api] Supabase ai_explanations read error ${cacheRes.status}: ${await cacheRes.text()}`)
+    }
+
+    const explanation = await generateSimpleExplanation(title, content)
+    const insertRes = await supabaseWrite(
+      'ai_explanations?on_conflict=content_id,source_hash',
+      'POST',
+      {
+        content_id: contentId,
+        content_type: contentType,
+        source_hash: sourceHash,
+        explanation,
+        model: AI_EXPLANATION_MODEL,
+      },
+      { Prefer: 'resolution=merge-duplicates,return=representation' },
+    )
+
+    if (!insertRes.ok) {
+      console.error(`[api] Supabase ai_explanations write error ${insertRes.status}: ${await insertRes.text()}`)
+      return c.json({ explanation, cached: false, model: AI_EXPLANATION_MODEL })
+    }
+
+    const rows = await insertRes.json() as AiExplanationRow[]
+    const saved = Array.isArray(rows) ? rows[0] : null
+    return c.json({
+      id: saved?.id,
+      explanation: saved?.explanation ?? explanation,
+      cached: false,
+      model: saved?.model ?? AI_EXPLANATION_MODEL,
+      createdAt: saved?.created_at,
+    })
+  } catch (err) {
+    console.error('[api] Unexpected error in POST /ai/explain-simply:', err)
+    return c.json({ error: 'Could not generate explanation right now. Please try again later.' }, 503)
   }
 })
 
