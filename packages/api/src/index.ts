@@ -523,7 +523,7 @@ async function generateSimpleExplanation(title: string, content: string): Promis
     throw new Error('AI provider is not configured')
   }
 
-  const system = 'You are explaining crypto, prediction-market, sports, or finance news to a beginner. Concisely explain the context and why it matters in simple language. Avoid jargon. Do not give financial advice. Keep it to 2-4 short sentences.'
+  const system = 'You explain crypto, prediction-market, sports, or finance news to beginners. Output ONLY the final user-facing explanation. Do not include analysis, chain-of-thought, bullet planning, preambles, or labels. Use simple language, avoid jargon, and do not give financial advice. Keep it to 2-4 short sentences.'
   const user = `Title: ${title || 'Untitled'}\n\nContent: ${content}`
   const isMiniMax = AI_EXPLANATION_PROVIDER === 'minimax'
 
@@ -567,7 +567,11 @@ async function generateSimpleExplanation(title: string, content: string): Promis
     ? data.content?.find((block) => block.type === 'text')?.text?.trim()
     : data.choices?.[0]?.message?.content?.trim()
   if (!text) throw new Error('AI provider returned an empty explanation')
-  return text.replace(/\s+\n/g, '\n').trim()
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^\s*(?:Let me|I need to|Breaking down|Analysis:)[\s\S]*?(?:\n\s*\n|$)/i, '')
+    .replace(/\s+\n/g, '\n')
+    .trim()
 }
 
 // POST /ai/explain-simply
