@@ -135,6 +135,7 @@ async function clobFetch(path: string, options?: RequestInit): Promise<Response>
 const livePrices = new Map<string, number>()       // tokenId → midpoint price
 const activeTokenIds = new Set<string>()            // YES token IDs to poll
 const PRICE_POLL_INTERVAL_MS = 5_000
+const MAX_LIVE_PRICE_TOKEN_IDS = 80
 
 /** Register token IDs for live price polling. Called when feed builds its item list. */
 function registerTokenIds(tokenIds: string[]): void {
@@ -146,6 +147,67 @@ function registerTokenIds(tokenIds: string[]): void {
 /** Get live price for a token, or null if not yet polled. */
 function getLivePrice(tokenId: string): number | null {
   return livePrices.get(tokenId) ?? null
+}
+
+function normalizeTokenIds(input: string | null | undefined): string[] {
+  if (!input) return []
+  const seen = new Set<string>()
+  const tokenIds: string[] = []
+  for (const raw of input.split(',')) {
+    const tokenId = raw.trim()
+    if (!tokenId || seen.has(tokenId)) continue
+    seen.add(tokenId)
+    tokenIds.push(tokenId)
+    if (tokenIds.length >= MAX_LIVE_PRICE_TOKEN_IDS) break
+  }
+  return tokenIds
+}
+
+async function fetchMidpointsForTokenIds(tokenIds: string[]): Promise<Map<string, number>> {
+  const prices = new Map<string, number>()
+  if (tokenIds.length === 0) return prices
+
+  const res = await clobFetch('midpoints', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tokenIds.map((id) => ({ token_id: id }))),
+  })
+  if (!res.ok) {
+    console.error(`[api] CLOB /midpoints batch failed: ${res.status}`)
+    return prices
+  }
+
+  const data = await res.json() as Record<string, unknown>
+  for (const [tokenId, rawPrice] of Object.entries(data)) {
+    const price = parseNullableNumber(rawPrice)
+    if (price !== null) {
+      prices.set(tokenId, price)
+      livePrices.set(tokenId, price)
+    }
+  }
+  return prices
+}
+
+async function fetchBuyPricesForTokenIds(tokenIds: string[]): Promise<Map<string, number>> {
+  const prices = new Map<string, number>()
+  if (tokenIds.length === 0) return prices
+
+  const results = await Promise.allSettled(
+    tokenIds.map(async (tokenId) => {
+      const res = await clobFetch(`price?token_id=${encodeURIComponent(tokenId)}&side=buy`)
+      if (!res.ok) return null
+      const body = await res.json() as Record<string, unknown>
+      const price = parseNullableNumber(body.price)
+      return price !== null ? { tokenId, price } : null
+    })
+  )
+
+  for (const result of results) {
+    if (result.status !== 'fulfilled' || result.value === null) continue
+    prices.set(result.value.tokenId, result.value.price)
+    livePrices.set(result.value.tokenId, result.value.price)
+  }
+  return prices
 }
 
 async function pollLivePrices(): Promise<void> {
@@ -286,7 +348,7 @@ async function fetchGammaMarketsForSlug(slug: string): Promise<Record<string, un
 
 async function buildClosedPositionsFromActivity(address: string): Promise<unknown[]> {
   const activityRes = await dataApiFetch(
-    `activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`
+    `activity?user=${encodeURIComponent(address)}&limit=500&sortBy=TIMESTAMP&sortDirection=DESC`
   )
   if (!activityRes.ok) return []
 
@@ -1200,6 +1262,47 @@ app.get('/predict/price/:tokenId', async (c) => {
   }
 })
 
+// GET /predict/live-prices?tokenIds=tokenA,tokenB
+// Low-risk batch price read for polling clients. Uses the live midpoint cache first,
+// then fills missing tokens from CLOB /midpoints and finally CLOB /price.
+app.get('/predict/live-prices', async (c) => {
+  const tokenIds = normalizeTokenIds(c.req.query('tokenIds'))
+  if (tokenIds.length === 0) return c.json({ prices: [], fetchedAt: new Date().toISOString() })
+
+  try {
+    registerTokenIds(tokenIds)
+
+    const priceMap = new Map<string, { price: number | null; source: 'cache' | 'midpoint' | 'price' | 'missing' }>()
+    for (const tokenId of tokenIds) {
+      const cached = getLivePrice(tokenId)
+      if (cached !== null) priceMap.set(tokenId, { price: cached, source: 'cache' })
+    }
+
+    const missingAfterCache = tokenIds.filter((tokenId) => !priceMap.has(tokenId))
+    const midpointPrices = await fetchMidpointsForTokenIds(missingAfterCache)
+    for (const [tokenId, price] of midpointPrices) {
+      priceMap.set(tokenId, { price, source: 'midpoint' })
+    }
+
+    const missingAfterMidpoints = tokenIds.filter((tokenId) => !priceMap.has(tokenId))
+    const buyPrices = await fetchBuyPricesForTokenIds(missingAfterMidpoints)
+    for (const [tokenId, price] of buyPrices) {
+      priceMap.set(tokenId, { price, source: 'price' })
+    }
+
+    const prices = tokenIds.map((tokenId) => ({
+      tokenId,
+      price: priceMap.get(tokenId)?.price ?? null,
+      source: priceMap.get(tokenId)?.source ?? 'missing',
+    }))
+
+    return c.json({ prices, fetchedAt: new Date().toISOString() })
+  } catch (err) {
+    console.error('[api] Unexpected error in GET /predict/live-prices:', err)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 // GET /predict/book/:tokenId
 // Returns the full orderbook (bids + asks) for a token from CLOB.
 // Used by the trade screen to show depth chart and best bid/ask.
@@ -1365,7 +1468,7 @@ app.get('/predict/portfolio/:address', async (c) => {
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=false&limit=100&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=true&limit=50&sortBy=CURRENT&sortDirection=DESC`),
       dataApiFetch(`closed-positions?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
-      dataApiFetch(`activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`),
+      dataApiFetch(`activity?user=${encodeURIComponent(address)}&limit=500&sortBy=TIMESTAMP&sortDirection=DESC`),
       gammaFetch(`public-profile?proxyWallet=${encodeURIComponent(address)}`),
     ])
 
@@ -1594,7 +1697,7 @@ app.get('/predict/activity/:address', async (c) => {
 
   try {
     const res = await dataApiFetch(
-      `activity?user=${encodeURIComponent(address)}&limit=50&sortBy=TIMESTAMP&sortDirection=DESC`
+      `activity?user=${encodeURIComponent(address)}&limit=500&sortBy=TIMESTAMP&sortDirection=DESC`
     )
     if (!res.ok) {
       console.error(`[api] data-api /activity error ${res.status}`)

@@ -44,6 +44,7 @@ export interface FeedItemBinary {
   price: number;
   endDate: string | null;
   outcomes: FeedOutcome[];
+  clobTokenIds?: string[];
 }
 
 export type FeedItem = FeedItemMatch | FeedItemBinary;

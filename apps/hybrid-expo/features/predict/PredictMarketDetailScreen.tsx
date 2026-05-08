@@ -13,9 +13,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
-import { cancelOrder, fetchClobBalance, fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
-import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
-import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
+import { cancelOrder, fetchClobBalance, fetchCuratedMarketDetail, fetchLivePrices, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
+import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import type { GeopoliticsMarketDetail, Orderbook, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { semantic, tokens } from '@/theme';
@@ -93,7 +93,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [livePrice, setLivePrice] = useState<LivePrice | null>(null);
+  const [liveTokenPrices, setLiveTokenPrices] = useState<Record<string, number | null>>({});
 
   // Chart data
   const [interval, setInterval] = useState<Interval>('1h');
@@ -116,6 +116,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
   const [closedPositions, setClosedPositions] = useState<ClosedPortfolioPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
   const [pendingOpenOrders, setPendingOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
   const [picksFreshness, setPicksFreshness] = useState<PredictDataFreshness>({
@@ -201,6 +202,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setRedeemablePositions([]);
       setClosedPositions([]);
       setOpenOrders([]);
+      setActivityItems([]);
       setPendingOpenOrders([]);
       setPicksFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
       return;
@@ -223,6 +225,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         setAllPositions(portfolio.positions ?? []);
         setRedeemablePositions(portfolio.redeemablePositions ?? []);
         setClosedPositions(portfolio.closedPositions ?? []);
+        setActivityItems(portfolio.activity ?? []);
       }
       if (orders) setOpenOrders(orders);
       setPendingOpenOrders((pending) =>
@@ -263,11 +266,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
   }
 
-  async function refreshPrice() {
-    try {
-      setLivePrice(await fetchMarketPrice(slug));
-    } catch { /* silent */ }
-  }
+  const liveTokenKey = detail?.clobTokenIds.filter(Boolean).join(',') ?? '';
 
   useEffect(() => { void loadMarket(); }, [slug]);
 
@@ -276,10 +275,24 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   }, [detail, interval]);
 
   useEffect(() => {
-    void refreshPrice();
-    refreshTimer.current = globalThis.setInterval(() => { void refreshPrice(); }, 30_000);
-    return () => { if (refreshTimer.current) globalThis.clearInterval(refreshTimer.current); };
-  }, [slug]);
+    const tokenIds = liveTokenKey.split(',').filter(Boolean);
+    if (tokenIds.length === 0) return;
+    let cancelled = false;
+
+    async function refreshPrices() {
+      try {
+        const prices = await fetchLivePrices(tokenIds);
+        if (!cancelled) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
+      } catch { /* silent */ }
+    }
+
+    void refreshPrices();
+    refreshTimer.current = globalThis.setInterval(() => { void refreshPrices(); }, 5_000);
+    return () => {
+      cancelled = true;
+      if (refreshTimer.current) globalThis.clearInterval(refreshTimer.current);
+    };
+  }, [liveTokenKey]);
 
   // Load orderbook when switching to orderbook view
   useEffect(() => {
@@ -313,8 +326,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }).start();
   }, [numpadOpen, softZoneAnim]);
 
-  const yesPrice = livePrice?.yesPrice ?? (detail?.outcomePrices[0] ?? null);
-  const noPrice = livePrice?.noPrice ?? (detail?.outcomePrices[1] ?? null);
+  const yesTokenId = detail?.clobTokenIds[0];
+  const noTokenId = detail?.clobTokenIds[1];
+  const yesPrice = (yesTokenId ? liveTokenPrices[yesTokenId] : null) ?? (detail?.outcomePrices[0] ?? null);
+  const noPrice = (noTokenId ? liveTokenPrices[noTokenId] : null) ?? (detail?.outcomePrices[1] ?? null);
   const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
 
   function tapOdd(side: 'yes' | 'no') {
@@ -547,6 +562,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   redeemablePositions={redeemablePositions}
                   closedPositions={closedPositions}
                   openOrders={visibleOpenOrders}
+                  activityItems={activityItems}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}

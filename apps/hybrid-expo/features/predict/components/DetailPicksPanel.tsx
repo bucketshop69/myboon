@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
 import { PredictActivityDetailModal } from '@/features/predict/components/PredictActivityDetailModal';
 import { PredictActivityRow } from '@/features/predict/components/PredictActivityRow';
@@ -26,6 +26,7 @@ interface DetailPicksPanelProps {
   redeemablePositions: PortfolioPosition[];
   closedPositions: ClosedPortfolioPosition[];
   openOrders: OpenOrder[];
+  activityItems: ActivityItem[];
   cancellingOrderId?: string | null;
   polygonAddress?: string | null;
   onScopeChange: (scope: PredictActivityScope) => void;
@@ -38,6 +39,11 @@ interface DetailPicksPanelProps {
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function formatSignedUsd(value: number): string {
+  if (Math.abs(value) < 0.005) return '$0.00';
+  return `${value > 0 ? '+' : '-'}${formatUsd(Math.abs(value))}`;
 }
 
 function mergePositions(primary: PortfolioPosition[], fallback: PortfolioPosition[]): PortfolioPosition[] {
@@ -64,6 +70,7 @@ export function DetailPicksPanel({
   redeemablePositions,
   closedPositions,
   openOrders,
+  activityItems,
   cancellingOrderId,
   polygonAddress,
   onScopeChange,
@@ -94,6 +101,14 @@ export function DetailPicksPanel({
   );
   const worthNow = rows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
   const putIn = rows.reduce((sum, row) => sum + row.putIn, 0);
+  const totalPnl = rows.reduce((sum, row) => sum + (row.pnl ?? 0), 0);
+  const rowVolumeFallback = rows.reduce((sum, row) => sum + (row.source === 'order' || row.source === 'pending' ? 0 : row.putIn), 0);
+  const tradeVolume = activityItems.reduce((sum, activity) => {
+    if (!activityMatchesRows(activity, scope, marketSlug, rows, marketTokenIds, marketConditionIds)) return sum;
+    return sum + activityVolume(activity);
+  }, 0);
+  const userVolume = Math.max(tradeVolume, rowVolumeFallback);
+  const pnlStyle = totalPnl > 0.005 ? styles.summaryPositive : totalPnl < -0.005 ? styles.summaryNegative : styles.summaryFlat;
   const freshnessCopy = formatPredictFreshness(freshness);
 
   async function handleRedeem(item: PredictActivityItem) {
@@ -159,13 +174,21 @@ export function DetailPicksPanel({
       </View>
 
       <View style={styles.summary}>
-        <View>
-          <Text style={styles.summaryLabel}>{scope === 'market' ? 'In this market' : 'All picks'}</Text>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>{scope === 'market' ? 'Put in' : 'All picks'}</Text>
           <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : rows.length}</Text>
         </View>
-        <View>
-          <Text style={styles.summaryLabel}>Worth now</Text>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>Current value</Text>
           <Text style={styles.summaryValue}>{formatUsd(worthNow)}</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>Your volume</Text>
+          <Text style={styles.summaryValue}>{formatUsd(userVolume)}</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>Total PNL</Text>
+          <Text style={[styles.summaryValue, pnlStyle]}>{formatSignedUsd(totalPnl)}</Text>
         </View>
       </View>
 
@@ -217,6 +240,64 @@ export function DetailPicksPanel({
       />
     </View>
   );
+}
+
+function normalizeKey(value: string | null | undefined): string | null {
+  return value ? value.toLowerCase() : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseFloat(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function activityVolume(activity: ActivityItem): number {
+  if (activity.type?.toUpperCase() !== 'TRADE') return 0;
+  const usdcSize = finiteNumber(activity.usdcSize);
+  if (usdcSize !== null && usdcSize > 0) return Math.abs(usdcSize);
+  const size = finiteNumber(activity.size);
+  const price = finiteNumber(activity.price);
+  if (size !== null && price !== null) {
+    return Math.abs(size * price);
+  }
+  return 0;
+}
+
+function activityMatchesRows(
+  activity: ActivityItem,
+  scope: PredictActivityScope,
+  marketSlug: string,
+  rows: PredictActivityItem[],
+  marketTokenIds: readonly string[],
+  marketConditionIds: readonly string[],
+): boolean {
+  if (activity.type?.toUpperCase() !== 'TRADE') return false;
+  if (scope === 'all') return true;
+
+  const slugs = new Set<string>([marketSlug.toLowerCase()]);
+  const tokenIds = new Set(marketTokenIds.map((id) => id.toLowerCase()));
+  const conditionIds = new Set(marketConditionIds.map((id) => id.toLowerCase()));
+
+  for (const row of rows) {
+    const rowSlug = normalizeKey(row.marketSlug);
+    const rowEventSlug = normalizeKey(row.eventSlug);
+    const tokenId = normalizeKey(row.tokenId);
+    const conditionId = normalizeKey(row.conditionId);
+    if (rowSlug) slugs.add(rowSlug);
+    if (rowEventSlug) slugs.add(rowEventSlug);
+    if (tokenId) tokenIds.add(tokenId);
+    if (conditionId) conditionIds.add(conditionId);
+  }
+
+  const activitySlug = normalizeKey(activity.slug);
+  const activityEventSlug = normalizeKey(activity.eventSlug);
+  const activityAsset = normalizeKey(activity.asset);
+  const activityConditionId = normalizeKey(activity.conditionId);
+
+  return (!!activitySlug && slugs.has(activitySlug))
+    || (!!activityEventSlug && slugs.has(activityEventSlug))
+    || (!!activityAsset && tokenIds.has(activityAsset))
+    || (!!activityConditionId && conditionIds.has(activityConditionId));
 }
 
 const styles = StyleSheet.create({
@@ -289,6 +370,7 @@ const styles = StyleSheet.create({
   },
   summary: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     gap: 8,
     marginBottom: 8,
@@ -297,6 +379,10 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.background.surface,
     borderRadius: 12,
     padding: 10,
+  },
+  summaryItem: {
+    width: '47%',
+    minWidth: 120,
   },
   summaryLabel: {
     fontFamily: 'monospace',
@@ -310,6 +396,15 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 15,
     fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  summaryPositive: {
+    color: tokens.colors.viridian,
+  },
+  summaryNegative: {
+    color: tokens.colors.vermillion,
+  },
+  summaryFlat: {
     color: semantic.text.primary,
   },
   empty: {

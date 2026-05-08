@@ -323,6 +323,9 @@ function mapFeedItem(raw: unknown): FeedItem | null {
 
   if (type === 'binary') {
     const price = toNumber(item.price) ?? toNumber(item.yesPrice) ?? 0;
+    const clobTokenIds = Array.isArray(item.clobTokenIds)
+      ? (item.clobTokenIds as unknown[]).filter((t): t is string => typeof t === 'string')
+      : undefined;
     const result: FeedItemBinary = {
       type: 'binary',
       slug,
@@ -336,6 +339,7 @@ function mapFeedItem(raw: unknown): FeedItem | null {
       price,
       endDate,
       outcomes,
+      clobTokenIds,
     };
     return result;
   }
@@ -408,6 +412,27 @@ export async function fetchMarketPrice(slug: string): Promise<LivePrice> {
     noPrice: toNumber(p.noPrice),
     fetchedAt: typeof p.fetchedAt === 'string' ? p.fetchedAt : new Date().toISOString(),
   };
+}
+
+export async function fetchLivePrices(tokenIds: string[]): Promise<Record<string, number | null>> {
+  const uniqueTokenIds = [...new Set(tokenIds.map((tokenId) => tokenId.trim()).filter(Boolean))];
+  if (uniqueTokenIds.length === 0) return {};
+
+  const payload = await getJson(`/predict/live-prices?tokenIds=${encodeURIComponent(uniqueTokenIds.join(','))}`);
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid live prices response');
+  const p = payload as Record<string, unknown>;
+  const rows = Array.isArray(p.prices) ? p.prices : [];
+
+  const prices: Record<string, number | null> = {};
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const entry = row as Record<string, unknown>;
+    const tokenId = typeof entry.tokenId === 'string' ? entry.tokenId : null;
+    if (!tokenId) continue;
+    prices[tokenId] = toNumber(entry.price);
+  }
+
+  return prices;
 }
 
 export interface PlaceBetParams {
@@ -652,6 +677,10 @@ export interface ActivityItem {
   size: number;
   usdcSize: number;
   price: number;
+  asset?: string;
+  conditionId?: string;
+  eventSlug?: string;
+  outcomeIndex?: number;
   title: string;
   slug: string;
   outcome: string;

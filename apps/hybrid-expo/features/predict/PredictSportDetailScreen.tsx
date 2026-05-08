@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, type Href } from 'expo-router';
 import {
   ActivityIndicator,
@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
-import { cancelOrder, fetchClobBalance, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
-import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import { cancelOrder, fetchClobBalance, fetchLivePrices, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
+import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -121,6 +121,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [liveTokenPrices, setLiveTokenPrices] = useState<Record<string, number | null>>({});
 
   // Chart data
   const [interval, setInterval] = useState<Interval>('1h');
@@ -143,6 +144,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
   const [closedPositions, setClosedPositions] = useState<ClosedPortfolioPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
   const [pendingOpenOrders, setPendingOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
   const [picksFreshness, setPicksFreshness] = useState<PredictDataFreshness>({
@@ -172,8 +174,21 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // Live badge pulse
   const livePulse = useRef(new Animated.Value(1)).current;
 
-  const sortedOutcomes = detail ? sortSportOutcomes(detail.outcomes) : [];
+  const baseSortedOutcomes = useMemo(() => (detail ? sortSportOutcomes(detail.outcomes) : []), [detail]);
+  const sortedOutcomes = useMemo(
+    () =>
+      baseSortedOutcomes.map((outcome) => {
+        const tokenId = outcome.clobTokenIds[0];
+        const livePrice = tokenId ? liveTokenPrices[tokenId] : null;
+        return livePrice !== null && livePrice !== undefined ? { ...outcome, price: livePrice } : outcome;
+      }),
+    [baseSortedOutcomes, liveTokenPrices],
+  );
   const leadPrice = sortedOutcomes[0]?.price ?? null;
+  const liveTokenKey = detail?.outcomes
+    .map((outcome) => outcome.clobTokenIds[0])
+    .filter(Boolean)
+    .join(',') ?? '';
 
   async function loadDetail() {
     setLoading(true);
@@ -227,6 +242,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       setRedeemablePositions([]);
       setClosedPositions([]);
       setOpenOrders([]);
+      setActivityItems([]);
       setPendingOpenOrders([]);
       setPicksFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
       return;
@@ -249,6 +265,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         setAllPositions(portfolio.positions ?? []);
         setRedeemablePositions(portfolio.redeemablePositions ?? []);
         setClosedPositions(portfolio.closedPositions ?? []);
+        setActivityItems(portfolio.activity ?? []);
       }
       if (orders) setOpenOrders(orders);
       setPendingOpenOrders((pending) =>
@@ -290,6 +307,26 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   }
 
   useEffect(() => { void loadDetail(); }, [slug, sport]);
+
+  useEffect(() => {
+    const tokenIds = liveTokenKey.split(',').filter(Boolean);
+    if (tokenIds.length === 0) return;
+    let cancelled = false;
+
+    async function refreshPrices() {
+      try {
+        const prices = await fetchLivePrices(tokenIds);
+        if (!cancelled) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
+      } catch { /* silent */ }
+    }
+
+    void refreshPrices();
+    const timer = globalThis.setInterval(() => { void refreshPrices(); }, 5_000);
+    return () => {
+      cancelled = true;
+      globalThis.clearInterval(timer);
+    };
+  }, [liveTokenKey]);
 
   useEffect(() => {
     if (sortedOutcomes.length > 0) void loadHistory(sortedOutcomes, interval);
@@ -618,6 +655,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   redeemablePositions={redeemablePositions}
                   closedPositions={closedPositions}
                   openOrders={visibleOpenOrders}
+                  activityItems={activityItems}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}

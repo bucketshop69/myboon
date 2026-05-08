@@ -16,7 +16,7 @@ import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
-import { fetchPredictFeed } from '@/features/predict/predict.api';
+import { fetchLivePrices, fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
@@ -65,6 +65,54 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
 function getCategoryColor(category: string): { bg: string; text: string } {
   const key = category.toLowerCase();
   return CATEGORY_COLORS[key] ?? { bg: semantic.predict.badgeGeoBg as string, text: semantic.text.accentDim as string };
+}
+
+function collectFeedTokenIds(items: FeedItem[]): string[] {
+  const tokenIds = new Set<string>();
+  for (const item of items) {
+    if (item.type === 'match') {
+      for (const outcome of item.outcomes) {
+        const tokenId = outcome.clobTokenIds?.[0];
+        if (tokenId) tokenIds.add(tokenId);
+      }
+    } else {
+      for (const tokenId of item.clobTokenIds ?? []) tokenIds.add(tokenId);
+      for (const outcome of item.outcomes) {
+        for (const tokenId of outcome.clobTokenIds ?? []) tokenIds.add(tokenId);
+      }
+    }
+  }
+  return [...tokenIds];
+}
+
+function applyLivePricesToFeed(feed: FeedResponse, prices: Record<string, number | null>): FeedResponse {
+  let changed = false;
+  const items = feed.items.map((item): FeedItem => {
+    if (item.type === 'match') {
+      let itemChanged = false;
+      const outcomes = item.outcomes.map((outcome) => {
+        const tokenId = outcome.clobTokenIds?.[0];
+        const livePrice = tokenId ? prices[tokenId] : null;
+        if (livePrice === null || livePrice === undefined || livePrice === outcome.price) return outcome;
+        itemChanged = true;
+        return { ...outcome, price: livePrice };
+      });
+      if (!itemChanged) return item;
+      changed = true;
+      return { ...item, outcomes };
+    }
+
+    const yesToken = item.clobTokenIds?.[0] ?? item.outcomes[0]?.clobTokenIds?.[0];
+    const noToken = item.clobTokenIds?.[1] ?? item.outcomes[1]?.clobTokenIds?.[0];
+    const yesPrice = yesToken ? prices[yesToken] : null;
+    const noPrice = noToken ? prices[noToken] : null;
+    const nextPrice = yesPrice ?? (noPrice !== null && noPrice !== undefined ? 1 - noPrice : null);
+    if (nextPrice === null || nextPrice === undefined || nextPrice === item.price) return item;
+    changed = true;
+    return { ...item, price: nextPrice };
+  });
+
+  return changed ? { ...feed, items } : feed;
 }
 
 // ─── sub-components ──────────────────────────────────────────────────────────
@@ -429,6 +477,47 @@ export default function PredictScreen() {
       .slice(0, 4);
   }, [feedData]);
 
+  const isAllSelected = activeCategory === 'All';
+
+  const renderedItems = useMemo<FeedItem[]>(() => {
+    if (!feedData) return [];
+    if (!isAllSelected) return filteredItems;
+    return [...liveItems, ...eplUpcoming, ...iplUpcoming, ...binaryItems];
+  }, [binaryItems, eplUpcoming, feedData, filteredItems, iplUpcoming, isAllSelected, liveItems]);
+
+  const visibleTokenIds = useMemo(() => collectFeedTokenIds(renderedItems), [renderedItems]);
+  const visibleTokenKey = visibleTokenIds.join(',');
+  const hasFeedData = feedData !== null;
+
+  useEffect(() => {
+    const tokenIds = visibleTokenKey.split(',').filter(Boolean);
+    if (!hasFeedData || tokenIds.length === 0) return;
+    let cancelled = false;
+    let inFlight = false;
+
+    async function refreshLivePrices() {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const prices = await fetchLivePrices(tokenIds);
+        if (!cancelled) {
+          setFeedData((current) => current ? applyLivePricesToFeed(current, prices) : current);
+        }
+      } catch {
+        // Keep the existing feed visible when live polling misses.
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    void refreshLivePrices();
+    const timer = globalThis.setInterval(() => { void refreshLivePrices(); }, 5_000);
+    return () => {
+      cancelled = true;
+      globalThis.clearInterval(timer);
+    };
+  }, [hasFeedData, visibleTokenKey]);
+
   function navigateBinary(slug: string) {
     router.push({ pathname: '/predict-market/[slug]', params: { slug } });
   }
@@ -437,7 +526,6 @@ export default function PredictScreen() {
     router.push({ pathname: '/predict-sport/[sport]/[slug]', params: { sport, slug } });
   }
 
-  const isAllSelected = activeCategory === 'All';
   const featuredCardWidth = Math.min(320, Math.max(286, width - 52));
 
   function renderFeedItem(item: FeedItem) {

@@ -72,6 +72,10 @@ export default function PredictProfileScreen() {
   const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const portfolioRefreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
+  const ordersRefreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
+  const portfolioRefreshInFlight = useRef(false);
+  const ordersRefreshInFlight = useRef(false);
 
   const isEnabled = poly.isReady && poly.polygonAddress;
 
@@ -123,6 +127,50 @@ export default function PredictProfileScreen() {
       error: failed ? 'Could not refresh' : null,
     });
   }, [poly.polygonAddress, poly.tradingAddress]);
+
+  const refreshPortfolioQuietly = useCallback(async () => {
+    if (!poly.polygonAddress) return;
+    if (portfolioRefreshInFlight.current) return;
+    portfolioRefreshInFlight.current = true;
+    try {
+      const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
+      const [portfolioResult, balanceResult] = await Promise.allSettled([
+        fetchPortfolio(gammaAddr),
+        fetchClobBalance(poly.polygonAddress),
+      ]);
+      const portfolioData = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
+      const balanceData = balanceResult.status === 'fulfilled' ? balanceResult.value : null;
+
+      if (portfolioData) setPortfolio(portfolioData);
+      if (balanceData) {
+        setCashBalance(balanceData.balance);
+        setSessionExpired(false);
+      }
+
+      const failed = portfolioResult.status === 'rejected' || balanceResult.status === 'rejected';
+      setActivityFreshness((prev) => ({
+        lastUpdatedAt: failed ? prev.lastUpdatedAt : Date.now(),
+        loading: false,
+        stale: failed,
+        error: failed ? 'Could not refresh' : null,
+      }));
+    } finally {
+      portfolioRefreshInFlight.current = false;
+    }
+  }, [poly.polygonAddress, poly.tradingAddress]);
+
+  const refreshOpenOrdersQuietly = useCallback(async () => {
+    if (!poly.polygonAddress) return;
+    if (ordersRefreshInFlight.current) return;
+    ordersRefreshInFlight.current = true;
+    try {
+      setOpenOrders(await fetchOpenOrders(poly.polygonAddress));
+    } catch {
+      setActivityFreshness((prev) => ({ ...prev, stale: true, error: 'Could not refresh' }));
+    } finally {
+      ordersRefreshInFlight.current = false;
+    }
+  }, [poly.polygonAddress]);
 
   const handleConfirmCashOut = useCallback(async (size: number) => {
     const position = cashOutPosition;
@@ -192,14 +240,42 @@ export default function PredictProfileScreen() {
   const navigation = useNavigation();
   const hasMounted = useRef(false);
   useEffect(() => {
+    function stopTimers() {
+      if (portfolioRefreshTimer.current) {
+        globalThis.clearInterval(portfolioRefreshTimer.current);
+        portfolioRefreshTimer.current = null;
+      }
+      if (ordersRefreshTimer.current) {
+        globalThis.clearInterval(ordersRefreshTimer.current);
+        ordersRefreshTimer.current = null;
+      }
+    }
+
+    function startTimers() {
+      stopTimers();
+      portfolioRefreshTimer.current = globalThis.setInterval(() => {
+        void refreshPortfolioQuietly();
+      }, 15_000);
+      ordersRefreshTimer.current = globalThis.setInterval(() => {
+        void refreshOpenOrdersQuietly();
+      }, 7_000);
+    }
+
     const unsubscribe = navigation.addListener('focus', () => {
       if (hasMounted.current && isEnabled && poly.polygonAddress) {
         void loadPortfolio();
       }
       hasMounted.current = true;
+      if (isEnabled && poly.polygonAddress) startTimers();
     });
-    return unsubscribe;
-  }, [navigation, isEnabled, poly.polygonAddress, loadPortfolio]);
+    const unsubscribeBlur = navigation.addListener('blur', stopTimers);
+    if (isEnabled && poly.polygonAddress && navigation.isFocused()) startTimers();
+    return () => {
+      stopTimers();
+      unsubscribe();
+      unsubscribeBlur();
+    };
+  }, [navigation, isEnabled, poly.polygonAddress, loadPortfolio, refreshOpenOrdersQuietly, refreshPortfolioQuietly]);
 
   const connectPredictAccount = useCallback(async () => {
     setBusy(true);
