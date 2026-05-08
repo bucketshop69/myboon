@@ -48,9 +48,10 @@ export function PredictPositionRow({
       <View style={styles.rowMain}>
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>{outcome}</Text>
-          <Text style={styles.rowMeta} numberOfLines={1}>
-            {showMarketTitle ? `${formatPositionTitle(position)} · ${priceLine}` : priceLine}
-          </Text>
+          <Text style={styles.rowMeta} numberOfLines={1}>{priceLine}</Text>
+          {showMarketTitle && (
+            <Text style={styles.rowMarket} numberOfLines={1}>{formatPositionTitle(position)}</Text>
+          )}
           <Text style={[styles.rowPnl, pnlStyle]}>{truncateSignedUsd(pnl)}</Text>
         </View>
         <View style={styles.rowActions}>
@@ -121,6 +122,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 11,
     color: semantic.text.dim,
+  },
+  rowMarket: {
+    marginTop: 2,
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: semantic.text.faint,
   },
   rowPnl: {
     marginTop: 4,
