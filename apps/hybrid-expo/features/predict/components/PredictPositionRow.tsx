@@ -7,6 +7,7 @@ import { semantic, tokens } from '@/theme';
 interface PredictPositionRowProps {
   position: PortfolioPosition;
   showMarketTitle?: boolean;
+  onPress?: () => void;
   onCashOut: () => void;
   onBackMore: () => void;
 }
@@ -31,6 +32,7 @@ function formatPositionTitle(position: PortfolioPosition): string {
 export function PredictPositionRow({
   position,
   showMarketTitle = true,
+  onPress,
   onCashOut,
   onBackMore,
 }: PredictPositionRowProps) {
@@ -42,7 +44,7 @@ export function PredictPositionRow({
   const pnlStyle = pnlState === 'positive' ? styles.pnlPositive : pnlState === 'negative' ? styles.pnlNegative : styles.pnlFlat;
 
   return (
-    <View style={[styles.rowCard, styles.activeCard, styles.activeStrip]}>
+    <Pressable style={[styles.rowCard, styles.activeCard, styles.activeStrip]} onPress={onPress}>
       <View style={styles.rowMain}>
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>{outcome}</Text>
@@ -57,7 +59,10 @@ export function PredictPositionRow({
               styles.cashAction,
               pnlState === 'positive' ? styles.cashActionPositive : pnlState === 'negative' ? styles.cashActionNegative : styles.cashActionFlat,
             ]}
-            onPress={onCashOut}
+            onPress={(event) => {
+              event.stopPropagation();
+              onCashOut();
+            }}
           >
             <Text style={[
               styles.cashActionText,
@@ -66,12 +71,18 @@ export function PredictPositionRow({
               {truncateUsd(position.currentValue ?? 0)} cash out now
             </Text>
           </Pressable>
-          <Pressable style={styles.backAction} onPress={onBackMore}>
+          <Pressable
+            style={styles.backAction}
+            onPress={(event) => {
+              event.stopPropagation();
+              onBackMore();
+            }}
+          >
             <Text style={styles.backActionText}>Back more</Text>
           </Pressable>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

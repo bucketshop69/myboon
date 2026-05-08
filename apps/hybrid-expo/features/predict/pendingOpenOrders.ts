@@ -1,4 +1,5 @@
 import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import type { PredictActivityItem } from '@/features/predict/predictActivityState';
 
 interface PendingOpenOrderParams {
   id?: string;
@@ -50,4 +51,28 @@ export function mergeOpenOrders(pending: OpenOrder[], fetched: OpenOrder[]): Ope
     ),
     ...fetched,
   ];
+}
+
+export interface PendingPredictAction {
+  id: string;
+  type: 'buy' | 'sell' | 'cancel' | 'redeem';
+  tokenId: string | null;
+  orderId?: string;
+  marketSlug: string;
+  outcome: string;
+  amount: number;
+  shares: number | null;
+  createdAt: number;
+}
+
+export function reconcilePendingActions(
+  pending: PendingPredictAction[],
+  remoteItems: PredictActivityItem[],
+): PendingPredictAction[] {
+  return pending.filter((action) => {
+    return !remoteItems.some((item) =>
+      item.orderId === action.orderId
+      || (action.tokenId !== null && item.tokenId === action.tokenId)
+    );
+  });
 }

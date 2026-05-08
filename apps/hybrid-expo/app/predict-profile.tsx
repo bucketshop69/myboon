@@ -23,6 +23,7 @@ import { useDrawer } from '@/components/drawer/DrawerProvider';
 import { EmptyPortfolio } from '@/features/predict/profile/EmptyPortfolio';
 import { YourPicksSection } from '@/features/predict/profile/YourPicksSection';
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
+import type { PredictDataFreshness } from '@/features/predict/predictActivityState';
 import { semantic, tokens } from '@/theme';
 
 function truncate(addr: string, start = 6, end = 4): string {
@@ -60,6 +61,12 @@ export default function PredictProfileScreen() {
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [activityFreshness, setActivityFreshness] = useState<PredictDataFreshness>({
+    lastUpdatedAt: null,
+    loading: false,
+    stale: false,
+    error: null,
+  });
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -87,14 +94,18 @@ export default function PredictProfileScreen() {
     if (!poly.polygonAddress) return;
     // Gamma data-api tracks by trading wallet address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
+    setActivityFreshness((prev) => ({ ...prev, loading: true, error: null }));
     const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
-    const [portfolioData, balanceData, ordersData] = await Promise.all([
-      fetchPortfolio(gammaAddr).catch(() => null),
+    const [portfolioResult, balanceResult, ordersResult] = await Promise.allSettled([
+      fetchPortfolio(gammaAddr),
       fetchClobBalance(poly.polygonAddress),
-      fetchOpenOrders(poly.polygonAddress).catch(() => []),
+      fetchOpenOrders(poly.polygonAddress),
     ]);
+    const portfolioData = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
+    const balanceData = balanceResult.status === 'fulfilled' ? balanceResult.value : null;
+    const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : null;
     if (portfolioData) setPortfolio(portfolioData);
-    setOpenOrders(ordersData);
+    if (ordersData) setOpenOrders(ordersData);
     if (balanceData) {
       setCashBalance(balanceData.balance);
       setSessionExpired(false);
@@ -102,6 +113,13 @@ export default function PredictProfileScreen() {
       setCashBalance(null);
       setSessionExpired(true);
     }
+    const failed = portfolioResult.status === 'rejected' || balanceResult.status === 'rejected' || ordersResult.status === 'rejected';
+    setActivityFreshness({
+      lastUpdatedAt: Date.now(),
+      loading: false,
+      stale: failed,
+      error: failed ? 'Could not refresh' : null,
+    });
   }, [poly.polygonAddress, poly.tradingAddress]);
 
   // Fetch portfolio when enabled
@@ -383,6 +401,7 @@ export default function PredictProfileScreen() {
               closedPositions={closedPositions}
               polygonAddress={poly.polygonAddress}
               cancellingOrderId={cancellingId}
+              freshness={{ ...activityFreshness, loading: portfolioLoading || refreshing }}
               onCashOutPress={handleCashOut}
               onMarketPress={handleOpenMarket}
               onCancelOrder={(orderId) => void handleCancel(orderId)}

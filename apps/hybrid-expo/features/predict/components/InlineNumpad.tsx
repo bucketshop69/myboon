@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import type { PredictOrderGuardrail } from '@/features/predict/predictActivityState';
 import { semantic, tokens } from '@/theme';
 
 interface InlineNumpadProps {
@@ -22,6 +23,7 @@ interface InlineNumpadProps {
   submitting?: boolean;
   /** Whether the confirm button should be disabled (e.g. wallet not ready) */
   disabled?: boolean;
+  guardrail?: PredictOrderGuardrail | null;
 }
 
 const QUICK_AMOUNTS = ['10', '25', '50'] as const;
@@ -59,6 +61,7 @@ export function InlineNumpad({
   onConfirm,
   submitting = false,
   disabled = false,
+  guardrail = null,
 }: InlineNumpadProps) {
   const heightAnim = useRef(new Animated.Value(0)).current;
 
@@ -77,7 +80,13 @@ export function InlineNumpad({
   const outcomeLabel = pickLabel ?? (side === 'yes' ? 'YES' : 'NO');
   const isYes = side === 'yes';
   const backLabel = confirmLabel ?? `Back ${outcomeLabel} with $${amountNum.toFixed(amountNum % 1 === 0 ? 0 : 2)}`;
-  const confirmDisabled = disabled || submitting || amountNum <= 0 || exceedsCash;
+  const confirmDisabled = disabled || submitting || amountNum <= 0 || exceedsCash || guardrail?.blocking === true;
+  const feedbackText = guardrail?.message ?? (exceedsCash ? 'Not enough cash' : 'If you are wrong, you lose');
+  const feedbackValue = guardrail
+    ? guardrail.title
+    : exceedsCash
+      ? `Cash ${truncateUsd(availableCash)}`
+      : `$${amountNum.toFixed(2)}`;
 
   return (
     <Animated.View style={[styles.container, { maxHeight: heightAnim }]}>
@@ -126,11 +135,11 @@ export function InlineNumpad({
           <Text style={styles.payoutValue}>${payout.toFixed(2)}</Text>
         </View>
         <View style={styles.downsideRow}>
-          <Text style={[styles.downsideLabel, exceedsCash && styles.errorText]}>
-            {exceedsCash ? 'Not enough cash' : 'If you are wrong, you lose'}
+          <Text style={[styles.downsideLabel, (exceedsCash || guardrail?.blocking) && styles.errorText, guardrail && !guardrail.blocking && styles.noticeText]}>
+            {feedbackText}
           </Text>
-          <Text style={[styles.downsideValue, exceedsCash && styles.errorText]}>
-            {exceedsCash ? `Cash ${truncateUsd(availableCash)}` : `$${amountNum.toFixed(2)}`}
+          <Text style={[styles.downsideValue, (exceedsCash || guardrail?.blocking) && styles.errorText, guardrail && !guardrail.blocking && styles.noticeText]}>
+            {feedbackValue}
           </Text>
         </View>
 
@@ -140,7 +149,7 @@ export function InlineNumpad({
           disabled={confirmDisabled}
           onPress={onConfirm}>
           <Text style={styles.confirmText}>
-            {submitting ? 'Placing order\u2026' : exceedsCash ? 'Not enough cash' : backLabel}
+            {submitting ? 'Placing order\u2026' : guardrail?.blocking ? guardrail.title : exceedsCash ? 'Not enough cash' : backLabel}
           </Text>
         </Pressable>
       </View>
@@ -258,6 +267,9 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: tokens.colors.vermillion,
+  },
+  noticeText: {
+    color: tokens.colors.primary,
   },
   confirmBtn: {
     height: 44,

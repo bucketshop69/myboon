@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { cancelOrder, fetchClobBalance, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
-import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -29,6 +29,7 @@ import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfir
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
+import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -133,15 +134,23 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // Numpad state
   const [numpadOpen, setNumpadOpen] = useState(false);
   const [selectedOutcomeIdx, setSelectedOutcomeIdx] = useState<number | null>(null);
+  const [selectedQuotePrice, setSelectedQuotePrice] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
   const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
   const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
+  const [closedPositions, setClosedPositions] = useState<ClosedPortfolioPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [pendingOpenOrders, setPendingOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
+  const [picksFreshness, setPicksFreshness] = useState<PredictDataFreshness>({
+    lastUpdatedAt: null,
+    loading: false,
+    stale: false,
+    error: null,
+  });
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
@@ -216,24 +225,48 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       setMarketPositions([]);
       setAllPositions([]);
       setRedeemablePositions([]);
+      setClosedPositions([]);
       setOpenOrders([]);
       setPendingOpenOrders([]);
+      setPicksFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
       return;
     }
     setPicksLoading(true);
+    setPicksFreshness((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const [market, portfolio, orders] = await Promise.all([
-        fetchMarketPositions(gammaAddr, slug).catch(() => []),
-        fetchPortfolio(gammaAddr).catch(() => null),
-        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress).catch(() => []) : Promise.resolve([]),
+      const [marketResult, portfolioResult, ordersResult] = await Promise.allSettled([
+        fetchMarketPositions(gammaAddr, slug),
+        fetchPortfolio(gammaAddr),
+        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress) : Promise.resolve([]),
       ]);
-      setMarketPositions(market);
-      setAllPositions(portfolio?.positions ?? []);
-      setRedeemablePositions(portfolio?.redeemablePositions ?? []);
-      setOpenOrders(orders);
+      const now = Date.now();
+      const market = marketResult.status === 'fulfilled' ? marketResult.value : null;
+      const portfolio = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
+      const orders = ordersResult.status === 'fulfilled' ? ordersResult.value : null;
+
+      if (market) setMarketPositions(market);
+      if (portfolio) {
+        setAllPositions(portfolio.positions ?? []);
+        setRedeemablePositions(portfolio.redeemablePositions ?? []);
+        setClosedPositions(portfolio.closedPositions ?? []);
+      }
+      if (orders) setOpenOrders(orders);
       setPendingOpenOrders((pending) =>
-        prunePendingOpenOrders(pending, orders, [...market, ...(portfolio?.positions ?? [])])
+        prunePendingOpenOrders(pending, orders ?? [], [
+          ...(market ?? marketPositions),
+          ...(portfolio?.positions ?? allPositions),
+          ...(portfolio?.redeemablePositions ?? redeemablePositions),
+        ])
       );
+      const failed = marketResult.status === 'rejected' || portfolioResult.status === 'rejected' || ordersResult.status === 'rejected';
+      setPicksFreshness({
+        lastUpdatedAt: now,
+        loading: false,
+        stale: failed,
+        error: failed ? 'Could not refresh' : null,
+      });
+    } catch {
+      setPicksFreshness((prev) => ({ ...prev, loading: false, stale: true, error: 'Could not refresh' }));
     } finally {
       setPicksLoading(false);
     }
@@ -246,7 +279,11 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       const result = await cancelOrder(poly.polygonAddress, orderId);
       if (result.ok) {
         setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+      } else {
+        Alert.alert('Cancel failed', result.error ?? 'Try again in a moment.');
       }
+    } catch {
+      Alert.alert('Cancel failed', 'Network error');
     } finally {
       setCancellingOrderId(null);
     }
@@ -319,6 +356,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       return;
     }
     setSelectedOutcomeIdx(outcomeIdx);
+    setSelectedQuotePrice(sortedOutcomes[outcomeIdx]?.price ?? null);
     setNumpadAmount('50');
     setNumpadOpen(true);
   }
@@ -342,13 +380,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   function collapseNumpad() {
     setNumpadOpen(false);
     setSelectedOutcomeIdx(null);
+    setSelectedQuotePrice(null);
   }
 
   async function submitOrder() {
     if (!detail || selectedOutcomeIdx === null || submitting) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
-    if (cashBalance !== null && amount > cashBalance + 0.000001) return;
 
     const outcome = sortedOutcomes[selectedOutcomeIdx];
     if (!outcome) return;
@@ -362,6 +400,19 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     const price = outcome.price;
     if (!price || price <= 0 || price >= 1) {
       Alert.alert('Error', 'Invalid price');
+      return;
+    }
+    const marketActive = detail.active !== false && detail.status !== 'closed';
+    const guardrail = getPredictOrderGuardrail({
+      amount,
+      availableCash: cashBalance,
+      selectedPrice: selectedQuotePrice,
+      latestPrice: price,
+      marketActive,
+      submitting,
+    });
+    if (guardrail?.blocking) {
+      Alert.alert(guardrail.title, guardrail.message);
       return;
     }
 
@@ -401,6 +452,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         outcome: sportOutcomeLabel(outcome),
       });
       setPendingOpenOrders((prev) => [pendingOrder, ...prev.filter((order) => order.id !== pendingOrder.id)]);
+      setCashBalance((prev) => prev === null ? prev : Math.max(prev - amount, 0));
       collapseNumpad();
       setActiveView('picks');
       setPickScope('market');
@@ -426,7 +478,20 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const selectedOutcome = selectedOutcomeIdx !== null ? sortedOutcomes[selectedOutcomeIdx] : null;
   const selectedOutcomeLabel = selectedOutcome ? sportOutcomeLabel(selectedOutcome) : undefined;
   const marketTokenIds = sortedOutcomes.flatMap((outcome) => outcome.clobTokenIds);
+  const marketConditionIds = sortedOutcomes.map((outcome) => outcome.conditionId).filter((id): id is string => !!id);
   const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
+  const amountNum = parseFloat(numpadAmount) || 0;
+  const marketClosed = detail ? detail.active === false || detail.status === 'closed' : false;
+  const orderGuardrail = selectedOutcome
+    ? getPredictOrderGuardrail({
+        amount: amountNum,
+        availableCash: cashBalance,
+        selectedPrice: selectedQuotePrice,
+        latestPrice: selectedOutcome.price,
+        marketActive: !marketClosed,
+        submitting,
+      })
+    : null;
   const displayTitle = detail
     ? formatPredictTitle({
         title: detail.title,
@@ -510,10 +575,13 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   scope={pickScope}
                   marketSlug={slug}
                   marketTokenIds={marketTokenIds}
+                  marketConditionIds={marketConditionIds}
                   loading={picksLoading}
+                  freshness={{ ...picksFreshness, loading: picksLoading, syncing: pendingOpenOrders.length > 0 }}
                   marketPositions={marketPositions}
                   allPositions={allPositions}
                   redeemablePositions={redeemablePositions}
+                  closedPositions={closedPositions}
                   openOrders={visibleOpenOrders}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
@@ -522,6 +590,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   onBackMore={backMorePosition}
                   onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
                   onRedeemed={() => void loadPicks()}
+                  onRetry={() => void loadPicks()}
                 />
               ) : activeView === 'stats' ? (
                 <View style={styles.statsView}>
@@ -589,6 +658,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                 <OddsFormatToggle format={format} onFormatChange={setFormat} />
                 */}
               </View>
+              {marketClosed && (
+                <Text style={styles.marketClosedText}>This market is closed and no longer accepting new picks.</Text>
+              )}
               {sortedOutcomes.map((outcome, i) => {
                 const label = sportOutcomeLabel(outcome);
                 const isSelected = selectedOutcomeIdx === i;
@@ -606,6 +678,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                           tone === 'lead' ? styles.selBtnLead : tone === 'draw' ? styles.selBtnDraw : styles.selBtnTrail,
                           isSelected && (tone === 'lead' ? styles.selBtnLeadSelected : tone === 'draw' ? styles.selBtnDrawSelected : styles.selBtnTrailSelected),
                         ]}
+                        disabled={marketClosed}
                         onPress={() => tapOdd(i)}>
                         <Text style={[
                           styles.selBtnPct,
@@ -632,6 +705,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               onConfirm={() => { void submitOrder(); }}
               submitting={submitting}
               disabled={!poly.isReady}
+              guardrail={orderGuardrail}
             />
           </Animated.View>
         </View>
@@ -974,6 +1048,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: semantic.text.primary,
+  },
+  marketClosedText: {
+    marginTop: 4,
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: tokens.colors.vermillion,
   },
   selRow: {
     flexDirection: 'row',

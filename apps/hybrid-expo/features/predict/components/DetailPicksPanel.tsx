@@ -1,82 +1,68 @@
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
-import { portfolioPositionCost } from '@/features/predict/formatPredictMoney';
-import { PredictPositionRow } from '@/features/predict/components/PredictPositionRow';
+import { PredictActivityDetailModal } from '@/features/predict/components/PredictActivityDetailModal';
+import { PredictActivityRow } from '@/features/predict/components/PredictActivityRow';
+import {
+  buildPredictActivityItems,
+  filterActivityByScope,
+  formatPredictFreshness,
+  type PredictActivityItem,
+  type PredictActivityScope,
+  type PredictDataFreshness,
+} from '@/features/predict/predictActivityState';
 import { semantic, tokens } from '@/theme';
 
-type DetailPickScope = 'market' | 'all';
-
 interface DetailPicksPanelProps {
-  scope: DetailPickScope;
+  scope: PredictActivityScope;
   marketSlug: string;
   loading: boolean;
+  freshness: PredictDataFreshness;
   marketTokenIds?: string[];
+  marketConditionIds?: string[];
   marketPositions: PortfolioPosition[];
   allPositions: PortfolioPosition[];
   redeemablePositions: PortfolioPosition[];
+  closedPositions: ClosedPortfolioPosition[];
   openOrders: OpenOrder[];
   cancellingOrderId?: string | null;
   polygonAddress?: string | null;
-  onScopeChange: (scope: DetailPickScope) => void;
+  onScopeChange: (scope: PredictActivityScope) => void;
   onBackMore: (position: PortfolioPosition) => void;
   onCashOut: (position: PortfolioPosition) => void;
   onCancelOrder?: (orderId: string) => void;
   onRedeemed?: () => void;
+  onRetry?: () => void;
 }
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function formatChance(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '--';
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatOutcome(label: string | null | undefined): string {
-  if (!label) return 'Yes';
-  return label.toLowerCase().includes('draw') ? 'Draw' : label;
-}
-
-function pickId(prefix: string, position: PortfolioPosition, index: number): string {
-  return `${prefix}-${position.conditionId}-${position.outcomeIndex}-${index}`;
-}
-
-function orderCost(order: OpenOrder): number {
-  const size = Number.parseFloat(order.original_size) || 0;
-  const price = Number.parseFloat(order.price) || 0;
-  return size * price;
-}
-
-function positionCost(position: PortfolioPosition): number {
-  return portfolioPositionCost(position);
-}
-
-function isSameMarket(position: PortfolioPosition, marketSlug: string): boolean {
-  return position.slug === marketSlug || position.eventSlug === marketSlug;
-}
-
-function isMarketOrder(order: OpenOrder, marketSlug: string, marketTokenIds: readonly string[]): boolean {
-  const orderAsset = order.asset_id?.toLowerCase();
-  if (orderAsset && marketTokenIds.some((id) => id.toLowerCase() === orderAsset)) return true;
-
-  const market = order.market?.toLowerCase() ?? '';
-  const slug = marketSlug.toLowerCase();
-  if (!market) return false;
-  return market.includes(slug) || slug.includes(market);
+function mergePositions(primary: PortfolioPosition[], fallback: PortfolioPosition[]): PortfolioPosition[] {
+  const seen = new Set<string>();
+  const merged: PortfolioPosition[] = [];
+  for (const position of [...primary, ...fallback]) {
+    const key = `${position.asset}-${position.conditionId}-${position.outcomeIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(position);
+  }
+  return merged;
 }
 
 export function DetailPicksPanel({
   scope,
   marketSlug,
   loading,
+  freshness,
   marketTokenIds = [],
+  marketConditionIds = [],
   marketPositions,
   allPositions,
   redeemablePositions,
+  closedPositions,
   openOrders,
   cancellingOrderId,
   polygonAddress,
@@ -85,33 +71,70 @@ export function DetailPicksPanel({
   onCashOut,
   onCancelOrder,
   onRedeemed,
+  onRetry,
 }: DetailPicksPanelProps) {
-  const marketRedeemables = redeemablePositions.filter((position) => isSameMarket(position, marketSlug));
-  const marketOrders = openOrders.filter((order) => isMarketOrder(order, marketSlug, marketTokenIds));
-  const rows = scope === 'market'
-    ? [
-        ...marketPositions.map((position, index) => ({ kind: 'position' as const, id: pickId('market', position, index), position })),
-        ...marketOrders.map((order) => ({ kind: 'order' as const, id: `market-order-${order.id}`, order })),
-        ...marketRedeemables.map((position, index) => ({ kind: 'redeemable' as const, id: pickId('market-ready', position, index), position })),
-      ]
-    : [
-        ...redeemablePositions.map((position, index) => ({ kind: 'redeemable' as const, id: pickId('ready', position, index), position })),
-        ...allPositions.map((position, index) => ({ kind: 'position' as const, id: pickId('all', position, index), position })),
-        ...openOrders.map((order) => ({ kind: 'order' as const, id: `order-${order.id}`, order })),
-      ];
-  const worthNow = rows.reduce((sum, row) => {
-    if (row.kind === 'order') return sum;
-    return sum + (row.position.currentValue ?? 0);
-  }, 0);
-  const putIn = rows.reduce((sum, row) => {
-    if (row.kind === 'order') return sum + orderCost(row.order);
-    return sum + positionCost(row.position);
-  }, 0);
+  const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const allItems = useMemo(
+    () => buildPredictActivityItems({
+      positions: mergePositions(allPositions, marketPositions),
+      redeemablePositions,
+      openOrders,
+      closedPositions,
+    }),
+    [allPositions, marketPositions, redeemablePositions, openOrders, closedPositions],
+  );
+  const rows = useMemo(
+    () => filterActivityByScope(allItems, scope, {
+      slug: marketSlug,
+      tokenIds: marketTokenIds,
+      conditionIds: marketConditionIds,
+    }),
+    [allItems, scope, marketSlug, marketTokenIds, marketConditionIds],
+  );
+  const worthNow = rows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
+  const putIn = rows.reduce((sum, row) => sum + row.putIn, 0);
+  const freshnessCopy = formatPredictFreshness(freshness);
+
+  async function handleRedeem(item: PredictActivityItem) {
+    if (!polygonAddress || !item.rawPosition || redeemingId) return;
+    setRedeemingId(item.id);
+    try {
+      const result = await redeemPosition(polygonAddress, {
+        conditionId: item.rawPosition.conditionId,
+        asset: item.rawPosition.asset,
+        outcomeIndex: item.rawPosition.outcomeIndex,
+        negativeRisk: item.rawPosition.negativeRisk,
+      });
+      if (!result.ok) throw new Error(result.error || 'Redeem failed');
+      setSelectedItem(null);
+      onRedeemed?.();
+    } catch (error) {
+      Alert.alert('Redeem failed', error instanceof Error ? error.message : 'Try again in a moment.');
+    } finally {
+      setRedeemingId(null);
+    }
+  }
+
+  function cashOutItem(item: PredictActivityItem) {
+    if (!item.rawPosition) return;
+    setSelectedItem(null);
+    onCashOut(item.rawPosition);
+  }
+
+  function backMoreItem(item: PredictActivityItem) {
+    if (!item.rawPosition) return;
+    setSelectedItem(null);
+    onBackMore(item.rawPosition);
+  }
 
   return (
     <View style={styles.wrap}>
       <View style={styles.heading}>
-        <Text style={styles.title}>Your Picks</Text>
+        <View>
+          <Text style={styles.title}>Your Picks</Text>
+          <Text style={[styles.freshness, freshness.error && styles.freshnessError]}>{freshnessCopy}</Text>
+        </View>
         <View style={styles.headingSide}>
           <Text style={styles.subtitle}>
             {scope === 'market' ? `${rows.length} this market` : `${rows.length} all picks`}
@@ -137,7 +160,7 @@ export function DetailPicksPanel({
 
       <View style={styles.summary}>
         <View>
-          <Text style={styles.summaryLabel}>{scope === 'market' ? 'In this market' : 'All active picks'}</Text>
+          <Text style={styles.summaryLabel}>{scope === 'market' ? 'In this market' : 'All picks'}</Text>
           <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : rows.length}</Text>
         </View>
         <View>
@@ -146,134 +169,52 @@ export function DetailPicksPanel({
         </View>
       </View>
 
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <View style={styles.empty}>
           <ActivityIndicator color={tokens.colors.primary} size="small" />
         </View>
       ) : rows.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No picks here yet</Text>
-          <Text style={styles.emptyText}>Make a pick below. Once it is active, cash out and back-more actions show here.</Text>
-        </View>
-      ) : rows.map((row) => {
-        if (row.kind === 'order') {
-          return (
-            <OrderRow
-              key={row.id}
-              order={row.order}
-              cancelling={cancellingOrderId === row.order.id}
-              onCancel={onCancelOrder ? () => onCancelOrder(row.order.id) : undefined}
-            />
-          );
-        }
-        if (row.kind === 'redeemable') {
-          return (
-            <RedeemableRow
-              key={row.id}
-              position={row.position}
-              polygonAddress={polygonAddress}
-              onRedeemed={onRedeemed}
-            />
-          );
-        }
-        return (
-          <PredictPositionRow
-            key={row.id}
-            position={row.position}
-            showMarketTitle={scope === 'all'}
-            onCashOut={() => onCashOut(row.position)}
-            onBackMore={() => onBackMore(row.position)}
-          />
-        );
-      })}
-    </View>
-  );
-}
-
-function OrderRow({
-  order,
-  cancelling,
-  onCancel,
-}: {
-  order: OpenOrder;
-  cancelling: boolean;
-  onCancel?: () => void;
-}) {
-  const price = Number.parseFloat(order.price) || 0;
-  const outcome = formatOutcome(order.outcome);
-  const pending = order.status === 'local-pending';
-  return (
-    <View style={[styles.rowCard, styles.waitingCard, styles.limitStrip]}>
-      <View style={styles.rowMain}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.rowTitle}>{formatChance(price)} on {outcome}</Text>
-          <Text style={styles.rowMeta}>{pending ? 'Syncing with market' : 'Waiting to match'}</Text>
-        </View>
-        <Pressable style={styles.cancelAction} disabled={pending || !onCancel || cancelling} onPress={onCancel}>
-          {cancelling ? (
-            <ActivityIndicator size="small" color={semantic.sentiment.negative} />
-          ) : (
-            <Text style={styles.cancelActionText}>Cancel</Text>
+          <Text style={styles.emptyTitle}>{freshness.error ? 'Could not refresh picks' : 'No picks here yet'}</Text>
+          <Text style={styles.emptyText}>
+            {freshness.error
+              ? 'Your last activity could not be loaded. Try refreshing in a moment.'
+              : 'Make a pick below. Active, waiting, redeemable, and settled picks show here.'}
+          </Text>
+          {freshness.error && onRetry && (
+            <Pressable style={styles.retryBtn} onPress={onRetry}>
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
           )}
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function RedeemableRow({
-  position,
-  polygonAddress,
-  onRedeemed,
-}: {
-  position: PortfolioPosition;
-  polygonAddress?: string | null;
-  onRedeemed?: () => void;
-}) {
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-
-  async function handleRedeem() {
-    if (!polygonAddress || status === 'loading' || status === 'success') return;
-    setStatus('loading');
-    try {
-      const result = await redeemPosition(polygonAddress, {
-        conditionId: position.conditionId,
-        asset: position.asset,
-        outcomeIndex: position.outcomeIndex,
-        negativeRisk: position.negativeRisk,
-      });
-      if (!result.ok) throw new Error(result.error || 'Redeem failed');
-      setStatus('success');
-      onRedeemed?.();
-    } catch {
-      setStatus('error');
-    }
-  }
-
-  return (
-    <View style={[styles.rowCard, styles.readyCard, styles.readyStrip]}>
-      <View style={styles.rowMain}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.rowTitle}>{formatOutcome(position.outcome)} <Text style={styles.winText}>won</Text></Text>
-          <Text style={styles.rowMeta} numberOfLines={1}>Ready to collect</Text>
         </View>
-        <Pressable
-          style={[styles.redeemAction, status === 'error' && styles.redeemActionError]}
-          disabled={!polygonAddress || status === 'loading' || status === 'success'}
-          onPress={handleRedeem}
-        >
-          {status === 'loading' ? (
-            <ActivityIndicator size="small" color={tokens.colors.viridian} />
-          ) : (
-            <>
-              <MaterialIcons name={status === 'success' ? 'check' : 'redeem'} size={12} color={tokens.colors.viridian} />
-              <Text style={styles.redeemActionText}>
-                {status === 'success' ? 'Redeemed' : status === 'error' ? 'Try again' : `Redeem ${formatUsd(position.currentValue ?? 0)}`}
-              </Text>
-            </>
-          )}
-        </Pressable>
-      </View>
+      ) : rows.map((item) => (
+        <PredictActivityRow
+          key={item.id}
+          item={item}
+          showMarketTitle={scope === 'all'}
+          cancelling={cancellingOrderId === item.orderId}
+          redeeming={redeemingId === item.id}
+          onPress={() => setSelectedItem(item)}
+          onCashOut={() => cashOutItem(item)}
+          onBackMore={() => backMoreItem(item)}
+          onCancelOrder={item.orderId && onCancelOrder ? () => onCancelOrder(item.orderId!) : undefined}
+          onRedeem={() => void handleRedeem(item)}
+        />
+      ))}
+
+      <PredictActivityDetailModal
+        visible={selectedItem !== null}
+        item={selectedItem}
+        freshness={freshness}
+        onClose={() => setSelectedItem(null)}
+        onCashOut={cashOutItem}
+        onBackMore={backMoreItem}
+        onCancelOrder={(orderId) => {
+          setSelectedItem(null);
+          onCancelOrder?.(orderId);
+        }}
+        onRedeem={(item) => void handleRedeem(item)}
+      />
     </View>
   );
 }
@@ -296,6 +237,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: semantic.text.primary,
     fontWeight: '700',
+  },
+  freshness: {
+    marginTop: 3,
+    fontFamily: 'monospace',
+    fontSize: 7.5,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  freshnessError: {
+    color: tokens.colors.vermillion,
   },
   headingSide: {
     alignItems: 'flex-end',
@@ -379,162 +330,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 15,
   },
-  rowCard: {
-    borderWidth: 1,
-    borderLeftWidth: 3,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 7,
-  },
-  activeCard: {
-    borderColor: 'rgba(74,140,111,0.24)',
-    backgroundColor: 'rgba(74,140,111,0.10)',
-  },
-  activeStrip: {
-    borderLeftColor: tokens.colors.viridian,
-  },
-  waitingCard: {
-    borderColor: 'rgba(232,197,71,0.25)',
-    backgroundColor: 'rgba(232,197,71,0.08)',
-  },
-  limitStrip: {
-    borderLeftColor: tokens.colors.primary,
-  },
-  readyCard: {
-    borderColor: 'rgba(74,140,111,0.28)',
-    backgroundColor: 'rgba(74,140,111,0.10)',
-  },
-  readyStrip: {
-    borderLeftColor: tokens.colors.viridian,
-  },
-  rowMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  rowCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  rowTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: semantic.text.primary,
-  },
-  winText: {
-    color: tokens.colors.viridian,
-  },
-  rowMeta: {
-    marginTop: 4,
-    fontFamily: 'monospace',
-    fontSize: 11,
-    color: semantic.text.dim,
-  },
-  rowPnl: {
-    marginTop: 4,
-    fontFamily: 'monospace',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  pnlPositive: {
-    color: tokens.colors.viridian,
-  },
-  pnlNegative: {
-    color: tokens.colors.vermillion,
-  },
-  pnlFlat: {
-    color: semantic.text.faint,
-  },
-  rowActions: {
-    width: 112,
-    gap: 6,
-  },
-  cashAction: {
-    minHeight: 32,
-    borderRadius: 9,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
-  },
-  cashActionPositive: {
-    borderColor: 'rgba(74,140,111,0.34)',
-    backgroundColor: 'rgba(74,140,111,0.12)',
-  },
-  cashActionNegative: {
-    borderColor: 'rgba(244,88,78,0.30)',
-    backgroundColor: 'rgba(244,88,78,0.10)',
-  },
-  cashActionFlat: {
-    borderColor: semantic.border.muted,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-  },
-  cashActionText: {
-    fontFamily: 'monospace',
-    fontSize: 7.5,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  cashActionTextPositive: {
-    color: tokens.colors.viridian,
-  },
-  cashActionTextNegative: {
-    color: tokens.colors.vermillion,
-  },
-  cashActionTextFlat: {
-    color: semantic.text.dim,
-  },
-  backAction: {
+  retryBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
     minHeight: 30,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: 'rgba(255,255,255,0.025)',
-    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: tokens.colors.primary,
     justifyContent: 'center',
+    paddingHorizontal: 12,
   },
-  backActionText: {
+  retryText: {
     fontFamily: 'monospace',
     fontSize: 8,
-    color: semantic.text.dim,
     fontWeight: '800',
-  },
-  cancelAction: {
-    minHeight: 34,
-    minWidth: 86,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: 'rgba(244,88,78,0.30)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelActionText: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    color: semantic.sentiment.negative,
-    fontWeight: '800',
-  },
-  redeemAction: {
-    minHeight: 36,
-    minWidth: 102,
-    borderRadius: 10,
-    backgroundColor: 'rgba(74,140,111,0.22)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-  },
-  redeemActionError: {
-    borderWidth: 1,
-    borderColor: 'rgba(244,88,78,0.30)',
-    backgroundColor: 'rgba(244,88,78,0.10)',
-  },
-  redeemActionText: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    color: tokens.colors.viridian,
-    fontWeight: '800',
+    color: tokens.colors.backgroundDark,
+    textTransform: 'uppercase',
   },
 });

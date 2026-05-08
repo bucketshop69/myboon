@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { cancelOrder, fetchClobBalance, fetchCuratedMarketDetail, fetchMarketPrice, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
-import type { OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
+import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, LivePrice, Orderbook, PricePoint } from '@/features/predict/predict.types';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
@@ -29,6 +29,7 @@ import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
+import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -106,15 +107,23 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   // Numpad state
   const [numpadOpen, setNumpadOpen] = useState(false);
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no' | null>(null);
+  const [selectedQuotePrice, setSelectedQuotePrice] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
   const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
   const [redeemablePositions, setRedeemablePositions] = useState<PortfolioPosition[]>([]);
+  const [closedPositions, setClosedPositions] = useState<ClosedPortfolioPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [pendingOpenOrders, setPendingOpenOrders] = useState<OpenOrder[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
+  const [picksFreshness, setPicksFreshness] = useState<PredictDataFreshness>({
+    lastUpdatedAt: null,
+    loading: false,
+    stale: false,
+    error: null,
+  });
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
@@ -190,24 +199,48 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setMarketPositions([]);
       setAllPositions([]);
       setRedeemablePositions([]);
+      setClosedPositions([]);
       setOpenOrders([]);
       setPendingOpenOrders([]);
+      setPicksFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
       return;
     }
     setPicksLoading(true);
+    setPicksFreshness((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const [market, portfolio, orders] = await Promise.all([
-        fetchMarketPositions(gammaAddr, slug).catch(() => []),
-        fetchPortfolio(gammaAddr).catch(() => null),
-        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress).catch(() => []) : Promise.resolve([]),
+      const [marketResult, portfolioResult, ordersResult] = await Promise.allSettled([
+        fetchMarketPositions(gammaAddr, slug),
+        fetchPortfolio(gammaAddr),
+        poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress) : Promise.resolve([]),
       ]);
-      setMarketPositions(market);
-      setAllPositions(portfolio?.positions ?? []);
-      setRedeemablePositions(portfolio?.redeemablePositions ?? []);
-      setOpenOrders(orders);
+      const now = Date.now();
+      const market = marketResult.status === 'fulfilled' ? marketResult.value : null;
+      const portfolio = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
+      const orders = ordersResult.status === 'fulfilled' ? ordersResult.value : null;
+
+      if (market) setMarketPositions(market);
+      if (portfolio) {
+        setAllPositions(portfolio.positions ?? []);
+        setRedeemablePositions(portfolio.redeemablePositions ?? []);
+        setClosedPositions(portfolio.closedPositions ?? []);
+      }
+      if (orders) setOpenOrders(orders);
       setPendingOpenOrders((pending) =>
-        prunePendingOpenOrders(pending, orders, [...market, ...(portfolio?.positions ?? [])])
+        prunePendingOpenOrders(pending, orders ?? [], [
+          ...(market ?? marketPositions),
+          ...(portfolio?.positions ?? allPositions),
+          ...(portfolio?.redeemablePositions ?? redeemablePositions),
+        ])
       );
+      const failed = marketResult.status === 'rejected' || portfolioResult.status === 'rejected' || ordersResult.status === 'rejected';
+      setPicksFreshness({
+        lastUpdatedAt: now,
+        loading: false,
+        stale: failed,
+        error: failed ? 'Could not refresh' : null,
+      });
+    } catch {
+      setPicksFreshness((prev) => ({ ...prev, loading: false, stale: true, error: 'Could not refresh' }));
     } finally {
       setPicksLoading(false);
     }
@@ -220,7 +253,11 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       const result = await cancelOrder(poly.polygonAddress, orderId);
       if (result.ok) {
         setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+      } else {
+        Alert.alert('Cancel failed', result.error ?? 'Try again in a moment.');
       }
+    } catch {
+      Alert.alert('Cancel failed', 'Network error');
     } finally {
       setCancellingOrderId(null);
     }
@@ -288,6 +325,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       return;
     }
     setSelectedSide(side);
+    setSelectedQuotePrice(side === 'yes' ? (yesPrice ?? detail?.outcomePrices[0] ?? null) : (noPrice ?? detail?.outcomePrices[1] ?? null));
     setNumpadAmount('50');
     setNumpadOpen(true);
   }
@@ -295,13 +333,13 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   function collapseNumpad() {
     setNumpadOpen(false);
     setSelectedSide(null);
+    setSelectedQuotePrice(null);
   }
 
   async function submitOrder() {
     if (!detail || !selectedSide || submitting) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
-    if (cashBalance !== null && amount > cashBalance + 0.000001) return;
 
     // Resolve token ID: yes = clobTokenIds[0], no = clobTokenIds[1]
     const tokenID = selectedSide === 'yes' ? detail.clobTokenIds[0] : detail.clobTokenIds[1];
@@ -316,6 +354,18 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       : (noPrice ?? detail.outcomePrices[1]);
     if (!price || price <= 0 || price >= 1) {
       Alert.alert('Error', 'Invalid price');
+      return;
+    }
+    const guardrail = getPredictOrderGuardrail({
+      amount,
+      availableCash: cashBalance,
+      selectedPrice: selectedQuotePrice,
+      latestPrice: price,
+      marketActive: detail.active,
+      submitting,
+    });
+    if (guardrail?.blocking) {
+      Alert.alert(guardrail.title, guardrail.message);
       return;
     }
 
@@ -355,6 +405,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         outcome: selectedSide === 'no' ? 'No' : 'Yes',
       });
       setPendingOpenOrders((prev) => [pendingOrder, ...prev.filter((order) => order.id !== pendingOrder.id)]);
+      setCashBalance((prev) => prev === null ? prev : Math.max(prev - amount, 0));
       collapseNumpad();
       setActiveView('picks');
       setPickScope('market');
@@ -373,6 +424,19 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   const chartWidth = screenWidth - 40;
   const chartHeight = 180;
+  const amountNum = parseFloat(numpadAmount) || 0;
+  const latestSelectedPrice = selectedSide === 'no' ? noPrice : yesPrice;
+  const orderGuardrail = selectedSide
+    ? getPredictOrderGuardrail({
+        amount: amountNum,
+        availableCash: cashBalance,
+        selectedPrice: selectedQuotePrice,
+        latestPrice: latestSelectedPrice,
+        marketActive: detail?.active ?? null,
+        submitting,
+      })
+    : null;
+  const marketClosed = detail?.active === false;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -438,10 +502,13 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   scope={pickScope}
                   marketSlug={slug}
                   marketTokenIds={detail.clobTokenIds}
+                  marketConditionIds={marketPositions.map((position) => position.conditionId)}
                   loading={picksLoading}
+                  freshness={{ ...picksFreshness, loading: picksLoading, syncing: pendingOpenOrders.length > 0 }}
                   marketPositions={marketPositions}
                   allPositions={allPositions}
                   redeemablePositions={redeemablePositions}
+                  closedPositions={closedPositions}
                   openOrders={visibleOpenOrders}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
@@ -456,6 +523,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   }}
                   onCancelOrder={(orderId) => void handleCancelOrder(orderId)}
                   onRedeemed={() => void loadPicks()}
+                  onRetry={() => void loadPicks()}
                 />
               ) : activeView === 'stats' ? (
                 <View style={styles.statsView}>
@@ -508,15 +576,20 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 <OddsFormatToggle format={format} onFormatChange={setFormat} />
                 */}
               </View>
+              {marketClosed && (
+                <Text style={styles.marketClosedText}>This market is closed and no longer accepting new picks.</Text>
+              )}
               <View style={styles.binaryBtns}>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnYes, selectedSide === 'yes' && styles.bnBtnYesSelected]}
+                  disabled={marketClosed}
                   onPress={() => tapOdd('yes')}>
                   <Text style={styles.bnBtnYesPrice}>{yesPrice !== null ? formatOdds(yesPrice) : '--'}</Text>
                   <Text style={styles.bnBtnYesLabel}>Back YES</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.bnBtn, styles.bnBtnNo, selectedSide === 'no' && styles.bnBtnNoSelected]}
+                  disabled={marketClosed}
                   onPress={() => tapOdd('no')}>
                   <Text style={styles.bnBtnNoPrice}>{noPrice !== null ? formatOdds(noPrice) : '--'}</Text>
                   <Text style={styles.bnBtnNoLabel}>Back NO</Text>
@@ -536,6 +609,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               onConfirm={() => { void submitOrder(); }}
               submitting={submitting}
               disabled={!poly.isReady && !privy.connected}
+              guardrail={orderGuardrail}
             />
           </Animated.View>
         </View>
@@ -848,6 +922,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: semantic.text.primary,
+  },
+  marketClosedText: {
+    marginBottom: 8,
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: tokens.colors.vermillion,
   },
   binaryBtns: {
     flexDirection: 'row',
