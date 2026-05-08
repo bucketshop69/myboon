@@ -50,9 +50,14 @@ export function PredictPositionRow({
           <Text style={styles.rowTitle}>{outcome}</Text>
           <Text style={styles.rowMeta} numberOfLines={1}>{priceLine}</Text>
           {showMarketTitle && (
-            <Text style={styles.rowMarket} numberOfLines={1}>{formatPositionTitle(position)}</Text>
+            <View style={styles.rowMarketLine}>
+              <Text style={styles.rowMarket} numberOfLines={1}>{formatPositionTitle(position)}</Text>
+              <Text style={[styles.rowPnl, pnlStyle]}>{truncateSignedUsd(pnl)}</Text>
+            </View>
           )}
-          <Text style={[styles.rowPnl, pnlStyle]}>{truncateSignedUsd(pnl)}</Text>
+          {!showMarketTitle && (
+            <Text style={[styles.rowPnl, styles.rowPnlSolo, pnlStyle]}>{truncateSignedUsd(pnl)}</Text>
+          )}
         </View>
         <View style={styles.rowActions}>
           <Pressable
@@ -123,17 +128,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: semantic.text.dim,
   },
-  rowMarket: {
+  rowMarketLine: {
     marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  rowMarket: {
+    flex: 1,
     fontFamily: 'monospace',
     fontSize: 11,
     color: semantic.text.faint,
   },
   rowPnl: {
-    marginTop: 4,
     fontFamily: 'monospace',
     fontSize: 11,
     fontWeight: '800',
+  },
+  rowPnlSolo: {
+    marginTop: 4,
   },
   pnlPositive: {
     color: tokens.colors.viridian,
