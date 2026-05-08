@@ -191,7 +191,7 @@ export function DetailPicksPanel({
         <PredictActivityRow
           key={item.id}
           item={item}
-          showMarketTitle={scope === 'all'}
+          showMarketTitle
           cancelling={cancellingOrderId === item.orderId}
           redeeming={redeemingId === item.id}
           onPress={() => setSelectedItem(item)}
