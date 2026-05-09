@@ -164,6 +164,7 @@ export function buildPredictActivityItems({
     const price = Number.parseFloat(order.price) || 0;
     const putIn = orderCost(order);
     const pending = order.status === 'local-pending' || order.id.startsWith('pending-');
+    const pendingValue = pending ? putIn : null;
     return {
       id: `${pending ? 'pending' : 'order'}-${order.id}`,
       status: pending ? 'syncing' : 'waiting_to_match',
@@ -175,8 +176,8 @@ export function buildPredictActivityItems({
       conditionId: null,
       orderId: order.id,
       putIn,
-      currentValue: null,
-      pnl: null,
+      currentValue: pendingValue,
+      pnl: pendingValue === null ? null : pendingValue - putIn,
       shares: remainingOrderShares(order),
       avgPrice: price || null,
       currentPrice: price || null,

@@ -289,6 +289,12 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     }
   }
 
+  useEffect(() => {
+    if (activeView !== 'picks' || pendingOpenOrders.length === 0) return;
+    const timer = globalThis.setInterval(() => { void loadPicks(); }, 5_000);
+    return () => globalThis.clearInterval(timer);
+  }, [activeView, pendingOpenOrders.length, slug, poly.polygonAddress, poly.tradingAddress]);
+
   async function handleCancelOrder(orderId: string) {
     if (!poly.polygonAddress || cancellingOrderId) return;
     setCancellingOrderId(orderId);
