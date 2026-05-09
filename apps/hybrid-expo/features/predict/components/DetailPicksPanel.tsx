@@ -156,6 +156,8 @@ export function DetailPicksPanel({
           </Text>
           <View style={styles.scopeTabs}>
             <Pressable
+              accessibilityRole="tab"
+              accessibilityLabel="Show picks for this market"
               style={[styles.scopeTab, scope === 'market' && styles.scopeTabActive]}
               onPress={() => onScopeChange('market')}
               accessibilityState={{ selected: scope === 'market' }}
@@ -163,6 +165,8 @@ export function DetailPicksPanel({
               <Text style={[styles.scopeTabText, scope === 'market' && styles.scopeTabTextActive]}>This market</Text>
             </Pressable>
             <Pressable
+              accessibilityRole="tab"
+              accessibilityLabel="Show all picks"
               style={[styles.scopeTab, scope === 'all' && styles.scopeTabActive]}
               onPress={() => onScopeChange('all')}
               accessibilityState={{ selected: scope === 'all' }}
@@ -205,7 +209,11 @@ export function DetailPicksPanel({
               : 'Make a pick below. Active, waiting, redeemable, and settled picks show here.'}
           </Text>
           {freshness.error && onRetry && (
-            <Pressable style={styles.retryBtn} onPress={onRetry}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading picks"
+              style={styles.retryBtn}
+              onPress={onRetry}>
               <Text style={styles.retryText}>Retry</Text>
             </Pressable>
           )}

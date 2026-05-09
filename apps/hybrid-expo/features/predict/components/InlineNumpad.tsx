@@ -22,6 +22,8 @@ interface InlineNumpadProps {
   onConfirm: () => void;
   /** Whether an order is currently being submitted */
   submitting?: boolean;
+  /** Label shown while an order is being submitted */
+  submittingLabel?: string;
   /** Whether the confirm button should be disabled (e.g. wallet not ready) */
   disabled?: boolean;
   guardrail?: PredictOrderGuardrail | null;
@@ -76,6 +78,7 @@ export function InlineNumpad({
   onAmountChange,
   onConfirm,
   submitting = false,
+  submittingLabel = 'Placing order...',
   disabled = false,
   guardrail = null,
 }: InlineNumpadProps) {
@@ -96,6 +99,7 @@ export function InlineNumpad({
   const outcomeLabel = pickLabel ?? (side === 'yes' ? 'YES' : 'NO');
   const isYes = side === 'yes';
   const backLabel = confirmLabel ?? `Back ${formatButtonPickLabel(outcomeLabel)} ${formatButtonUsd(amountNum)} get ${formatButtonReturn(payout)}`;
+  const inputDisabled = disabled || submitting;
   const confirmDisabled = disabled || submitting || amountNum <= 0 || exceedsCash || guardrail?.blocking === true;
   const feedbackText = guardrail?.message ?? (exceedsCash ? 'Not enough cash' : 'If you are wrong, you lose');
   const feedbackValue = guardrail
@@ -103,12 +107,26 @@ export function InlineNumpad({
     : exceedsCash
       ? `Cash ${truncateUsd(availableCash)}`
       : `$${amountNum.toFixed(2)}`;
+  const confirmLabelForAccessibility = submitting
+    ? submittingLabel
+    : guardrail?.blocking
+      ? guardrail.title
+      : exceedsCash
+        ? 'Not enough cash'
+        : backLabel;
 
   return (
-    <Animated.View style={[styles.container, { maxHeight: heightAnim }]}>
+    <Animated.View
+      style={[styles.container, { maxHeight: heightAnim }]}
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
       <View style={styles.inner}>
         {/* Amount display */}
-        <View style={styles.amountDisplay}>
+        <View
+          style={styles.amountDisplay}
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={`Amount ${amount} USDC`}>
           <Text style={styles.currencyLabel}>USDC</Text>
           <Text style={styles.amountValue}>{amount}</Text>
         </View>
@@ -116,12 +134,23 @@ export function InlineNumpad({
         {/* Quick amounts */}
         <View style={styles.quickRow}>
           {QUICK_AMOUNTS.map((q) => (
-            <Pressable key={q} style={styles.quickBtn} onPress={() => onAmountChange(q)}>
+            <Pressable
+              key={q}
+              accessibilityRole="button"
+              accessibilityLabel={`Set amount to ${q} dollars`}
+              accessibilityState={{ disabled: inputDisabled }}
+              disabled={inputDisabled}
+              style={[styles.quickBtn, inputDisabled && styles.inputDisabled]}
+              onPress={() => onAmountChange(q)}>
               <Text style={styles.quickBtnText}>${q}</Text>
             </Pressable>
           ))}
           <Pressable
-            style={styles.quickBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Set amount to maximum available cash"
+            accessibilityState={{ disabled: inputDisabled }}
+            disabled={inputDisabled}
+            style={[styles.quickBtn, inputDisabled && styles.inputDisabled]}
             onPress={() => onAmountChange(formatAmountInput(availableCash ?? 0))}
           >
             <Text style={styles.quickBtnText}>Max</Text>
@@ -133,8 +162,13 @@ export function InlineNumpad({
           {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'].map((key) => (
             <Pressable
               key={key}
-              style={[styles.key, key === 'del' && styles.keyDel]}
+              accessibilityRole="keyboardkey"
+              accessibilityLabel={key === 'del' ? 'Delete digit' : key === '.' ? 'Decimal point' : `Digit ${key}`}
+              accessibilityState={{ disabled: inputDisabled }}
+              disabled={inputDisabled}
+              style={[styles.key, key === 'del' && styles.keyDel, inputDisabled && styles.inputDisabled]}
               onPress={() => {
+                if (inputDisabled) return;
                 if (key === 'del') onAmountChange(numpadDel(amount));
                 else onAmountChange(numpadKey(amount, key));
               }}>
@@ -161,11 +195,14 @@ export function InlineNumpad({
 
         {/* Confirm button */}
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={confirmLabelForAccessibility}
+          accessibilityState={{ disabled: confirmDisabled, busy: submitting }}
           style={[styles.confirmBtn, isYes ? styles.confirmYes : styles.confirmNo, confirmDisabled && styles.confirmDisabled]}
           disabled={confirmDisabled}
           onPress={onConfirm}>
           <Text style={styles.confirmText}>
-            {submitting ? 'Placing order\u2026' : guardrail?.blocking ? guardrail.title : exceedsCash ? 'Not enough cash' : backLabel}
+            {submitting ? submittingLabel : guardrail?.blocking ? guardrail.title : exceedsCash ? 'Not enough cash' : backLabel}
           </Text>
         </Pressable>
       </View>
@@ -214,6 +251,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  inputDisabled: {
+    opacity: 0.45,
   },
   quickBtnText: {
     fontFamily: 'monospace',

@@ -6,6 +6,8 @@ import {
   Animated,
   PanResponder,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -16,6 +18,7 @@ import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } fro
 import { cancelOrder, fetchClobBalance, fetchLivePrices, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
+import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
@@ -38,6 +41,7 @@ interface PredictSportDetailScreenProps {
 
 type Interval = '5m' | '1h' | '1d';
 type ActiveView = 'picks' | 'stats' | 'chart' | 'orderbook';
+type SubmitStatus = 'idle' | 'wallet' | 'placing' | 'syncing';
 
 const SOFT_COLLAPSED = 280; // handle + stats + ~3 selection rows
 const SOFT_EXPANDED = 720;
@@ -90,7 +94,12 @@ function DisplayTab({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={[styles.displayTab, active && styles.displayTabActive]} onPress={onPress}>
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[styles.displayTab, active && styles.displayTabActive]}>
       <Text style={[styles.displayTabText, active && styles.displayTabTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -120,6 +129,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   // Market data
   const [detail, setDetail] = useState<SportMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liveTokenPrices, setLiveTokenPrices] = useState<Record<string, number | null>>({});
 
@@ -138,6 +148,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [selectedQuotePrice, setSelectedQuotePrice] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
@@ -159,6 +170,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
+  const reconcileTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const submitInFlightRef = useRef(false);
 
   // Drag gesture — swipe down to collapse numpad
   const dragResponder = useRef(
@@ -190,8 +203,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     .filter(Boolean)
     .join(',') ?? '';
 
-  async function loadDetail() {
-    setLoading(true);
+  async function loadDetail(silent = false) {
+    if (!silent) setLoading(true);
     setErrorMessage(null);
     try {
       setDetail(await fetchSportMarketDetail(sport, slug));
@@ -199,7 +212,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load fixture');
       setDetail(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -232,6 +245,15 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     } finally {
       setOrderbookLoading(false);
     }
+  }
+
+  async function loadCashBalance() {
+    if (!poly.polygonAddress) {
+      setCashBalance(null);
+      return;
+    }
+    const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+    setCashBalance(balance?.balance ?? null);
   }
 
   async function loadPicks() {
@@ -312,27 +334,52 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     }
   }
 
+  async function refreshDetailScreen() {
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([
+        loadDetail(true),
+        loadPicks(),
+        loadCashBalance(),
+        activeView === 'orderbook' ? loadOrderbook(obOutcomeIdx) : Promise.resolve(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function scheduleFollowUpReconcile(polygonAddress: string) {
+    const timeout = setTimeout(() => {
+      reconcileTimeouts.current = reconcileTimeouts.current.filter((item) => item !== timeout);
+      void Promise.allSettled([
+        loadPicks(),
+        fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+      ]);
+    }, 1_800);
+    reconcileTimeouts.current.push(timeout);
+  }
+
   useEffect(() => { void loadDetail(); }, [slug, sport]);
 
   useEffect(() => {
+    return () => {
+      reconcileTimeouts.current.forEach(clearTimeout);
+      reconcileTimeouts.current = [];
+    };
+  }, []);
+
+  useFocusedAppStateInterval(async (isCurrent) => {
     const tokenIds = liveTokenKey.split(',').filter(Boolean);
     if (tokenIds.length === 0) return;
-    let cancelled = false;
-
-    async function refreshPrices() {
-      try {
-        const prices = await fetchLivePrices(tokenIds);
-        if (!cancelled) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
-      } catch { /* silent */ }
-    }
-
-    void refreshPrices();
-    const timer = globalThis.setInterval(() => { void refreshPrices(); }, 30_000);
-    return () => {
-      cancelled = true;
-      globalThis.clearInterval(timer);
-    };
-  }, [liveTokenKey]);
+    try {
+      const prices = await fetchLivePrices(tokenIds);
+      if (isCurrent()) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
+    } catch { /* silent */ }
+  }, 30_000, {
+    enabled: liveTokenKey.length > 0,
+    runImmediately: true,
+    resetKey: liveTokenKey,
+  });
 
   useEffect(() => {
     if (sortedOutcomes.length > 0) void loadHistory(sortedOutcomes, interval);
@@ -348,7 +395,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
   useEffect(() => {
     let cancelled = false;
-    async function loadCashBalance() {
+    async function run() {
       if (!poly.polygonAddress) {
         setCashBalance(null);
         return;
@@ -356,7 +403,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
       if (!cancelled) setCashBalance(balance?.balance ?? null);
     }
-    void loadCashBalance();
+    void run();
     return () => { cancelled = true; };
   }, [poly.polygonAddress]);
 
@@ -393,6 +440,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   });
 
   function tapOdd(outcomeIdx: number) {
+    if (submitInFlightRef.current || submitting) return;
     if (numpadOpen && selectedOutcomeIdx === outcomeIdx) {
       setNumpadOpen(false);
       setSelectedOutcomeIdx(null);
@@ -427,7 +475,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   }
 
   async function submitOrder() {
-    if (!detail || selectedOutcomeIdx === null || submitting) return;
+    if (!detail || selectedOutcomeIdx === null || submitting || submitInFlightRef.current) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
 
@@ -459,18 +507,16 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       return;
     }
 
-    // Ensure wallet is enabled and EVM signer is derived
-    if (!poly.canSignLocally) {
-      try {
-        await poly.enable();
-      } catch (err: any) {
-        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
-        return;
-      }
-    }
-
+    submitInFlightRef.current = true;
     setSubmitting(true);
+    setSubmitStatus(poly.canSignLocally ? 'placing' : 'wallet');
     try {
+      // Ensure wallet is enabled and EVM signer is derived
+      if (!poly.canSignLocally) {
+        await poly.enable();
+        setSubmitStatus('placing');
+      }
+
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
       const size = Math.floor((amount / price) * 100) / 100;
@@ -486,6 +532,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
+      setSubmitStatus('syncing');
       const pendingOrder = makePendingOpenOrder({
         id: result.orderID,
         slug,
@@ -499,12 +546,18 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       collapseNumpad();
       setActiveView('picks');
       setPickScope('market');
-      void loadPicks();
-      void fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
+      await Promise.allSettled([
+        loadPicks(),
+        fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+        activeView === 'orderbook' ? loadOrderbook(obOutcomeIdx) : Promise.resolve(),
+      ]);
+      scheduleFollowUpReconcile(polygonAddress);
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
+      setSubmitStatus('idle');
     }
   }
 
@@ -514,23 +567,21 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
   async function confirmCashOut(size: number) {
     const position = cashOutPosition;
-    if (!position || submitting) return;
+    if (!position || submitting || submitInFlightRef.current) return;
     if (!position.asset) {
       Alert.alert('Cash out failed', 'Missing token ID for this position');
       return;
     }
 
-    if (!poly.canSignLocally) {
-      try {
-        await poly.enable();
-      } catch (err: any) {
-        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
-        return;
-      }
-    }
-
+    submitInFlightRef.current = true;
     setSubmitting(true);
+    setSubmitStatus(poly.canSignLocally ? 'placing' : 'wallet');
     try {
+      if (!poly.canSignLocally) {
+        await poly.enable();
+        setSubmitStatus('placing');
+      }
+
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
       const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
       const result = await placeBet({
@@ -544,14 +595,20 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       });
       if (!result.success) throw new Error(result.error || 'Cash out failed');
 
+      setSubmitStatus('syncing');
       setCashOutPosition(null);
       setActiveView('picks');
-      void loadPicks();
-      void fetchClobBalance(poly.polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
+      await Promise.allSettled([
+        loadPicks(),
+        fetchClobBalance(poly.polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+      ]);
+      scheduleFollowUpReconcile(poly.polygonAddress);
     } catch (err: any) {
       Alert.alert('Cash out failed', err.message || 'Unknown error');
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
+      setSubmitStatus('idle');
     }
   }
 
@@ -585,6 +642,12 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         outcomes: detail.outcomes.map((outcome) => outcome.label),
       })
     : 'Loading...';
+  const submitLabel =
+    submitStatus === 'wallet'
+      ? 'Confirming wallet...'
+      : submitStatus === 'syncing'
+        ? 'Syncing pick...'
+        : 'Placing order...';
 
   const chartWidth = screenWidth - 40;
   const chartHeight = 180;
@@ -617,14 +680,29 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         <View style={styles.stateWrap}>
           <Text style={styles.stateTitle}>Fixture unavailable</Text>
           <Text style={styles.stateText}>{errorMessage}</Text>
-          <Pressable onPress={() => void loadDetail()} style={styles.retryBtn}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+            accessibilityHint="Reload fixture details"
+            onPress={() => void loadDetail()}
+            style={styles.retryBtn}>
             <Text style={styles.retryText}>Try Again</Text>
           </Pressable>
         </View>
       ) : detail ? (
         <View style={styles.body}>
           {/* ══ DARK ZONE ══ */}
-          <View style={[styles.darkZone, { paddingBottom: SOFT_COLLAPSED }]}>
+          <ScrollView
+            style={styles.darkZone}
+            contentContainerStyle={[styles.darkZoneContent, { paddingBottom: SOFT_COLLAPSED }]}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => { void refreshDetailScreen(); }}
+                tintColor={semantic.text.accent}
+              />
+            }>
             <View style={styles.displayRow}>
               <View style={styles.displayTabGroup}>
                 <DisplayTab label="Your Picks" active={activeView === 'picks'} onPress={() => setActiveView('picks')} />
@@ -634,6 +712,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               {activeView === 'chart' && (['5m', '1h', '1d'] as Interval[]).map((iv) => (
                 <Pressable
                   key={iv}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Show ${iv === '5m' ? '5 minute' : iv === '1h' ? '1 hour' : '1 day'} chart`}
+                  accessibilityState={{ selected: interval === iv }}
                   style={[styles.rangeChip, interval === iv && styles.rangeChipActive]}
                   onPress={() => setInterval(iv)}>
                   <Text style={[styles.rangeChipText, interval === iv && styles.rangeChipTextActive]}>
@@ -705,6 +786,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                       return (
                         <Pressable
                           key={`${o.conditionId ?? o.label}-${i}`}
+                          accessibilityRole="tab"
+                          accessibilityLabel={`Show ${label} order book`}
+                          accessibilityState={{ selected: obOutcomeIdx === i }}
                           style={[styles.obOutcomeTab, obOutcomeIdx === i && styles.obOutcomeTabActive]}
                           onPress={() => setObOutcomeIdx(i)}>
                           <Text style={[styles.obOutcomeTabText, obOutcomeIdx === i && styles.obOutcomeTabTextActive]} numberOfLines={1}>
@@ -718,13 +802,17 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                 </View>
               )}
             </View>
-          </View>
+          </ScrollView>
 
           {/* ══ SOFT ZONE ══ */}
           <Animated.View style={[styles.softZone, { maxHeight: softZoneAnim }]}>
             {/* Drag handle */}
             <View style={styles.dragHandle} {...dragResponder.panHandlers}>
-              <Pressable onPress={collapseNumpad}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Collapse order entry"
+                accessibilityHint="Hide the amount keypad"
+                onPress={collapseNumpad}>
                 <View style={styles.dragHandlePill} />
               </Pressable>
             </View>
@@ -752,12 +840,16 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                     </View>
                     <View style={styles.selBtns}>
                       <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Back ${label} at ${outcome.price !== null ? formatOdds(outcome.price) : 'unavailable'}`}
+                        accessibilityState={{ selected: isSelected, disabled: marketClosed || submitting }}
+                        accessibilityHint={`Open order entry for ${label}`}
                         style={[
                           styles.selBtn,
                           tone === 'lead' ? styles.selBtnLead : tone === 'draw' ? styles.selBtnDraw : styles.selBtnTrail,
                           isSelected && (tone === 'lead' ? styles.selBtnLeadSelected : tone === 'draw' ? styles.selBtnDrawSelected : styles.selBtnTrailSelected),
                         ]}
-                        disabled={marketClosed}
+                        disabled={marketClosed || submitting}
                         onPress={() => tapOdd(i)}>
                         <Text style={[
                           styles.selBtnPct,
@@ -783,6 +875,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               onAmountChange={setNumpadAmount}
               onConfirm={() => { void submitOrder(); }}
               submitting={submitting}
+              submittingLabel={submitLabel}
               disabled={!poly.isReady}
               guardrail={orderGuardrail}
             />
@@ -866,6 +959,9 @@ const styles = StyleSheet.create({
   darkZone: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  darkZoneContent: {
+    flexGrow: 1,
   },
   chipRow: {
     flexDirection: 'row',

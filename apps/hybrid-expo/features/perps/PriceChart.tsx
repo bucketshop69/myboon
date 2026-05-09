@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   ActivityIndicator,
-  GestureResponderEvent,
   LayoutChangeEvent,
   PanResponder,
   Pressable,
@@ -9,11 +9,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Path, Circle, Line, Rect } from 'react-native-svg';
-import { fetchCandles } from '@/features/perps/perps.api';
-import type { CandleInterval } from '@/features/perps/perps.api';
+import Svg, { Defs, LinearGradient, Stop, Path, Circle, Line } from 'react-native-svg';
+import { fetchCandles, formatPrice } from '@/features/perps/perps.public-api';
+import type { CandleInterval } from '@/features/perps/perps.public-api';
 import type { Candle } from '@/features/perps/perps.types';
-import { formatPrice } from '@/features/perps/perps.api';
 import { semantic, tokens } from '@/theme';
 
 const TIMEFRAMES: { label: string; interval: CandleInterval; count: number }[] = [
@@ -23,6 +22,8 @@ const TIMEFRAMES: { label: string; interval: CandleInterval; count: number }[] =
   { label: '1M', interval: '4h', count: 180 },
   { label: 'ALL', interval: '1d', count: 365 },
 ];
+
+const ChartDefs = Defs as unknown as ComponentType<{ children?: ReactNode }>;
 
 interface PriceChartProps {
   symbol: string;
@@ -219,12 +220,12 @@ function InteractiveChart({ candles, height, color, scrubIndex, onScrub }: Inter
       {...panResponder.panHandlers}
     >
       <Svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none">
-        <Defs>
+        <ChartDefs>
           <LinearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0%" stopColor={color} stopOpacity={0.25} />
             <Stop offset="100%" stopColor={color} stopOpacity={0} />
           </LinearGradient>
-        </Defs>
+        </ChartDefs>
         <Path d={fillPath} fill="url(#chartFill)" />
         <Path d={linePath} fill="none" stroke={color} strokeWidth={0.6} />
 

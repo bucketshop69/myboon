@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Clipboard } from 'lucide-react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import * as ClipboardModule from 'expo-clipboard';
 
 interface AnimatedInputProps {
@@ -35,7 +35,7 @@ export function AnimatedInput({ style }: AnimatedInputProps) {
 
     const currentText = PLACEHOLDERS[currentIndex];
 
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
 
     if (isPaused) {
       timer = setTimeout(() => {
@@ -113,7 +113,7 @@ export function AnimatedInput({ style }: AnimatedInputProps) {
         style={styles.pasteButton}
         accessibilityLabel="Paste"
       >
-        <Clipboard size={18} color="#888" />
+        <MaterialIcons name="content-paste" size={18} color="#888" />
       </TouchableOpacity>
     </View>
   );

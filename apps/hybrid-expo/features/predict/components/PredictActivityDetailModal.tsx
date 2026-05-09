@@ -78,16 +78,25 @@ export function PredictActivityDetailModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close activity details"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
         {item && (
-          <View style={styles.sheet}>
+          <View style={styles.sheet} accessibilityViewIsModal>
             <View style={styles.header}>
               <View style={styles.headerCopy}>
                 <Text style={styles.eyebrow}>{statusLabel}</Text>
                 <Text style={styles.title} numberOfLines={2}>{item.outcome}</Text>
                 <Text style={styles.market} numberOfLines={2}>{item.marketTitle}</Text>
               </View>
-              <Pressable style={styles.closeBtn} onPress={onClose} accessibilityLabel="Close activity details">
+              <Pressable
+                accessibilityRole="button"
+                style={styles.closeBtn}
+                onPress={onClose}
+                accessibilityLabel="Close activity details">
                 <MaterialIcons name="close" size={16} color={semantic.text.dim} />
               </Pressable>
             </View>
@@ -111,27 +120,50 @@ export function PredictActivityDetailModal({
 
             <View style={styles.actions}>
               {item.status === 'waiting_to_match' && item.orderId && (
-                <Pressable style={styles.dangerAction} onPress={() => onCancelOrder(item.orderId!)}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel order"
+                  accessibilityHint="Cancel this waiting pick"
+                  style={styles.dangerAction}
+                  onPress={() => onCancelOrder(item.orderId!)}>
                   <Text style={styles.dangerActionText}>Cancel order</Text>
                 </Pressable>
               )}
               {item.status === 'active' && (
                 <>
-                  <Pressable style={styles.secondaryAction} onPress={() => onBackMore(item)}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Back more"
+                    accessibilityHint="Add more to this pick"
+                    style={styles.secondaryAction}
+                    onPress={() => onBackMore(item)}>
                     <Text style={styles.secondaryActionText}>Back more</Text>
                   </Pressable>
-                  <Pressable style={styles.primaryAction} onPress={() => onCashOut(item)}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cash out"
+                    accessibilityHint="Open cash out confirmation"
+                    style={styles.primaryAction}
+                    onPress={() => onCashOut(item)}>
                     <Text style={styles.primaryActionText}>Cash out</Text>
                   </Pressable>
                 </>
               )}
               {item.status === 'ready_to_collect' && (
-                <Pressable style={styles.primaryAction} onPress={() => onRedeem(item)}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Redeem payout"
+                  style={styles.primaryAction}
+                  onPress={() => onRedeem(item)}>
                   <Text style={styles.primaryActionText}>Redeem</Text>
                 </Pressable>
               )}
               {(item.status === 'syncing' || item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
-                <Pressable style={styles.secondaryAction} onPress={onClose}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Done"
+                  style={styles.secondaryAction}
+                  onPress={onClose}>
                   <Text style={styles.secondaryActionText}>Done</Text>
                 </Pressable>
               )}

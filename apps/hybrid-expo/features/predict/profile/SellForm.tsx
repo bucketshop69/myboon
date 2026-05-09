@@ -49,6 +49,9 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
       {/* Mode toggle */}
       <View style={styles.modeRow}>
         <Pressable
+          accessibilityRole="tab"
+          accessibilityLabel="Limit sell order"
+          accessibilityState={{ selected: mode === 'limit' }}
           style={[styles.modeBtn, mode === 'limit' && styles.modeBtnActive]}
           onPress={() => setMode('limit')}
         >
@@ -57,6 +60,9 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
           </Text>
         </Pressable>
         <Pressable
+          accessibilityRole="tab"
+          accessibilityLabel="Market sell order"
+          accessibilityState={{ selected: mode === 'market' }}
           style={[styles.modeBtn, mode === 'market' && styles.modeBtnActive]}
           onPress={() => setMode('market')}
         >
@@ -72,6 +78,7 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
+            accessibilityLabel="Shares to sell"
             value={sharesInput}
             onChangeText={setSharesInput}
             placeholder="0.00"
@@ -83,7 +90,12 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
         </View>
         <View style={styles.pctRow}>
           {[0.25, 0.5, 0.75, 1].map((pct) => (
-            <Pressable key={pct} style={styles.pctBtn} onPress={() => setPercent(pct)}>
+            <Pressable
+              key={pct}
+              accessibilityRole="button"
+              accessibilityLabel={pct === 1 ? 'Sell maximum shares' : `Sell ${pct * 100} percent of shares`}
+              style={styles.pctBtn}
+              onPress={() => setPercent(pct)}>
               <Text style={styles.pctBtnText}>{pct === 1 ? 'MAX' : `${pct * 100}%`}</Text>
             </Pressable>
           ))}
@@ -97,6 +109,7 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
           <View style={styles.inputRow}>
             <TextInput
               style={styles.input}
+              accessibilityLabel="Limit price in cents"
               value={priceInput}
               onChangeText={setPriceInput}
               placeholder={`${Math.round(currentPrice * 100)}`}
@@ -119,6 +132,9 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
 
       {/* Confirm button */}
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={submitting ? 'Submitting sell order' : status !== 'idle' && statusMessage ? statusMessage : 'Confirm sell'}
+        accessibilityState={{ disabled: !isValid || submitting, busy: submitting }}
         style={[
           styles.confirmBtn,
           !isValid && styles.confirmBtnDisabled,

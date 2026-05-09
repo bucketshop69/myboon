@@ -77,19 +77,25 @@ export function PredictActivityRow({
   const pnlNegative = (item.pnl ?? 0) < -0.005;
   const value = item.currentValue === null ? null : truncateUsd(item.currentValue);
   const status = getPredictActivityStatusLabel(item.status);
+  const primaryLabel = item.status === 'closed_won'
+    ? `${item.outcome} won`
+    : item.status === 'closed_lost'
+      ? `${item.outcome} lost`
+      : item.status === 'waiting_to_match' || item.status === 'syncing'
+        ? `${formatChance(item.avgPrice)} on ${item.outcome}`
+        : item.outcome;
 
   return (
-    <Pressable style={cardStyle(item)} onPress={onPress}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${primaryLabel}. ${rowMeta(item, showMarketTitle)}${item.pnl !== null ? `. P and L ${truncateSignedUsd(item.pnl)}` : ''}.`}
+      accessibilityHint="Open pick details"
+      style={cardStyle(item)}
+      onPress={onPress}>
       <View style={styles.row}>
         <View style={styles.info}>
           <Text style={styles.question} numberOfLines={2}>
-            {item.status === 'closed_won'
-              ? `${item.outcome} won`
-              : item.status === 'closed_lost'
-                ? `${item.outcome} lost`
-                : item.status === 'waiting_to_match' || item.status === 'syncing'
-                  ? `${formatChance(item.avgPrice)} on ${item.outcome}`
-                  : item.outcome}
+            {primaryLabel}
           </Text>
           <Text style={styles.meta} numberOfLines={1}>{rowMeta(item, showMarketTitle)}</Text>
           {item.pnl !== null && (
@@ -101,6 +107,7 @@ export function PredictActivityRow({
         <View style={styles.actions}>
           {(item.status === 'waiting_to_match' || item.status === 'syncing') && (
             <Pressable
+              accessibilityRole="button"
               style={styles.dangerAction}
               disabled={item.status === 'syncing' || !onCancelOrder || cancelling}
               onPress={(event) => {
@@ -108,6 +115,7 @@ export function PredictActivityRow({
                 onCancelOrder?.();
               }}
               accessibilityLabel="Cancel waiting pick"
+              accessibilityState={{ disabled: item.status === 'syncing' || !onCancelOrder || cancelling, busy: cancelling }}
             >
               {cancelling ? (
                 <ActivityIndicator size="small" color={semantic.sentiment.negative} />
@@ -118,6 +126,7 @@ export function PredictActivityRow({
           )}
           {item.status === 'ready_to_collect' && (
             <Pressable
+              accessibilityRole="button"
               style={styles.redeemAction}
               disabled={!onRedeem || redeeming}
               onPress={(event) => {
@@ -125,6 +134,7 @@ export function PredictActivityRow({
                 onRedeem?.();
               }}
               accessibilityLabel="Redeem payout"
+              accessibilityState={{ disabled: !onRedeem || redeeming, busy: redeeming }}
             >
               {redeeming ? (
                 <ActivityIndicator size="small" color={tokens.colors.backgroundDark} />

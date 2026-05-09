@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useNavigation } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { DepositModal } from '@/components/predict/DepositModal';
@@ -25,6 +25,7 @@ import { EmptyPortfolio } from '@/features/predict/profile/EmptyPortfolio';
 import { YourPicksSection } from '@/features/predict/profile/YourPicksSection';
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import type { PredictDataFreshness } from '@/features/predict/predictActivityState';
+import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { semantic, tokens } from '@/theme';
 
 function truncate(addr: string, start = 6, end = 4): string {
@@ -72,8 +73,6 @@ export default function PredictProfileScreen() {
   const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const portfolioRefreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
-  const ordersRefreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
   const portfolioRefreshInFlight = useRef(false);
   const ordersRefreshInFlight = useRef(false);
 
@@ -237,45 +236,25 @@ export default function PredictProfileScreen() {
   }, [loadPortfolio]);
 
   // Refresh when screen regains focus (e.g. returning from position detail after sell)
-  const navigation = useNavigation();
   const hasMounted = useRef(false);
-  useEffect(() => {
-    function stopTimers() {
-      if (portfolioRefreshTimer.current) {
-        globalThis.clearInterval(portfolioRefreshTimer.current);
-        portfolioRefreshTimer.current = null;
-      }
-      if (ordersRefreshTimer.current) {
-        globalThis.clearInterval(ordersRefreshTimer.current);
-        ordersRefreshTimer.current = null;
-      }
-    }
-
-    function startTimers() {
-      stopTimers();
-      portfolioRefreshTimer.current = globalThis.setInterval(() => {
-        void refreshPortfolioQuietly();
-      }, 15_000);
-      ordersRefreshTimer.current = globalThis.setInterval(() => {
-        void refreshOpenOrdersQuietly();
-      }, 7_000);
-    }
-
-    const unsubscribe = navigation.addListener('focus', () => {
+  useFocusEffect(
+    useCallback(() => {
       if (hasMounted.current && isEnabled && poly.polygonAddress) {
         void loadPortfolio();
       }
       hasMounted.current = true;
-      if (isEnabled && poly.polygonAddress) startTimers();
-    });
-    const unsubscribeBlur = navigation.addListener('blur', stopTimers);
-    if (isEnabled && poly.polygonAddress && navigation.isFocused()) startTimers();
-    return () => {
-      stopTimers();
-      unsubscribe();
-      unsubscribeBlur();
-    };
-  }, [navigation, isEnabled, poly.polygonAddress, loadPortfolio, refreshOpenOrdersQuietly, refreshPortfolioQuietly]);
+    }, [isEnabled, loadPortfolio, poly.polygonAddress]),
+  );
+
+  useFocusedAppStateInterval(() => void refreshPortfolioQuietly(), 15_000, {
+    enabled: Boolean(isEnabled && poly.polygonAddress),
+    resetKey: `${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}`,
+  });
+
+  useFocusedAppStateInterval(() => void refreshOpenOrdersQuietly(), 7_000, {
+    enabled: Boolean(isEnabled && poly.polygonAddress),
+    resetKey: poly.polygonAddress,
+  });
 
   const connectPredictAccount = useCallback(async () => {
     setBusy(true);

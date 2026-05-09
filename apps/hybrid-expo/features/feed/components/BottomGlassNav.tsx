@@ -32,12 +32,18 @@ export function BottomGlassNav({ items }: BottomGlassNavProps) {
   }
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <View
+      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8) }]}
+      accessibilityRole="tablist">
       {items.map((item) => {
         const active = isActive(item.route);
         return (
           <Pressable
             key={item.key}
+            accessibilityRole="tab"
+            accessibilityLabel={item.label}
+            accessibilityState={{ selected: active }}
+            accessibilityHint={`Navigate to ${item.label}`}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.replace(item.route);

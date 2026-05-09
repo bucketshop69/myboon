@@ -18,13 +18,14 @@ export function useWallet() {
       connected: true as const,
       address: privy.address,
       shortAddress: privy.shortAddress,
-      connect: privy.loginWithPasskey,
+      connect: async (_walletName?: string) => privy.loginWithPasskey(),
       disconnect: privy.disconnect,
       signMessage: privy.signMessage,
       // Privy embedded wallets don't support signAndSendTransaction directly —
       // Polymarket orders are signed locally (EIP-712) and proxied via VPS
       signAndSendTransaction: null,
       connection: null,
+      walletOptions: [],
       source: 'privy' as WalletSource,
     };
   }
@@ -36,11 +37,12 @@ export function useWallet() {
     shortAddress: mwaAddress
       ? `${mwaAddress.slice(0, 4)}···${mwaAddress.slice(-4)}`
       : null,
-    connect,
+    connect: async (_walletName?: string) => connect(),
     disconnect,
     signMessage,
     signAndSendTransaction,
     connection,
+    walletOptions: [],
     source: 'mwa' as WalletSource,
   };
 }

@@ -106,6 +106,8 @@ export function YourPicksSection({
           <Text style={styles.count}>{countLabel}</Text>
           <View style={styles.scopeTabs}>
             <Pressable
+              accessibilityRole="tab"
+              accessibilityLabel="Show active picks"
               style={[styles.scopeTab, scope === 'active' && styles.scopeTabActive]}
               onPress={() => setScope('active')}
               accessibilityState={{ selected: scope === 'active' }}
@@ -113,6 +115,8 @@ export function YourPicksSection({
               <Text style={[styles.scopeTabText, scope === 'active' && styles.scopeTabTextActive]}>Active</Text>
             </Pressable>
             <Pressable
+              accessibilityRole="tab"
+              accessibilityLabel="Show all picks"
               style={[styles.scopeTab, scope === 'all' && styles.scopeTabActive]}
               onPress={() => setScope('all')}
               accessibilityState={{ selected: scope === 'all' }}

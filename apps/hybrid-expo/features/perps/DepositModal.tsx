@@ -2,6 +2,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -10,23 +11,21 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Connection, PublicKey, Transaction } from '@solana/web3.js';
+import { useWallet } from '@/hooks/useWallet';
+import { fetchPerpsAccount } from '@/features/perps/perps.public-api';
+import { buildDepositInstruction } from '@/features/perps/perps.deposit-api';
+import { SOLANA_RPC, USDC_MINT, USDC_LABEL, PACIFIC_MIN_DEPOSIT } from '@/features/perps/pacific.config';
+import { semantic, tokens } from '@/theme';
+import { fetchWithTimeout } from '@/lib/api';
 
 function showAlert(title: string, msg: string) {
   if (Platform.OS === 'web') {
     window.alert(`${title}\n${msg}`);
   } else {
-    const { Alert } = require('react-native');
     Alert.alert(title, msg);
   }
 }
-import { Connection, PublicKey, Transaction } from '@solana/web3.js';
-import { useWallet } from '@/hooks/useWallet';
-import { fetchPerpsAccount, buildDepositInstruction } from '@/features/perps/perps.api';
-import { SOLANA_RPC, USDC_MINT, USDC_DECIMALS, USDC_LABEL, PACIFIC_MIN_DEPOSIT } from '@/features/perps/pacific.config';
-import { semantic, tokens } from '@/theme';
-import { fetchWithTimeout } from '@/lib/api';
-
-const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
 interface DepositModalProps {
   visible: boolean;
@@ -93,8 +92,13 @@ export function DepositModal({ visible, onClose }: DepositModalProps) {
 
   async function handleDeposit() {
     const depositAmount = parseFloat(amount);
+    const sendTransaction = signAndSendTransaction as ((tx: Transaction) => Promise<string>) | null;
     if (!address || !depositAmount || depositAmount < PACIFIC_MIN_DEPOSIT) {
       showAlert('Invalid amount', `Minimum deposit is ${PACIFIC_MIN_DEPOSIT} ${USDC_LABEL}`);
+      return;
+    }
+    if (!sendTransaction) {
+      showAlert('Unsupported wallet', 'This wallet cannot send a Solana transaction from the app.');
       return;
     }
     if (walletBalance !== null && depositAmount > walletBalance) {
@@ -113,7 +117,7 @@ export function DepositModal({ visible, onClose }: DepositModalProps) {
         blockhash,
         lastValidBlockHeight,
       }).add(ix);
-      const sig = await signAndSendTransaction(tx);
+      const sig = await sendTransaction(tx);
       setTxSignature(sig);
 
       // Refresh balances after deposit
@@ -147,7 +151,7 @@ export function DepositModal({ visible, onClose }: DepositModalProps) {
           {!connected ? (
             <View style={styles.body}>
               <Text style={styles.infoText}>Connect your wallet to deposit</Text>
-              <Pressable style={styles.primaryBtn} onPress={connect}>
+              <Pressable style={styles.primaryBtn} onPress={() => connect()}>
                 <Text style={styles.primaryBtnText}>Connect Wallet</Text>
               </Pressable>
             </View>

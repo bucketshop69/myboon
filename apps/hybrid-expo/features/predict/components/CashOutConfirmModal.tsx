@@ -41,8 +41,13 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.card}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close cash out confirmation"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
+        <View style={styles.card} accessibilityViewIsModal>
           <Text style={styles.eyebrow}>Cash out</Text>
           <Text style={styles.title}>Are you sure?</Text>
           <Text style={styles.copy}>
@@ -54,6 +59,22 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
           </View>
           <View
             style={styles.slider}
+            accessible
+            accessibilityRole="adjustable"
+            accessibilityLabel="Cash out amount"
+            accessibilityValue={{ min: 0, max: 100, now: percent, text: `${percent}%` }}
+            accessibilityActions={[
+              { name: 'increment', label: 'Increase cash out amount' },
+              { name: 'decrement', label: 'Decrease cash out amount' },
+            ]}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'increment') {
+                setPercent((current) => Math.min(100, current + 10));
+              }
+              if (event.nativeEvent.actionName === 'decrement') {
+                setPercent((current) => Math.max(0, current - 10));
+              }
+            }}
             onLayout={(event) => setSliderWidth(Math.max(1, event.nativeEvent.layout.width))}
             {...panResponder.panHandlers}
           >
@@ -76,10 +97,22 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
             </Text>
           </View>
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryAction} onPress={onClose} disabled={submitting}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Not now"
+              accessibilityState={{ disabled: submitting }}
+              style={styles.secondaryAction}
+              onPress={onClose}
+              disabled={submitting}>
               <Text style={styles.secondaryActionText}>Not now</Text>
             </Pressable>
-            <Pressable style={[styles.primaryAction, !canConfirm && styles.primaryActionDisabled]} onPress={() => onConfirm(selectedSize)} disabled={!canConfirm}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={submitting ? 'Cashing out' : 'Cash out'}
+              accessibilityState={{ disabled: !canConfirm, busy: submitting }}
+              style={[styles.primaryAction, !canConfirm && styles.primaryActionDisabled]}
+              onPress={() => onConfirm(selectedSize)}
+              disabled={!canConfirm}>
               <Text style={styles.primaryActionText}>{submitting ? 'Cashing out...' : 'Cash out'}</Text>
             </Pressable>
           </View>

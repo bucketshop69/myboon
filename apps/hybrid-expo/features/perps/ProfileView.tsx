@@ -1,5 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Suspense, lazy, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -18,17 +18,24 @@ import {
   fetchPerpsPositions,
   fetchOpenOrders,
   formatPrice,
+} from '@/features/perps/perps.public-api';
+import {
   closePosition,
   setTPSL,
   removeTPSL,
   cancelOrder,
   cancelStopOrder,
-} from '@/features/perps/perps.api';
+} from '@/features/perps/perps.signed-api';
 import type { PerpsAccount, PerpsPosition, PerpsOrder } from '@/features/perps/perps.types';
-import { DepositModal } from '@/features/perps/DepositModal';
-import { WithdrawModal } from '@/features/perps/WithdrawModal';
 import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { semantic, tokens } from '@/theme';
+
+const LazyDepositModal = lazy(() =>
+  import('@/features/perps/DepositModal').then((module) => ({ default: module.DepositModal })),
+);
+const LazyWithdrawModal = lazy(() =>
+  import('@/features/perps/WithdrawModal').then((module) => ({ default: module.WithdrawModal })),
+);
 
 // C-15: Trade history stored in AsyncStorage
 const TRADE_HISTORY_KEY = 'pnl:trade_history';
@@ -91,6 +98,8 @@ export function ProfileView({ onBack }: ProfileViewProps) {
   const [accountChecked, setAccountChecked] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [depositModalLoaded, setDepositModalLoaded] = useState(false);
+  const [withdrawModalLoaded, setWithdrawModalLoaded] = useState(false);
 
   // C-15: Trade history
   const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
@@ -109,11 +118,16 @@ export function ProfileView({ onBack }: ProfileViewProps) {
   const [closePosition_, setClosePosition_] = useState<PerpsPosition | null>(null);
   const [closeAmountText, setCloseAmountText] = useState('');
 
-  // Wallet USDC balance (C-16)
-  const [walletUsdcBalance, setWalletUsdcBalance] = useState<number | null>(null);
-
   const hasPacificAccount = accountChecked && account !== null;
   const noPacificAccount = accountChecked && account === null;
+
+  useEffect(() => {
+    if (depositOpen) setDepositModalLoaded(true);
+  }, [depositOpen]);
+
+  useEffect(() => {
+    if (withdrawOpen) setWithdrawModalLoaded(true);
+  }, [withdrawOpen]);
 
   // Build a map: symbol → { tp, sl } from orders
   const tpslBySymbol = useMemo(() => {
@@ -419,7 +433,7 @@ export function ProfileView({ onBack }: ProfileViewProps) {
             <Text style={styles.emptyDesc}>
               Connect a Solana wallet to view your Pacifica trading account.
             </Text>
-            <Pressable style={styles.primaryBtn} onPress={connect}>
+            <Pressable style={styles.primaryBtn} onPress={() => connect()}>
               <Text style={styles.primaryBtnText}>Connect Wallet</Text>
             </Pressable>
           </View>
@@ -679,8 +693,16 @@ export function ProfileView({ onBack }: ProfileViewProps) {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      <DepositModal visible={depositOpen} onClose={() => setDepositOpen(false)} />
-      <WithdrawModal visible={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+      {depositModalLoaded && (
+        <Suspense fallback={null}>
+          <LazyDepositModal visible={depositOpen} onClose={() => setDepositOpen(false)} />
+        </Suspense>
+      )}
+      {withdrawModalLoaded && (
+        <Suspense fallback={null}>
+          <LazyWithdrawModal visible={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+        </Suspense>
+      )}
 
       {/* TP/SL Modal (C-11 pre-populated, C-12 remove button) */}
       <Modal

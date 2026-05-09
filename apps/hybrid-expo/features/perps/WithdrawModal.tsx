@@ -2,6 +2,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -10,20 +11,19 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useWallet } from '@/hooks/useWallet';
+import { fetchPerpsAccount } from '@/features/perps/perps.public-api';
+import { requestWithdrawal } from '@/features/perps/perps.signed-api';
+import { USDC_LABEL } from '@/features/perps/pacific.config';
+import { semantic, tokens } from '@/theme';
 
 function showAlert(title: string, msg: string) {
   if (Platform.OS === 'web') {
     window.alert(`${title}\n${msg}`);
   } else {
-    const { Alert } = require('react-native');
     Alert.alert(title, msg);
   }
 }
-
-import { useWallet } from '@/hooks/useWallet';
-import { fetchPerpsAccount, requestWithdrawal } from '@/features/perps/perps.api';
-import { USDC_LABEL } from '@/features/perps/pacific.config';
-import { semantic, tokens } from '@/theme';
 
 const MIN_WITHDRAWAL = 1; // Pacific minimum: $1
 const WITHDRAWAL_FEE = 1; // Pacific charges $1 per withdrawal
@@ -106,7 +106,7 @@ export function WithdrawModal({ visible, onClose }: WithdrawModalProps) {
           {!connected ? (
             <View style={styles.body}>
               <Text style={styles.infoText}>Connect your wallet to withdraw</Text>
-              <Pressable style={styles.primaryBtn} onPress={connect}>
+              <Pressable style={styles.primaryBtn} onPress={() => connect()}>
                 <Text style={styles.primaryBtnText}>Connect Wallet</Text>
               </Pressable>
             </View>

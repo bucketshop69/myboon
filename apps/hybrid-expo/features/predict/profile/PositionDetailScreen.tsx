@@ -167,7 +167,11 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
         <Header onBack={() => router.back()} title="Position" />
         <View style={styles.center}>
           <Text style={styles.emptyText}>Position not found</Text>
-          <Pressable style={styles.retryBtn} onPress={() => { setLoading(true); loadData().finally(() => setLoading(false)); }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading position"
+            style={styles.retryBtn}
+            onPress={() => { setLoading(true); loadData().finally(() => setLoading(false)); }}>
             <Text style={styles.retryBtnText}>Retry</Text>
           </Pressable>
         </View>
@@ -280,6 +284,8 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
       {/* Bottom dock */}
       <View style={[styles.bottomDock, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View market"
           style={styles.viewMarketBtn}
           onPress={() => {
             const sportMatch = slug.match(/^cric(epl|ucl|ipl)-/);

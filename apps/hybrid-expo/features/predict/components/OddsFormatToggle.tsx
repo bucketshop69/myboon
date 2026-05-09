@@ -40,19 +40,36 @@ export function OddsFormatToggle({ format, onFormatChange }: OddsFormatTogglePro
 
   return (
     <>
-      <Pressable ref={triggerRef} onPress={handleOpen} style={styles.trigger}>
+      <Pressable
+        ref={triggerRef}
+        accessibilityRole="button"
+        accessibilityLabel={`Odds format, ${current.label}`}
+        accessibilityState={{ expanded: open }}
+        accessibilityHint="Choose how odds are displayed"
+        onPress={handleOpen}
+        style={styles.trigger}>
         <Text style={styles.triggerText}>{current.short}</Text>
         <Text style={styles.chevron}>{'\u25BE'}</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <View style={[styles.dropdown, { top: anchor.y, left: anchor.x, width: anchor.w }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close odds format menu"
+          style={styles.backdrop}
+          onPress={() => setOpen(false)}>
+          <View
+            accessibilityRole="menu"
+            accessibilityViewIsModal
+            style={[styles.dropdown, { top: anchor.y, left: anchor.x, width: anchor.w }]}>
             {OPTIONS.map((opt) => {
               const isActive = opt.value === format;
               return (
                 <Pressable
                   key={opt.value}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: isActive }}
                   onPress={() => handleSelect(opt.value)}
                   style={[styles.option, isActive && styles.optionActive]}>
                   <Text style={[styles.optionText, isActive && styles.optionTextActive]}>

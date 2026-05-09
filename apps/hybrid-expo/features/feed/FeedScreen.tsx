@@ -8,6 +8,7 @@ import { NarrativeSheet } from '@/features/feed/components/NarrativeSheet';
 import type { NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
 import type { FeedItem } from '@/features/feed/feed.types';
+import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { semantic, tokens } from '@/theme';
 
 const PAGE_SIZE = 20;
@@ -77,17 +78,11 @@ export default function FeedScreen() {
     void loadFeed();
   }, []);
 
-  // Auto-refresh every 5 minutes (silent)
-  useEffect(() => {
-    const id = setInterval(() => void loadFeed(true), AUTO_REFRESH_MS);
-    return () => clearInterval(id);
-  }, []);
+  // Auto-refresh every 5 minutes while the feed is visible and the app is active.
+  useFocusedAppStateInterval(() => void loadFeed(true), AUTO_REFRESH_MS);
 
-  // Tick every minute to update timeAgo displays
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), TIMEAGO_TICK_MS);
-    return () => clearInterval(id);
-  }, []);
+  // Tick every minute to update timeAgo displays while the feed is visible.
+  useFocusedAppStateInterval(() => setTick((t) => t + 1), TIMEAGO_TICK_MS);
 
   const handleCardPress = useCallback((item: FeedItem) => {
     setSheetItem({

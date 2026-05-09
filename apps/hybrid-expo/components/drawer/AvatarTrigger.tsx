@@ -1,6 +1,6 @@
 import React from 'react';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Wallet } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useDrawer } from './DrawerProvider';
 import { useWallet } from '@/hooks/useWallet';
@@ -25,7 +25,7 @@ export function AvatarTrigger() {
           {connected ? (
             <Text style={styles.letter}>{letter}</Text>
           ) : (
-            <Wallet size={12} color={semantic.text.dim} />
+            <MaterialIcons name="account-balance-wallet" size={12} color={semantic.text.dim} />
           )}
         </View>
       </View>

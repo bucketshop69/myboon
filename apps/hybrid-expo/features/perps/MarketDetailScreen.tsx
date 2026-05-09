@@ -24,14 +24,15 @@ import {
   formatFunding,
   formatPrice,
   formatUsdCompact,
+} from '@/features/perps/perps.public-api';
+import {
   placeOrder,
   placeLimitOrder,
   closePosition,
   setTPSL,
   removeTPSL,
-} from '@/features/perps/perps.api';
-import type { PerpsPosition, PerpsOrder } from '@/features/perps/perps.types';
-import type { PerpsMarket } from '@/features/perps/perps.types';
+} from '@/features/perps/perps.signed-api';
+import type { PerpsMarket, PerpsOrder, PerpsPosition } from '@/features/perps/perps.types';
 import { usePerpsLivePrice } from '@/features/perps/usePerpsWebSocket';
 import { PriceChart } from '@/features/perps/PriceChart';
 import { PACIFIC_BUILDER_CODE } from '@/features/perps/pacific.config';
@@ -554,7 +555,7 @@ export function MarketDetailScreen({ symbol }: MarketDetailScreenProps) {
                 <Text style={styles.disconnectedText}>
                   Connect your wallet to trade {symbol} perpetuals
                 </Text>
-                <Pressable style={styles.connectWalletBtn} onPress={connect}>
+                <Pressable style={styles.connectWalletBtn} onPress={() => connect()}>
                   <Text style={styles.connectWalletText}>Connect Wallet</Text>
                 </Pressable>
               </View>

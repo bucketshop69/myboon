@@ -1,14 +1,37 @@
+import React, { Suspense, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { PrivyProvider } from '@/providers/PrivyProvider';
 import { WalletProvider } from '@/providers/WalletProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { DrawerProvider } from '@/components/drawer/DrawerProvider';
-import { WalletDrawer } from '@/components/drawer/WalletDrawer';
+import { DrawerProvider, useDrawer } from '@/components/drawer/DrawerProvider';
 import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
 import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import 'react-native-reanimated';
+
+const LazyWalletDrawer = React.lazy(() =>
+  import('@/components/drawer/WalletDrawer').then((module) => ({
+    default: module.WalletDrawer,
+  })),
+);
+
+function WalletDrawerMount() {
+  const { isOpen } = useDrawer();
+  const [hasOpened, setHasOpened] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) setHasOpened(true);
+  }, [isOpen]);
+
+  if (!hasOpened) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <LazyWalletDrawer />
+    </Suspense>
+  );
+}
 
 export default function RootLayout() {
   return (
@@ -30,7 +53,7 @@ export default function RootLayout() {
           </Stack>
         </ErrorBoundary>
         <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
-        <WalletDrawer />
+        <WalletDrawerMount />
       </View>
       <StatusBar style="light" />
     </DrawerProvider>

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Dimensions,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -24,7 +23,6 @@ import { fetchClobBalance, fetchPortfolio } from '@/features/predict/predict.api
 import { semantic, tokens } from '@/theme';
 
 const DRAWER_WIDTH = 280;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type WalletOption = {
   name: string;
@@ -104,7 +102,7 @@ export function WalletDrawer() {
         setOtpCode('');
       });
     }
-  }, [isOpen]);
+  }, [isOpen, overlayOpacity, translateX]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();

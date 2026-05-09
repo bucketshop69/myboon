@@ -6,6 +6,8 @@ import {
   Animated,
   PanResponder,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -16,6 +18,7 @@ import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } fro
 import { cancelOrder, fetchClobBalance, fetchCuratedMarketDetail, fetchLivePrices, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import type { GeopoliticsMarketDetail, Orderbook, PricePoint } from '@/features/predict/predict.types';
+import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { semantic, tokens } from '@/theme';
@@ -37,6 +40,7 @@ interface PredictMarketDetailScreenProps {
 
 type Interval = '5m' | '1h' | '1d';
 type ActiveView = 'picks' | 'stats' | 'chart' | 'orderbook';
+type SubmitStatus = 'idle' | 'wallet' | 'placing' | 'syncing';
 
 const SOFT_COLLAPSED = 230; // handle + stats + odds
 const SOFT_EXPANDED = 680;  // + numpad
@@ -61,7 +65,12 @@ function DisplayTab({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={[styles.displayTab, active && styles.displayTabActive]} onPress={onPress}>
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[styles.displayTab, active && styles.displayTabActive]}>
       <Text style={[styles.displayTabText, active && styles.displayTabTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -92,6 +101,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   // Market data
   const [detail, setDetail] = useState<GeopoliticsMarketDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liveTokenPrices, setLiveTokenPrices] = useState<Record<string, number | null>>({});
 
@@ -110,6 +120,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [selectedQuotePrice, setSelectedQuotePrice] = useState<number | null>(null);
   const [numpadAmount, setNumpadAmount] = useState('50');
   const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [pickScope, setPickScope] = useState<'market' | 'all'>('market');
   const [marketPositions, setMarketPositions] = useState<PortfolioPosition[]>([]);
   const [allPositions, setAllPositions] = useState<PortfolioPosition[]>([]);
@@ -131,6 +142,8 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   // Soft zone animation
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
+  const reconcileTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const submitInFlightRef = useRef(false);
 
   // Drag gesture — swipe down to collapse numpad
   const dragResponder = useRef(
@@ -143,11 +156,8 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     })
   ).current;
 
-  // Live price polling
-  const refreshTimer = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
-
-  async function loadMarket() {
-    setLoading(true);
+  async function loadMarket(silent = false) {
+    if (!silent) setLoading(true);
     setErrorMessage(null);
     try {
       setDetail(await fetchCuratedMarketDetail(slug));
@@ -155,7 +165,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load market');
       setDetail(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -192,6 +202,15 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     } finally {
       setOrderbookLoading(false);
     }
+  }
+
+  async function loadCashBalance() {
+    if (!poly.polygonAddress) {
+      setCashBalance(null);
+      return;
+    }
+    const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+    setCashBalance(balance?.balance ?? null);
   }
 
   async function loadPicks() {
@@ -272,33 +291,58 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
   }
 
+  async function refreshDetailScreen() {
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([
+        loadMarket(true),
+        loadPicks(),
+        loadCashBalance(),
+        activeView === 'orderbook' ? loadOrderbook() : Promise.resolve(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function scheduleFollowUpReconcile(polygonAddress: string) {
+    const timeout = setTimeout(() => {
+      reconcileTimeouts.current = reconcileTimeouts.current.filter((item) => item !== timeout);
+      void Promise.allSettled([
+        loadPicks(),
+        fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+      ]);
+    }, 1_800);
+    reconcileTimeouts.current.push(timeout);
+  }
+
   const liveTokenKey = detail?.clobTokenIds.filter(Boolean).join(',') ?? '';
 
   useEffect(() => { void loadMarket(); }, [slug]);
 
   useEffect(() => {
+    return () => {
+      reconcileTimeouts.current.forEach(clearTimeout);
+      reconcileTimeouts.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
     if (detail) void loadHistory(interval);
   }, [detail, interval]);
 
-  useEffect(() => {
+  useFocusedAppStateInterval(async (isCurrent) => {
     const tokenIds = liveTokenKey.split(',').filter(Boolean);
     if (tokenIds.length === 0) return;
-    let cancelled = false;
-
-    async function refreshPrices() {
-      try {
-        const prices = await fetchLivePrices(tokenIds);
-        if (!cancelled) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
-      } catch { /* silent */ }
-    }
-
-    void refreshPrices();
-    refreshTimer.current = globalThis.setInterval(() => { void refreshPrices(); }, 30_000);
-    return () => {
-      cancelled = true;
-      if (refreshTimer.current) globalThis.clearInterval(refreshTimer.current);
-    };
-  }, [liveTokenKey]);
+    try {
+      const prices = await fetchLivePrices(tokenIds);
+      if (isCurrent()) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
+    } catch { /* silent */ }
+  }, 30_000, {
+    enabled: liveTokenKey.length > 0,
+    runImmediately: true,
+    resetKey: liveTokenKey,
+  });
 
   // Load orderbook when switching to orderbook view
   useEffect(() => {
@@ -311,7 +355,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   useEffect(() => {
     let cancelled = false;
-    async function loadCashBalance() {
+    async function run() {
       if (!poly.polygonAddress) {
         setCashBalance(null);
         return;
@@ -319,7 +363,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
       if (!cancelled) setCashBalance(balance?.balance ?? null);
     }
-    void loadCashBalance();
+    void run();
     return () => { cancelled = true; };
   }, [poly.polygonAddress]);
 
@@ -339,6 +383,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
 
   function tapOdd(side: 'yes' | 'no') {
+    if (submitInFlightRef.current || submitting) return;
     if (numpadOpen && selectedSide === side) {
       // same tap — collapse
       setNumpadOpen(false);
@@ -358,7 +403,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   }
 
   async function submitOrder() {
-    if (!detail || !selectedSide || submitting) return;
+    if (!detail || !selectedSide || submitting || submitInFlightRef.current) return;
     const amount = parseFloat(numpadAmount);
     if (!amount || amount <= 0) return;
 
@@ -390,18 +435,16 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       return;
     }
 
-    // Ensure wallet is enabled and EVM signer is derived
-    if (!poly.canSignLocally) {
-      try {
-        await poly.enable();
-      } catch (err: any) {
-        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
-        return;
-      }
-    }
-
+    submitInFlightRef.current = true;
     setSubmitting(true);
+    setSubmitStatus(poly.canSignLocally ? 'placing' : 'wallet');
     try {
+      // Ensure wallet is enabled and EVM signer is derived
+      if (!poly.canSignLocally) {
+        await poly.enable();
+        setSubmitStatus('placing');
+      }
+
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
       const size = Math.floor((amount / price) * 100) / 100;
@@ -417,6 +460,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
+      setSubmitStatus('syncing');
       const pendingOrder = makePendingOpenOrder({
         id: result.orderID,
         slug,
@@ -430,12 +474,18 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       collapseNumpad();
       setActiveView('picks');
       setPickScope('market');
-      void loadPicks();
-      void fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
+      await Promise.allSettled([
+        loadPicks(),
+        fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+        activeView === 'orderbook' ? loadOrderbook() : Promise.resolve(),
+      ]);
+      scheduleFollowUpReconcile(polygonAddress);
     } catch (err: any) {
       Alert.alert('Order failed', err.message || 'Unknown error');
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
+      setSubmitStatus('idle');
     }
   }
 
@@ -445,23 +495,21 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   async function confirmCashOut(size: number) {
     const position = cashOutPosition;
-    if (!position || submitting) return;
+    if (!position || submitting || submitInFlightRef.current) return;
     if (!position.asset) {
       Alert.alert('Cash out failed', 'Missing token ID for this position');
       return;
     }
 
-    if (!poly.canSignLocally) {
-      try {
-        await poly.enable();
-      } catch (err: any) {
-        Alert.alert('Wallet', err.message || 'Failed to enable wallet');
-        return;
-      }
-    }
-
+    submitInFlightRef.current = true;
     setSubmitting(true);
+    setSubmitStatus(poly.canSignLocally ? 'placing' : 'wallet');
     try {
+      if (!poly.canSignLocally) {
+        await poly.enable();
+        setSubmitStatus('placing');
+      }
+
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
       const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
       const result = await placeBet({
@@ -475,14 +523,20 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       });
       if (!result.success) throw new Error(result.error || 'Cash out failed');
 
+      setSubmitStatus('syncing');
       setCashOutPosition(null);
       setActiveView('picks');
-      void loadPicks();
-      void fetchClobBalance(poly.polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)).catch(() => undefined);
+      await Promise.allSettled([
+        loadPicks(),
+        fetchClobBalance(poly.polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+      ]);
+      scheduleFollowUpReconcile(poly.polygonAddress);
     } catch (err: any) {
       Alert.alert('Cash out failed', err.message || 'Unknown error');
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
+      setSubmitStatus('idle');
     }
   }
 
@@ -501,6 +555,12 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       })
     : null;
   const marketClosed = detail?.active === false;
+  const submitLabel =
+    submitStatus === 'wallet'
+      ? 'Confirming wallet...'
+      : submitStatus === 'syncing'
+        ? 'Syncing pick...'
+        : 'Placing order...';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -524,14 +584,29 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         <View style={styles.stateWrap}>
           <Text style={styles.stateTitle}>Market unavailable</Text>
           <Text style={styles.stateText}>{errorMessage}</Text>
-          <Pressable onPress={() => void loadMarket()} style={styles.retryBtn}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+            accessibilityHint="Reload market details"
+            onPress={() => void loadMarket()}
+            style={styles.retryBtn}>
             <Text style={styles.retryText}>Try Again</Text>
           </Pressable>
         </View>
       ) : detail ? (
         <View style={styles.body}>
           {/* ══ DARK ZONE ══ */}
-          <View style={[styles.darkZone, { paddingBottom: SOFT_COLLAPSED }]}>
+          <ScrollView
+            style={styles.darkZone}
+            contentContainerStyle={[styles.darkZoneContent, { paddingBottom: SOFT_COLLAPSED }]}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => { void refreshDetailScreen(); }}
+                tintColor={semantic.text.accent}
+              />
+            }>
             <View style={styles.displayRow}>
               <View style={styles.displayTabGroup}>
                 <DisplayTab label="Your Picks" active={activeView === 'picks'} onPress={() => setActiveView('picks')} />
@@ -541,6 +616,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               {activeView === 'chart' && (['5m', '1h', '1d'] as Interval[]).map((iv) => (
                 <Pressable
                   key={iv}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Show ${iv === '5m' ? '5 minute' : iv === '1h' ? '1 hour' : '1 day'} chart`}
+                  accessibilityState={{ selected: interval === iv }}
                   style={[styles.rangeChip, interval === iv && styles.rangeChipActive]}
                   onPress={() => setInterval(iv)}>
                   <Text style={[styles.rangeChipText, interval === iv && styles.rangeChipTextActive]}>
@@ -616,13 +694,17 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                 <OrderbookView book={orderbook} loading={orderbookLoading} />
               )}
             </View>
-          </View>
+          </ScrollView>
 
           {/* ══ SOFT ZONE ══ */}
           <Animated.View style={[styles.softZone, { maxHeight: softZoneAnim }]}>
             {/* Drag handle */}
             <View style={styles.dragHandle} {...dragResponder.panHandlers}>
-              <Pressable onPress={collapseNumpad}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Collapse order entry"
+                accessibilityHint="Hide the amount keypad"
+                onPress={collapseNumpad}>
                 <View style={styles.dragHandlePill} />
               </Pressable>
             </View>
@@ -640,15 +722,23 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               )}
               <View style={styles.binaryBtns}>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Back YES at ${yesPrice !== null ? formatOdds(yesPrice) : 'unavailable'}`}
+                  accessibilityState={{ selected: selectedSide === 'yes', disabled: marketClosed || submitting }}
+                  accessibilityHint="Open order entry for YES"
                   style={[styles.bnBtn, styles.bnBtnYes, selectedSide === 'yes' && styles.bnBtnYesSelected]}
-                  disabled={marketClosed}
+                  disabled={marketClosed || submitting}
                   onPress={() => tapOdd('yes')}>
                   <Text style={styles.bnBtnYesPrice}>{yesPrice !== null ? formatOdds(yesPrice) : '--'}</Text>
                   <Text style={styles.bnBtnYesLabel}>Back YES</Text>
                 </Pressable>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Back NO at ${noPrice !== null ? formatOdds(noPrice) : 'unavailable'}`}
+                  accessibilityState={{ selected: selectedSide === 'no', disabled: marketClosed || submitting }}
+                  accessibilityHint="Open order entry for NO"
                   style={[styles.bnBtn, styles.bnBtnNo, selectedSide === 'no' && styles.bnBtnNoSelected]}
-                  disabled={marketClosed}
+                  disabled={marketClosed || submitting}
                   onPress={() => tapOdd('no')}>
                   <Text style={styles.bnBtnNoPrice}>{noPrice !== null ? formatOdds(noPrice) : '--'}</Text>
                   <Text style={styles.bnBtnNoLabel}>Back NO</Text>
@@ -667,6 +757,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               onAmountChange={setNumpadAmount}
               onConfirm={() => { void submitOrder(); }}
               submitting={submitting}
+              submittingLabel={submitLabel}
               disabled={!poly.isReady && !privy.connected}
               guardrail={orderGuardrail}
             />
@@ -724,6 +815,9 @@ const styles = StyleSheet.create({
   darkZone: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  darkZoneContent: {
+    flexGrow: 1,
   },
   chipRow: {
     flexDirection: 'row',

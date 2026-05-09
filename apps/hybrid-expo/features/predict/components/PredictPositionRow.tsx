@@ -50,16 +50,23 @@ export function PredictPositionRow({
   const pnlText = `${truncateSignedUsd(pnl)} (${formatSignedPercent(pnlPercent)})`;
   const pnlState = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'flat';
   const pnlStyle = pnlState === 'positive' ? styles.pnlPositive : pnlState === 'negative' ? styles.pnlNegative : styles.pnlFlat;
+  const marketTitle = formatPositionTitle(position);
+  const cashOutValue = truncateUsd(position.currentValue ?? 0);
 
   return (
-    <Pressable style={[styles.rowCard, styles.activeCard, styles.activeStrip]} onPress={onPress}>
+    <Pressable
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${outcome} pick. ${priceLine}. ${showMarketTitle ? `${marketTitle}. ` : ''}P and L ${pnlText}.`}
+      accessibilityHint={onPress ? 'Open pick details' : undefined}
+      style={[styles.rowCard, styles.activeCard, styles.activeStrip]}
+      onPress={onPress}>
       <View style={styles.rowMain}>
         <View style={styles.rowCopy}>
           <Text style={styles.rowTitle}>{outcome}</Text>
           <Text style={styles.rowMeta} numberOfLines={1}>{priceLine}</Text>
           {showMarketTitle && (
             <View style={styles.rowMarketLine}>
-              <Text style={styles.rowMarket} numberOfLines={1}>{formatPositionTitle(position)}</Text>
+              <Text style={styles.rowMarket} numberOfLines={1}>{marketTitle}</Text>
               <Text style={[styles.rowPnl, pnlStyle]}>{pnlText}</Text>
             </View>
           )}
@@ -69,6 +76,9 @@ export function PredictPositionRow({
         </View>
         <View style={styles.rowActions}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Cash out ${cashOutValue}`}
+            accessibilityHint="Open cash out confirmation"
             style={[
               styles.cashAction,
               pnlState === 'positive' ? styles.cashActionPositive : pnlState === 'negative' ? styles.cashActionNegative : styles.cashActionFlat,
@@ -82,10 +92,13 @@ export function PredictPositionRow({
               styles.cashActionText,
               pnlState === 'positive' ? styles.cashActionTextPositive : pnlState === 'negative' ? styles.cashActionTextNegative : styles.cashActionTextFlat,
             ]}>
-              {truncateUsd(position.currentValue ?? 0)} cash out now
+              {cashOutValue} cash out now
             </Text>
           </Pressable>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back more"
+            accessibilityHint="Add more to this pick"
             style={styles.backAction}
             onPress={(event) => {
               event.stopPropagation();

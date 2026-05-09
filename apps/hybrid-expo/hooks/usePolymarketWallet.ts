@@ -15,7 +15,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
-import { useEvmSigner } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 const DERIVE_MESSAGE = 'myboon:polymarket:enable';
@@ -54,7 +53,7 @@ export function usePolymarketWallet(): PolymarketWallet {
   const [depositWalletAddress, setDepositWalletAddress] = useState<string | null>(null);
   const [walletMode, setWalletMode] = useState<PolymarketWalletMode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const evmSigner = useEvmSigner();
+  const [canSignLocally, setCanSignLocally] = useState(false);
   const prevSolanaAddress = useRef<string | null>(null);
 
   // Storage keys scoped to the current Solana wallet
@@ -70,8 +69,8 @@ export function usePolymarketWallet(): PolymarketWallet {
     setSafeAddress(null);
     setDepositWalletAddress(null);
     setWalletMode(null);
-    evmSigner.clear();
-  }, [scopedKey, scopedDepositWalletKey, scopedWalletModeKey, evmSigner]);
+    setCanSignLocally(false);
+  }, [scopedKey, scopedDepositWalletKey, scopedWalletModeKey]);
 
   // Load stored addresses when Solana wallet connects/changes; clear when disconnected
   useEffect(() => {
@@ -81,7 +80,7 @@ export function usePolymarketWallet(): PolymarketWallet {
       setSafeAddress(null);
       setDepositWalletAddress(null);
       setWalletMode(null);
-      evmSigner.clear();
+      setCanSignLocally(false);
       setIsLoading(false);
       prevSolanaAddress.current = null;
       return;
@@ -97,7 +96,7 @@ export function usePolymarketWallet(): PolymarketWallet {
     setSafeAddress(null);
     setDepositWalletAddress(null);
     setWalletMode(null);
-    evmSigner.clear();
+    setCanSignLocally(false);
 
     Promise.all([
       AsyncStorage.getItem(`${STORAGE_KEY}:${solanaAddress}`),
@@ -120,7 +119,7 @@ export function usePolymarketWallet(): PolymarketWallet {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [connected, solanaAddress]);
+  }, [connected, solanaAddress, clearStoredSession]);
 
   const enable = useCallback(async () => {
     if (!connected || !signMessage) {
@@ -134,7 +133,9 @@ export function usePolymarketWallet(): PolymarketWallet {
       const signature = await signMessage(messageBytes);
 
       // Step 2: Derive EVM key locally (same derivation as server)
-      evmSigner.deriveFromSignature(signature);
+      const { deriveEvmSignerFromSignature } = await import('./useEvmSigner');
+      await deriveEvmSignerFromSignature(signature);
+      setCanSignLocally(true);
 
       // Step 3: Send hex-encoded signature to server for deposit wallet setup + CLOB API creds
       const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
@@ -202,6 +203,6 @@ export function usePolymarketWallet(): PolymarketWallet {
     isLoading,
     enable,
     disable,
-    canSignLocally: evmSigner.isReady,
+    canSignLocally,
   };
 }

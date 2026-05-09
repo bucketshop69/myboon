@@ -1,12 +1,12 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { fetchWithTimeout, resolveApiBaseUrl } from '@/lib/api';
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,12 +21,15 @@ import {
   formatChange,
   formatPrice,
   formatUsdCompact,
-} from '@/features/perps/perps.api';
+} from '@/features/perps/perps.public-api';
 import type { PerpsMarket } from '@/features/perps/perps.types';
-import { ProfileView } from '@/features/perps/ProfileView';
 import { semantic, tokens } from '@/theme';
 
 type TradeView = 'markets' | 'profile';
+
+const LazyProfileView = lazy(() =>
+  import('@/features/perps/ProfileView').then((module) => ({ default: module.ProfileView })),
+);
 
 // In-memory SVG cache — persists for the app session
 const svgCache = new Map<string, string | null>();
@@ -57,6 +60,37 @@ const TokenIcon = memo(function TokenIcon({ symbol, iconPath }: { symbol: string
     <View style={styles.tokenIcon}>
       <SvgXml xml={xml} width={28} height={28} />
     </View>
+  );
+});
+
+const MarketRow = memo(function MarketRow({
+  market,
+  onPress,
+}: {
+  market: PerpsMarket;
+  onPress: (symbol: string) => void;
+}) {
+  const isUp = market.change24h >= 0;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
+      onPress={() => onPress(market.symbol)}>
+      <TokenIcon symbol={market.symbol} iconPath={market.iconPath} />
+      <View style={styles.symCol}>
+        <Text style={styles.rowSym}>{market.symbol} <Text style={styles.rowLev}>{market.maxLeverage}×</Text></Text>
+      </View>
+      <Text style={[styles.rowCell, styles.rowPrice]}>
+        {formatPrice(market.markPrice)}
+      </Text>
+      <Text
+        style={[styles.rowCell, styles.rowChange, isUp ? styles.textPos : styles.textNeg]}>
+        {formatChange(market.change24h)}
+      </Text>
+      <Text style={[styles.rowCell, styles.rowOi]}>
+        {formatUsdCompact(market.openInterest)}
+      </Text>
+    </Pressable>
   );
 });
 
@@ -93,25 +127,34 @@ export function TradeListScreen() {
     void loadMarkets();
   }, []);
 
-  async function onRefresh() {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const data = await fetchPerpsMarkets();
       setMarkets(data);
     } catch { /* silent */ }
     setRefreshing(false);
-  }
+  }, []);
 
-  function goToMarket(symbol: string) {
+  const goToMarket = useCallback((symbol: string) => {
     router.push(`/trade/${encodeURIComponent(symbol)}`);
-  }
+  }, [router]);
+
+  const renderMarket = useCallback(
+    ({ item }: { item: PerpsMarket }) => <MarketRow market={item} onPress={goToMarket} />,
+    [goToMarket],
+  );
+
+  const keyExtractor = useCallback((market: PerpsMarket) => market.symbol, []);
 
   const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {view === 'profile' ? (
-        <ProfileView onBack={() => setView('markets')} />
+        <Suspense fallback={<ProfileFallback />}>
+          <LazyProfileView onBack={() => setView('markets')} />
+        </Suspense>
       ) : (
         <>
           <AppTopBar
@@ -141,35 +184,15 @@ export function TradeListScreen() {
                 <Text style={[styles.th, styles.thRight, styles.thActive]}>24h ▾</Text>
                 <Text style={[styles.th, styles.thRight]}>OI</Text>
               </View>
-              <ScrollView
+              <FlatList
+                data={filteredMarkets}
+                keyExtractor={keyExtractor}
+                renderItem={renderMarket}
+                style={styles.tableList}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.tableBody}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}>
-                {filteredMarkets.map((market) => {
-                  const isUp = market.change24h >= 0;
-                  return (
-                    <Pressable
-                      key={market.symbol}
-                      style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
-                      onPress={() => goToMarket(market.symbol)}>
-                      <TokenIcon symbol={market.symbol} iconPath={market.iconPath} />
-                      <View style={styles.symCol}>
-                        <Text style={styles.rowSym}>{market.symbol} <Text style={styles.rowLev}>{market.maxLeverage}×</Text></Text>
-                      </View>
-                      <Text style={[styles.rowCell, styles.rowPrice]}>
-                        {formatPrice(market.markPrice)}
-                      </Text>
-                      <Text
-                        style={[styles.rowCell, styles.rowChange, isUp ? styles.textPos : styles.textNeg]}>
-                        {formatChange(market.change24h)}
-                      </Text>
-                      <Text style={[styles.rowCell, styles.rowOi]}>
-                        {formatUsdCompact(market.openInterest)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />}
+              />
 
               {/* Bottom search bar */}
               <View style={styles.searchBar}>
@@ -202,6 +225,15 @@ export function TradeListScreen() {
         </>
       )}
 
+    </View>
+  );
+}
+
+function ProfileFallback() {
+  return (
+    <View style={styles.stateContainer}>
+      <ActivityIndicator size="small" color={semantic.text.accent} />
+      <Text style={styles.stateText}>Loading profile...</Text>
     </View>
   );
 }
@@ -253,6 +285,9 @@ const styles = StyleSheet.create({
 
   // Table
   tableContainer: {
+    flex: 1,
+  },
+  tableList: {
     flex: 1,
   },
   tableHeader: {

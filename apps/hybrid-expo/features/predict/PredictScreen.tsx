@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -6,10 +6,10 @@ import {
   Image,
   Pressable,
   RefreshControl,
+  SectionList,
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -18,10 +18,20 @@ import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { fetchLivePrices, fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
-import { useOddsFormat } from '@/hooks/useOddsFormat';
-import { OddsFormatToggle } from '@/features/predict/components/OddsFormatToggle';
+import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
+import { formatOdds as formatOddsForFormat, useOddsFormat } from '@/hooks/useOddsFormat';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
+
+type LivePriceMap = Record<string, number | null>;
+
+type PredictFeedSection = {
+  title: string;
+  count?: number;
+  isLive?: boolean;
+  onPress?: () => void;
+  data: FeedItem[];
+};
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -36,16 +46,6 @@ function formatGameTime(isoDate: string | null): string {
   const day = date.getDate();
   const clock = date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${month} ${day} · ${clock}`;
-}
-
-function formatEndDate(endDate: string | null): string {
-  if (!endDate) return '';
-  const time = Date.parse(endDate);
-  if (Number.isNaN(time)) return '';
-  const date = new Date(time);
-  const month = date.toLocaleString('en-US', { month: 'short' });
-  const day = date.getDate();
-  return `Ends ${month} ${day}`;
 }
 
 function formatChipLabel(label: string): string {
@@ -85,34 +85,37 @@ function collectFeedTokenIds(items: FeedItem[]): string[] {
   return [...tokenIds];
 }
 
-function applyLivePricesToFeed(feed: FeedResponse, prices: Record<string, number | null>): FeedResponse {
+function livePriceForToken(livePrices: LivePriceMap, tokenId: string | null | undefined): number | null {
+  if (!tokenId) return null;
+  return livePrices[tokenId] ?? null;
+}
+
+function getBinaryDisplayPrice(item: FeedItemBinary, livePrices: LivePriceMap): number {
+  const yesToken = item.clobTokenIds?.[0] ?? item.outcomes[0]?.clobTokenIds?.[0];
+  const noToken = item.clobTokenIds?.[1] ?? item.outcomes[1]?.clobTokenIds?.[0];
+  const yesPrice = livePriceForToken(livePrices, yesToken);
+  const noPrice = livePriceForToken(livePrices, noToken);
+  return yesPrice ?? (noPrice !== null ? 1 - noPrice : item.price);
+}
+
+function getMatchLiveOutcomePrices(item: FeedItemMatch, livePrices: LivePriceMap): (number | null)[] {
+  return item.outcomes.map((outcome) => livePriceForToken(livePrices, outcome.clobTokenIds?.[0]));
+}
+
+function livePriceKey(prices: readonly (number | null)[]): string {
+  return prices.map((price) => price ?? '').join('|');
+}
+
+function mergeLivePrices(current: LivePriceMap, incoming: LivePriceMap): LivePriceMap {
   let changed = false;
-  const items = feed.items.map((item): FeedItem => {
-    if (item.type === 'match') {
-      let itemChanged = false;
-      const outcomes = item.outcomes.map((outcome) => {
-        const tokenId = outcome.clobTokenIds?.[0];
-        const livePrice = tokenId ? prices[tokenId] : null;
-        if (livePrice === null || livePrice === undefined || livePrice === outcome.price) return outcome;
-        itemChanged = true;
-        return { ...outcome, price: livePrice };
-      });
-      if (!itemChanged) return item;
+  const next = { ...current };
+  for (const [tokenId, price] of Object.entries(incoming)) {
+    if (next[tokenId] !== price) {
+      next[tokenId] = price;
       changed = true;
-      return { ...item, outcomes };
     }
-
-    const yesToken = item.clobTokenIds?.[0] ?? item.outcomes[0]?.clobTokenIds?.[0];
-    const noToken = item.clobTokenIds?.[1] ?? item.outcomes[1]?.clobTokenIds?.[0];
-    const yesPrice = yesToken ? prices[yesToken] : null;
-    const noPrice = noToken ? prices[noToken] : null;
-    const nextPrice = yesPrice ?? (noPrice !== null && noPrice !== undefined ? 1 - noPrice : null);
-    if (nextPrice === null || nextPrice === undefined || nextPrice === item.price) return item;
-    changed = true;
-    return { ...item, price: nextPrice };
-  });
-
-  return changed ? { ...feed, items } : feed;
+  }
+  return changed ? next : current;
 }
 
 // ─── sub-components ──────────────────────────────────────────────────────────
@@ -134,17 +137,17 @@ function PulsingDot() {
   return <Animated.View style={[styles.pulseDot, { opacity }]} />;
 }
 
-function LiveBadge() {
+const LiveBadge = memo(function LiveBadge() {
   return (
     <View style={styles.liveBadge}>
       <PulsingDot />
       <Text style={styles.liveBadgeText}>LIVE</Text>
     </View>
   );
-}
+});
 
 
-function CategoryBadge({ category }: { category: string }) {
+const CategoryBadge = memo(function CategoryBadge({ category }: { category: string }) {
   const colors = getCategoryColor(category);
   return (
     <View style={[styles.categoryBadge, { backgroundColor: colors.bg }]}>
@@ -153,15 +156,31 @@ function CategoryBadge({ category }: { category: string }) {
       </Text>
     </View>
   );
-}
+});
 
 // ─── binary market card ──────────────────────────────────────────────────────
 
-function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPress: () => void; formatOdds: (p: number | null) => string }) {
-  const yesPct = Math.round(item.price * 100);
+const BinaryCard = memo(function BinaryCard({
+  item,
+  price,
+  onOpen,
+  formatOdds,
+}: {
+  item: FeedItemBinary;
+  price: number;
+  onOpen: (slug: string) => void;
+  formatOdds: (p: number | null) => string;
+}) {
+  const yesPct = Math.round(price * 100);
+  const noPct = Math.round((1 - price) * 100);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.binaryCard, pressed && styles.cardPressed]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}. Yes ${yesPct} percent, No ${noPct} percent. ${formatUsdCompact(item.volume)} volume.`}
+      accessibilityHint="Open market details"
+      onPress={() => onOpen(item.slug)}
+      style={({ pressed }) => [styles.binaryCard, pressed && styles.cardPressed]}>
       {/* top row: image + category badge + question */}
       <View style={styles.binaryTop}>
         {item.image ? (
@@ -186,97 +205,13 @@ function BinaryCard({ item, onPress, formatOdds }: { item: FeedItemBinary; onPre
 
       {/* percentages + volume */}
       <View style={styles.binaryPctRow}>
-        <Text style={styles.pctYes}>{formatOdds(item.price)}</Text>
+        <Text style={styles.pctYes}>{formatOdds(price)}</Text>
         <Text style={styles.volBadge}>{formatUsdCompact(item.volume)} vol</Text>
-        <Text style={styles.pctNo}>{formatOdds(1 - item.price)}</Text>
+        <Text style={styles.pctNo}>{formatOdds(1 - price)}</Text>
       </View>
     </Pressable>
   );
-}
-
-// ─── featured carousel card ─────────────────────────────────────────────────
-
-function FeaturedCard({
-  item,
-  onPress,
-  formatOdds,
-  width,
-}: {
-  item: FeedItem;
-  onPress: () => void;
-  formatOdds: (p: number | null) => string;
-  width: number;
-}) {
-  const isMatch = item.type === 'match';
-  const isLive = item.status === 'live';
-
-  if (isMatch) {
-    const nonDraw = item.outcomes.filter((o) => !o.label.toLowerCase().startsWith('draw'));
-    const drawOutcome = item.outcomes.find((o) => o.label.toLowerCase().startsWith('draw'));
-    const teamA = nonDraw[0];
-    const teamB = nonDraw[1];
-    const teamAPrice = teamA?.price ?? 0.5;
-    const teamBPrice = teamB?.price ?? 0.5;
-
-    return (
-      <Pressable onPress={onPress} style={({ pressed }) => [styles.featuredCard, { width }, pressed && styles.cardPressed]}>
-        <View style={styles.featuredTop}>
-          <View style={styles.featuredStatusRow}>
-            {isLive ? <LiveBadge /> : <Text style={styles.featuredTime}>{formatGameTime(item.gameStartTime ?? item.startDate)}</Text>}
-            <View>
-              <Text style={styles.featuredKicker}>{isLive ? 'Top live market' : 'Featured match'}</Text>
-              <Text style={styles.featuredLeague}>{item.sport.toUpperCase()} · {formatUsdCompact(item.volume)} vol</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.featuredMatchup}>
-          <View style={styles.featuredTeam}>
-            <Text style={styles.featuredTeamName} numberOfLines={2}>{shortTeamName(teamA?.label ?? '')}</Text>
-            <Text style={[styles.featuredOdd, styles.featuredOddPos]}>{formatOdds(teamAPrice)}</Text>
-          </View>
-          <View style={styles.featuredVs}><Text style={styles.featuredVsText}>VS</Text></View>
-          <View style={[styles.featuredTeam, styles.featuredTeamRight]}>
-            <Text style={[styles.featuredTeamName, styles.featuredTextRight]} numberOfLines={2}>{shortTeamName(teamB?.label ?? '')}</Text>
-            <Text style={[styles.featuredOdd, styles.featuredOddNeg]}>{formatOdds(teamBPrice)}</Text>
-          </View>
-        </View>
-
-        {drawOutcome ? (
-          <Text style={styles.featuredContextText}>Draw {formatOdds(drawOutcome.price)}</Text>
-        ) : null}
-      </Pressable>
-    );
-  }
-
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.featuredCard, { width }, pressed && styles.cardPressed]}>
-      <View style={styles.featuredTop}>
-        <View style={styles.featuredStatusRow}>
-          <CategoryBadge category={item.category} />
-          <View>
-            <Text style={styles.featuredKicker}>Featured market</Text>
-            <Text style={styles.featuredLeague}>{formatUsdCompact(item.volume)} vol</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.featuredBinaryMain}>
-        {item.image ? <Image source={{ uri: item.image }} style={styles.featuredImage} resizeMode="cover" /> : null}
-        <View style={styles.featuredBinaryCopy}>
-          <Text style={styles.featuredQuestion} numberOfLines={3}>{item.title}</Text>
-          <Text style={styles.featuredEnd}>{formatEndDate(item.endDate)}</Text>
-        </View>
-        <View style={styles.featuredBinaryOdds}>
-          <Text style={[styles.featuredOdd, styles.featuredOddPos]}>{formatOdds(item.price)}</Text>
-          <Text style={styles.featuredOddsLabel}>YES</Text>
-        </View>
-      </View>
-
-      <Text style={styles.featuredContextText}>No {formatOdds(1 - item.price)}</Text>
-    </Pressable>
-  );
-}
+});
 
 // ─── match card (epl / ipl) ──────────────────────────────────────────────────
 
@@ -286,11 +221,27 @@ function shortTeamName(label: string): string {
   return label.replace(/\s*(FC|United|Wanderers|Hotspur|City)\b\.?/gi, '').trim();
 }
 
-function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress: () => void; formatOdds: (p: number | null) => string }) {
+const MatchCard = memo(function MatchCard({
+  item,
+  liveOutcomePrices,
+  priceKey,
+  onOpen,
+  formatOdds,
+}: {
+  item: FeedItemMatch;
+  liveOutcomePrices: readonly (number | null)[];
+  priceKey: string;
+  onOpen: (sport: string, slug: string) => void;
+  formatOdds: (p: number | null) => string;
+}) {
   const isLive = item.status === 'live';
   const hasDraw = item.outcomes.length >= 3;
+  const outcomes = item.outcomes.map((outcome, index) => {
+    const livePrice = liveOutcomePrices[index];
+    return livePrice !== null && livePrice !== undefined ? { ...outcome, price: livePrice } : outcome;
+  });
   // For display: first non-draw = team A, last non-draw = team B
-  const nonDraw = item.outcomes.filter((o) => !o.label.toLowerCase().startsWith('draw'));
+  const nonDraw = outcomes.filter((o) => !o.label.toLowerCase().startsWith('draw'));
   const teamA = nonDraw[0]?.label ?? '';
   const teamB = nonDraw[1]?.label ?? '';
   const kickoff = item.gameStartTime ?? item.startDate;
@@ -298,7 +249,7 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
   // Odds bar segments
   const teamAPrice = nonDraw[0]?.price ?? 0.5;
   const teamBPrice = nonDraw[1]?.price ?? 0.5;
-  const drawOutcome = item.outcomes.find((o) => o.label.toLowerCase().startsWith('draw'));
+  const drawOutcome = outcomes.find((o) => o.label.toLowerCase().startsWith('draw'));
   const drawPrice = drawOutcome?.price ?? 0;
   const teamAPct = Math.round(teamAPrice * 100);
   const teamBPct = Math.round(teamBPrice * 100);
@@ -306,7 +257,10 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
 
   return (
     <Pressable
-      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${teamA} versus ${teamB}. ${isLive ? 'Live market' : formatGameTime(kickoff)}. ${formatUsdCompact(item.volume)} volume.`}
+      accessibilityHint="Open match details"
+      onPress={() => onOpen(item.sport, item.slug)}
       style={({ pressed }) => [
         styles.sportCard,
         isLive && styles.sportCardLive,
@@ -351,7 +305,12 @@ function MatchCard({ item, onPress, formatOdds }: { item: FeedItemMatch; onPress
       </View>
     </Pressable>
   );
-}
+}, (prev, next) =>
+  prev.item === next.item &&
+  prev.priceKey === next.priceKey &&
+  prev.onOpen === next.onOpen &&
+  prev.formatOdds === next.formatOdds
+);
 
 // ─── section header ───────────────────────────────────────────────────────────
 
@@ -363,9 +322,15 @@ function ChevronRight() {
   );
 }
 
-function SectionHeader({ label, count, onPress, isLive }: { label: string; count?: number; onPress?: () => void; isLive?: boolean }) {
+const SectionHeader = memo(function SectionHeader({ label, count, onPress, isLive }: { label: string; count?: number; onPress?: () => void; isLive?: boolean }) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.sectionLabelRow, pressed && styles.sectionPressed]}>
+    <Pressable
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `${label}${count ? `, ${count} markets` : ''}` : undefined}
+      accessibilityHint={onPress ? `Show ${label} markets` : undefined}
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => [styles.sectionLabelRow, pressed && styles.sectionPressed]}>
       <View style={styles.sectionLeft}>
         <Text style={[styles.sectionLabel, isLive && { color: tokens.colors.live }]}>{label}</Text>
         {count ? <View style={styles.sectionCountBadge}><Text style={styles.sectionCount}>{count}</Text></View> : null}
@@ -373,23 +338,25 @@ function SectionHeader({ label, count, onPress, isLive }: { label: string; count
       {onPress ? <ChevronRight /> : null}
     </Pressable>
   );
-}
+});
 
 // ─── main screen ─────────────────────────────────────────────────────────────
 
 export default function PredictScreen() {
   const router = useRouter();
-  const { format, setFormat, formatOdds } = useOddsFormat();
+  const { format } = useOddsFormat();
+  const formatOdds = useCallback((price: number | null) => formatOddsForFormat(price, format), [format]);
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-
   const [feedData, setFeedData] = useState<FeedResponse | null>(null);
+  const [livePrices, setLivePrices] = useState<LivePriceMap>({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
+  const livePricesRef = useRef(livePrices);
+  livePricesRef.current = livePrices;
 
-  async function loadFeed() {
+  const loadFeed = useCallback(async () => {
     setLoading(true);
     setErrorMessage(null);
     try {
@@ -402,17 +369,17 @@ export default function PredictScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadFeed();
-  }, []);
+  }, [loadFeed]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadFeed();
     setRefreshing(false);
-  }, []);
+  }, [loadFeed]);
 
   // Build chip list: "All" + only categories that have items
   const chips = useMemo(() => {
@@ -465,18 +432,6 @@ export default function PredictScreen() {
     [feedData],
   );
 
-  const featuredItems = useMemo(() => {
-    if (!feedData) return [];
-    return [...feedData.items]
-      .sort((a, b) => {
-        const aLive = a.status === 'live' ? 1 : 0;
-        const bLive = b.status === 'live' ? 1 : 0;
-        if (aLive !== bLive) return bLive - aLive;
-        return b.volume - a.volume;
-      })
-      .slice(0, 4);
-  }, [feedData]);
-
   const isAllSelected = activeCategory === 'All';
 
   const renderedItems = useMemo<FeedItem[]>(() => {
@@ -488,63 +443,191 @@ export default function PredictScreen() {
   const visibleTokenIds = useMemo(() => collectFeedTokenIds(renderedItems), [renderedItems]);
   const visibleTokenKey = visibleTokenIds.join(',');
   const hasFeedData = feedData !== null;
+  const livePriceRefreshInFlight = useRef(false);
 
-  useEffect(() => {
+  useFocusedAppStateInterval(async (isCurrent) => {
     const tokenIds = visibleTokenKey.split(',').filter(Boolean);
-    if (!hasFeedData || tokenIds.length === 0) return;
-    let cancelled = false;
-    let inFlight = false;
-
-    async function refreshLivePrices() {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        const prices = await fetchLivePrices(tokenIds);
-        if (!cancelled) {
-          setFeedData((current) => current ? applyLivePricesToFeed(current, prices) : current);
-        }
-      } catch {
-        // Keep the existing feed visible when live polling misses.
-      } finally {
-        inFlight = false;
+    if (!hasFeedData || tokenIds.length === 0 || livePriceRefreshInFlight.current) return;
+    livePriceRefreshInFlight.current = true;
+    try {
+      const prices = await fetchLivePrices(tokenIds);
+      if (isCurrent()) {
+        setLivePrices((current) => mergeLivePrices(current, prices));
       }
+    } catch {
+      // Keep the existing feed visible when live polling misses.
+    } finally {
+      livePriceRefreshInFlight.current = false;
+    }
+  }, 30_000, {
+    enabled: hasFeedData && visibleTokenIds.length > 0,
+    runImmediately: true,
+    resetKey: visibleTokenKey,
+  });
+
+  const navigateBinary = useCallback((slug: string) => {
+    router.push({ pathname: '/predict-market/[slug]', params: { slug } });
+  }, [router]);
+
+  const navigateMatch = useCallback((sport: string, slug: string) => {
+    router.push({ pathname: '/predict-sport/[sport]/[slug]', params: { sport, slug } });
+  }, [router]);
+
+  const showSports = useCallback(() => {
+    setActiveCategory('sports');
+  }, []);
+
+  const feedSections = useMemo<PredictFeedSection[]>(() => {
+    if (loading || errorMessage) return [];
+    if (!isAllSelected) {
+      return filteredItems.length > 0
+        ? [{ title: activeCategory, data: filteredItems }]
+        : [];
     }
 
-    void refreshLivePrices();
-    const timer = globalThis.setInterval(() => { void refreshLivePrices(); }, 30_000);
-    return () => {
-      cancelled = true;
-      globalThis.clearInterval(timer);
-    };
-  }, [hasFeedData, visibleTokenKey]);
+    const sections: PredictFeedSection[] = [];
+    if (liveItems.length > 0) {
+      sections.push({ title: 'Live Now', isLive: true, data: liveItems });
+    }
+    if (eplUpcoming.length > 0) {
+      sections.push({ title: 'EPL · Upcoming', count: eplUpcoming.length, onPress: showSports, data: eplUpcoming });
+    }
+    if (iplUpcoming.length > 0) {
+      sections.push({ title: 'IPL · Upcoming', count: iplUpcoming.length, onPress: showSports, data: iplUpcoming });
+    }
+    if (binaryItems.length > 0) {
+      sections.push({ title: 'Markets', count: binaryItems.length, data: binaryItems });
+    }
+    return sections;
+  }, [
+    activeCategory,
+    binaryItems,
+    eplUpcoming,
+    errorMessage,
+    filteredItems,
+    iplUpcoming,
+    isAllSelected,
+    liveItems,
+    loading,
+    showSports,
+  ]);
 
-  function navigateBinary(slug: string) {
-    router.push({ pathname: '/predict-market/[slug]', params: { slug } });
-  }
+  const renderFeedItem = useCallback(({ item }: { item: FeedItem }) => {
+    const currentLivePrices = livePricesRef.current;
+    if (item.type === 'binary') {
+      const price = getBinaryDisplayPrice(item, currentLivePrices);
+      return (
+        <BinaryCard
+          item={item}
+          price={price}
+          onOpen={navigateBinary}
+          formatOdds={formatOdds}
+        />
+      );
+    }
 
-  function navigateMatch(sport: string, slug: string) {
-    router.push({ pathname: '/predict-sport/[sport]/[slug]', params: { sport, slug } });
-  }
-
-  const featuredCardWidth = Math.min(320, Math.max(286, width - 52));
-
-  function renderFeedItem(item: FeedItem) {
-    return item.type === 'binary' ? (
-      <BinaryCard
-        key={item.slug}
-        item={item}
-        onPress={() => navigateBinary(item.slug)}
-        formatOdds={formatOdds}
-      />
-    ) : (
+    const liveOutcomePrices = getMatchLiveOutcomePrices(item, currentLivePrices);
+    return (
       <MatchCard
-        key={item.slug}
         item={item}
-        onPress={() => navigateMatch(item.sport, item.slug)}
+        liveOutcomePrices={liveOutcomePrices}
+        priceKey={livePriceKey(liveOutcomePrices)}
+        onOpen={navigateMatch}
         formatOdds={formatOdds}
       />
     );
-  }
+  }, [formatOdds, navigateBinary, navigateMatch]);
+
+  const renderSectionHeader = useCallback(({ section }: { section: PredictFeedSection }) => (
+    <View style={styles.sectionListHeader}>
+      <SectionHeader
+        label={section.title}
+        count={section.count}
+        onPress={section.onPress}
+        isLive={section.isLive}
+      />
+    </View>
+  ), []);
+
+  const keyExtractor = useCallback((item: FeedItem) => item.slug, []);
+
+  const renderListHeader = useCallback(() => (
+    <>
+      {/* loading */}
+      {loading ? (
+        <View style={styles.stateCard}>
+          <ActivityIndicator size="small" color={semantic.text.accent} />
+          <Text style={styles.stateText}>Loading markets...</Text>
+        </View>
+      ) : null}
+
+      {/* error */}
+      {!loading && errorMessage ? (
+        <View style={styles.stateCard}>
+          <Text style={styles.stateTitle}>Predict unavailable</Text>
+          <Text style={styles.stateText}>{errorMessage}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+            accessibilityHint="Reload predict markets"
+            style={styles.retryButton}
+            onPress={() => void loadFeed()}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {!loading && !errorMessage ? (
+        <View style={styles.filterStripShell}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterStrip}>
+            {chips.map((chip) => {
+              const active = chip === activeCategory;
+              return (
+                <Pressable
+                  key={chip}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Show ${formatChipLabel(chip)} markets`}
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setActiveCategory(chip)}
+                  style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
+                  {active ? <View style={styles.filterActiveDot} /> : null}
+                  <Text style={active ? styles.filterTextOn : styles.filterTextOff}>
+                    {formatChipLabel(chip)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+    </>
+  ), [activeCategory, chips, errorMessage, loadFeed, loading]);
+
+  const renderListFooter = useCallback(() => {
+    if (loading || errorMessage) return null;
+    if (isAllSelected && feedSections.length === 0) {
+      return (
+        <View style={styles.stateCard}>
+          <Text style={styles.stateTitle}>No markets</Text>
+          <Text style={styles.stateText}>Pull down to refresh.</Text>
+        </View>
+      );
+    }
+    if (!isAllSelected && filteredItems.length === 0) {
+      return (
+        <View style={styles.sectionWrap}>
+          <SectionHeader label={activeCategory} />
+          <View style={styles.stateCard}>
+            <Text style={styles.stateText}>No {activeCategory} markets available.</Text>
+          </View>
+        </View>
+      );
+    }
+    return null;
+  }, [activeCategory, errorMessage, feedSections.length, filteredItems.length, isAllSelected, loading]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -553,163 +636,23 @@ export default function PredictScreen() {
         right={<AvatarTrigger />}
       />
 
-      {/* feed scroll */}
-      <ScrollView
+      {/* feed list */}
+      <SectionList
+        sections={feedSections}
+        keyExtractor={keyExtractor}
+        renderItem={renderFeedItem}
+        renderSectionHeader={renderSectionHeader}
+        ListHeaderComponent={renderListHeader}
+        ListFooterComponent={renderListFooter}
+        stickySectionHeadersEnabled={false}
+        style={styles.feedList}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedContent}
+        extraData={livePrices}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={semantic.text.accent} />
-        }>
-        {/* loading */}
-        {loading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator size="small" color={semantic.text.accent} />
-            <Text style={styles.stateText}>Loading markets...</Text>
-          </View>
-        ) : null}
-
-        {/* error */}
-        {!loading && errorMessage ? (
-          <View style={styles.stateCard}>
-            <Text style={styles.stateTitle}>Predict unavailable</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable style={styles.retryButton} onPress={() => void loadFeed()}>
-              <Text style={styles.retryButtonText}>Try Again</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/*
-        {!loading && !errorMessage && featuredItems.length > 0 ? (
-          <>
-            <View style={styles.featuredHeader}>
-              <Text style={styles.featuredHeaderTitle}>Featured markets</Text>
-              <View style={styles.featuredDots}>
-                {featuredItems.slice(0, 3).map((item, index) => (
-                  <View
-                    key={item.slug}
-                    style={[styles.featuredDot, index === 0 && styles.featuredDotActive]}
-                  />
-                ))}
-              </View>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              decelerationRate="fast"
-              snapToInterval={featuredCardWidth + 10}
-              contentContainerStyle={styles.featuredRail}>
-              {featuredItems.map((item) => (
-                <FeaturedCard
-                  key={item.slug}
-                  item={item}
-                  onPress={() => item.type === 'match'
-                    ? navigateMatch(item.sport, item.slug)
-                    : navigateBinary(item.slug)}
-                  formatOdds={formatOdds}
-                  width={featuredCardWidth}
-                />
-              ))}
-            </ScrollView>
-          </>
-        ) : null}
-        */}
-
-        {!loading && !errorMessage ? (
-          <View style={styles.filterStripShell}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterStrip}>
-              {chips.map((chip) => {
-                const active = chip === activeCategory;
-                return (
-                  <Pressable
-                    key={chip}
-                    onPress={() => setActiveCategory(chip)}
-                    style={[styles.filterChip, active ? styles.filterChipOn : styles.filterChipOff]}>
-                    {active ? <View style={styles.filterActiveDot} /> : null}
-                    <Text style={active ? styles.filterTextOn : styles.filterTextOff}>
-                      {formatChipLabel(chip)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {/* ── "All" sectioned layout ── */}
-        {!loading && !errorMessage && isAllSelected ? (
-          <>
-            {/* Live Now */}
-            {liveItems.length > 0 ? (
-              <View style={styles.sectionWrap}>
-                <SectionHeader label="Live Now" isLive />
-                {liveItems.map(renderFeedItem)}
-              </View>
-            ) : null}
-
-            {/* EPL Upcoming */}
-            {eplUpcoming.length > 0 ? (
-              <View style={styles.sectionWrap}>
-                <SectionHeader
-                  label="EPL · Upcoming"
-                  count={eplUpcoming.length}
-                  onPress={() => setActiveCategory('sports')}
-                />
-                {eplUpcoming.map(renderFeedItem)}
-              </View>
-            ) : null}
-
-            {/* IPL Upcoming */}
-            {iplUpcoming.length > 0 ? (
-              <View style={styles.sectionWrap}>
-                <SectionHeader
-                  label="IPL · Upcoming"
-                  count={iplUpcoming.length}
-                  onPress={() => setActiveCategory('sports')}
-                />
-                {iplUpcoming.map(renderFeedItem)}
-              </View>
-            ) : null}
-
-            {/* Markets (binary) */}
-            {binaryItems.length > 0 ? (
-              <View style={styles.sectionWrap}>
-                <SectionHeader
-                  label="Markets"
-                  count={binaryItems.length}
-                />
-                {binaryItems.map(renderFeedItem)}
-              </View>
-            ) : null}
-
-            {/* empty state */}
-            {liveItems.length === 0 && eplUpcoming.length === 0 && iplUpcoming.length === 0 && binaryItems.length === 0 ? (
-              <View style={styles.stateCard}>
-                <Text style={styles.stateTitle}>No markets</Text>
-                <Text style={styles.stateText}>Pull down to refresh.</Text>
-              </View>
-            ) : null}
-          </>
-        ) : null}
-
-        {/* ── category-filtered flat list ── */}
-        {!loading && !errorMessage && !isAllSelected ? (
-          <View style={styles.sectionWrap}>
-            <SectionHeader label={activeCategory} />
-            {filteredItems.length === 0 ? (
-              <View style={styles.stateCard}>
-                <Text style={styles.stateText}>No {activeCategory} markets available.</Text>
-              </View>
-            ) : null}
-            {filteredItems.map((item) =>
-              renderFeedItem(item),
-            )}
-          </View>
-        ) : null}
-      </ScrollView>
+        }
+      />
     </View>
   );
 }
@@ -768,6 +711,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.colors.accent,
   },
   // ─── feed ───
+  feedList: {
+    flex: 1,
+  },
   feedContent: {
     paddingHorizontal: 14,
     paddingTop: tokens.spacing.sm,
@@ -776,6 +722,9 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     gap: 6,
+  },
+  sectionListHeader: {
+    marginBottom: 6,
   },
   // ─── featured carousel ───
   featuredHeader: {
