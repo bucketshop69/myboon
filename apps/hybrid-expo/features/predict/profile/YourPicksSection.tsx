@@ -39,7 +39,7 @@ export function YourPicksSection({
   onCancelOrder,
   onRedeemed,
 }: YourPicksSectionProps) {
-  const [scope, setScope] = useState<'active' | 'all'>('all');
+  const [scope, setScope] = useState<'active' | 'all'>('active');
   const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const allPicks = useMemo(
@@ -104,24 +104,22 @@ export function YourPicksSection({
         </View>
         <View style={styles.headerSide}>
           <Text style={styles.count}>{countLabel}</Text>
-          {closedCount > 0 && activePicks.length > 0 && (
-            <View style={styles.scopeTabs}>
-              <Pressable
-                style={[styles.scopeTab, scope === 'all' && styles.scopeTabActive]}
-                onPress={() => setScope('all')}
-                accessibilityState={{ selected: scope === 'all' }}
-              >
-                <Text style={[styles.scopeTabText, scope === 'all' && styles.scopeTabTextActive]}>All picks</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.scopeTab, scope === 'active' && styles.scopeTabActive]}
-                onPress={() => setScope('active')}
-                accessibilityState={{ selected: scope === 'active' }}
-              >
-                <Text style={[styles.scopeTabText, scope === 'active' && styles.scopeTabTextActive]}>Active</Text>
-              </Pressable>
-            </View>
-          )}
+          <View style={styles.scopeTabs}>
+            <Pressable
+              style={[styles.scopeTab, scope === 'active' && styles.scopeTabActive]}
+              onPress={() => setScope('active')}
+              accessibilityState={{ selected: scope === 'active' }}
+            >
+              <Text style={[styles.scopeTabText, scope === 'active' && styles.scopeTabTextActive]}>Active</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.scopeTab, scope === 'all' && styles.scopeTabActive]}
+              onPress={() => setScope('all')}
+              accessibilityState={{ selected: scope === 'all' }}
+            >
+              <Text style={[styles.scopeTabText, scope === 'all' && styles.scopeTabTextActive]}>All picks</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
