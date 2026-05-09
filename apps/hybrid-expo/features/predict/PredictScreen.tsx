@@ -511,7 +511,7 @@ export default function PredictScreen() {
     }
 
     void refreshLivePrices();
-    const timer = globalThis.setInterval(() => { void refreshLivePrices(); }, 5_000);
+    const timer = globalThis.setInterval(() => { void refreshLivePrices(); }, 30_000);
     return () => {
       cancelled = true;
       globalThis.clearInterval(timer);

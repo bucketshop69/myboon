@@ -321,7 +321,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     }
 
     void refreshPrices();
-    const timer = globalThis.setInterval(() => { void refreshPrices(); }, 5_000);
+    const timer = globalThis.setInterval(() => { void refreshPrices(); }, 30_000);
     return () => {
       cancelled = true;
       globalThis.clearInterval(timer);

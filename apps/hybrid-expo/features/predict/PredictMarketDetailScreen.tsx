@@ -287,7 +287,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     }
 
     void refreshPrices();
-    refreshTimer.current = globalThis.setInterval(() => { void refreshPrices(); }, 5_000);
+    refreshTimer.current = globalThis.setInterval(() => { void refreshPrices(); }, 30_000);
     return () => {
       cancelled = true;
       if (refreshTimer.current) globalThis.clearInterval(refreshTimer.current);

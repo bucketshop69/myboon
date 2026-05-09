@@ -134,7 +134,7 @@ async function clobFetch(path: string, options?: RequestInit): Promise<Response>
 
 const livePrices = new Map<string, number>()       // tokenId → midpoint price
 const activeTokenIds = new Set<string>()            // YES token IDs to poll
-const PRICE_POLL_INTERVAL_MS = 5_000
+const PRICE_POLL_INTERVAL_MS = 30_000
 const MAX_LIVE_PRICE_TOKEN_IDS = 80
 
 /** Register token IDs for live price polling. Called when feed builds its item list. */
