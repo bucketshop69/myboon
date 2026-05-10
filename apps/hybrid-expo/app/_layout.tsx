@@ -6,8 +6,6 @@ import { PrivyProvider } from '@/providers/PrivyProvider';
 import { WalletProvider } from '@/providers/WalletProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DrawerProvider, useDrawer } from '@/components/drawer/DrawerProvider';
-import { BottomGlassNav } from '@/features/feed/components/BottomGlassNav';
-import { BOTTOM_NAV_ITEMS } from '@/features/feed/feed.mock';
 import 'react-native-reanimated';
 
 const LazyWalletDrawer = React.lazy(() =>
@@ -42,6 +40,7 @@ export default function RootLayout() {
         <ErrorBoundary>
           <Stack>
             <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="feed" options={{ headerShown: false }} />
             <Stack.Screen name="predict" options={{ headerShown: false }} />
             <Stack.Screen name="predict-market/[slug]" options={{ headerShown: false }} />
             <Stack.Screen name="predict-sport/[sport]/[slug]" options={{ headerShown: false }} />
@@ -52,7 +51,6 @@ export default function RootLayout() {
             <Stack.Screen name="trade/[symbol]" options={{ headerShown: false }} />
           </Stack>
         </ErrorBoundary>
-        <BottomGlassNav items={BOTTOM_NAV_ITEMS} />
         <WalletDrawerMount />
       </View>
       <StatusBar style="light" />

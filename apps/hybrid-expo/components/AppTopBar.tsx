@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useRouter } from 'expo-router';
 import type { ComponentProps, ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { semantic, tokens } from '@/theme';
@@ -38,12 +39,21 @@ export function AppTopBar({ left, center, right }: AppTopBarProps) {
 }
 
 export function AppTopBarLogo() {
+  const router = useRouter();
+
   return (
-    <Image
-      source={require('../assets/branding/myboon-wordmark-header.png')}
-      style={styles.logo}
-      resizeMode="contain"
-    />
+    <Pressable
+      onPress={() => router.replace('/')}
+      accessibilityRole="button"
+      accessibilityLabel="Go to Home"
+      hitSlop={8}
+    >
+      <Image
+        source={require('../assets/branding/myboon-wordmark-header.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
+    </Pressable>
   );
 }
 
