@@ -32,7 +32,7 @@ import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfir
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
-import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
+import { getPredictOrderGuardrail, getPredictOrderSize, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -519,7 +519,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
-      const size = Math.floor((amount / price) * 100) / 100;
+      const size = getPredictOrderSize(amount, price);
+      if (size === null) throw new Error('Invalid price');
       const polygonAddress = poly.polygonAddress;
 
       const result = await placeBet({

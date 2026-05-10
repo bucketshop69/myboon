@@ -32,7 +32,7 @@ import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
-import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
+import { getPredictOrderGuardrail, getPredictOrderSize, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -447,7 +447,8 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
-      const size = Math.floor((amount / price) * 100) / 100;
+      const size = getPredictOrderSize(amount, price);
+      if (size === null) throw new Error('Invalid price');
       const polygonAddress = poly.polygonAddress;
 
       const result = await placeBet({

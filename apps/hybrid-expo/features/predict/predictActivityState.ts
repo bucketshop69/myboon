@@ -58,6 +58,8 @@ export interface PredictOrderGuardrail {
   message: string;
 }
 
+export const MIN_PREDICT_ORDER_SIZE = 5;
+
 export interface BuildPredictActivityItemsInput {
   positions: PortfolioPosition[];
   redeemablePositions: PortfolioPosition[];
@@ -286,6 +288,12 @@ export function formatPredictFreshness(freshness: PredictDataFreshness): string 
   return `Updated ${minutes}m ago`;
 }
 
+export function getPredictOrderSize(amount: number, price: number | null): number | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!price || !Number.isFinite(price) || price <= 0 || price >= 1) return null;
+  return Math.floor((amount / price) * 100) / 100;
+}
+
 export function getPredictOrderGuardrail(params: {
   amount: number;
   availableCash: number | null;
@@ -310,8 +318,16 @@ export function getPredictOrderGuardrail(params: {
   if (params.availableCash !== null && params.amount > params.availableCash + 0.000001) {
     return { blocking: true, title: 'Not enough cash', message: `Cash available ${formatUsd(params.availableCash)}.` };
   }
-  if (!params.latestPrice || params.latestPrice <= 0 || params.latestPrice >= 1) {
+  const orderSize = getPredictOrderSize(params.amount, params.latestPrice);
+  if (orderSize === null) {
     return { blocking: true, title: 'Price unavailable', message: 'Refresh the market price before placing this pick.' };
+  }
+  if (orderSize < MIN_PREDICT_ORDER_SIZE) {
+    return {
+      blocking: true,
+      title: 'Minimum order size',
+      message: `Minimum order size is ${formatUsdCompact(MIN_PREDICT_ORDER_SIZE)}. Increase your amount to continue.`,
+    };
   }
   if (
     params.selectedPrice !== null
@@ -333,4 +349,8 @@ function formatPercent(value: number): string {
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function formatUsdCompact(value: number): string {
+  return `$${value.toFixed(2).replace(/\.00$/u, '').replace(/(\.\d)0$/u, '$1')}`;
 }

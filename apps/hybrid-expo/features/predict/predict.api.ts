@@ -451,6 +451,27 @@ export interface PlaceBetResult {
   error?: string;
 }
 
+function formatOrderMinimum(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '$5';
+  return `$${value.toFixed(2).replace(/\.00$/u, '').replace(/(\.\d)0$/u, '$1')}`;
+}
+
+function friendlyPlaceBetError(detail: string): string {
+  if (/min option validation/iu.test(detail)) {
+    return 'Select at least one option to continue.';
+  }
+
+  const minimumMatch =
+    detail.match(/lower than the minimum:\s*([0-9]+(?:\.[0-9]+)?)/iu)
+    ?? detail.match(/minimum(?: order)? size[^0-9]*([0-9]+(?:\.[0-9]+)?)/iu);
+  if (minimumMatch) {
+    const minimum = Number.parseFloat(minimumMatch[1]);
+    return `Minimum order size is ${formatOrderMinimum(minimum)}. Increase your amount to continue.`;
+  }
+
+  return detail;
+}
+
 /**
  * Place bet through the server-side deposit-wallet order path.
  */
@@ -467,7 +488,7 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
 
   if (!response.ok) {
     const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Order failed';
-    return { success: false, error: detail };
+    return { success: false, error: friendlyPlaceBetError(detail) };
   }
 
   return {
