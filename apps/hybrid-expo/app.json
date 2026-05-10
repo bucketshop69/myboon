@@ -4,7 +4,7 @@
     "slug": "myboon",
     "version": "1.0.2",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-icon-v2.png",
     "scheme": "myboon",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -22,23 +22,23 @@
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#073B4C",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/android-icon-foreground-v2.png",
+        "backgroundImage": "./assets/images/android-icon-background-v2.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome-v2.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon-v2.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-icon-v2.png",
           "imageWidth": 280,
           "resizeMode": "contain",
           "backgroundColor": "#073B4C"
