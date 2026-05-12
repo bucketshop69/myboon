@@ -15,11 +15,11 @@ export function FooterCTA() {
           className="flex flex-col items-center gap-8"
         >
           <Image
-            src="/branding/myboon-wordmark-small@2x.png"
+            src="/branding/myboon-app-icon-foreground-v2.svg"
             alt="myboon"
-            width={100}
-            height={28}
-            className="opacity-60"
+            width={128}
+            height={128}
+            className="h-28 w-28 object-contain opacity-80"
           />
 
           <h2 className="font-headline font-bold text-2xl lg:text-3xl text-on-surface leading-tight">

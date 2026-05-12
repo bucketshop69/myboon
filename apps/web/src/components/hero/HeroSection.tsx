@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import Image from 'next/image'
-import PhoneFrame from './PhoneFrame'
+import HomeCanvasPhonePrototype from './HomeCanvasPhonePrototype'
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
 
@@ -31,14 +31,15 @@ export default function HeroSection() {
           animate="show"
           className="flex-1 max-w-xl"
         >
-          {/* Wordmark */}
+          {/* Brand mark */}
           <motion.div variants={fadeUp} className="mb-8">
             <Image
-              src="/branding/myboon-wordmark-small@2x.png"
+              src="/branding/myboon-app-icon-foreground-v2.svg"
               alt="myboon"
-              width={120}
-              height={32}
-              className="opacity-80"
+              width={144}
+              height={144}
+              className="h-32 w-32 object-contain opacity-95"
+              priority
             />
           </motion.div>
 
@@ -91,7 +92,7 @@ export default function HeroSection() {
           className="flex-shrink-0 perspective-container"
         >
           <div className="phone-container">
-            <PhoneFrame activeTab="feed" />
+            <HomeCanvasPhonePrototype />
           </div>
           {/* Shadow under phone */}
           <div className="w-[280px] h-10 bg-black/50 blur-2xl rounded-full opacity-40 mx-auto -mt-4 pointer-events-none" />

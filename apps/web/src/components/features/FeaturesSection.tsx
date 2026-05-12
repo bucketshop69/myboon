@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import PhoneFrame from '@/components/hero/PhoneFrame'
-import { type TabId } from '@/components/hero/TabCard'
+import { HomeCanvasJourneyPhone } from './HomeCanvasJourneyPhone'
 
 interface Feature {
-  id: TabId
+  id: string
+  eyebrow: string
   headline: string
   sub: string
   accentClass: string
@@ -15,27 +15,51 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     id: 'feed',
-    headline: 'See what\u2019s moving.',
-    sub: 'AI watches prediction markets, whale bets, and on-chain signals around the clock. You just open the app.',
+    eyebrow: 'Feed',
+    headline: 'See what is moving.',
+    sub: 'myboon starts with a live stream of narratives, news, markets, and on-chain signals.',
     accentClass: 'text-primary',
   },
   {
-    id: 'predict',
-    headline: 'Bet on it.',
-    sub: 'Polymarket odds on geopolitics, crypto, and live sports \u2014 tap to trade from the story that told you about it.',
+    id: 'full-feed',
+    eyebrow: 'Open full feed',
+    headline: 'Scroll the full feed.',
+    sub: 'The first tap expands the Home preview into the dense feed list.',
     accentClass: 'text-tertiary',
   },
   {
-    id: 'trade',
-    headline: 'Trade it.',
-    sub: 'Perpetuals on Solana via Pacific. Up to 50\u00d7 leverage. One tap from feed to position.',
+    id: 'feed-details',
+    eyebrow: 'Show details',
+    headline: 'Open the signal.',
+    sub: 'Then a selected feed item opens into a detail sheet with market context attached.',
+    accentClass: 'text-primary',
+  },
+  {
+    id: 'markets',
+    eyebrow: 'Markets',
+    headline: 'Take action on your signals.',
+    sub: 'The same Home canvas brings prediction markets and perps under the narrative.',
+    accentClass: 'text-primary-container',
+  },
+  {
+    id: 'action-markets',
+    eyebrow: 'Action surface',
+    headline: 'Choose the market.',
+    sub: 'A tap opens the full market list with sports, politics, macro, and crypto lanes.',
+    accentClass: 'text-tertiary',
+  },
+  {
+    id: 'wallet',
+    eyebrow: 'Wallet',
+    headline: 'Scroll into ownership.',
+    sub: 'After action, Wallet shows balances, positions, and what the user owns.',
     accentClass: 'text-primary',
   },
 ]
 
 export function FeaturesSection() {
   const [activeIdx, setActiveIdx] = useState(0)
-  const panelRefs = useRef<(HTMLDivElement | null)[]>([null, null, null])
+  const panelRefs = useRef<(HTMLDivElement | null)[]>([])
 
   useEffect(() => {
     const observers = panelRefs.current.map((el, idx) => {
@@ -54,11 +78,8 @@ export function FeaturesSection() {
     }
   }, [])
 
-  const activeTab = FEATURES[activeIdx].id
-
   return (
     <section className="relative border-t border-outline-variant/40">
-      {/* Section header */}
       <div className="max-w-7xl mx-auto px-6 lg:px-16 pt-24 pb-8">
         <p className="font-headline text-xs tracking-[0.25em] uppercase text-on-surface-variant/50">
           How it works
@@ -66,17 +87,15 @@ export function FeaturesSection() {
       </div>
 
       <div className="flex max-w-7xl mx-auto">
-        {/* Sticky phone — desktop only */}
         <div
           className="hidden lg:flex sticky top-0 h-screen w-1/2 shrink-0 items-center justify-center"
           style={{ alignSelf: 'flex-start' }}
         >
           <div className="perspective-container">
-            <PhoneFrame activeTab={activeTab} />
+            <HomeCanvasJourneyPhone activeIndex={activeIdx} />
           </div>
         </div>
 
-        {/* Scroll panels */}
         <div className="flex-1 lg:w-1/2">
           {FEATURES.map((feature, i) => (
             <div
@@ -93,10 +112,8 @@ export function FeaturesSection() {
                 transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                 className="px-6 lg:px-16 max-w-lg"
               >
-                <p
-                  className={`font-headline text-xs tracking-[0.2em] uppercase mb-4 ${feature.accentClass}`}
-                >
-                  {feature.id}
+                <p className={`font-headline text-xs tracking-[0.2em] uppercase mb-4 ${feature.accentClass}`}>
+                  {feature.eyebrow}
                 </p>
                 <h2 className="font-headline font-bold text-3xl lg:text-4xl text-on-surface mb-5 leading-tight">
                   {feature.headline}
@@ -104,6 +121,16 @@ export function FeaturesSection() {
                 <p className="text-on-surface-variant text-base leading-relaxed max-w-sm">
                   {feature.sub}
                 </p>
+                <div className="mt-8 flex gap-2">
+                  {FEATURES.map((step, stepIndex) => (
+                    <span
+                      key={step.id}
+                      className={stepIndex === activeIdx
+                        ? 'h-1.5 w-8 rounded-full bg-primary-container'
+                        : 'h-1.5 w-3 rounded-full bg-outline-variant/70'}
+                    />
+                  ))}
+                </div>
               </motion.div>
             </div>
           ))}
