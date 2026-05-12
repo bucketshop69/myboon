@@ -82,6 +82,7 @@ export function useWallet() {
       connection,
       walletOptions: [],
       source: 'mwa' as const,
+      sessionKey: `mwa:${fakeAddress}`,
     };
   }
 
@@ -103,5 +104,6 @@ export function useWallet() {
       readyState,
     })),
     source: 'mwa' as const,
+    sessionKey: addressStr ? `mwa:${addressStr}` : 'mwa:disconnected',
   };
 }

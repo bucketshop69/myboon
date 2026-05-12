@@ -48,19 +48,32 @@ export function WalletDrawer() {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const [visible, setVisible] = useState(false);
   const [predictValue, setPredictValue] = useState<string | null>(null);
+  const walletScopedKey = connected && address ? `${source}:${address}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
+  const walletScopedKeyRef = useRef(walletScopedKey);
+
+  useEffect(() => {
+    if (walletScopedKeyRef.current === walletScopedKey) return;
+    walletScopedKeyRef.current = walletScopedKey;
+    setPredictValue(null);
+  }, [walletScopedKey]);
 
   // Fetch predict portfolio value when drawer opens
   useEffect(() => {
-    if (!isOpen || !poly.polygonAddress) return;
+    const requestKey = walletScopedKeyRef.current;
+    if (!isOpen || !poly.polygonAddress) {
+      setPredictValue(null);
+      return;
+    }
     const addr = poly.tradingAddress ?? poly.polygonAddress;
     Promise.all([
       fetchPortfolio(addr).catch(() => null),
       fetchClobBalance(poly.polygonAddress).catch(() => null),
     ]).then(([portfolio, balance]) => {
+      if (walletScopedKeyRef.current !== requestKey) return;
       const total = (portfolio?.portfolioValue ?? 0) + (balance?.balance ?? 0);
       setPredictValue(total > 0 ? `$${total.toFixed(0)}` : '$0');
     });
-  }, [isOpen, poly.polygonAddress, poly.tradingAddress]);
+  }, [isOpen, poly.polygonAddress, poly.tradingAddress, walletScopedKey]);
 
   // Email OTP state
   const [emailInput, setEmailInput] = useState('');

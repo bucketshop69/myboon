@@ -49,7 +49,7 @@ function getOrderCost(order: OpenOrder): number {
 export default function PredictProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { connected, address: solanaAddress, source } = useWallet();
+  const { connected, address: solanaAddress, source, sessionKey } = useWallet();
   const poly = usePolymarketWallet();
   const { open: openDrawer } = useDrawer();
   const [busy, setBusy] = useState(false);
@@ -77,6 +77,25 @@ export default function PredictProfileScreen() {
   const ordersRefreshInFlight = useRef(false);
 
   const isEnabled = poly.isReady && poly.polygonAddress;
+  const walletScopedKey = connected && solanaAddress ? `${sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
+  const walletScopedKeyRef = useRef(walletScopedKey);
+
+  const resetWalletScopedState = useCallback(() => {
+    setPortfolio(null);
+    setCashBalance(null);
+    setOpenOrders([]);
+    setSessionExpired(false);
+    setActivityFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
+    setCashOutPosition(null);
+    portfolioRefreshInFlight.current = false;
+    ordersRefreshInFlight.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (walletScopedKeyRef.current === walletScopedKey) return;
+    walletScopedKeyRef.current = walletScopedKey;
+    resetWalletScopedState();
+  }, [walletScopedKey, resetWalletScopedState]);
 
   const handleCancel = useCallback(async (orderId: string) => {
     if (!poly.polygonAddress) return;
@@ -97,6 +116,7 @@ export default function PredictProfileScreen() {
 
   const loadPortfolio = useCallback(async () => {
     if (!poly.polygonAddress) return;
+    const requestKey = walletScopedKeyRef.current;
     // Gamma data-api tracks by trading wallet address (where funds/positions live)
     // CLOB operations use EOA (polygonAddress) for session auth
     setActivityFreshness((prev) => ({ ...prev, loading: true, error: null }));
@@ -109,6 +129,7 @@ export default function PredictProfileScreen() {
     const portfolioData = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
     const balanceData = balanceResult.status === 'fulfilled' ? balanceResult.value : null;
     const ordersData = ordersResult.status === 'fulfilled' ? ordersResult.value : null;
+    if (walletScopedKeyRef.current !== requestKey) return;
     if (portfolioData) setPortfolio(portfolioData);
     if (ordersData) setOpenOrders(ordersData);
     if (balanceData) {
@@ -129,6 +150,7 @@ export default function PredictProfileScreen() {
 
   const refreshPortfolioQuietly = useCallback(async () => {
     if (!poly.polygonAddress) return;
+    const requestKey = walletScopedKeyRef.current;
     if (portfolioRefreshInFlight.current) return;
     portfolioRefreshInFlight.current = true;
     try {
@@ -139,6 +161,7 @@ export default function PredictProfileScreen() {
       ]);
       const portfolioData = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
       const balanceData = balanceResult.status === 'fulfilled' ? balanceResult.value : null;
+      if (walletScopedKeyRef.current !== requestKey) return;
 
       if (portfolioData) setPortfolio(portfolioData);
       if (balanceData) {
@@ -160,10 +183,13 @@ export default function PredictProfileScreen() {
 
   const refreshOpenOrdersQuietly = useCallback(async () => {
     if (!poly.polygonAddress) return;
+    const requestKey = walletScopedKeyRef.current;
     if (ordersRefreshInFlight.current) return;
     ordersRefreshInFlight.current = true;
     try {
-      setOpenOrders(await fetchOpenOrders(poly.polygonAddress));
+      const orders = await fetchOpenOrders(poly.polygonAddress);
+      if (walletScopedKeyRef.current !== requestKey) return;
+      setOpenOrders(orders);
     } catch {
       setActivityFreshness((prev) => ({ ...prev, stale: true, error: 'Could not refresh' }));
     } finally {
@@ -221,13 +247,17 @@ export default function PredictProfileScreen() {
 
   // Fetch portfolio when enabled
   useEffect(() => {
+    const requestKey = walletScopedKeyRef.current;
     if (!isEnabled || !poly.polygonAddress) {
-      setPortfolio(null);
+      resetWalletScopedState();
+      setPortfolioLoading(false);
       return;
     }
     setPortfolioLoading(true);
-    loadPortfolio().finally(() => setPortfolioLoading(false));
-  }, [isEnabled, poly.polygonAddress, loadPortfolio]);
+    loadPortfolio().finally(() => {
+      if (walletScopedKeyRef.current === requestKey) setPortfolioLoading(false);
+    });
+  }, [isEnabled, poly.polygonAddress, loadPortfolio, resetWalletScopedState]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

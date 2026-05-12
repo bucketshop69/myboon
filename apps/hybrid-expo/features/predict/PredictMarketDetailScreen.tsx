@@ -146,6 +146,8 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
   const reconcileTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const submitInFlightRef = useRef(false);
+  const walletScopedKey = wallet.connected && wallet.address ? `${wallet.sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
+  const walletScopedKeyRef = useRef(walletScopedKey);
 
   // Drag gesture — swipe down to collapse numpad
   const dragResponder = useRef(
@@ -207,15 +209,18 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   }
 
   async function loadCashBalance() {
+    const requestKey = walletScopedKeyRef.current;
     if (!poly.polygonAddress) {
       setCashBalance(null);
       return;
     }
     const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+    if (walletScopedKeyRef.current !== requestKey) return;
     setCashBalance(balance?.balance ?? null);
   }
 
   async function loadPicks() {
+    const requestKey = walletScopedKeyRef.current;
     const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
     if (!gammaAddr) {
       setMarketPositions([]);
@@ -236,6 +241,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         fetchPortfolio(gammaAddr),
         poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress) : Promise.resolve([]),
       ]);
+      if (walletScopedKeyRef.current !== requestKey) return;
       const now = Date.now();
       const market = marketResult.status === 'fulfilled' ? marketResult.value : null;
       const portfolio = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
@@ -308,11 +314,14 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   }
 
   function scheduleFollowUpReconcile(polygonAddress: string) {
+    const requestKey = walletScopedKeyRef.current;
     const timeout = setTimeout(() => {
       reconcileTimeouts.current = reconcileTimeouts.current.filter((item) => item !== timeout);
       void Promise.allSettled([
         loadPicks(),
-        fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+        fetchClobBalance(polygonAddress).then((balance) => {
+          if (walletScopedKeyRef.current === requestKey) setCashBalance(balance?.balance ?? null);
+        }),
       ]);
     }, 1_800);
     reconcileTimeouts.current.push(timeout);
@@ -328,6 +337,24 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       reconcileTimeouts.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    if (walletScopedKeyRef.current === walletScopedKey) return;
+    walletScopedKeyRef.current = walletScopedKey;
+    reconcileTimeouts.current.forEach(clearTimeout);
+    reconcileTimeouts.current = [];
+    setMarketPositions([]);
+    setAllPositions([]);
+    setRedeemablePositions([]);
+    setClosedPositions([]);
+    setOpenOrders([]);
+    setActivityItems([]);
+    setPendingOpenOrders([]);
+    setCashBalance(null);
+    setCashOutPosition(null);
+    setSetupAfterConnect(false);
+    setPicksFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
+  }, [walletScopedKey]);
 
   useEffect(() => {
     if (detail) void loadHistory(interval);
@@ -362,8 +389,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
         setCashBalance(null);
         return;
       }
+      const requestKey = walletScopedKeyRef.current;
       const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
-      if (!cancelled) setCashBalance(balance?.balance ?? null);
+      if (!cancelled && walletScopedKeyRef.current === requestKey) setCashBalance(balance?.balance ?? null);
     }
     void run();
     return () => { cancelled = true; };
