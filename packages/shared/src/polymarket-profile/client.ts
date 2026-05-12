@@ -144,7 +144,7 @@ export class PolymarketProfileClient {
 
   // ── URL builders ──
 
-  private buildQuery(base: string, params: Record<string, unknown>): string {
+  private buildQuery(base: string, params: object): string {
     const url = new URL(base)
     for (const [key, value] of Object.entries(params)) {
       if (value === undefined || value === null) continue

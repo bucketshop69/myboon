@@ -72,41 +72,5 @@ module.exports = {
       restart_delay: 5000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
-    {
-      name: 'myboon-fomo-master',
-      script: './packages/brain/src/run-fomo-master.ts',
-      interpreter: TSX,
-      cron_restart: '5 */1 * * *',   // :05 — staggered to avoid MiniMax concurrency
-      autorestart: false,
-      watch: false,
-      env: { NODE_ENV: 'production' },
-    },
-    {
-      name: 'myboon-crypto-god',
-      script: './packages/brain/src/run-crypto-god.ts',
-      interpreter: TSX,
-      cron_restart: '20 * * * *',   // :20 — staggered
-      autorestart: false,
-      watch: false,
-      env: { NODE_ENV: 'production' },
-    },
-    {
-      name: 'myboon-sports-broadcaster',
-      script: './packages/brain/src/run-sports-broadcaster.ts',
-      interpreter: TSX,
-      cron_restart: '35 * * * *',   // :35 — staggered
-      autorestart: false,
-      watch: false,
-      env: { NODE_ENV: 'production' },
-    },
-    {
-      name: 'myboon-influencer',
-      script: './packages/brain/src/run-influencer.ts',
-      interpreter: TSX,
-      cron_restart: '50 */2 * * *', // :50 — staggered
-      autorestart: false,
-      watch: false,
-      env: { NODE_ENV: 'production' },
-    },
   ],
 }

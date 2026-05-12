@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { ResearchTool } from '../research/types/mcp.js'
+import type { ResearchTool } from '../tool-types.js'
 
 interface SupabaseToolsDeps {
   supabaseUrl: string

@@ -9,7 +9,7 @@ import { callMinimax } from './minimax.js'
 import type { AnthropicMessage, AnthropicToolDefinition, ContentBlock } from './minimax.js'
 import type { PublishedOutput, CriticOutput, Narrative } from './publisher-types.js'
 import { extractJson } from './json-utils.js'
-import type { ResearchTool } from './research/types/mcp.js'
+import type { ResearchTool } from './tool-types.js'
 import { createSupabaseTools, createPublisherSupabaseTools } from './publisher-tools/supabase.tools.js'
 
 // --- env (read at module load, caller validates) ---

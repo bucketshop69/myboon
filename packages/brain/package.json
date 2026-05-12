@@ -13,15 +13,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "brain:start": "pnpm run build && node dist/run.js",
-    "demo:replay": "pnpm run build && node dist/demo-replay.js",
-    "research:smoke": "pnpm run build && node dist/research-smoke.js",
     "narrative:analyst": "tsx src/narrative-analyst.ts",
     "publisher": "tsx src/publisher.ts",
-    "influencer:start": "tsx src/run-influencer.ts",
-    "fomo-master:start": "tsx src/run-fomo-master.ts",
-    "crypto-god:start": "tsx src/run-crypto-god.ts",
-    "crypto-god:test": "tsx src/test-crypto-god.ts",
     "event:analyst": "tsx src/event-analyst.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -30,9 +23,7 @@
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.3",
-    "@myboon/entity-memory": "workspace:*",
     "@myboon/shared": "workspace:*",
-    "@myboon/tx-parser": "workspace:*",
     "@supabase/supabase-js": "^2.46.2",
     "dotenv": "^17.3.1"
   },

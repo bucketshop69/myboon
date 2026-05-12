@@ -8,21 +8,20 @@ All notable changes to MYBOON will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the X broadcast layer (`influencer`, `fomo_master`, `crypto_god`, and `sports_broadcaster`). Feed is now the only editorial source of truth; future distribution should read from `published_narratives`.
+- Removed the old `@myboon/brain` stream classifier/research runner (`ClassifierBrain`, `TransactionOrchestrator`, demo/research smoke scripts) and its unused workspace deps from the live package.
+- Removed unused brain-local Firecrawl and Dome helper clients. Publisher uses Supabase context tools; Dome support remains in the API/collector surfaces that still need it.
+- Removed unused collector-local BTC terminal snapshot tooling and the one-off Gamma slug test script.
+- Removed stale collector-local `package-lock.json` and shell wrapper in favor of the monorepo `pnpm`/PM2 flow.
+
 ### Added
 
-- `[#050]` Sports Content Pipeline — Phase 1 (Preview) + Phase 2 (Match-Aware Collection)
-  - **`packages/brain/src/sports-broadcaster.ts`** — Runner: loads `sports-calendar.json`, registers calendar matches in `polymarket_tracked` (T-24h window via Dome API), detects phase (`preview` / `live` / `post_match`), deduplicates per match+phase via `x_posts.slug` + `agent_type`, fetches batch odds via Dome
-  - **`packages/brain/src/graphs/sports-broadcaster-graph.ts`** — LangGraph `sportsBroadcasterGraph`: `write → broadcast → resolve → save`. Writer has distinct voice sections per phase. Broadcaster hard-rejects hype, enforces odds presence + tension lead. Max 2 retries on `soft_reject`. Saves as `agent_type = 'sports_broadcaster_{phase}'` with `slug` column for dedup.
+- `[#050]` Match-aware sports collection support
   - **`packages/brain/src/sports-calendar.json`** — 3 UCL fixtures (Real Madrid vs Bayern, Barcelona vs Atlético, PSG vs Liverpool — April 2026). Each entry: `match`, `sport`, `kickoff`, `slugs: { home, away, draw }` from Polymarket.
-  - **`packages/brain/src/dome.ts`** — Dome API REST client (geo-unrestricted Polymarket proxy, `api.domeapi.io/v1`). `fetchOutcomeOdds(slugs)`: single round-trip market lookup + parallel price fetches. `resolveMarketBySlug(slug)`: market metadata for `polymarket_tracked` registration. Replaces Gamma API throughout brain + collectors.
-  - **`packages/brain/src/run-sports-broadcaster.ts`** — PM2 entry point
   - **`packages/collectors/src/polymarket/match-watcher.ts`** — Match-aware collector: polls `data-api.polymarket.com/activity` per calendar slug every 5min from T-24h to T+12h. Writes `WHALE_BET` signals with `source: 'match-watcher'`. Resolves `conditionId` from `polymarket_tracked`, falls back to Dome API.
-  - **`ecosystem.config.cjs`** — Added `myboon-sports-broadcaster` PM2 process (hourly cron)
   - **`packages/collectors/src/index.ts`** — Added `startMatchWatcher()` call
-  - **`packages/brain/src/fomo-master.ts`** — Sports slug filter: signals matching `/^(ucl|epl|nba|nfl|la-liga)-/` excluded to prevent duplicate coverage
-  - **`packages/brain/src/narrative-analyst.ts`** — Sports `content_type` filter: clusters with `content_type='sports'` excluded before `narratives` insert
-  - **DB migration** — `ALTER TABLE x_posts ADD COLUMN IF NOT EXISTS slug text` — run in Supabase dashboard
-  - **Phase windows**: preview = T-26h to T-2h · live = T to T+6h (covers UCL extra time + penalties) · post_match = T+6h to T+12h (deferred to backlog #002)
   - **`docs/tutorials/08-dome-api.md`** — Dome API reference: prices, OHLCV, events, wallet analytics, order book
 
 - `[#052]` Pacific Protocol TypeScript API Client
@@ -43,25 +42,6 @@ All notable changes to MYBOON will be documented in this file.
   - **`narrative-analyst.ts`** — `NarrativeCluster` interface gets `content_type?` field. SYSTEM_PROMPT gets classification rules (sports slug patterns, macro topics, fomo vs signal vs news detection, default `signal`). `saveNarratives` passes `content_type` to DB.
   - **`publisher-llm.ts`** — content_type classification rules expanded to all 6 types. Sports and macro get first-match priority.
   - **`publisher-graph.ts`** — critic CLASSIFICATION check updated to recognize sports/macro/crypto.
-  - **`influencer-graph.ts`** — prompt routing for all 6 content types. Removed hardcoded 280 char slice.
-
-- `[#048]` fomo_master persuasion upgrade — archetype classification + voice rewrite
-  - **PERSUASION_PLAYBOOK** — 5 archetypes with 4-5 line example posts: CONTRARIAN (bet against consensus), CLUSTER (convergence pattern), AUTHORITY (track record), FRESH_WALLET (curiosity gap), GENERAL (fallback). Observational voice: build tension through facts, end with implication. Not hype.
-  - **WRITER_SYSTEM_PROMPT rewrite** — archetype classification priority order (CONTRARIAN → CLUSTER → AUTHORITY → FRESH_WALLET → GENERAL, first match wins). 4-5 line format, no character limit constraint. TIME_SENSITIVE modifier adds timing line as final punctuation when market resolves within 48h.
-  - **BROADCASTER_SYSTEM_PROMPT rewrite** — angle fingerprint `{slug}:{archetype}` as duplicate detection unit. Same market + different archetype = fresh angle, always approve. Only `status='posted'` records count toward frequency limits (rejected drafts never published — don't treat as coverage).
-  - **Data flow** — `PendingDraft` + `WriterOutput` now carry `slug` (attached deterministically from `signal.metadata.slug` in `writeNode`, never from LLM) and `archetype` (from LLM writer output). `broadcastNode` passes both to broadcaster.
-
-- `[#047]` Specialized broadcast floor — `fomo_master` agent + inline `chief_broadcaster`
-  - **Runner** (`packages/brain/src/fomo-master.ts`) — deterministic pre-enrichment before graph: slug clustering (one representative per market, highest weight wins; tiebreaker: most recent), `cluster_context` attached to representative, Nansen bettor profile (cached 24h via `NansenClient`), live Polymarket odds (Gamma API, no cache), market_history (7d signal aggregate by slug). Dual timelines: `posted_timeline` (status=posted only, for writer) and `full_timeline` (all 7d, for broadcaster).
-  - **Graph** (`packages/brain/src/graphs/fomo-master-graph.ts`) — 4-node LangGraph: `rank → write → broadcast → resolve`, conditional routing after `resolve`.
-    - `rank` — picks 1-3 signals using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Uses short IDs (S1, S2…) to reduce UUID hallucination. Early exit to END if zero picks. Outputs `why_skipped` map.
-    - `write` — Lookonchain-style X drafts, one per ranked signal. On retry: receives `previous_draft` + directional broadcaster edits `[{issue, fix}]`. Writer owns voice.
-    - `broadcast` — single batch LLM call reviews all pending drafts. 3-way decision: `approved` / `soft_reject` / `hard_reject`.
-    - `resolve` — **new node** (replaces router logic): single place broadcast results are processed. Bumps attempt counts, splits drafts into approved/pending/rejected, stores `broadcaster_reasoning` with each draft. Eliminates double-computation bug and potential infinite loop from unbumped attempt counters.
-  - Max 2 write retries per draft on soft_reject. Hard_reject and max-retry exhaustion save as `status='rejected'`. `why_skipped` written back to `signals.skip_reasoning` after graph run.
-  - Polymarket profile URL (`https://polymarket.com/{address}`) appended deterministically in `saveNode` — never in LLM prompts or broadcaster check.
-  - **PM2 process** `myboon-fomo-master` — `cron_restart: '0 */1 * * *'`, `autorestart: false`.
-  - **DB migrations required**: `x_posts` — `fomo_reasoning TEXT`, `broadcaster_reasoning TEXT`; `signals` — `skip_reasoning TEXT` (plus base columns `agent_type`, `signal_ids`, `reviewed_at`, `reviewed_by` if not already added).
 
 - `[#045]` Landing page — `apps/web` (Next.js 15, `@myboon/web`, port 3001)
   - Hero section: centered phone mockup with 4 floating tab cards (Feed, Predict, Trade, Swap)

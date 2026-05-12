@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { PolymarketClient } from '@myboon/shared'
 import { createPolymarketTools } from './analyst-tools/polymarket.tools.js'
-import type { ResearchTool, AnthropicToolDefinition } from './research/types/mcp.js'
+import type { ResearchTool, AnthropicToolDefinition } from './tool-types.js'
 import { buildMarketContexts } from './context-builder.js'
 import { extractJson } from './json-utils.js'
 import type { MarketContext } from './context-builder.js'
@@ -366,7 +366,6 @@ function extractSlugs(keySignals: string[]): string[] {
 async function saveNarratives(clusters: NarrativeCluster[], signals: Signal[]): Promise<void> {
   const rows = clusters
     .filter((c) => c.score >= 7)
-    .filter((c) => c.content_type !== 'sports')  // sports handled exclusively by sports_broadcaster
     .map((c) => ({
       cluster: c.cluster,
       observation: c.observation,

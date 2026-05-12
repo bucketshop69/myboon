@@ -13,7 +13,6 @@ flowchart TD
 
     subgraph DB["Supabase"]
         PT[("polymarket_tracked\nslug · token_id\nyes/no price")]
-        XP[("x_posts\nagent_type · slug\ndraft_text · status")]
         PAC[("pacific_tracked\nplanned #051\nsymbol · funding_rate\nopen_interest")]
         SIG[("signals\nsource · type · topic\nslug · weight · metadata\nprocessed")]
         NAR[("narratives\ncluster · observation\nscore · slugs[]\nstatus=draft")]
@@ -24,8 +23,6 @@ flowchart TD
         AN["🔍 Analyst\nruns every 15min\nreads signals → clusters narratives\nscore ≥ 7 to save"]
         TOOLS["Tool Calling Loop\nmax 10 turns\nget_market_snapshot\nget_market_by_condition"]
         PB["✅ Publisher\nruns every 30min\ncritic pass · score ≥ 8\nbuilds actions[] from slugs"]
-        IN["📢 Influencer\nevery 2-4h\nX post drafts\n(issue #041)"]
-        SB["⚽ Sports Broadcaster\nhourly cron\npreview · live · post_match\n(issue #050)"]
     end
 
     subgraph SDK["Shared SDK — packages/shared"]
@@ -66,10 +63,6 @@ flowchart TD
     NAR -->|status=draft| PB
     PB -->|checks duplicates| PUB
     PB -->|status=published| PUB
-    PUB -.->|future| IN
-    SIG -->|WHALE_BET sports| SB
-    PT -->|live odds via Dome| SB
-    SB -->|draft post| XP
 
     PUB --> FEED_EP
     PUB --> PRED_EP
@@ -81,7 +74,6 @@ flowchart TD
     SWAP_TAB
     PERP_EP -.->|planned| TRADE_TAB
 
-    style IN stroke-dasharray: 5 5
     style MWATCH stroke-width: 2px
     style PAC_DISC stroke-dasharray: 5 5
     style PAC_STREAM stroke-dasharray: 5 5

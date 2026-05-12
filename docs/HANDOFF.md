@@ -25,7 +25,7 @@ The hackathon build is done. All core layers are live and the submission is read
 ## What's Next (post-hackathon)
 
 1. **APK build** — `eas build --profile dapp-store --platform android`, back up keystore immediately
-2. **Influencer brain** (Layer 3) — X post drafts from published narratives, human approves
+2. **Feed quality loop** — evaluate published narratives against outcomes and tighten scoring/editor rules
 3. **On-chain signals** — Jupiter swap stream, whale wallet tracker feeding into signals table
 4. **x402 monetisation** — Feed API pay-per-call on Solana
 5. **Predict/Trade UI polish** — wire up live data, order flow

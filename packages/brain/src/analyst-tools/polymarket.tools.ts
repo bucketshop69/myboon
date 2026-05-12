@@ -1,5 +1,5 @@
 import type { PolymarketClient } from '@myboon/shared'
-import type { ResearchTool } from '../research/types/mcp.js'
+import type { ResearchTool } from '../tool-types.js'
 
 export function createPolymarketTools(client: PolymarketClient): ResearchTool<any>[] {
   const getMarketSnapshot: ResearchTool<{ slug: string }> = {
