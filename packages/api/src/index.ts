@@ -1554,8 +1554,7 @@ app.get('/predict/portfolio/:address', async (c) => {
     for (const p of closedPositions) {
       const closed = p as Record<string, unknown>
       const realized = parseNullableNumber(closed.realizedPnl) ?? 0
-      const putIn = parseNullableNumber(closed.totalBought) ?? 0
-      if (realized > 0) totalCollected += Math.max(putIn + realized, 0)
+      if (realized > 0) totalCollected += realized
     }
 
     return c.json({

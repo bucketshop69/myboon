@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useRouter } from 'expo-router';
 import { Suspense, lazy, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -89,6 +90,7 @@ interface ProfileViewProps {
 const POLL_INTERVAL = 30_000;
 
 export function ProfileView({ onBack }: ProfileViewProps) {
+  const router = useRouter();
   const { connected, address, connect, signMessage } = useWallet();
   const [account, setAccount] = useState<PerpsAccount | null>(null);
   const [positions, setPositions] = useState<PerpsPosition[]>([]);
@@ -150,6 +152,10 @@ export function ProfileView({ onBack }: ProfileViewProps) {
     if (!account || account.equity <= 0) return 0;
     return account.totalMarginUsed / account.equity;
   }, [account]);
+
+  const goToMarket = useCallback((symbol: string) => {
+    router.push(`/trade/${encodeURIComponent(symbol)}`);
+  }, [router]);
 
   const fetchAll = useCallback((addr: string, mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
     // Only show loading states on first load — polling and refresh update silently
@@ -531,7 +537,12 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                     const hasTpsl = !!(tpsl?.tp || tpsl?.sl);
                     return (
                       <View key={pos.symbol} style={styles.posCard}>
-                        <View style={styles.posRow}>
+                        <Pressable
+                          style={styles.posRow}
+                          onPress={() => goToMarket(pos.symbol)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open ${pos.symbol} market details`}
+                          accessibilityHint="Navigates to the perps market detail screen">
                           <View style={styles.posLeft}>
                             <Text style={styles.posSym}>{pos.symbol}</Text>
                             <Text style={[styles.posSide, pos.side === 'long' ? styles.textPos : styles.textNeg]}>
@@ -561,7 +572,7 @@ export function ProfileView({ onBack }: ProfileViewProps) {
                               {isUp ? '+' : ''}{pos.unrealizedPnl.toFixed(2)} ({pos.unrealizedPnlPct.toFixed(1)}%)
                             </Text>
                           </View>
-                        </View>
+                        </Pressable>
 
                         {/* Inline action buttons */}
                         <View style={styles.posActionRow}>

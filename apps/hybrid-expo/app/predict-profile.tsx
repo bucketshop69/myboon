@@ -339,7 +339,10 @@ export default function PredictProfileScreen() {
   const hasAnyPicks = activePickCount + redeemablePositions.length + closedPositions.length > 0;
   const hasActiveOrReadyPicks = activePickCount + redeemablePositions.length > 0;
   const activePicksValue = cashOutNow + waitingPickValue;
-  const collectedValue = portfolio?.summary.totalCollected ?? 0;
+  const collectedValue = closedPositions.reduce((sum, position) => {
+    const realized = Number.isFinite(position.realizedPnl) ? position.realizedPnl : 0;
+    return realized > 0 ? sum + realized : sum;
+  }, 0);
   const collectedDisplay = hasAnyPicks || (cashBalance ?? 0) > 0 ? formatUsd(collectedValue) : '--';
 
   return (
@@ -474,7 +477,7 @@ export default function PredictProfileScreen() {
                 </View>
                 <View style={[styles.eqItem, styles.eqItemRight]}>
                   <Text style={styles.eqLabel}>
-                    {!hasActiveOrReadyPicks ? 'Collected' : readyToCollect > 0 ? 'Ready' : 'Active picks'}
+                    {!hasActiveOrReadyPicks ? 'Profit' : readyToCollect > 0 ? 'Ready' : 'Active picks'}
                   </Text>
                   <Text style={[styles.eqVal, readyToCollect > 0 && styles.posText]}>
                     {!hasActiveOrReadyPicks
@@ -496,7 +499,7 @@ export default function PredictProfileScreen() {
                     <Text style={styles.eqVal}>{activePickCount}</Text>
                   </View>
                   <View style={[styles.eqItem, styles.eqItemRight]}>
-                    <Text style={styles.eqLabel}>Collected</Text>
+                    <Text style={styles.eqLabel}>Profit</Text>
                     <Text style={styles.eqVal}>{collectedDisplay}</Text>
                   </View>
                 </View>
