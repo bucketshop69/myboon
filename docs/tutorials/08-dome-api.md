@@ -210,12 +210,10 @@ const eventSlug = outcomeSlug.slice(0, outcomeSlug.lastIndexOf('-'))
 
 ### 1. Replace direct Gamma API calls (immediate)
 
-`fomo-master.ts` and `sports-broadcaster.ts` both call `gamma-api.polymarket.com` directly
-for live odds. On a non-US VPS this will silently fail. Swap to Dome for guaranteed delivery.
+Any live market odds needed by collectors, APIs, or analyst tools should use Dome instead of
+calling `gamma-api.polymarket.com` directly. On a non-US VPS Gamma can silently fail.
 
 Affected files:
-- `packages/brain/src/fomo-master.ts` — `fetchPolymarketOdds()`
-- `packages/brain/src/sports-broadcaster.ts` — `fetchLiveOdds()`
 - `packages/brain/src/analyst-tools/polymarket.tools.ts` — `get_market_snapshot` tool
 
 ### 2. Market discovery for collectors
@@ -228,8 +226,9 @@ File: `packages/collectors/src/polymarket/discovery.ts` (does not exist yet)
 
 ### 3. Bettor wallet analytics
 
-`fomo-master.ts` uses Nansen for bettor win rates. Dome's wallet endpoints cover the same
-Polymarket-specific data natively — no Nansen credits needed for prediction market PnL.
+Dome's wallet endpoints cover Polymarket-specific activity and PnL natively. If wallet
+credibility becomes part of Feed scoring, prefer Dome as the primary source and reserve
+other providers for labels that Dome does not provide.
 
 Potential: call Dome wallet analytics as primary, fall back to Nansen for on-chain labelling
 (fund / smart trader / degen) which Dome doesn't provide.

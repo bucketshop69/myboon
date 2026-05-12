@@ -44,7 +44,7 @@ What makes myboon unique is the feed. Crypto moves fast — new narratives, whal
 
 myboon uses Pacifica in two ways — as an intelligence source and as an execution layer.
 
-**Intelligence:** Pacifica's perpetuals data — open interest shifts, funding rates, volume spikes across 50+ markets — feeds directly into our AI brain as raw signals. When BTC open interest surges or funding flips negative, that's a narrative signal. Our Analyst agent picks it up, clusters it with prediction market and on-chain data, scores it, and surfaces it to users through the feed and our X account. This kind of perps data changes daily and tells a story that most retail traders miss — myboon makes sure they don't.
+**Intelligence:** Pacifica's perpetuals data — open interest shifts, funding rates, volume spikes across 50+ markets — feeds directly into our AI brain as raw signals. When BTC open interest surges or funding flips negative, that's a narrative signal. Our Analyst agent picks it up, clusters it with prediction market and on-chain data, scores it, and surfaces it to users through the Feed. This kind of perps data changes daily and tells a story that most retail traders miss — myboon makes sure they don't.
 
 **Execution:** Pacifica's SDK powers the entire Trade tab. Real-time WebSocket prices, order placement, position management — TP/SL, close, live PnL — all through Pacifica's API. Gasless via their relayer, so users never pay gas. The signal-to-trade loop is seamless — see a narrative about ETH momentum in your feed, tap through, open a position on Pacifica without leaving the app.
 

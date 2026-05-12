@@ -1,4 +1,4 @@
-// Shared MiniMax API helper — used by publisher graph, critic, and influencer graph
+// Shared MiniMax API helper used by the brain agents.
 
 export type ContentBlock =
   | { type: 'text'; text: string }

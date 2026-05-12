@@ -15,8 +15,6 @@ A mobile-first narrative intelligence app for on-chain traders and prediction ma
 | Swap | Jupiter SPL token swap | Fee share |
 | Predict | Polymarket via builder code | Affiliate % |
 
-**X account** — auto-posts top narratives surfaced by the influencer brain. Distribution flywheel.
-
 **The moat:** insights. Trade/Swap/Predict are commodities. The Feed is the differentiator — it tells users something they can't get anywhere else. Everything else exists because the Feed earns trust.
 
 ---
@@ -36,19 +34,13 @@ Signal Sources                 Supabase                    Consumers
 ──────────────                 ────────                    ─────────
 Polymarket collectors    →     signals table      →        Brain agents
   - discovery (2h REST)        narratives table   →        Feed API
-  - stream (WebSocket)         (processed flag)   →        X posts
+  - stream (WebSocket)         (processed flag)
   - user tracker (5min)
   - match watcher (5min)
 
-Pacific collector        →     signals table      →        Brain agents (crypto_god)
+Pacific collector        →     signals table      →        Brain agents
   - discovery (2h REST)     (FUNDING_SPIKE,
                              CROWDED_TRADE, POSITIONING)
-
-
-BTC terminal (local)     →     local JSON snapshots →      Manual X posts (daily)
-  - Polymarket odds (Dome)
-  - Hyperliquid funding/OI
-  - Pacific funding/OI
 
 On-chain stream (future) →     signals table
   - 90 wallet registry
@@ -85,7 +77,7 @@ created_at:        timestamptz
 
 ## Brain Architecture
 
-Three layers, each with planned redundancy (2 agents per layer for consensus):
+Two editorial layers, with planned redundancy later if the single path proves reliable:
 
 ```
 Layer 1 — Analysts (runs every 15min)
@@ -98,36 +90,24 @@ Layer 2 — Publishers (runs every 30min)
   Reads: narratives (status='draft')
   Does:  picks best 3-5, decides framing
   Writes: narratives (status='published')
-
-Layer 3 — Influencers (runs every 2-4h)
-  Reads: narratives (status='published')
-  Does:  writes X post drafts (5-10/day)
-  Writes: x_posts table (status='draft')
-  Human approves before posting (initially)
 ```
 
 **Current state:**
 
 - Layer 1 (Analyst) ✅ — clusters signals, filters < 7 score before saving. Extracts market slugs deterministically from `key_signals` (`[slug: xxx]` patterns) and saves to `narratives.slugs[]`. Uses tool calling to fetch live market odds mid-analysis.
 - Layer 2 (Publisher) ✅ — LangGraph `publisher-graph`: publisher node → critic/editor reflection loop (up to 2 revision attempts). Publisher = Editor-in-Chief (research + editorial judgment). Critic = Senior Editor (clarity, angle freshness, lead quality, classification, tone). Sports narratives skip search tools, write from signal data only. Builds `predict` actions from `narrative.slugs` deterministically; LLM may add `perps` actions for crypto signals. MiniMax M2.7 with 8192 max_tokens. `search_news` (Firecrawl) disabled; replaced by `search_published` + `get_tag_history` Supabase tools.
-- Layer 3 (Influencer) ✅ — reads `published_narratives` from last 4h that have no `x_post` yet. LangGraph `influencer-graph` generates X post drafts. Writes to `x_posts` table (`status='draft'`). Human reviews manually before any post goes live. PostgREST two-step query (no raw SQL subqueries).
-- Content type taxonomy ✅ — `ContentType` = `fomo | signal | sports | macro | news | crypto`. Flows from analyst output → narratives table → publisher → published_narratives → influencer. DB CHECK constraint updated. Each agent (analyst, publisher, critic, influencer) classifies and routes per content_type. Default is `signal` (not `fomo`) to avoid misclassifying geopolitical content as whale alerts.
-
-- Layer 3b (sports_broadcaster) ✅ — **sports content pipeline** (issue #050). Runs hourly via PM2 cron. Loads `sports-calendar.json` (UCL/EPL fixtures). Phase detection per match: `preview` (T-26h to T-2h), `live` (T to T+6h), `post_match` (T+6h to T+12h). Registers calendar slugs in `polymarket_tracked` T-24h before kickoff via Dome API. Deduplicates via `x_posts.slug + agent_type = 'sports_broadcaster_{phase}'`. LangGraph `sportsBroadcasterGraph` (`write → broadcast → resolve → save`): writer has distinct voice per phase; broadcaster hard-rejects hype, enforces odds presence + tension lead (max 2 retries on soft_reject). Odds fetched via Dome API (`api.domeapi.io/v1`) — geo-unrestricted, batch per match. Match-aware collector (`match-watcher.ts`) polls `data-api.polymarket.com/activity` every 5min for all calendar slugs within watch window, writes `WHALE_BET` signals with `source: 'match-watcher'`. Sports signals filtered from `fomo_master` and `narrative-analyst` to prevent duplicate coverage. Phase 3 (post-match close-out) deferred to backlog #002.
-
-- Layer 3b (crypto_god) ✅ — **Pacific perps broadcast floor**. Runs every 30min (offset from fomo_master). Reads Pacific signals (`FUNDING_SPIKE`, `CROWDED_TRADE`, `POSITIONING`). LangGraph graph with archetypes: `WIPEOUT`, `CROWDED`, `POSITIONING`, `GENERAL`. Writes to `x_posts` with `agent_type='crypto_god'`.
-
-- Layer 3b (fomo_master) ✅ — **specialized broadcast floor** (issues #047, #048). Runs hourly via PM2 cron. Reads `WHALE_BET` signals (weight ≥ 8, last 4h) directly — no narrative layer. LangGraph `fomo-master-graph`: `rank → write → broadcast → resolve` loop. Runner does all deterministic enrichment before graph: slug clustering (one representative per market), Polymarket bettor profile (cached 24h), live Polymarket odds (no cache), market_history (7d signal aggregate). Ranker picks 1-3 best stories using explicit framework (contrarian conviction > wallet credibility > pattern > size > timing). Writer classifies each signal by archetype (CONTRARIAN / CLUSTER / AUTHORITY / FRESH_WALLET / GENERAL — first match wins on live_odds, cluster_context, bettor_profile) then writes 4-5 line observational posts: build tension through facts, end with implication. `slug` attached deterministically from `signal.metadata.slug` in writeNode (never from LLM). `chief_broadcaster` reviews all drafts in one batch — 3-way decision: approved / soft_reject (max 2 retries) / hard_reject. Duplicate detection uses angle fingerprint `{slug}:{archetype}` — same market with different archetype is a fresh story. Only `status='posted'` records count toward frequency limits. Approved drafts save as `status='draft'`. Polymarket profile URL appended in code, never by LLM. `why_skipped` written back to `signals.skip_reasoning` after each run.
+- Content type taxonomy ✅ — `ContentType` = `fomo | signal | sports | macro | news | crypto`. Flows from analyst output → narratives table → publisher → published_narratives. DB CHECK constraint updated. Each feed agent classifies and routes per content_type. Default is `signal` (not `fomo`) to avoid misclassifying geopolitical content as whale alerts.
+- X broadcast layer removed — the direct-to-`x_posts` agents (`influencer`, `fomo_master`, `crypto_god`, and `sports_broadcaster`) were removed after proving too noisy and duplicative. Feed is the only editorial source of truth; any future external distribution should be a thin adapter over `published_narratives`.
 
 **Next (pipeline track):**
 
-- Issue #041 (influencer graph) + #043 (critic/influencer quality) — content pipeline improvements
-- `sports_analyst` + `macro_analyst` — Phase 3 of broadcast floor (see #047)
+- Feed quality review loop — evaluate published narratives against outcomes and human usefulness.
+- Pacific brain integration — route perps intelligence through the analyst/publisher path, not a separate broadcast path.
 
 **Multi-agent consensus plan (post-MVP):**
 
 - 2 analysts both save → publisher only picks narratives flagged by both
-- 2 publishers agree → goes live
+- 2 publishers agree → publish to Feed
 - Reduces noise, increases confidence in what reaches prod
 
 ---
@@ -142,8 +122,8 @@ apps/
 packages/
   shared/           Shared SDK — PolymarketClient, PacificClient (REST+WebSocket), types
   tx-parser/        Solana tx parsing — Jupiter, Meteora, SOL transfers
-  brain/            All LLM agents — classifier, research, analyst (live), publisher (live)
-  collectors/       Data ingestion scripts — Polymarket (live), Pacific (live), BTC terminal (local), X/Kalshi (planned)
+  brain/            LLM agents — narrative analyst, publisher, intelligence scoring
+  collectors/       Data ingestion scripts — Polymarket (live), Pacific (live), X/Kalshi (planned)
   entity-memory/    In-memory entity store (pre-persistence MVP)
 ```
 
@@ -161,7 +141,7 @@ packages/
   - `/` — Hero (Framer Motion stagger entrance) → FeaturesScroll (sticky phone + 4 panels) → NewsroomSection (newsroom canvas inline)
   - `/world` — Standalone newsroom (deprecated banner; route kept alive)
 - **Monorepo:** pnpm workspaces
-- **Process manager:** PM2 — `ecosystem.config.cjs` at monorepo root starts all 4 services in one command (`pm2 start ecosystem.config.cjs`); auto-restarts on crash; survives reboots via `pm2 startup`. See `docs/DEPLOY.md`.
+- **Process manager:** PM2 — `ecosystem.config.cjs` at monorepo root starts the API, collectors, analyst, and publisher (`pm2 start ecosystem.config.cjs`); auto-restarts long-running services; survives reboots via `pm2 startup`. See `docs/DEPLOY.md`.
 
 ---
 
@@ -179,14 +159,6 @@ packages/
 ### Pacific Collector (`packages/collectors/src/pacific/`)
 
 - `discovery.ts` — fetches all Pacific perps markets every 2h, emits `FUNDING_SPIKE`, `CROWDED_TRADE`, `POSITIONING` signals based on funding rate and OI thresholds
-
-### BTC Terminal (`packages/collectors/src/btc-terminal/`)
-
-- **Not on VPS** — runs locally on demand for daily X content
-- Pulls from 3 sources in parallel: Polymarket odds (Dome API), Hyperliquid (funding, OI, price), Pacific (funding, OI)
-- Saves daily snapshots to `snapshots/YYYY-MM-DD.json` for day-over-day delta comparison
-- Outputs conversational post format for manual X posting
-- Run: `cd packages/collectors && npx tsx src/btc-terminal/index.ts`
 
 ### How signals reach the `signals` table
 
@@ -360,12 +332,11 @@ Execution policy:
 
 ---
 
-## X Account Strategy
+## Distribution Strategy
 
-- Influencer brain produces draft posts from published narratives
-- Human approves manually to start
-- Goal: 5-10 posts/day
-- Posts link back to app Feed for full context
+- Feed is the source of truth for editorial output.
+- Direct X broadcast agents have been removed.
+- Any future external distribution should be a thin adapter over `published_narratives`, with deterministic dedupe and explicit posted-state tracking.
 
 ---
 
@@ -378,11 +349,10 @@ Execution policy:
 | Collectors separate from brain | Different runtime concerns, brain is LLM-heavy, collectors are persistent network processes |
 | CSV → Supabase for narratives | CSV was for testing only, narratives need to be queryable by API |
 | Feed-first for hackathon (with swap preview) | Differentiator is insights; swap preview is UX scaffolding without execution risk |
-| Publisher brain before influencer | Single pipeline must work before adding consensus/redundancy |
+| Feed before distribution | Single editorial pipeline must work before adding external distribution again |
 | Pacific SDK in `packages/shared` (#052) | Reusable across collectors, API layer, and mobile app; TypeScript types + REST + WebSocket in one module |
-| Dome API over Gamma for sports odds (#050) | Gamma API is geo-restricted (blocks US VPS). Dome (`api.domeapi.io/v1`) proxies Polymarket data without restriction — same odds, no geo block. Used for market registration and live odds in sports-broadcaster. |
+| Dome API over Gamma for sports odds (#050) | Gamma API is geo-restricted (blocks US VPS). Dome (`api.domeapi.io/v1`) proxies Polymarket data without restriction — same odds, no geo block. |
 | Dome API for pinned market discovery | Gamma `?slug=` only works for single-outcome markets. Multi-outcome events (BTC price targets, WTI, FIFA) need Dome `?event_slug=` to resolve all sub-markets. Discovery now tries event_slug first, falls back to market_slug. |
-| BTC terminal as local script (not VPS) | Daily content series — user runs manually, eyeballs output, posts to X by hand. No brain agent; raw data + conversational format. Snapshots stored locally for delta tracking. |
 | Gasless Safe wallet over EOA signing | Builder Relayer deploys Safe per user — no gas for user, no private key export. Solana wallet derives EVM key deterministically. |
 | CLOB V2 over V1 | V1 deprecated by Polymarket. V2 SDK + preprod test markets for validation before mainnet. |
 | Local order signing over server-side | Phone signs orders locally with derived EVM key — server never touches private keys. Geo-proxy only forwards signed payloads. |

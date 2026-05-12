@@ -2,9 +2,9 @@
 
 ## What this is
 
-The analyst agent (Feed narratives) currently reads only Polymarket signals. This makes the Feed blind to perps intelligence even though `crypto_god` is now posting about it on X.
+The analyst agent (Feed narratives) currently reads only Polymarket signals. This makes the Feed blind to perps intelligence even though Pacific collectors can produce useful market structure signals.
 
-This is **not covered by crypto_god** — `crypto_god` reads signals directly and writes X posts. The analyst reads signals and writes Feed narratives. Two separate pipelines, both need Pacific awareness.
+The old direct-to-X broadcast path has been removed. Pacific intelligence should now flow through the same editorial path as everything else: `signals -> narratives -> published_narratives -> Feed`.
 
 ## Work needed
 
@@ -51,4 +51,4 @@ Signal type → narrative angle mapping:
 
 ## Dependency
 
-Requires `pacific_tracked` table + PM2 collector running (backlog #003) so real Pacific signals exist in `signals` table.
+Requires `pacific_tracked` table + Pacific collector running so real Pacific signals exist in `signals` table.

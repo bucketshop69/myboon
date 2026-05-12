@@ -44,8 +44,8 @@ apps/
 
 packages/
   api/            API server (Hono) — Feed + Predict + Trade endpoints
-  brain/          AI agents — analyst, publisher, broadcaster
-  collectors/     Data ingestion — Polymarket, Pacific, BTC terminal
+  brain/          AI agents — narrative analyst, publisher, intelligence scoring
+  collectors/     Data ingestion — Polymarket, Pacific
   shared/         Shared SDK — PolymarketClient, PacificClient, types
   tx-parser/      Solana transaction parsing
   entity-memory/  Entity store (pre-persistence)
@@ -87,7 +87,7 @@ pnpm start
 
 ```bash
 cp packages/brain/.env.example packages/brain/.env
-pnpm --filter @myboon/brain analyst
+pnpm --filter @myboon/brain narrative:analyst
 pnpm --filter @myboon/brain publisher
 ```
 
