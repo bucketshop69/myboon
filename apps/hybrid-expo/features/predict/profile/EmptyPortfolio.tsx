@@ -25,8 +25,8 @@ const EMPTY_COPY: Record<EmptyPortfolioProps['mode'], {
 }> = {
   'no-account': {
     icon: 'check-circle',
-    title: 'Wallet connected.\nOne more step.',
-    description: 'Create your prediction account to start making picks. One signature, no transaction, no gas, no cost.',
+    title: 'Sign in to Predict',
+    description: 'Sign in to set up Predict and start making picks. One signature, no transaction, no gas, no cost.',
   },
   'no-balance': {
     icon: 'add-card',
@@ -45,7 +45,7 @@ export function EmptyPortfolio({ mode, onPrimaryAction, primaryLabel }: EmptyPor
   const [trending, setTrending] = useState<TrendingMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const copy = EMPTY_COPY[mode];
-  const signedOut = mode === 'no-account' && primaryLabel.toLowerCase().includes('sign');
+  const signedOut = mode === 'no-account' && primaryLabel.toLowerCase() === 'sign in';
 
   useEffect(() => {
     fetchTrendingMarkets(5)
@@ -77,7 +77,7 @@ export function EmptyPortfolio({ mode, onPrimaryAction, primaryLabel }: EmptyPor
           </Pressable>
           {!signedOut && (
             <Text style={styles.reassurance}>
-              Signs a message to prepare your Predict account.{'\n'}No transaction. No gas. Reversible anytime.
+              One signature prepares your Predict account.{'\n'}No transaction. No gas. No cost.
             </Text>
           )}
         </View>

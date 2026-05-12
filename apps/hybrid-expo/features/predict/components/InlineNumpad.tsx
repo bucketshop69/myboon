@@ -27,6 +27,10 @@ interface InlineNumpadProps {
   /** Whether the confirm button should be disabled (e.g. wallet not ready) */
   disabled?: boolean;
   guardrail?: PredictOrderGuardrail | null;
+  /** Show Predict sign-in/setup prompt instead of the amount entry controls. */
+  setupRequired?: boolean;
+  onSetupPress?: () => void;
+  setupSubmitting?: boolean;
 }
 
 const QUICK_AMOUNTS = ['10', '25', '50'] as const;
@@ -81,6 +85,9 @@ export function InlineNumpad({
   submittingLabel = 'Placing order...',
   disabled = false,
   guardrail = null,
+  setupRequired = false,
+  onSetupPress,
+  setupSubmitting = false,
 }: InlineNumpadProps) {
   const heightAnim = useRef(new Animated.Value(0)).current;
 
@@ -121,6 +128,26 @@ export function InlineNumpad({
       accessibilityElementsHidden={!visible}
       importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}>
       <View style={styles.inner}>
+        {setupRequired ? (
+          <View style={styles.setupPrompt}>
+            <Text style={styles.setupEyebrow}>Predict setup</Text>
+            <Text style={styles.setupTitle}>Sign in to use Predict</Text>
+            <Text style={styles.setupCopy}>
+              Sign once to set up the Predict account linked to this wallet. One signature, no transaction, no gas, no cost.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={setupSubmitting ? 'Signing in to Predict' : 'Sign in to Predict'}
+              accessibilityState={{ disabled: setupSubmitting, busy: setupSubmitting }}
+              disabled={setupSubmitting}
+              style={[styles.setupBtn, setupSubmitting && styles.confirmDisabled]}
+              onPress={onSetupPress}>
+              <Text style={styles.setupBtnText}>{setupSubmitting ? 'Signing in...' : 'Sign in to Predict'}</Text>
+            </Pressable>
+            <Text style={styles.setupReassurance}>No transaction. No gas. No cost.</Text>
+          </View>
+        ) : (
+          <>
         {/* Amount display */}
         <View
           style={styles.amountDisplay}
@@ -205,6 +232,8 @@ export function InlineNumpad({
             {submitting ? submittingLabel : guardrail?.blocking ? guardrail.title : exceedsCash ? 'Not enough cash' : backLabel}
           </Text>
         </Pressable>
+          </>
+        )}
       </View>
     </Animated.View>
   );
@@ -254,6 +283,48 @@ const styles = StyleSheet.create({
   },
   inputDisabled: {
     opacity: 0.45,
+  },
+  setupPrompt: {
+    paddingVertical: 20,
+    gap: 8,
+  },
+  setupEyebrow: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  setupTitle: {
+    fontFamily: 'monospace',
+    fontSize: 18,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  setupCopy: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    lineHeight: 18,
+    color: semantic.text.dim,
+  },
+  setupBtn: {
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    backgroundColor: tokens.colors.primary,
+  },
+  setupBtnText: {
+    fontFamily: 'monospace',
+    fontSize: 14,
+    fontWeight: '800',
+    color: tokens.colors.backgroundDark,
+  },
+  setupReassurance: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.faint,
   },
   quickBtnText: {
     fontFamily: 'monospace',

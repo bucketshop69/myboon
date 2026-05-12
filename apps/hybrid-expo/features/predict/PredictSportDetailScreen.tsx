@@ -20,6 +20,7 @@ import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPositio
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { useWallet } from '@/hooks/useWallet';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -122,6 +123,7 @@ function marketHrefForSlug(rowSlug: string): Href {
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const wallet = useWallet();
   const { format, setFormat, formatOdds } = useOddsFormat();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -166,6 +168,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   });
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
+  const [setupAfterConnect, setSetupAfterConnect] = useState(false);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
 
   // Soft zone animation
@@ -626,6 +630,42 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
   const amountNum = parseFloat(numpadAmount) || 0;
   const marketClosed = detail ? detail.active === false || detail.status === 'closed' : false;
+
+  async function runPredictSetup() {
+    if (setupSubmitting) return;
+    setSetupSubmitting(true);
+    try {
+      await poly.enable();
+      await Promise.allSettled([loadCashBalance(), loadPicks()]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to sign in to Predict';
+      Alert.alert('Sign in failed', msg);
+    } finally {
+      setSetupSubmitting(false);
+    }
+  }
+
+  async function handlePredictSetupPress() {
+    if (setupSubmitting) return;
+    if (!wallet.connected) {
+      setSetupAfterConnect(true);
+      try {
+        await wallet.connect();
+      } catch (err: unknown) {
+        setSetupAfterConnect(false);
+        const msg = err instanceof Error ? err.message : 'Connect your wallet first.';
+        Alert.alert('Sign in failed', msg);
+      }
+      return;
+    }
+    await runPredictSetup();
+  }
+
+  useEffect(() => {
+    if (!setupAfterConnect || !wallet.connected || poly.isReady) return;
+    setSetupAfterConnect(false);
+    void runPredictSetup();
+  }, [setupAfterConnect, wallet.connected, poly.isReady]);
   const orderGuardrail = selectedOutcome
     ? getPredictOrderGuardrail({
         amount: amountNum,
@@ -879,6 +919,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               submittingLabel={submitLabel}
               disabled={!poly.isReady}
               guardrail={orderGuardrail}
+              setupRequired={!poly.isReady}
+              onSetupPress={() => { void handlePredictSetupPress(); }}
+              setupSubmitting={setupSubmitting || setupAfterConnect || poly.isLoading}
             />
           </Animated.View>
         </View>

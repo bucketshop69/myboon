@@ -281,11 +281,11 @@ export default function PredictProfileScreen() {
     }
 
     Alert.alert(
-        'Connect Predict Account',
-        'Sign once to restore or set up the prediction account linked to this wallet.\n\n' +
-        '• Sign a message to verify ownership (no transaction)\n' +
-        '• No extra seed phrases or wallets to manage\n' +
-        '• Deposit and make picks without gas',
+        'Sign in to Predict',
+        'Sign once to restore or set up the Predict account linked to this wallet.\n\n' +
+        '• One signature to verify ownership\n' +
+        '• No transaction, no gas, no cost\n' +
+        '• No extra seed phrases or wallets to manage',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -449,7 +449,7 @@ export default function PredictProfileScreen() {
             <EmptyPortfolio
               mode="no-account"
               onPrimaryAction={!connected ? openDrawer : handleConnectPredictAccount}
-              primaryLabel={!connected ? 'Sign In' : 'Open Prediction Account'}
+              primaryLabel={!connected ? 'Sign In' : 'Sign in to Predict'}
             />
           </View>
         )}
