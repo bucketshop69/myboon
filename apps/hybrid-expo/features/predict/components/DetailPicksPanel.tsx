@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
 import { PredictActivityDetailModal } from '@/features/predict/components/PredictActivityDetailModal';
 import { PredictActivityRow } from '@/features/predict/components/PredictActivityRow';
+import { formatRedeemError, logRedeemError } from '@/features/predict/redeemErrors';
 import {
   buildPredictActivityItems,
   filterActivityByScope,
@@ -82,6 +83,8 @@ export function DetailPicksPanel({
 }: DetailPicksPanelProps) {
   const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [redeemError, setRedeemError] = useState<{ id: string; message: string } | null>(null);
+  const [redeemedIds, setRedeemedIds] = useState<Set<string>>(() => new Set());
   const allItems = useMemo(
     () => buildPredictActivityItems({
       positions: mergePositions(allPositions, marketPositions),
@@ -99,12 +102,16 @@ export function DetailPicksPanel({
     }),
     [allItems, scope, marketSlug, marketTokenIds, marketConditionIds],
   );
-  const worthNow = rows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
-  const putIn = rows.reduce((sum, row) => sum + row.putIn, 0);
-  const totalPnl = rows.reduce((sum, row) => sum + (row.pnl ?? 0), 0);
-  const rowVolumeFallback = rows.reduce((sum, row) => sum + (row.source === 'order' || row.source === 'pending' ? 0 : row.putIn), 0);
+  const visibleRows = useMemo(
+    () => rows.filter((row) => !redeemedIds.has(row.id)),
+    [rows, redeemedIds],
+  );
+  const worthNow = visibleRows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
+  const putIn = visibleRows.reduce((sum, row) => sum + row.putIn, 0);
+  const totalPnl = visibleRows.reduce((sum, row) => sum + (row.pnl ?? 0), 0);
+  const rowVolumeFallback = visibleRows.reduce((sum, row) => sum + (row.source === 'order' || row.source === 'pending' ? 0 : row.putIn), 0);
   const tradeVolume = activityItems.reduce((sum, activity) => {
-    if (!activityMatchesRows(activity, scope, marketSlug, rows, marketTokenIds, marketConditionIds)) return sum;
+    if (!activityMatchesRows(activity, scope, marketSlug, visibleRows, marketTokenIds, marketConditionIds)) return sum;
     return sum + activityVolume(activity);
   }, 0);
   const userVolume = Math.max(tradeVolume, rowVolumeFallback);
@@ -114,6 +121,7 @@ export function DetailPicksPanel({
   async function handleRedeem(item: PredictActivityItem) {
     if (!polygonAddress || !item.rawPosition || redeemingId) return;
     setRedeemingId(item.id);
+    setRedeemError(null);
     try {
       const result = await redeemPosition(polygonAddress, {
         conditionId: item.rawPosition.conditionId,
@@ -122,10 +130,17 @@ export function DetailPicksPanel({
         negativeRisk: item.rawPosition.negativeRisk,
       });
       if (!result.ok) throw new Error(result.error || 'Redeem failed');
+      setRedeemError(null);
+      setRedeemedIds((current) => {
+        const next = new Set(current);
+        next.add(item.id);
+        return next;
+      });
       setSelectedItem(null);
       onRedeemed?.();
     } catch (error) {
-      Alert.alert('Redeem failed', error instanceof Error ? error.message : 'Try again in a moment.');
+      logRedeemError('detail-picks-panel', error, item);
+      setRedeemError({ id: item.id, message: formatRedeemError(error) });
     } finally {
       setRedeemingId(null);
     }
@@ -152,7 +167,7 @@ export function DetailPicksPanel({
         </View>
         <View style={styles.headingSide}>
           <Text style={styles.subtitle}>
-            {scope === 'market' ? `${rows.length} this market` : `${rows.length} all picks`}
+            {scope === 'market' ? `${visibleRows.length} this market` : `${visibleRows.length} all picks`}
           </Text>
           <View style={styles.scopeTabs}>
             <Pressable
@@ -180,7 +195,7 @@ export function DetailPicksPanel({
       <View style={styles.summary}>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>{scope === 'market' ? 'Put in' : 'All picks'}</Text>
-          <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : rows.length}</Text>
+          <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : visibleRows.length}</Text>
         </View>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Current value</Text>
@@ -196,11 +211,11 @@ export function DetailPicksPanel({
         </View>
       </View>
 
-      {loading && rows.length === 0 ? (
+      {loading && visibleRows.length === 0 ? (
         <View style={styles.empty}>
           <ActivityIndicator color={tokens.colors.primary} size="small" />
         </View>
-      ) : rows.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>{freshness.error ? 'Could not refresh picks' : 'No picks here yet'}</Text>
           <Text style={styles.emptyText}>
@@ -218,13 +233,14 @@ export function DetailPicksPanel({
             </Pressable>
           )}
         </View>
-      ) : rows.map((item) => (
+      ) : visibleRows.map((item) => (
         <PredictActivityRow
           key={item.id}
           item={item}
           showMarketTitle
           cancelling={cancellingOrderId === item.orderId}
           redeeming={redeemingId === item.id}
+          redeemError={redeemError?.id === item.id ? redeemError.message : undefined}
           onPress={() => setSelectedItem(item)}
           onCashOut={() => cashOutItem(item)}
           onBackMore={() => backMoreItem(item)}
@@ -245,6 +261,8 @@ export function DetailPicksPanel({
           onCancelOrder?.(orderId);
         }}
         onRedeem={(item) => void handleRedeem(item)}
+        redeeming={selectedItem ? redeemingId === selectedItem.id : false}
+        redeemError={selectedItem && redeemError?.id === selectedItem.id ? redeemError.message : undefined}
       />
     </View>
   );

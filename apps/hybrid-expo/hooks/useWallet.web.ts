@@ -63,6 +63,28 @@ export function useWallet() {
 
   const addressStr = publicKey?.toBase58() ?? null;
 
+  if (process.env.EXPO_PUBLIC_PREDICT_E2E === '1') {
+    const runtimeAddress = (globalThis as typeof globalThis & {
+      __PREDICT_E2E_SOLANA_ADDRESS?: string;
+    }).__PREDICT_E2E_SOLANA_ADDRESS;
+    const fakeAddress = runtimeAddress
+      ?? process.env.EXPO_PUBLIC_PREDICT_E2E_SOLANA_ADDRESS
+      ?? 'E2ePredict111111111111111111111111111111111';
+    return {
+      connected: true,
+      address: fakeAddress,
+      shortAddress: 'E2eP···1111',
+      connect: async () => {},
+      disconnect: async () => {},
+      signMessage: async () => new Uint8Array(64).fill(1),
+      signTransaction: signTransaction ?? (async () => { throw new Error('signTransaction not supported in E2E'); }),
+      signAndSendTransaction: async () => 'e2e-signature',
+      connection,
+      walletOptions: [],
+      source: 'mwa' as const,
+    };
+  }
+
   return {
     connected,
     address: addressStr,

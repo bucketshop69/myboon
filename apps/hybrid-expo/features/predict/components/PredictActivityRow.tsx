@@ -11,6 +11,7 @@ interface PredictActivityRowProps {
   showMarketTitle?: boolean;
   cancelling?: boolean;
   redeeming?: boolean;
+  redeemError?: string;
   onPress: () => void;
   onCashOut: () => void;
   onBackMore: () => void;
@@ -55,6 +56,7 @@ export function PredictActivityRow({
   showMarketTitle = true,
   cancelling = false,
   redeeming = false,
+  redeemError,
   onPress,
   onCashOut,
   onBackMore,
@@ -77,6 +79,7 @@ export function PredictActivityRow({
   const pnlNegative = (item.pnl ?? 0) < -0.005;
   const value = item.currentValue === null ? null : truncateUsd(item.currentValue);
   const status = getPredictActivityStatusLabel(item.status);
+  const redeemActionColor = redeemError ? tokens.colors.vermillion : tokens.colors.backgroundDark;
   const primaryLabel = item.status === 'closed_won'
     ? `${item.outcome} won`
     : item.status === 'closed_lost'
@@ -125,26 +128,38 @@ export function PredictActivityRow({
             </Pressable>
           )}
           {item.status === 'ready_to_collect' && (
-            <Pressable
-              accessibilityRole="button"
-              style={styles.redeemAction}
-              disabled={!onRedeem || redeeming}
-              onPress={(event) => {
-                event.stopPropagation();
-                onRedeem?.();
-              }}
-              accessibilityLabel="Redeem payout"
-              accessibilityState={{ disabled: !onRedeem || redeeming, busy: redeeming }}
-            >
-              {redeeming ? (
-                <ActivityIndicator size="small" color={tokens.colors.backgroundDark} />
-              ) : (
-                <>
-                  <MaterialIcons name="redeem" size={12} color={tokens.colors.backgroundDark} />
-                  <Text style={styles.redeemActionText}>Redeem {value ?? ''}</Text>
-                </>
+            <>
+              <Pressable
+                accessibilityRole="button"
+                style={[styles.redeemAction, redeemError && styles.redeemActionError]}
+                disabled={!onRedeem || redeeming}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onRedeem?.();
+                }}
+                accessibilityLabel="Redeem payout"
+                accessibilityState={{ disabled: !onRedeem || redeeming, busy: redeeming }}
+              >
+                {redeeming ? (
+                  <>
+                    <ActivityIndicator size="small" color={tokens.colors.backgroundDark} />
+                    <Text style={styles.redeemActionText}>Redeeming</Text>
+                  </>
+                ) : (
+                  <>
+                    <MaterialIcons name="redeem" size={12} color={redeemActionColor} />
+                    <Text style={[styles.redeemActionText, redeemError && styles.redeemActionTextError]}>
+                      {redeemError ? 'Try again' : `Redeem ${value ?? ''}`}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+              {redeemError && (
+                <Text style={styles.redeemErrorText} numberOfLines={2}>
+                  {redeemError}
+                </Text>
               )}
-            </Pressable>
+            </>
           )}
           {(item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
             <View style={styles.settledAction}>
@@ -252,6 +267,11 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 8,
   },
+  redeemActionError: {
+    backgroundColor: 'rgba(217,83,79,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.28)',
+  },
   redeemActionText: {
     fontFamily: 'monospace',
     fontSize: 8,
@@ -259,6 +279,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     textTransform: 'uppercase',
     color: tokens.colors.backgroundDark,
+  },
+  redeemActionTextError: {
+    color: tokens.colors.vermillion,
+  },
+  redeemErrorText: {
+    fontSize: 8,
+    lineHeight: 11,
+    color: tokens.colors.vermillion,
+    textAlign: 'center',
   },
   settledAction: {
     minHeight: 46,

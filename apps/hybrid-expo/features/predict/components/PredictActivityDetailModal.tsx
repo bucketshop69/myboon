@@ -1,5 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PredictActivityItem, PredictDataFreshness } from '@/features/predict/predictActivityState';
 import { formatPredictFreshness, getPredictActivityStatusLabel } from '@/features/predict/predictActivityState';
 import { truncateSignedUsd, truncateUsd } from '@/features/predict/formatPredictMoney';
@@ -14,6 +14,8 @@ interface PredictActivityDetailModalProps {
   onBackMore: (item: PredictActivityItem) => void;
   onCancelOrder: (orderId: string) => void;
   onRedeem: (item: PredictActivityItem) => void;
+  redeeming?: boolean;
+  redeemError?: string;
 }
 
 function formatChance(value: number | null): string {
@@ -65,6 +67,8 @@ export function PredictActivityDetailModal({
   onBackMore,
   onCancelOrder,
   onRedeem,
+  redeeming = false,
+  redeemError,
 }: PredictActivityDetailModalProps) {
   const pnlPositive = (item?.pnl ?? 0) > 0.005;
   const pnlNegative = (item?.pnl ?? 0) < -0.005;
@@ -102,6 +106,7 @@ export function PredictActivityDetailModal({
             </View>
 
             <Text style={styles.copy}>{actionCopy(item)}</Text>
+            {redeemError && <Text style={styles.errorCopy}>{redeemError}</Text>}
             {freshnessCopy && <Text style={styles.freshness}>{freshnessCopy}</Text>}
 
             <View style={styles.grid}>
@@ -153,9 +158,20 @@ export function PredictActivityDetailModal({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Redeem payout"
-                  style={styles.primaryAction}
+                  style={[styles.primaryAction, redeemError && styles.primaryActionError]}
+                  disabled={redeeming}
+                  accessibilityState={{ disabled: redeeming, busy: redeeming }}
                   onPress={() => onRedeem(item)}>
-                  <Text style={styles.primaryActionText}>Redeem</Text>
+                  {redeeming ? (
+                    <View style={styles.actionLoading}>
+                      <ActivityIndicator size="small" color={tokens.colors.backgroundDark} />
+                      <Text style={styles.primaryActionText}>Redeeming</Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.primaryActionText, redeemError && styles.primaryActionTextError]}>
+                      {redeemError ? 'Try again' : 'Redeem'}
+                    </Text>
+                  )}
                 </Pressable>
               )}
               {(item.status === 'syncing' || item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
@@ -261,6 +277,18 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: semantic.text.dim,
   },
+  errorCopy: {
+    marginTop: 10,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.24)',
+    backgroundColor: 'rgba(217,83,79,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 11,
+    lineHeight: 15,
+    color: tokens.colors.vermillion,
+  },
   freshness: {
     marginTop: 8,
     fontFamily: 'monospace',
@@ -324,12 +352,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  primaryActionError: {
+    backgroundColor: 'rgba(217,83,79,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.28)',
+  },
   primaryActionText: {
     fontFamily: 'monospace',
     fontSize: 9,
     fontWeight: '800',
     color: tokens.colors.backgroundDark,
     textTransform: 'uppercase',
+  },
+  primaryActionTextError: {
+    color: tokens.colors.vermillion,
+  },
+  actionLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   secondaryAction: {
     flex: 1,

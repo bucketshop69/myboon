@@ -105,7 +105,7 @@ export function WithdrawModal({
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Withdraw</Text>
-            <Pressable onPress={handleClose} style={styles.closeBtn}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close withdraw" onPress={handleClose} style={styles.closeBtn}>
               <MaterialIcons name="close" size={18} color={semantic.text.dim} />
             </Pressable>
           </View>

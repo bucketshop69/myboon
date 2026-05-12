@@ -2,6 +2,30 @@
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
+## Predict E2E
+
+Run the wallet-free Predict lifecycle suite:
+
+```bash
+pnpm --filter hybrid-expo e2e:predict
+```
+
+The suite drives the real Expo web UI with Playwright and intercepts Predict API calls with a deterministic sports-market model. By default it uses fake wallet addresses. To point the UI at a local test wallet identity, create `.predict-e2e.local` in the repo root:
+
+```bash
+PREDICT_E2E_POLYMARKET_PRIVATE_KEY=
+```
+
+The key can be a Solana base58 secret key, a JSON byte array, or comma-separated bytes. Playwright derives the Solana address and the Polygon EOA from this key by signing `myboon:polymarket:enable`, then passes only public addresses to the app. `PREDICT_E2E_POLYMARKET_PRIVATE_KEY` stays in the Playwright Node process.
+
+For the mocked UI suite, the deposit-wallet address falls back to the derived Polygon EOA. To mirror an already-created Polymarket deposit wallet exactly, add:
+
+```bash
+PREDICT_E2E_DEPOSIT_WALLET_ADDRESS=
+```
+
+The real deposit-wallet address is created/returned by the `/clob/auth` relay flow; it is not a pure Solana-key derivation.
+
 ## Get started
 
 1. Install dependencies

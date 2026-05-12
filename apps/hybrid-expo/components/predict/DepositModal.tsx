@@ -317,7 +317,7 @@ export function DepositModal({
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Deposit</Text>
-            <Pressable onPress={onClose} style={styles.closeBtn}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close deposit" onPress={onClose} style={styles.closeBtn}>
               <MaterialIcons name="close" size={18} color={semantic.text.dim} />
             </Pressable>
           </View>

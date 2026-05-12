@@ -13,6 +13,8 @@
     "android:list-builds": "eas build:list --platform android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "e2e:predict": "playwright test --config=playwright.predict.config.ts",
+    "e2e:predict:live": "PREDICT_E2E_LIVE=1 PREDICT_E2E_API_BASE_URL=http://76.13.249.127:3000 playwright test --config=playwright.predict.config.ts e2e/predict-live.spec.ts",
     "lint": "expo lint",
     "postinstall": "rm -rf node_modules/@wallet-ui/react-native-web3js/node_modules/@react-native-async-storage node_modules/@solana-mobile/wallet-adapter-mobile/node_modules/@react-native-async-storage 2>/dev/null || true"
   },
@@ -75,10 +77,12 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/react": "~19.1.0",
     "eas-cli": "^16.18.2",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "tweetnacl": "^1.0.3",
     "typescript": "~5.9.2"
   },
   "private": true

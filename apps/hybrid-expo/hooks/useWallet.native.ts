@@ -8,6 +8,27 @@ export function useWallet() {
   const { account, connect, disconnect, signMessage, signAndSendTransaction, connection } =
     useMobileWallet();
 
+  if (process.env.EXPO_PUBLIC_PREDICT_E2E === '1') {
+    const runtimeAddress = (globalThis as typeof globalThis & {
+      __PREDICT_E2E_SOLANA_ADDRESS?: string;
+    }).__PREDICT_E2E_SOLANA_ADDRESS;
+    const fakeAddress = runtimeAddress
+      ?? process.env.EXPO_PUBLIC_PREDICT_E2E_SOLANA_ADDRESS
+      ?? 'E2ePredict111111111111111111111111111111111';
+    return {
+      connected: true as const,
+      address: fakeAddress,
+      shortAddress: 'E2eP···1111',
+      connect: async () => {},
+      disconnect: async () => {},
+      signMessage: async () => new Uint8Array(64).fill(1),
+      signAndSendTransaction: async () => 'e2e-signature',
+      connection: null,
+      walletOptions: [],
+      source: 'mwa' as WalletSource,
+    };
+  }
+
   // MWA wallet state
   const raw = account?.address;
   const mwaAddress = raw ? (typeof raw === 'string' ? raw : raw.toBase58()) : null;

@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
+import { formatRedeemError, logRedeemError } from '@/features/predict/redeemErrors';
 import { semantic, tokens } from '@/theme';
 
 interface RedeemableSectionProps {
@@ -11,8 +12,15 @@ interface RedeemableSectionProps {
   onRedeemed?: () => void;
 }
 
+function redeemablePositionKey(position: PortfolioPosition): string {
+  return `${position.conditionId}-${position.outcomeIndex ?? 'outcome'}-${position.asset ?? 'asset'}`;
+}
+
 export function RedeemableSection({ positions, polygonAddress, onRedeemed }: RedeemableSectionProps) {
-  const visiblePositions = positions.filter((position) => (position.currentValue ?? 0) >= 0.01);
+  const [redeemedKeys, setRedeemedKeys] = useState<Set<string>>(() => new Set());
+  const visiblePositions = positions.filter((position) =>
+    (position.currentValue ?? 0) >= 0.01 && !redeemedKeys.has(redeemablePositionKey(position))
+  );
   if (visiblePositions.length === 0) return null;
 
   const totalRedeemable = visiblePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
@@ -29,7 +37,14 @@ export function RedeemableSection({ positions, polygonAddress, onRedeemed }: Red
           key={`${p.conditionId}-${p.outcomeIndex}-${i}`}
           position={p}
           polygonAddress={polygonAddress}
-          onRedeemed={onRedeemed}
+          onRedeemed={() => {
+            setRedeemedKeys((current) => {
+              const next = new Set(current);
+              next.add(redeemablePositionKey(p));
+              return next;
+            });
+            onRedeemed?.();
+          }}
         />
       ))}
     </View>
@@ -66,50 +81,61 @@ function RedeemRow({
         setStatus('success');
         onRedeemed?.();
       } else {
+        const error = new Error(result.error ?? 'Redeem failed');
+        logRedeemError('redeemable-section', error, p);
         setStatus('error');
-        setErrorMsg(result.error ?? 'Redeem failed');
+        setErrorMsg(formatRedeemError(error));
       }
-    } catch (err: any) {
+    } catch (err) {
+      logRedeemError('redeemable-section', err, p);
       setStatus('error');
-      setErrorMsg(err.message || 'Unknown error');
+      setErrorMsg(formatRedeemError(err));
     }
   }
 
   return (
-    <View style={styles.row}>
-      <View style={[styles.outcomeBadge, styles.badgePos]}>
-        <Text style={[styles.outcomeBadgeText, styles.posText]}>
-          {p.outcome?.toUpperCase() ?? 'YES'}
-        </Text>
-      </View>
-      <View style={styles.info}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {formatPredictTitle({ title: p.title, slug: p.slug || p.eventSlug })}
-        </Text>
-        <Text style={styles.rowShares}>{p.size.toFixed(2)} shares</Text>
-      </View>
-      <Pressable
-        style={[
-          styles.redeemBtn,
-          status === 'success' && styles.redeemBtnSuccess,
-          status === 'error' && styles.redeemBtnError,
-        ]}
-        onPress={handleRedeem}
-        disabled={status === 'loading' || status === 'success'}
-        accessibilityLabel={`Redeem $${value.toFixed(2)} from ${p.title}`}
-      >
-        {status === 'loading' ? (
-          <ActivityIndicator size="small" color={tokens.colors.viridian} />
-        ) : status === 'success' ? (
-          <Text style={styles.redeemBtnText}>Redeemed</Text>
-        ) : status === 'error' ? (
-          <Text style={[styles.redeemBtnText, styles.errorText]} numberOfLines={1}>
-            {errorMsg || 'Failed'}
+    <View style={styles.rowWrap}>
+      <View style={styles.row}>
+        <View style={[styles.outcomeBadge, styles.badgePos]}>
+          <Text style={[styles.outcomeBadgeText, styles.posText]}>
+            {p.outcome?.toUpperCase() ?? 'YES'}
           </Text>
-        ) : (
-          <Text style={styles.redeemBtnText}>Redeem ${value.toFixed(2)}</Text>
-        )}
-      </Pressable>
+        </View>
+        <View style={styles.info}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {formatPredictTitle({ title: p.title, slug: p.slug || p.eventSlug })}
+          </Text>
+          <Text style={styles.rowShares}>{p.size.toFixed(2)} shares</Text>
+        </View>
+        <Pressable
+          style={[
+            styles.redeemBtn,
+            status === 'loading' && styles.redeemBtnBusy,
+            status === 'success' && styles.redeemBtnSuccess,
+            status === 'error' && styles.redeemBtnError,
+          ]}
+          onPress={handleRedeem}
+          disabled={status === 'loading' || status === 'success'}
+          accessibilityLabel={`Redeem $${value.toFixed(2)} from ${p.title}`}
+          accessibilityState={{ disabled: status === 'loading' || status === 'success', busy: status === 'loading' }}
+        >
+          {status === 'loading' ? (
+            <View style={styles.redeemBtnContent}>
+              <ActivityIndicator size="small" color={tokens.colors.viridian} />
+              <Text style={styles.redeemBtnText}>Redeeming</Text>
+            </View>
+          ) : status === 'success' ? (
+            <Text style={styles.redeemBtnText}>Redeemed</Text>
+          ) : status === 'error' ? (
+            <Text style={[styles.redeemBtnText, styles.errorText]}>Try again</Text>
+          ) : (
+            <Text style={styles.redeemBtnText}>Redeem ${value.toFixed(2)}</Text>
+          )}
+        </Pressable>
+      </View>
+      {status === 'error' && (
+        <Text style={styles.rowErrorText}>{errorMsg}</Text>
+      )}
     </View>
   );
 }
@@ -138,6 +164,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: tokens.colors.viridian,
+  },
+  rowWrap: {
+    gap: 5,
   },
   row: {
     flexDirection: 'row',
@@ -186,6 +215,9 @@ const styles = StyleSheet.create({
     minHeight: 32,
     justifyContent: 'center',
   },
+  redeemBtnBusy: {
+    minWidth: 94,
+  },
   redeemBtnSuccess: {
     backgroundColor: 'rgba(74,140,111,0.25)',
   },
@@ -200,7 +232,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: tokens.colors.viridian,
   },
+  redeemBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
   errorText: {
+    color: tokens.colors.vermillion,
+  },
+  rowErrorText: {
+    paddingHorizontal: 10,
+    fontSize: 10,
+    lineHeight: 14,
     color: tokens.colors.vermillion,
   },
 });

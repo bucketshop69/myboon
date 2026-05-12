@@ -23,6 +23,10 @@ const DEPOSIT_WALLET_STORAGE_KEY = 'polymarket_deposit_wallet_address';
 const WALLET_MODE_STORAGE_KEY = 'polymarket_wallet_mode';
 
 const API_BASE = resolveApiBaseUrl();
+const E2E_POLYGON_ADDRESS = process.env.EXPO_PUBLIC_PREDICT_E2E_POLYGON_ADDRESS
+  ?? '0xe2e0000000000000000000000000000000000001';
+const E2E_DEPOSIT_WALLET_ADDRESS = process.env.EXPO_PUBLIC_PREDICT_E2E_DEPOSIT_WALLET_ADDRESS
+  ?? '0xe2e0000000000000000000000000000000000002';
 
 export type PolymarketWalletMode = 'deposit_wallet';
 
@@ -192,6 +196,27 @@ export function usePolymarketWallet(): PolymarketWallet {
 
   const tradingAddress = depositWalletAddress;
   const isReady = !!polygonAddress && walletMode === 'deposit_wallet' && !!depositWalletAddress;
+
+  if (process.env.EXPO_PUBLIC_PREDICT_E2E === '1') {
+    const runtime = globalThis as typeof globalThis & {
+      __PREDICT_E2E_POLYGON_ADDRESS?: string;
+      __PREDICT_E2E_DEPOSIT_WALLET_ADDRESS?: string;
+    };
+    const e2ePolygonAddress = runtime.__PREDICT_E2E_POLYGON_ADDRESS ?? E2E_POLYGON_ADDRESS;
+    const e2eDepositWalletAddress = runtime.__PREDICT_E2E_DEPOSIT_WALLET_ADDRESS ?? E2E_DEPOSIT_WALLET_ADDRESS;
+    return {
+      polygonAddress: e2ePolygonAddress,
+      safeAddress: null,
+      depositWalletAddress: e2eDepositWalletAddress,
+      walletMode: 'deposit_wallet',
+      tradingAddress: e2eDepositWalletAddress,
+      isReady: true,
+      isLoading: false,
+      enable: async () => {},
+      disable: () => {},
+      canSignLocally: true,
+    };
+  }
 
   return {
     polygonAddress,

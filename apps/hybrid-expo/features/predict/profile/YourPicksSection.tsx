@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { redeemPosition } from '@/features/predict/predict.api';
 import { PredictActivityDetailModal } from '@/features/predict/components/PredictActivityDetailModal';
 import { PredictActivityRow } from '@/features/predict/components/PredictActivityRow';
+import { formatRedeemError, logRedeemError } from '@/features/predict/redeemErrors';
 import {
   buildPredictActivityItems,
   formatPredictFreshness,
@@ -42,28 +43,39 @@ export function YourPicksSection({
   const [scope, setScope] = useState<'active' | 'all'>('active');
   const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [redeemError, setRedeemError] = useState<{ id: string; message: string } | null>(null);
+  const [redeemedIds, setRedeemedIds] = useState<Set<string>>(() => new Set());
   const allPicks = useMemo(
     () => buildPredictActivityItems({ positions, redeemablePositions, openOrders, closedPositions }),
     [positions, redeemablePositions, openOrders, closedPositions],
   );
-  const activePicks = allPicks.filter((item) =>
+  const visiblePicks = useMemo(
+    () => allPicks.filter((item) => !redeemedIds.has(item.id)),
+    [allPicks, redeemedIds],
+  );
+  const activePicks = visiblePicks.filter((item) =>
     item.status === 'syncing'
     || item.status === 'waiting_to_match'
     || item.status === 'active'
     || item.status === 'ready_to_collect'
   );
-  const picks = scope === 'all' ? allPicks : activePicks;
-  const allCount = allPicks.length;
+  const picks = scope === 'all' ? visiblePicks : activePicks;
+  const allCount = visiblePicks.length;
   if (allCount === 0) return null;
 
-  const activeCount = positions.length + openOrders.length;
-  const readyCount = redeemablePositions.length;
-  const closedCount = closedPositions.length;
+  const activeCount = visiblePicks.filter((item) =>
+    item.status === 'syncing'
+    || item.status === 'waiting_to_match'
+    || item.status === 'active'
+  ).length;
+  const readyCount = visiblePicks.filter((item) => item.status === 'ready_to_collect').length;
+  const closedCount = visiblePicks.filter((item) => item.status === 'closed_won' || item.status === 'closed_lost').length;
   const countLabel = `${activeCount} active${readyCount > 0 ? ` · ${readyCount} ready` : ''}${closedCount > 0 ? ` · ${closedCount} history` : ''}`;
 
   async function handleRedeem(item: PredictActivityItem) {
     if (!polygonAddress || !item.rawPosition || redeemingId) return;
     setRedeemingId(item.id);
+    setRedeemError(null);
     try {
       const result = await redeemPosition(polygonAddress, {
         conditionId: item.rawPosition.conditionId,
@@ -72,10 +84,17 @@ export function YourPicksSection({
         negativeRisk: item.rawPosition.negativeRisk,
       });
       if (!result.ok) throw new Error(result.error || 'Redeem failed');
+      setRedeemError(null);
+      setRedeemedIds((current) => {
+        const next = new Set(current);
+        next.add(item.id);
+        return next;
+      });
       setSelectedItem(null);
       onRedeemed();
     } catch (error) {
-      Alert.alert('Redeem failed', error instanceof Error ? error.message : 'Try again in a moment.');
+      logRedeemError('your-picks-section', error, item);
+      setRedeemError({ id: item.id, message: formatRedeemError(error) });
     } finally {
       setRedeemingId(null);
     }
@@ -140,6 +159,7 @@ export function YourPicksSection({
           showMarketTitle
           cancelling={cancellingOrderId === item.orderId}
           redeeming={redeemingId === item.id}
+          redeemError={redeemError?.id === item.id ? redeemError.message : undefined}
           onPress={() => setSelectedItem(item)}
           onCashOut={() => cashOutItem(item)}
           onBackMore={() => backMoreItem(item)}
@@ -160,6 +180,8 @@ export function YourPicksSection({
           onCancelOrder(orderId);
         }}
         onRedeem={(item) => void handleRedeem(item)}
+        redeeming={selectedItem ? redeemingId === selectedItem.id : false}
+        redeemError={selectedItem && redeemError?.id === selectedItem.id ? redeemError.message : undefined}
       />
     </View>
   );
