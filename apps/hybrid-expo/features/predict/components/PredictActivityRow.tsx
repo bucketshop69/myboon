@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import type { PredictActivityItem } from '@/features/predict/predictActivityState';
 import { getPredictActivityStatusLabel } from '@/features/predict/predictActivityState';
 import { PredictPositionRow } from '@/features/predict/components/PredictPositionRow';
-import { truncateSignedUsd, truncateUsd } from '@/features/predict/formatPredictMoney';
+import { makeSignedMoneyFormatter, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface PredictActivityRowProps {
@@ -17,6 +17,7 @@ interface PredictActivityRowProps {
   onBackMore: () => void;
   onCancelOrder?: () => void;
   onRedeem?: () => void;
+  formatMoney?: MoneyFormatter;
 }
 
 function formatChance(value: number | null): string {
@@ -66,6 +67,7 @@ export function PredictActivityRow({
   onBackMore,
   onCancelOrder,
   onRedeem,
+  formatMoney = truncateUsd,
 }: PredictActivityRowProps) {
   if (item.status === 'active' && item.rawPosition) {
     return (
@@ -75,13 +77,15 @@ export function PredictActivityRow({
         onPress={onPress}
         onCashOut={onCashOut}
         onBackMore={onBackMore}
+        formatMoney={formatMoney}
       />
     );
   }
 
   const pnlPositive = (item.pnl ?? 0) > 0.005;
   const pnlNegative = (item.pnl ?? 0) < -0.005;
-  const value = item.currentValue === null ? null : truncateUsd(item.currentValue);
+  const formatSignedMoney = makeSignedMoneyFormatter(formatMoney);
+  const value = item.currentValue === null ? null : formatMoney(item.currentValue);
   const status = getPredictActivityStatusLabel(item.status);
   const redeemActionColor = redeemError ? tokens.colors.vermillion : tokens.colors.backgroundDark;
   const primaryLabel = item.status === 'closed_won'
@@ -95,7 +99,7 @@ export function PredictActivityRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${primaryLabel}. ${rowMeta(item, showMarketTitle)}${item.pnl !== null ? `. P and L ${truncateSignedUsd(item.pnl)}` : ''}.`}
+      accessibilityLabel={`${primaryLabel}. ${rowMeta(item, showMarketTitle)}${item.pnl !== null ? `. P and L ${formatSignedMoney(item.pnl)}` : ''}.`}
       accessibilityHint="Open pick details"
       style={cardStyle(item)}
       onPress={onPress}>
@@ -107,7 +111,7 @@ export function PredictActivityRow({
           <Text style={styles.meta} numberOfLines={1}>{rowMeta(item, showMarketTitle)}</Text>
           {item.pnl !== null && (
             <Text style={[styles.pnl, pnlPositive ? styles.positive : pnlNegative ? styles.negative : styles.flat]}>
-              {truncateSignedUsd(item.pnl)}
+              {formatSignedMoney(item.pnl)}
             </Text>
           )}
         </View>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
-import { portfolioPositionCost, truncateSignedUsd, truncateUsd } from '@/features/predict/formatPredictMoney';
+import { makeSignedMoneyFormatter, portfolioPositionCost, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface CashOutConfirmModalProps {
@@ -10,9 +10,10 @@ interface CashOutConfirmModalProps {
   submitting?: boolean;
   onClose: () => void;
   onConfirm: (size: number) => void;
+  formatMoney?: MoneyFormatter;
 }
 
-export function CashOutConfirmModal({ position, visible, submitting = false, onClose, onConfirm }: CashOutConfirmModalProps) {
+export function CashOutConfirmModal({ position, visible, submitting = false, onClose, onConfirm, formatMoney = truncateUsd }: CashOutConfirmModalProps) {
   const [percent, setPercent] = useState(100);
   const [sliderWidth, setSliderWidth] = useState(1);
 
@@ -37,6 +38,7 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
   const cashOutValue = (position?.currentValue ?? 0) * selectedRatio;
   const pnl = position ? (position.currentValue - portfolioPositionCost(position)) * selectedRatio : 0;
   const canConfirm = !!position && selectedSize > 0 && !submitting;
+  const formatSignedMoney = makeSignedMoneyFormatter(formatMoney);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -88,12 +90,12 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
           </View>
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>You will get</Text>
-            <Text style={styles.amountValue}>{truncateUsd(cashOutValue)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(cashOutValue)}</Text>
           </View>
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>P/L</Text>
             <Text style={[styles.amountValue, pnl > 0 ? styles.pnlPositive : pnl < 0 ? styles.pnlNegative : styles.pnlFlat]}>
-              {truncateSignedUsd(pnl)}
+              {formatSignedMoney(pnl)}
             </Text>
           </View>
           <View style={styles.actions}>

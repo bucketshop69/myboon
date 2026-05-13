@@ -11,6 +11,7 @@ import {
   type PredictActivityItem,
   type PredictDataFreshness,
 } from '@/features/predict/predictActivityState';
+import type { MoneyFormatter } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface YourPicksSectionProps {
@@ -25,6 +26,7 @@ interface YourPicksSectionProps {
   onMarketPress: (slug: string) => void;
   onCancelOrder: (orderId: string) => void;
   onRedeemed: () => void;
+  formatMoney?: MoneyFormatter;
 }
 
 export function YourPicksSection({
@@ -39,6 +41,7 @@ export function YourPicksSection({
   onMarketPress,
   onCancelOrder,
   onRedeemed,
+  formatMoney,
 }: YourPicksSectionProps) {
   const [scope, setScope] = useState<'active' | 'all'>('active');
   const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
@@ -169,6 +172,7 @@ export function YourPicksSection({
           onBackMore={() => backMoreItem(item)}
           onCancelOrder={item.orderId ? () => onCancelOrder(item.orderId!) : undefined}
           onRedeem={() => void handleRedeem(item)}
+          formatMoney={formatMoney}
         />
       ))}
 
@@ -186,6 +190,7 @@ export function YourPicksSection({
         onRedeem={(item) => void handleRedeem(item)}
         redeeming={selectedItem ? redeemingId === selectedItem.id : false}
         redeemError={selectedItem && redeemError?.id === selectedItem.id ? redeemError.message : undefined}
+        formatMoney={formatMoney}
       />
     </View>
   );
