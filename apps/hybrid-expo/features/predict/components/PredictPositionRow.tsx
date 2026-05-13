@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
-import { portfolioPositionCost, truncateSignedUsd, truncateUsd } from '@/features/predict/formatPredictMoney';
+import { makeSignedMoneyFormatter, portfolioPositionCost, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface PredictPositionRowProps {
@@ -10,6 +10,7 @@ interface PredictPositionRowProps {
   onPress?: () => void;
   onCashOut: () => void;
   onBackMore: () => void;
+  formatMoney?: MoneyFormatter;
 }
 
 function formatChance(value: number | null | undefined): string {
@@ -41,17 +42,19 @@ export function PredictPositionRow({
   onPress,
   onCashOut,
   onBackMore,
+  formatMoney = truncateUsd,
 }: PredictPositionRowProps) {
   const outcome = formatOutcome(position.outcome);
   const priceLine = `${formatChance(position.avgPrice)} entry -> ${formatChance(position.curPrice)} now`;
   const cost = portfolioPositionCost(position);
   const pnl = (position.currentValue ?? 0) - cost;
   const pnlPercent = cost > 0 ? (pnl / cost) * 100 : null;
-  const pnlText = `${truncateSignedUsd(pnl)} (${formatSignedPercent(pnlPercent)})`;
+  const formatSignedMoney = makeSignedMoneyFormatter(formatMoney);
+  const pnlText = `${formatSignedMoney(pnl)} (${formatSignedPercent(pnlPercent)})`;
   const pnlState = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'flat';
   const pnlStyle = pnlState === 'positive' ? styles.pnlPositive : pnlState === 'negative' ? styles.pnlNegative : styles.pnlFlat;
   const marketTitle = formatPositionTitle(position);
-  const cashOutValue = truncateUsd(position.currentValue ?? 0);
+  const cashOutValue = formatMoney(position.currentValue ?? 0);
 
   return (
     <Pressable

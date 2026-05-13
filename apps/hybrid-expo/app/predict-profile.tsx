@@ -32,12 +32,28 @@ function truncate(addr: string, start = 6, end = 4): string {
   return `${addr.slice(0, start)}···${addr.slice(-end)}`;
 }
 
-function formatUsd(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return '--';
-  const abs = Math.abs(value);
+const PREDICT_PROFILE_FALLBACK_USD_TO_INR = 95.67;
+const USD_INR_RATE_URL = 'https://open.er-api.com/v6/latest/USD';
+
+function formatProfileCurrency(value: number | null | undefined, usdToInr = PREDICT_PROFILE_FALLBACK_USD_TO_INR): string {
+  if (value == null || !Number.isFinite(value)) return '--';
+  const inr = Math.abs(value * usdToInr);
   const prefix = value < 0 ? '-' : '';
-  if (abs >= 1000) return `${prefix}$${(abs / 1000).toFixed(1)}K`;
-  return `${prefix}$${abs.toFixed(2)}`;
+  if (inr >= 100000) return `${prefix}₹${(inr / 100000).toFixed(1)}L`;
+  if (inr >= 1000) return `${prefix}₹${(inr / 1000).toFixed(1)}K`;
+  return `${prefix}₹${inr.toFixed(0)}`;
+}
+
+async function fetchUsdToInrRate(): Promise<number | null> {
+  try {
+    const response = await fetch(USD_INR_RATE_URL);
+    if (!response.ok) return null;
+    const data = await response.json();
+    const rate = Number(data?.rates?.INR);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  } catch {
+    return null;
+  }
 }
 
 function getOrderCost(order: OpenOrder): number {
@@ -69,6 +85,7 @@ export default function PredictProfileScreen() {
     stale: false,
     error: null,
   });
+  const [usdToInrRate, setUsdToInrRate] = useState(PREDICT_PROFILE_FALLBACK_USD_TO_INR);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
   const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
 
@@ -79,6 +96,24 @@ export default function PredictProfileScreen() {
   const isEnabled = poly.isReady && poly.polygonAddress;
   const walletScopedKey = connected && solanaAddress ? `${sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
   const walletScopedKeyRef = useRef(walletScopedKey);
+  const formatProfileMoney = useCallback(
+    (value: number | null | undefined) => formatProfileCurrency(value, usdToInrRate),
+    [usdToInrRate],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshRate() {
+      const rate = await fetchUsdToInrRate();
+      if (!cancelled && rate !== null) setUsdToInrRate(rate);
+    }
+    void refreshRate();
+    const interval = setInterval(() => void refreshRate(), 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const resetWalletScopedState = useCallback(() => {
     setPortfolio(null);
@@ -373,7 +408,7 @@ export default function PredictProfileScreen() {
     const realized = Number.isFinite(position.realizedPnl) ? position.realizedPnl : 0;
     return realized > 0 ? sum + realized : sum;
   }, 0);
-  const collectedDisplay = hasAnyPicks || (cashBalance ?? 0) > 0 ? formatUsd(collectedValue) : '--';
+  const collectedDisplay = hasAnyPicks || (cashBalance ?? 0) > 0 ? formatProfileMoney(collectedValue) : '--';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -496,13 +531,13 @@ export default function PredictProfileScreen() {
                 <View style={styles.eqItem}>
                   <Text style={styles.eqLabel}>Predict value</Text>
                   <Text style={styles.eqVal}>
-                    {portfolioValue !== null ? formatUsd(portfolioValue) : '--'}
+                    {portfolioValue !== null ? formatProfileMoney(portfolioValue) : '--'}
                   </Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemCenter]}>
                   <Text style={styles.eqLabel}>Cash</Text>
                   <Text style={styles.eqVal}>
-                    {cashBalance !== null ? `$${cashBalance.toFixed(2)}` : '--'}
+                    {cashBalance !== null ? formatProfileMoney(cashBalance) : '--'}
                   </Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemRight]}>
@@ -513,8 +548,8 @@ export default function PredictProfileScreen() {
                     {!hasActiveOrReadyPicks
                       ? collectedDisplay
                       : readyToCollect > 0
-                        ? formatUsd(readyToCollect)
-                        : formatUsd(activePicksValue)}
+                        ? formatProfileMoney(readyToCollect)
+                        : formatProfileMoney(activePicksValue)}
                   </Text>
                 </View>
               </View>
@@ -522,7 +557,7 @@ export default function PredictProfileScreen() {
                 <View style={[styles.equityRow, styles.equityRowSecond]}>
                   <View style={styles.eqItem}>
                     <Text style={styles.eqLabel}>Cash out now</Text>
-                    <Text style={styles.eqVal}>{formatUsd(cashOutNow)}</Text>
+                    <Text style={styles.eqVal}>{formatProfileMoney(cashOutNow)}</Text>
                   </View>
                   <View style={[styles.eqItem, styles.eqItemCenter]}>
                     <Text style={styles.eqLabel}>Active picks</Text>
@@ -548,6 +583,7 @@ export default function PredictProfileScreen() {
               onMarketPress={handleOpenMarket}
               onCancelOrder={(orderId) => void handleCancel(orderId)}
               onRedeemed={() => void loadPortfolio()}
+              formatMoney={formatProfileMoney}
             />
 
             {positions.length === 0 && openOrders.length === 0 && redeemablePositions.length === 0 && closedPositions.length === 0 && (
@@ -591,6 +627,7 @@ export default function PredictProfileScreen() {
         submitting={cashOutSubmitting}
         onClose={() => setCashOutPosition(null)}
         onConfirm={handleConfirmCashOut}
+        formatMoney={formatProfileMoney}
       />
     </View>
   );

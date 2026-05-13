@@ -2,7 +2,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PredictActivityItem, PredictDataFreshness } from '@/features/predict/predictActivityState';
 import { formatPredictFreshness, getPredictActivityStatusLabel } from '@/features/predict/predictActivityState';
-import { truncateSignedUsd, truncateUsd } from '@/features/predict/formatPredictMoney';
+import { makeSignedMoneyFormatter, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface PredictActivityDetailModalProps {
@@ -16,6 +16,7 @@ interface PredictActivityDetailModalProps {
   onRedeem: (item: PredictActivityItem) => void;
   redeeming?: boolean;
   redeemError?: string;
+  formatMoney?: MoneyFormatter;
 }
 
 function formatChance(value: number | null): string {
@@ -69,9 +70,11 @@ export function PredictActivityDetailModal({
   onRedeem,
   redeeming = false,
   redeemError,
+  formatMoney = truncateUsd,
 }: PredictActivityDetailModalProps) {
   const pnlPositive = (item?.pnl ?? 0) > 0.005;
   const pnlNegative = (item?.pnl ?? 0) < -0.005;
+  const formatSignedMoney = makeSignedMoneyFormatter(formatMoney);
   const statusLabel = item ? getPredictActivityStatusLabel(item.status) : '';
   const freshnessCopy = item?.status === 'syncing'
     ? 'Syncing with market'
@@ -110,11 +113,11 @@ export function PredictActivityDetailModal({
             {freshnessCopy && <Text style={styles.freshness}>{freshnessCopy}</Text>}
 
             <View style={styles.grid}>
-              <Metric label="Put in" value={truncateUsd(item.putIn)} />
-              <Metric label="Value now" value={item.currentValue === null ? '--' : truncateUsd(item.currentValue)} />
+              <Metric label="Put in" value={formatMoney(item.putIn)} />
+              <Metric label="Value now" value={item.currentValue === null ? '--' : formatMoney(item.currentValue)} />
               <Metric
                 label="P/L"
-                value={item.pnl === null ? '--' : truncateSignedUsd(item.pnl)}
+                value={item.pnl === null ? '--' : formatSignedMoney(item.pnl)}
                 tone={pnlPositive ? 'positive' : pnlNegative ? 'negative' : 'flat'}
               />
               <Metric label="Shares" value={formatShares(item.shares)} />
