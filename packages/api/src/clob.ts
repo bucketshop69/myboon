@@ -73,6 +73,11 @@ const ERC1155_BALANCE_OF_ABI = [{
   outputs: [{ type: 'uint256' }],
 }] as const
 
+function roundDown(value: number, decimals: number): number {
+  const factor = 10 ** decimals
+  return Math.floor((value + Number.EPSILON) * factor) / factor
+}
+
 const CTF_PAYOUT_DENOMINATOR_ABI = [{
   name: 'payoutDenominator', type: 'function',
   inputs: [{ name: 'conditionId', type: 'bytes32' }],
@@ -639,42 +644,27 @@ clobRoutes.post('/order', async (c) => {
     let result: any
     if (isMarketOrder) {
       const marketOrderType = resolvedOrderType === OrderType.FAK ? OrderType.FAK : OrderType.FOK
-      const marketableBuySize = side === 'BUY'
-        ? typeof size === 'number' && Number.isFinite(size) && size > 0
-          ? Math.floor(size * 100) / 100
-          : Math.floor(((marketAmount as number) / price) * 100) / 100
-        : null
-
-      if (side === 'BUY' && marketableBuySize !== null && marketableBuySize > 0) {
-        // The SDK's market-buy path derives shares from dollar amount / price, which can
-        // create repeating decimals rejected by CLOB precision checks. A FOK/FAK limit
-        // order at the executable limit price still takes existing liquidity immediately
-        // and cannot rest on the book.
-        result = await client.createAndPostOrder(
-          {
-            tokenID,
-            price,
-            size: marketableBuySize,
-            side: clobSide,
-            builderCode: BUILDER_CODE,
-          },
-          { tickSize: '0.01', negRisk: !!negRisk },
-          marketOrderType,
-        )
-      } else {
-        result = await client.createAndPostMarketOrder(
-          {
-            tokenID,
-            price,
-            amount: marketAmount as number,
-            side: clobSide,
-            orderType: marketOrderType,
-            builderCode: BUILDER_CODE,
-          },
-          { tickSize: '0.01', negRisk: !!negRisk },
-          marketOrderType,
-        )
+      // Polymarket FOK/FAK BUY orders are market orders: amount is dollars to
+      // spend and price is the worst acceptable fill price. Do not convert BUY
+      // FOK into a limit order here; price * size can produce maker amounts such
+      // as 4.998, which CLOB rejects for market buys.
+      const normalizedMarketAmount = roundDown(marketAmount as number, 2)
+      if (normalizedMarketAmount <= 0) {
+        return c.json(failedOperation(operation, 'Amount is too small after precision rounding', null), 400)
       }
+
+      result = await client.createAndPostMarketOrder(
+        {
+          tokenID,
+          price,
+          amount: normalizedMarketAmount,
+          side: clobSide,
+          orderType: marketOrderType,
+          builderCode: BUILDER_CODE,
+        },
+        { tickSize: '0.01', negRisk: !!negRisk },
+        marketOrderType,
+      )
     } else {
       const limitOrderType = resolvedOrderType === OrderType.GTD ? OrderType.GTD : OrderType.GTC
       result = await client.createAndPostOrder(
