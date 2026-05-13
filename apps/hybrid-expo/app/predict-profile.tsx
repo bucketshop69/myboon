@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -13,11 +14,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
+import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
@@ -34,8 +37,15 @@ function truncate(addr: string, start = 6, end = 4): string {
 
 const PREDICT_PROFILE_FALLBACK_USD_TO_INR = 95.67;
 const USD_INR_RATE_URL = 'https://open.er-api.com/v6/latest/USD';
+const PREDICT_PROFILE_CURRENCY_KEY = 'predict-profile-currency-format';
+type PredictProfileCurrency = 'USD' | 'INR';
 
-function formatProfileCurrency(value: number | null | undefined, usdToInr = PREDICT_PROFILE_FALLBACK_USD_TO_INR): string {
+function formatProfileCurrency(
+  value: number | null | undefined,
+  currency: PredictProfileCurrency,
+  usdToInr = PREDICT_PROFILE_FALLBACK_USD_TO_INR,
+): string {
+  if (currency === 'USD') return truncateUsd(value);
   if (value == null || !Number.isFinite(value)) return '--';
   const inr = Math.abs(value * usdToInr);
   const prefix = value < 0 ? '-' : '';
@@ -86,6 +96,8 @@ export default function PredictProfileScreen() {
     error: null,
   });
   const [usdToInrRate, setUsdToInrRate] = useState(PREDICT_PROFILE_FALLBACK_USD_TO_INR);
+  const [currencyFormat, setCurrencyFormat] = useState<PredictProfileCurrency>('INR');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
   const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
 
@@ -97,9 +109,23 @@ export default function PredictProfileScreen() {
   const walletScopedKey = connected && solanaAddress ? `${sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
   const walletScopedKeyRef = useRef(walletScopedKey);
   const formatProfileMoney = useCallback(
-    (value: number | null | undefined) => formatProfileCurrency(value, usdToInrRate),
-    [usdToInrRate],
+    (value: number | null | undefined) => formatProfileCurrency(value, currencyFormat, usdToInrRate),
+    [currencyFormat, usdToInrRate],
   );
+
+  useEffect(() => {
+    AsyncStorage.getItem(PREDICT_PROFILE_CURRENCY_KEY)
+      .then((stored) => {
+        if (stored === 'USD' || stored === 'INR') setCurrencyFormat(stored);
+      })
+      .catch(() => {});
+  }, []);
+
+  const selectCurrencyFormat = useCallback((next: PredictProfileCurrency) => {
+    setCurrencyFormat(next);
+    setSettingsOpen(false);
+    AsyncStorage.setItem(PREDICT_PROFILE_CURRENCY_KEY, next).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,8 +457,8 @@ export default function PredictProfileScreen() {
             )}
             <AppTopBarIconButton
               icon="settings"
-              onPress={openDrawer}
-              accessibilityLabel="Open wallet settings"
+              onPress={() => setSettingsOpen(true)}
+              accessibilityLabel="Open Predict profile currency settings"
               color={semantic.text.dim}
             />
           </View>
@@ -629,6 +655,43 @@ export default function PredictProfileScreen() {
         onConfirm={handleConfirmCashOut}
         formatMoney={formatProfileMoney}
       />
+
+      <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
+        <View style={styles.settingsBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close Predict profile settings"
+            style={StyleSheet.absoluteFill}
+            onPress={() => setSettingsOpen(false)}
+          />
+          <View style={styles.settingsCard} accessibilityViewIsModal>
+            <Text style={styles.settingsEyebrow}>Predict settings</Text>
+            <Text style={styles.settingsTitle}>Currency display</Text>
+            <Text style={styles.settingsCopy}>Choose how money shows on your Predict profile.</Text>
+            {(['USD', 'INR'] as const).map((currency) => {
+              const selected = currencyFormat === currency;
+              return (
+                <Pressable
+                  key={currency}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show Predict profile values in ${currency}`}
+                  accessibilityState={{ selected }}
+                  style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
+                  onPress={() => selectCurrencyFormat(currency)}
+                >
+                  <View>
+                    <Text style={styles.currencyOptionTitle}>{currency}</Text>
+                    <Text style={styles.currencyOptionSub}>
+                      {currency === 'USD' ? '$ US dollars' : `₹ Indian rupees · live rate ${usdToInrRate.toFixed(2)}`}
+                    </Text>
+                  </View>
+                  {selected && <MaterialIcons name="check-circle" size={20} color={tokens.colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -637,6 +700,71 @@ export default function PredictProfileScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.background.screen },
+
+  settingsBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 22,
+  },
+  settingsCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: tokens.colors.ground,
+    padding: 18,
+    gap: 10,
+  },
+  settingsEyebrow: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '800',
+    color: semantic.text.faint,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  settingsTitle: {
+    fontFamily: 'monospace',
+    fontSize: 18,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  settingsCopy: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.dim,
+    lineHeight: 15,
+    marginBottom: 4,
+  },
+  currencyOption: {
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: semantic.background.surface,
+  },
+  currencyOptionSelected: {
+    borderColor: tokens.colors.primary,
+    backgroundColor: 'rgba(255, 214, 10, 0.08)',
+  },
+  currencyOptionTitle: {
+    fontFamily: 'monospace',
+    fontSize: 13,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  currencyOptionSub: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: semantic.text.faint,
+    marginTop: 3,
+  },
 
   headerActions: {
     flexDirection: 'row',
