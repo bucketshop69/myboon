@@ -31,8 +31,9 @@ import { InlineNumpad } from '@/features/predict/components/InlineNumpad';
 import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel';
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { buildExecutableBuyQuote, getBestAsk } from '@/features/predict/orderbookQuote';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
-import { getPredictOrderGuardrail, getPredictOrderSize, type PredictDataFreshness } from '@/features/predict/predictActivityState';
+import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -113,6 +114,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const [activeView, setActiveView] = useState<ActiveView>('chart');
   const [orderbook, setOrderbook] = useState<Orderbook | null>(null);
   const [orderbookLoading, setOrderbookLoading] = useState(false);
+  const [buyBooks, setBuyBooks] = useState<Record<string, Orderbook | null>>({});
 
   // Numpad state
   const [numpadOpen, setNumpadOpen] = useState(false);
@@ -146,6 +148,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
   const reconcileTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const submitInFlightRef = useRef(false);
+  const buyBookRefreshInFlight = useRef(false);
   const walletScopedKey = wallet.connected && wallet.address ? `${wallet.sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
   const walletScopedKeyRef = useRef(walletScopedKey);
 
@@ -288,7 +291,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     try {
       const result = await cancelOrder(poly.polygonAddress, orderId);
       if (result.ok) {
-        setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+        setOpenOrders((prev) => prev.map((order) =>
+          order.id === orderId ? { ...order, status: 'cancel_requested' } : order
+        ));
+        void loadPicks();
       } else {
         Alert.alert('Cancel failed', result.error ?? 'Try again in a moment.');
       }
@@ -373,6 +379,26 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
     resetKey: liveTokenKey,
   });
 
+  useFocusedAppStateInterval(async (isCurrent) => {
+    const tokenIds = liveTokenKey.split(',').filter(Boolean);
+    if (tokenIds.length === 0 || buyBookRefreshInFlight.current) return;
+    buyBookRefreshInFlight.current = true;
+    try {
+      const entries = await Promise.all(
+        tokenIds.map(async (tokenId) => [tokenId, await fetchOrderbook(tokenId).catch(() => null)] as const),
+      );
+      if (isCurrent()) {
+        setBuyBooks((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    } finally {
+      buyBookRefreshInFlight.current = false;
+    }
+  }, 10_000, {
+    enabled: liveTokenKey.length > 0,
+    runImmediately: true,
+    resetKey: liveTokenKey,
+  });
+
   // Load orderbook when switching to orderbook view
   useEffect(() => {
     if (activeView === 'orderbook' && detail) void loadOrderbook();
@@ -408,8 +434,10 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
   const yesTokenId = detail?.clobTokenIds[0];
   const noTokenId = detail?.clobTokenIds[1];
-  const yesPrice = (yesTokenId ? liveTokenPrices[yesTokenId] : null) ?? (detail?.outcomePrices[0] ?? null);
-  const noPrice = (noTokenId ? liveTokenPrices[noTokenId] : null) ?? (detail?.outcomePrices[1] ?? null);
+  const yesBook = yesTokenId ? buyBooks[yesTokenId] ?? null : null;
+  const noBook = noTokenId ? buyBooks[noTokenId] ?? null : null;
+  const yesPrice = getBestAsk(yesBook) ?? (yesTokenId ? liveTokenPrices[yesTokenId] : null) ?? (detail?.outcomePrices[0] ?? null);
+  const noPrice = getBestAsk(noBook) ?? (noTokenId ? liveTokenPrices[noTokenId] : null) ?? (detail?.outcomePrices[1] ?? null);
   const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
 
   async function runPredictSetup() {
@@ -513,27 +541,33 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
-      const size = getPredictOrderSize(amount, price);
-      if (size === null) throw new Error('Invalid price');
+      const freshBook = await fetchOrderbook(tokenID).catch(() => null);
+      const quote = buildExecutableBuyQuote(freshBook, amount);
+      if (!quote.executable || quote.limitPrice === null || quote.shares <= 0) {
+        Alert.alert('Not filled', 'Not enough liquidity at the current price. Try a smaller amount or refresh the market.');
+        return;
+      }
       const polygonAddress = poly.polygonAddress;
 
       const result = await placeBet({
         polygonAddress,
         tokenID,
-        price,
-        size,
+        price: quote.limitPrice,
+        size: quote.shares,
+        amount,
         side: 'BUY',
         negRisk: !!detail.negRisk,
+        orderType: 'FOK',
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
       setSubmitStatus('syncing');
       const pendingOrder = makePendingOpenOrder({
-        id: result.orderID,
+        id: result.orderID ?? result.operationId,
         slug,
         tokenID,
-        price,
-        size,
+        price: quote.limitPrice,
+        size: quote.shares,
         outcome: selectedSide === 'no' ? 'No' : 'Yes',
       });
       setPendingOpenOrders((prev) => [pendingOrder, ...prev.filter((order) => order.id !== pendingOrder.id)]);
@@ -611,6 +645,9 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
   const chartHeight = 180;
   const amountNum = parseFloat(numpadAmount) || 0;
   const latestSelectedPrice = selectedSide === 'no' ? noPrice : yesPrice;
+  const selectedBook = selectedSide === 'no' ? noBook : yesBook;
+  const selectedExecutableQuote = buildExecutableBuyQuote(selectedBook, amountNum);
+  const selectedNumpadPrice = selectedExecutableQuote.averagePrice ?? latestSelectedPrice ?? 0.5;
   const orderGuardrail = selectedSide
     ? getPredictOrderGuardrail({
         amount: amountNum,
@@ -818,7 +855,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
               visible={numpadOpen}
               side={selectedSide ?? 'yes'}
               pickLabel={selectedSide === 'no' ? 'NO' : 'YES'}
-              price={selectedSide === 'no' ? (noPrice ?? 0.5) : (yesPrice ?? 0.5)}
+              price={selectedNumpadPrice}
               amount={numpadAmount}
               availableCash={cashBalance}
               onAmountChange={setNumpadAmount}

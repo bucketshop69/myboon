@@ -26,6 +26,7 @@ export function useWallet() {
       connection: null,
       walletOptions: [],
       source: 'mwa' as WalletSource,
+      isPreparing: false,
       sessionKey: `mwa:${fakeAddress}`,
     };
   }
@@ -42,7 +43,10 @@ export function useWallet() {
       connected: privy.connected,
       address: privy.connected ? privy.address : null,
       shortAddress: privy.connected ? privy.shortAddress : null,
-      connect: async (_walletName?: string) => privy.loginWithPasskey(),
+      connect: async (_walletName?: string) => {
+        if (privy.connected) return;
+        await privy.waitForWallet();
+      },
       disconnect: privy.disconnect,
       signMessage: privy.connected ? privy.signMessage : null,
       // Privy embedded wallets don't support signAndSendTransaction directly —
@@ -51,6 +55,7 @@ export function useWallet() {
       connection: null,
       walletOptions: [],
       source: 'privy' as WalletSource,
+      isPreparing: privy.isPreparing,
       sessionKey: privy.connected && privy.address ? `privy:${privy.address}` : 'privy:disconnected',
     };
   }
@@ -69,6 +74,7 @@ export function useWallet() {
     connection,
     walletOptions: [],
     source: 'mwa' as WalletSource,
+    isPreparing: false,
     sessionKey: mwaAddress ? `mwa:${mwaAddress}` : 'mwa:disconnected',
   };
 }

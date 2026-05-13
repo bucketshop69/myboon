@@ -29,7 +29,9 @@ function rowMeta(item: PredictActivityItem, showMarketTitle: boolean): string {
   const status = getPredictActivityStatusLabel(item.status);
   const title = showMarketTitle ? `${item.marketTitle} · ` : '';
   if (item.status === 'waiting_to_match') return `${title}${status} · cash reserved`;
+  if (item.status === 'cancel_requested') return `${title}${status} · cash reserved`;
   if (item.status === 'syncing') return `${title}${status}`;
+  if (item.status === 'collecting') return `${title}${status}`;
   if (item.status === 'ready_to_collect') return `${title}${status}`;
   if (item.status === 'closed_won' || item.status === 'closed_lost') return `${title}${status}`;
   return `${title}${formatChance(item.avgPrice)} entry -> ${formatChance(item.currentPrice)} now`;
@@ -39,8 +41,10 @@ function cardStyle(item: PredictActivityItem) {
   switch (item.status) {
     case 'syncing':
     case 'waiting_to_match':
+    case 'cancel_requested':
       return [styles.card, styles.waitingCard];
     case 'ready_to_collect':
+    case 'collecting':
       return [styles.card, styles.readyCard];
     case 'closed_won':
       return [styles.card, styles.finishedCard];
@@ -112,22 +116,24 @@ export function PredictActivityRow({
           )}
         </View>
         <View style={styles.actions}>
-          {(item.status === 'waiting_to_match' || item.status === 'syncing') && (
+          {(item.status === 'waiting_to_match' || item.status === 'syncing' || item.status === 'cancel_requested') && (
             <Pressable
               accessibilityRole="button"
               style={styles.dangerAction}
-              disabled={item.status === 'syncing' || !onCancelOrder || cancelling}
+              disabled={item.status === 'syncing' || item.status === 'cancel_requested' || !onCancelOrder || cancelling}
               onPress={(event) => {
                 event.stopPropagation();
                 onCancelOrder?.();
               }}
               accessibilityLabel="Cancel waiting pick"
-              accessibilityState={{ disabled: item.status === 'syncing' || !onCancelOrder || cancelling, busy: cancelling }}
+              accessibilityState={{ disabled: item.status === 'syncing' || item.status === 'cancel_requested' || !onCancelOrder || cancelling, busy: cancelling }}
             >
               {cancelling ? (
                 <ActivityIndicator size="small" color={semantic.sentiment.negative} />
               ) : (
-                <Text style={styles.dangerActionText}>{item.status === 'syncing' ? 'Syncing' : 'Cancel'}</Text>
+                <Text style={styles.dangerActionText}>
+                  {item.status === 'syncing' ? 'Syncing' : item.status === 'cancel_requested' ? 'Requested' : 'Cancel'}
+                </Text>
               )}
             </Pressable>
           )}
@@ -165,7 +171,7 @@ export function PredictActivityRow({
               )}
             </>
           )}
-          {(item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
+          {(item.status === 'collecting' || item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
             <View style={styles.settledAction}>
               <Text style={styles.settledActionText}>{status}</Text>
             </View>

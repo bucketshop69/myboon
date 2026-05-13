@@ -203,7 +203,6 @@ export default function HomeScreen() {
             markets={topPerps}
             loading={loading}
             error={perpsError}
-            onPress={() => router.push('/trade')}
           />
         </View>
 
@@ -211,8 +210,6 @@ export default function HomeScreen() {
         <View style={styles.walletSection}>
           <WalletPreview
             onOpenWallet={() => router.push('/predict-profile')}
-            onOpenPerps={() => router.push({ pathname: '/trade', params: { view: 'profile' } })}
-            onSwap={() => router.push('/swap')}
           />
         </View>
 
@@ -337,21 +334,20 @@ function PerpsPreview({
   markets,
   loading,
   error,
-  onPress,
 }: {
   markets: PerpsMarket[];
   loading: boolean;
   error: string | null;
-  onPress: () => void;
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      disabled
       style={({ pressed }) => [styles.marketPreviewCard, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel="Open perps markets"
+      accessibilityLabel="Perps preview"
+      accessibilityState={{ disabled: true }}
     >
-      <PreviewHeader title="Perps" meta={loading ? 'Loading' : 'Top movers'} />
+      <PreviewHeader title="Perps" meta="Preview" />
       {error ? (
         <Text style={styles.previewState}>{error}</Text>
       ) : markets.length === 0 ? (
@@ -396,12 +392,8 @@ function PreviewHeader({ title, meta }: { title: string; meta: string }) {
 
 function WalletPreview({
   onOpenWallet,
-  onOpenPerps,
-  onSwap,
 }: {
   onOpenWallet: () => void;
-  onOpenPerps: () => void;
-  onSwap: () => void;
 }) {
   return (
     <View style={styles.walletWrap}>
@@ -412,8 +404,8 @@ function WalletPreview({
       </View>
       <View style={styles.walletActions}>
         <WalletAction label="Picks" onPress={onOpenWallet} primary />
-        <WalletAction label="Perps" onPress={onOpenPerps} />
-        <WalletAction label="Swap" onPress={onSwap} />
+        <WalletAction label="Perps" disabled />
+        <WalletAction label="Swap" disabled />
       </View>
       <View style={styles.positionsCard}>
         <Text style={styles.meta}>Positions</Text>
@@ -425,12 +417,28 @@ function WalletPreview({
   );
 }
 
-function WalletAction({ label, onPress, primary = false }: { label: string; onPress: () => void; primary?: boolean }) {
+function WalletAction({
+  label,
+  onPress,
+  primary = false,
+  disabled = false,
+}: {
+  label: string;
+  onPress?: () => void;
+  primary?: boolean;
+  disabled?: boolean;
+}) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [
       styles.walletAction,
       primary ? styles.walletActionPrimary : styles.walletActionAlt,
-      pressed && styles.pressed,
+      disabled && styles.walletActionDisabled,
+      pressed && !disabled && styles.pressed,
     ]}>
       <Text style={[styles.walletActionText, primary ? styles.walletActionTextPrimary : styles.walletActionTextAlt]}>{label}</Text>
     </Pressable>
@@ -835,6 +843,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,51,67,0.78)',
     borderWidth: 1,
     borderColor: 'rgba(24,90,112,0.78)',
+  },
+  walletActionDisabled: {
+    opacity: 0.55,
   },
   walletActionText: {
     fontFamily: 'monospace',

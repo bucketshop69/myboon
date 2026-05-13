@@ -84,7 +84,7 @@ export function DetailPicksPanel({
   const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<{ id: string; message: string } | null>(null);
-  const [redeemedIds, setRedeemedIds] = useState<Set<string>>(() => new Set());
+  const [collectingIds, setCollectingIds] = useState<Set<string>>(() => new Set());
   const allItems = useMemo(
     () => buildPredictActivityItems({
       positions: mergePositions(allPositions, marketPositions),
@@ -103,8 +103,8 @@ export function DetailPicksPanel({
     [allItems, scope, marketSlug, marketTokenIds, marketConditionIds],
   );
   const visibleRows = useMemo(
-    () => rows.filter((row) => !redeemedIds.has(row.id)),
-    [rows, redeemedIds],
+    () => rows.map((row) => collectingIds.has(row.id) ? { ...row, status: 'collecting' as const } : row),
+    [rows, collectingIds],
   );
   const worthNow = visibleRows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
   const putIn = visibleRows.reduce((sum, row) => sum + row.putIn, 0);
@@ -131,7 +131,7 @@ export function DetailPicksPanel({
       });
       if (!result.ok) throw new Error(result.error || 'Redeem failed');
       setRedeemError(null);
-      setRedeemedIds((current) => {
+      setCollectingIds((current) => {
         const next = new Set(current);
         next.add(item.id);
         return next;

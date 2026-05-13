@@ -32,8 +32,9 @@ import { DetailPicksPanel } from '@/features/predict/components/DetailPicksPanel
 import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfirmModal';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { buildExecutableBuyQuote, getBestAsk } from '@/features/predict/orderbookQuote';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
-import { getPredictOrderGuardrail, getPredictOrderSize, type PredictDataFreshness } from '@/features/predict/predictActivityState';
+import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictSportDetailScreenProps {
   sport: PredictSport;
@@ -142,6 +143,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const [activeView, setActiveView] = useState<ActiveView>('picks');
   const [orderbook, setOrderbook] = useState<Orderbook | null>(null);
   const [orderbookLoading, setOrderbookLoading] = useState(false);
+  const [buyBooks, setBuyBooks] = useState<Record<string, Orderbook | null>>({});
   const [obOutcomeIdx, setObOutcomeIdx] = useState(0);
 
   // Numpad state
@@ -176,6 +178,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const softZoneAnim = useRef(new Animated.Value(SOFT_COLLAPSED)).current;
   const reconcileTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const submitInFlightRef = useRef(false);
+  const buyBookRefreshInFlight = useRef(false);
   const walletScopedKey = wallet.connected && wallet.address ? `${wallet.sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
   const walletScopedKeyRef = useRef(walletScopedKey);
 
@@ -198,10 +201,12 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     () =>
       baseSortedOutcomes.map((outcome) => {
         const tokenId = outcome.clobTokenIds[0];
+        const bestAsk = tokenId ? getBestAsk(buyBooks[tokenId] ?? null) : null;
         const livePrice = tokenId ? liveTokenPrices[tokenId] : null;
-        return livePrice !== null && livePrice !== undefined ? { ...outcome, price: livePrice } : outcome;
+        const price = bestAsk ?? livePrice;
+        return price !== null && price !== undefined ? { ...outcome, price } : outcome;
       }),
-    [baseSortedOutcomes, liveTokenPrices],
+    [baseSortedOutcomes, buyBooks, liveTokenPrices],
   );
   const leadPrice = sortedOutcomes[0]?.price ?? null;
   const liveTokenKey = detail?.outcomes
@@ -333,7 +338,10 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     try {
       const result = await cancelOrder(poly.polygonAddress, orderId);
       if (result.ok) {
-        setOpenOrders((prev) => prev.filter((order) => order.id !== orderId));
+        setOpenOrders((prev) => prev.map((order) =>
+          order.id === orderId ? { ...order, status: 'cancel_requested' } : order
+        ));
+        void loadPicks();
       } else {
         Alert.alert('Cancel failed', result.error ?? 'Try again in a moment.');
       }
@@ -407,6 +415,26 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       if (isCurrent()) setLiveTokenPrices((prev) => ({ ...prev, ...prices }));
     } catch { /* silent */ }
   }, 30_000, {
+    enabled: liveTokenKey.length > 0,
+    runImmediately: true,
+    resetKey: liveTokenKey,
+  });
+
+  useFocusedAppStateInterval(async (isCurrent) => {
+    const tokenIds = liveTokenKey.split(',').filter(Boolean);
+    if (tokenIds.length === 0 || buyBookRefreshInFlight.current) return;
+    buyBookRefreshInFlight.current = true;
+    try {
+      const entries = await Promise.all(
+        tokenIds.map(async (tokenId) => [tokenId, await fetchOrderbook(tokenId).catch(() => null)] as const),
+      );
+      if (isCurrent()) {
+        setBuyBooks((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    } finally {
+      buyBookRefreshInFlight.current = false;
+    }
+  }, 10_000, {
     enabled: liveTokenKey.length > 0,
     runImmediately: true,
     resetKey: liveTokenKey,
@@ -551,27 +579,33 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
 
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
 
-      const size = getPredictOrderSize(amount, price);
-      if (size === null) throw new Error('Invalid price');
+      const freshBook = await fetchOrderbook(tokenID).catch(() => null);
+      const quote = buildExecutableBuyQuote(freshBook, amount);
+      if (!quote.executable || quote.limitPrice === null || quote.shares <= 0) {
+        Alert.alert('Not filled', 'Not enough liquidity at the current price. Try a smaller amount or refresh the market.');
+        return;
+      }
       const polygonAddress = poly.polygonAddress;
 
       const result = await placeBet({
         polygonAddress,
         tokenID,
-        price,
-        size,
+        price: quote.limitPrice,
+        size: quote.shares,
+        amount,
         side: 'BUY',
         negRisk: !!detail.negRisk,
+        orderType: 'FOK',
       });
       if (!result.success) throw new Error(result.error || 'Order failed');
 
       setSubmitStatus('syncing');
       const pendingOrder = makePendingOpenOrder({
-        id: result.orderID,
+        id: result.orderID ?? result.operationId,
         slug,
         tokenID,
-        price,
-        size,
+        price: quote.limitPrice,
+        size: quote.shares,
         outcome: sportOutcomeLabel(outcome),
       });
       setPendingOpenOrders((prev) => [pendingOrder, ...prev.filter((order) => order.id !== pendingOrder.id)]);
@@ -648,8 +682,10 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const numpadPrice = (() => {
     if (selectedOutcomeIdx === null) return 0.5;
     const outcome = sortedOutcomes[selectedOutcomeIdx];
-    if (!outcome?.price) return 0.5;
-    return outcome.price;
+    const tokenId = outcome?.clobTokenIds[0];
+    const amount = parseFloat(numpadAmount) || 0;
+    const quote = buildExecutableBuyQuote(tokenId ? buyBooks[tokenId] ?? null : null, amount);
+    return quote.averagePrice ?? outcome?.price ?? 0.5;
   })();
   const selectedOutcome = selectedOutcomeIdx !== null ? sortedOutcomes[selectedOutcomeIdx] : null;
   const selectedOutcomeLabel = selectedOutcome ? sportOutcomeLabel(selectedOutcome) : undefined;

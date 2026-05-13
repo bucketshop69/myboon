@@ -237,6 +237,125 @@ const sessions = new Map<string, ClobSession>()
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 
+type PredictOperation =
+  | 'predict_setup'
+  | 'buy'
+  | 'sell'
+  | 'cancel'
+  | 'redeem'
+  | 'withdraw'
+  | 'deposit'
+  | 'wrap'
+  | 'predict_session'
+
+type PredictOperationStatus =
+  | 'submitted'
+  | 'waiting_to_match'
+  | 'filled'
+  | 'not_filled'
+  | 'cancel_requested'
+  | 'cancelled'
+  | 'collecting'
+  | 'bridging'
+  | 'completed'
+  | 'failed'
+  | 'session_expired'
+
+type PredictOperationIdentifiers = {
+  orderId?: string
+  tokenId?: string
+  conditionId?: string
+  txHash?: string
+  bridgeAddress?: string
+  relayerTransactionId?: string
+  tradingAddress?: string
+  depositWalletAddress?: string
+}
+
+type PredictOperationEnvelope = {
+  ok: boolean
+  operationId: string
+  operation: PredictOperation
+  status: PredictOperationStatus
+  userMessage: string
+  identifiers?: PredictOperationIdentifiers
+  retry?: { canRetry: boolean; retryAfterMs?: number; pollAfterMs?: number }
+  lifecycleError?: { code: string; detailsId?: string }
+}
+
+function createOperationId(operation: PredictOperation) {
+  const suffix = Math.random().toString(36).slice(2, 8)
+  return `op_${operation}_${Date.now()}_${suffix}`
+}
+
+function withOperation<T extends Record<string, unknown>>(
+  payload: T,
+  args: Omit<PredictOperationEnvelope, 'operationId'> & { operationId?: string },
+): T & PredictOperationEnvelope {
+  const operationId = args.operationId ?? createOperationId(args.operation)
+  return {
+    ...payload,
+    ok: args.ok,
+    operationId,
+    operation: args.operation,
+    status: args.status,
+    userMessage: args.userMessage,
+    ...(args.identifiers ? { identifiers: args.identifiers } : {}),
+    ...(args.retry ? { retry: args.retry } : {}),
+    ...(args.lifecycleError ? { lifecycleError: { ...args.lifecycleError, detailsId: args.lifecycleError.detailsId ?? operationId } } : {}),
+  }
+}
+
+function sessionExpired(operation: PredictOperation = 'predict_session') {
+  return withOperation(
+    { error: 'No active session — call POST /clob/auth first' },
+    {
+      ok: false,
+      operation,
+      status: 'session_expired',
+      userMessage: 'Predict session expired. Reconnect your Predict wallet to continue.',
+      retry: { canRetry: true },
+      lifecycleError: { code: 'PREDICT_SESSION_EXPIRED' },
+    },
+  )
+}
+
+function orderIdFromResult(result: any): string | undefined {
+  const id = result?.orderID ?? result?.orderId ?? result?.id
+  return typeof id === 'string' ? id : undefined
+}
+
+function stableErrorCode(operation: PredictOperation, detail: string) {
+  if (/FOK_ORDER_NOT_FILLED|not filled|fill[- ]?or[- ]?kill|liquidity/iu.test(detail)) {
+    return operation === 'buy' ? 'PREDICT_BUY_NOT_FILLED' : 'PREDICT_ORDER_NOT_FILLED'
+  }
+  if (/balance|allowance|insufficient funds/iu.test(detail)) return 'PREDICT_INSUFFICIENT_FUNDS'
+  if (/builder|relayer/iu.test(detail)) return 'PREDICT_RELAYER_UNAVAILABLE'
+  return `PREDICT_${operation.toUpperCase()}_FAILED`
+}
+
+function failedOperation(
+  operation: PredictOperation,
+  error: string,
+  detail: string | null,
+  status: PredictOperationStatus = 'failed',
+) {
+  const code = stableErrorCode(operation, detail ?? error)
+  return withOperation(
+    { error, ...(detail ? { detail } : {}) },
+    {
+      ok: false,
+      operation,
+      status,
+      userMessage: status === 'not_filled'
+        ? 'Not filled. Price or liquidity changed before the order could execute.'
+        : 'Something went wrong. Try again in a moment.',
+      retry: { canRetry: true },
+      lifecycleError: { code },
+    },
+  )
+}
+
 function cleanSessions() {
   const now = Date.now()
   for (const [addr, session] of sessions) {
@@ -322,23 +441,23 @@ clobRoutes.post('/auth', async (c) => {
   try {
     body = await c.req.json()
   } catch {
-    return c.json({ error: 'Bad request' }, 400)
+    return c.json(failedOperation('predict_setup', 'Bad request', null), 400)
   }
 
   const { signature } = body
   if (!signature || typeof signature !== 'string') {
-    return c.json({ error: 'Missing signature' }, 400)
+    return c.json(failedOperation('predict_setup', 'Missing signature', null), 400)
   }
 
   if (!relayerBuilderConfig) {
-    return c.json({ error: 'Builder not configured — set POLYMARKET_BUILDER_* env vars' }, 500)
+    return c.json(failedOperation('predict_setup', 'Builder not configured — set POLYMARKET_BUILDER_* env vars', null), 500)
   }
 
   try {
     // 1. Derive EVM private key: keccak256(solana_signature)
     const sigBytes = Buffer.from(signature, 'hex')
     if (sigBytes.length !== 64) {
-      return c.json({ error: 'Invalid signature length — expected 64 bytes' }, 400)
+      return c.json(failedOperation('predict_setup', 'Invalid signature length — expected 64 bytes', null), 400)
     }
 
     const evmPrivateKey = utils.keccak256(sigBytes)
@@ -428,27 +547,38 @@ clobRoutes.post('/auth', async (c) => {
 
     console.log(`[clob] Session created — EOA: ${eoaAddress}, ${session.walletMode}: ${session.tradingAddress}`)
 
-    return c.json({
+    return c.json(withOperation({
       polygonAddress: eoaAddress,
       walletMode: session.walletMode,
       tradingAddress: session.tradingAddress,
       safeAddress: null,
       depositWalletAddress: session.depositWalletAddress ?? null,
+    }, {
       ok: true,
-    })
+      operation: 'predict_setup',
+      status: 'completed',
+      userMessage: 'Predict wallet is ready.',
+      identifiers: {
+        tradingAddress: session.tradingAddress,
+        depositWalletAddress: session.depositWalletAddress ?? undefined,
+      },
+    }))
   } catch (err: any) {
     console.error('[clob] Auth failed:', err.message || err)
-    return c.json({ error: 'CLOB auth failed', detail: err.message }, 500)
+    return c.json(failedOperation('predict_setup', 'CLOB auth failed', err.message), 500)
   }
 })
 
 /**
  * POST /clob/order
- * Body: { polygonAddress, tokenID, price, size, side, negRisk?, orderType? }
+ * Body: { polygonAddress, tokenID, price, size?, amount?, side, negRisk?, orderType? }
  *
  * Server-side order creation for deposit-wallet users. The updated CLOB SDK
  * builds the ERC-7739-wrapped POLY_1271 signature when the session is configured
  * with `signatureType = POLY_1271` and `funderAddress = depositWalletAddress`.
+ *
+ * GTC/GTD orders use size in shares. FOK/FAK market orders use amount:
+ * BUY amount is dollars to spend, SELL amount is shares to sell.
  */
 clobRoutes.post('/order', async (c) => {
   let body: {
@@ -456,51 +586,138 @@ clobRoutes.post('/order', async (c) => {
     tokenID?: string
     price?: number
     size?: number
+    amount?: number
     side?: 'BUY' | 'SELL'
     negRisk?: boolean
-    orderType?: string
+    orderType?: 'GTC' | 'GTD' | 'FOK' | 'FAK'
   }
   try {
     body = await c.req.json()
   } catch {
-    return c.json({ error: 'Bad request' }, 400)
+    return c.json(failedOperation('buy', 'Bad request', null), 400)
   }
 
-  const { polygonAddress, tokenID, price, size, side, negRisk, orderType } = body
-  if (!polygonAddress || !tokenID || typeof price !== 'number' || typeof size !== 'number' || !side) {
-    return c.json({ error: 'Missing required fields: polygonAddress, tokenID, price, size, side' }, 400)
+  const { polygonAddress, tokenID, price, size, amount, side, negRisk, orderType } = body
+  const operation: PredictOperation = side === 'SELL' ? 'sell' : 'buy'
+  const resolvedOrderType = orderType === 'FAK'
+    ? OrderType.FAK
+    : orderType === 'FOK'
+      ? OrderType.FOK
+      : orderType === 'GTD'
+        ? OrderType.GTD
+        : OrderType.GTC
+  const isMarketOrder = resolvedOrderType === OrderType.FOK || resolvedOrderType === OrderType.FAK
+
+  if (!polygonAddress || !tokenID || typeof price !== 'number' || !side) {
+    return c.json(failedOperation(operation, 'Missing required fields: polygonAddress, tokenID, price, side', null), 400)
+  }
+
+  if (!isMarketOrder && typeof size !== 'number') {
+    return c.json(failedOperation(operation, 'Missing required field: size', null), 400)
+  }
+
+  const marketAmount = isMarketOrder
+    ? typeof amount === 'number'
+      ? amount
+      : side === 'BUY' && typeof size === 'number'
+        ? size * price
+        : size
+    : null
+
+  if (isMarketOrder && (typeof marketAmount !== 'number' || !Number.isFinite(marketAmount) || marketAmount <= 0)) {
+    return c.json(failedOperation(operation, 'Missing required field: amount', null), 400)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired(operation), 401)
   }
 
   try {
     const client = getClient(session)
-    const order = await client.createOrder(
-      {
-        tokenID,
-        price,
-        size,
-        side: side === 'BUY' ? Side.BUY : Side.SELL,
-        builderCode: BUILDER_CODE,
-      },
-      { tickSize: '0.01', negRisk: !!negRisk },
-    )
-    const result = await client.postOrder(order, orderType === 'FOK' ? OrderType.FOK : OrderType.GTC)
+    const clobSide = side === 'BUY' ? Side.BUY : Side.SELL
+    let result: any
+    if (isMarketOrder) {
+      const marketOrderType = resolvedOrderType === OrderType.FAK ? OrderType.FAK : OrderType.FOK
+      const marketableBuySize = side === 'BUY'
+        ? typeof size === 'number' && Number.isFinite(size) && size > 0
+          ? Math.floor(size * 100) / 100
+          : Math.floor(((marketAmount as number) / price) * 100) / 100
+        : null
 
-    if (result?.error || result?.status === 'error') {
-      const detail = result.error || result.message || JSON.stringify(result)
+      if (side === 'BUY' && marketableBuySize !== null && marketableBuySize > 0) {
+        // The SDK's market-buy path derives shares from dollar amount / price, which can
+        // create repeating decimals rejected by CLOB precision checks. A FOK/FAK limit
+        // order at the executable limit price still takes existing liquidity immediately
+        // and cannot rest on the book.
+        result = await client.createAndPostOrder(
+          {
+            tokenID,
+            price,
+            size: marketableBuySize,
+            side: clobSide,
+            builderCode: BUILDER_CODE,
+          },
+          { tickSize: '0.01', negRisk: !!negRisk },
+          marketOrderType,
+        )
+      } else {
+        result = await client.createAndPostMarketOrder(
+          {
+            tokenID,
+            price,
+            amount: marketAmount as number,
+            side: clobSide,
+            orderType: marketOrderType,
+            builderCode: BUILDER_CODE,
+          },
+          { tickSize: '0.01', negRisk: !!negRisk },
+          marketOrderType,
+        )
+      }
+    } else {
+      const limitOrderType = resolvedOrderType === OrderType.GTD ? OrderType.GTD : OrderType.GTC
+      result = await client.createAndPostOrder(
+        {
+          tokenID,
+          price,
+          size: size as number,
+          side: clobSide,
+          builderCode: BUILDER_CODE,
+        },
+        { tickSize: '0.01', negRisk: !!negRisk },
+        limitOrderType,
+      )
+    }
+
+    if (result?.error || result?.errorMsg || result?.status === 'error' || result?.success === false) {
+      const detail = result.error || result.errorMsg || result.message || JSON.stringify(result)
       console.error(`[clob] CLOB rejected deposit-wallet order for ${polygonAddress}:`, detail)
-      return c.json({ error: 'Order rejected by CLOB', detail }, 400)
+      const status = isMarketOrder && /FOK_ORDER_NOT_FILLED|not filled|liquidity/iu.test(detail)
+        ? 'not_filled'
+        : 'failed'
+      return c.json(failedOperation(operation, 'Order rejected by CLOB', detail, status), 400)
     }
 
     console.log(`[clob] Deposit-wallet order posted for ${polygonAddress}: ${side}`)
-    return c.json(result)
+    const orderId = orderIdFromResult(result)
+    const payload = result && typeof result === 'object' ? result : { raw: result }
+    return c.json(withOperation(payload, {
+      ok: true,
+      operation,
+      status: isMarketOrder ? 'filled' : 'waiting_to_match',
+      userMessage: isMarketOrder
+        ? 'Pick filled at the best available market price.'
+        : 'Pick submitted and waiting to match.',
+      identifiers: {
+        orderId,
+        tokenId: tokenID,
+      },
+      retry: isMarketOrder ? undefined : { canRetry: false, pollAfterMs: 5_000 },
+    }))
   } catch (err: any) {
     console.error('[clob] Deposit-wallet order failed:', err.message || err)
-    return c.json({ error: 'Order failed', detail: err.message }, 500)
+    return c.json(failedOperation(operation, 'Order failed', err.message), 500)
   }
 })
 
@@ -512,7 +729,7 @@ clobRoutes.get('/positions/:polygonAddress', async (c) => {
   const session = sessions.get(polygonAddress.toLowerCase())
 
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('predict_session'), 401)
   }
 
   try {
@@ -521,7 +738,7 @@ clobRoutes.get('/positions/:polygonAddress', async (c) => {
     return c.json({ orders: orders ?? [] })
   } catch (err: any) {
     console.error('[clob] Positions fetch failed:', err.message || err)
-    return c.json({ error: 'Failed to fetch positions', detail: err.message }, 500)
+    return c.json(failedOperation('predict_session', 'Failed to fetch positions', err.message), 500)
   }
 })
 
@@ -534,22 +751,29 @@ clobRoutes.delete('/order/:orderId', async (c) => {
   const polygonAddress = c.req.query('address')
 
   if (!polygonAddress) {
-    return c.json({ error: 'Missing address query param' }, 400)
+    return c.json(failedOperation('cancel', 'Missing address query param', null), 400)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('cancel'), 401)
   }
 
   try {
     const client = getClient(session)
     const result = await client.cancelOrder({ orderID: orderId })
     console.log(`[clob] Order cancelled: ${orderId} for ${polygonAddress}`)
-    return c.json({ ok: true, ...result })
+    return c.json(withOperation({ ...result }, {
+      ok: true,
+      operation: 'cancel',
+      status: 'cancel_requested',
+      userMessage: 'Cancel requested. We will keep this pick visible until Polymarket confirms it.',
+      identifiers: { orderId },
+      retry: { canRetry: false, pollAfterMs: 5_000 },
+    }))
   } catch (err: any) {
     console.error('[clob] Cancel failed:', err.message || err)
-    return c.json({ error: 'Cancel failed', detail: err.message }, 500)
+    return c.json(failedOperation('cancel', 'Cancel failed', err.message), 500)
   }
 })
 
@@ -620,7 +844,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
   const session = sessions.get(polygonAddress.toLowerCase())
 
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('predict_session'), 401)
   }
 
   try {
@@ -656,7 +880,7 @@ clobRoutes.get('/balance/:polygonAddress', async (c) => {
     return c.json({ balance, allowance, wrap: wrapMeta, raw: result })
   } catch (err: any) {
     console.error('[clob] Balance fetch failed:', err.message || err)
-    return c.json({ error: 'Failed to fetch balance', detail: err.message }, 500)
+    return c.json(failedOperation('predict_session', 'Failed to fetch balance', err.message), 500)
   }
 })
 
@@ -672,33 +896,43 @@ clobRoutes.post('/wrap', async (c) => {
   try {
     body = await c.req.json()
   } catch {
-    return c.json({ error: 'Bad request' }, 400)
+    return c.json(failedOperation('wrap', 'Bad request', null), 400)
   }
 
   const { polygonAddress } = body
   if (!polygonAddress) {
-    return c.json({ error: 'Missing polygonAddress' }, 400)
+    return c.json(failedOperation('wrap', 'Missing polygonAddress', null), 400)
   }
 
   if (!relayerBuilderConfig) {
-    return c.json({ error: 'Builder not configured' }, 500)
+    return c.json(failedOperation('wrap', 'Builder not configured', null), 500)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('wrap'), 401)
   }
 
   try {
     const result = await autoWrapUsdce(session)
     if (!result.wrapped) {
-      return c.json({ error: 'No USDC.e to wrap', balance: '0' }, 400)
+      return c.json(failedOperation('wrap', 'No USDC.e to wrap', null, 'failed'), 400)
     }
 
-    return c.json({ ok: true, amountWrapped: result.amount, txHash: result.txHash })
+    return c.json(withOperation({ amountWrapped: result.amount, txHash: result.txHash }, {
+      ok: true,
+      operation: 'wrap',
+      status: 'completed',
+      userMessage: 'Cash is ready for Predict.',
+      identifiers: {
+        txHash: result.txHash ?? undefined,
+        tradingAddress: session.tradingAddress,
+        depositWalletAddress: session.depositWalletAddress ?? undefined,
+      },
+    }))
   } catch (err: any) {
     console.error('[clob] Wrap failed:', err.message || err)
-    return c.json({ error: 'Wrap failed', detail: err.message }, 500)
+    return c.json(failedOperation('wrap', 'Wrap failed', err.message), 500)
   }
 })
 
@@ -716,25 +950,25 @@ clobRoutes.post('/withdraw', async (c) => {
   try {
     body = await c.req.json()
   } catch {
-    return c.json({ error: 'Bad request' }, 400)
+    return c.json(failedOperation('withdraw', 'Bad request', null), 400)
   }
 
   const { polygonAddress, amount, solanaAddress } = body
   if (!polygonAddress || !amount || !solanaAddress) {
-    return c.json({ error: 'Missing required fields: polygonAddress, amount, solanaAddress' }, 400)
+    return c.json(failedOperation('withdraw', 'Missing required fields: polygonAddress, amount, solanaAddress', null), 400)
   }
 
   if (amount <= 0) {
-    return c.json({ error: 'Amount must be positive' }, 400)
+    return c.json(failedOperation('withdraw', 'Amount must be positive', null), 400)
   }
 
   if (!relayerBuilderConfig) {
-    return c.json({ error: 'Builder not configured' }, 500)
+    return c.json(failedOperation('withdraw', 'Builder not configured', null), 500)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('withdraw'), 401)
   }
 
   try {
@@ -756,7 +990,7 @@ clobRoutes.post('/withdraw', async (c) => {
     if (!bridgeRes.ok) {
       const text = await bridgeRes.text()
       console.error(`[clob] Bridge withdraw API error ${bridgeRes.status}: ${text}`)
-      return c.json({ error: 'Bridge API error', detail: text }, 502)
+      return c.json(failedOperation('withdraw', 'Bridge API error', text), 502)
     }
 
     const bridgeData = await bridgeRes.json() as Record<string, any>
@@ -766,7 +1000,7 @@ clobRoutes.post('/withdraw', async (c) => {
     const bridgeEvmAddress = bridgeData.address?.evm || bridgeData.depositAddress || bridgeData.address
     if (!bridgeEvmAddress || typeof bridgeEvmAddress !== 'string') {
       console.error('[clob] No EVM bridge address in response:', bridgeData)
-      return c.json({ error: 'No bridge deposit address returned' }, 502)
+      return c.json(failedOperation('withdraw', 'No bridge deposit address returned', null), 502)
     }
 
     // 2. Transfer pUSD directly to bridge address
@@ -793,7 +1027,7 @@ clobRoutes.post('/withdraw', async (c) => {
     const txHash = execResult?.transactionHash ?? null
     console.log(`[clob] Withdraw ${amount}: pUSD -> bridge ${bridgeEvmAddress} -> Solana ${solanaAddress}${txHash ? ` tx=${txHash}` : ''}`)
 
-    return c.json({
+    return c.json(withOperation({
       ok: true,
       amount,
       tradingAddress: session.tradingAddress,
@@ -802,10 +1036,22 @@ clobRoutes.post('/withdraw', async (c) => {
       bridgeAddress: bridgeEvmAddress,
       solanaAddress,
       txHash,
-    })
+    }, {
+      ok: true,
+      operation: 'withdraw',
+      status: 'bridging',
+      userMessage: 'Withdraw submitted. Bridge confirmation can take a few minutes.',
+      identifiers: {
+        txHash: txHash ?? undefined,
+        bridgeAddress: bridgeEvmAddress,
+        tradingAddress: session.tradingAddress,
+        depositWalletAddress: session.depositWalletAddress ?? undefined,
+      },
+      retry: { canRetry: false, pollAfterMs: 15_000 },
+    }))
   } catch (err: any) {
     console.error('[clob] Withdraw failed:', err.message || err)
-    return c.json({ error: 'Withdraw failed', detail: err.message }, 500)
+    return c.json(failedOperation('withdraw', 'Withdraw failed', err.message), 500)
   }
 })
 
@@ -955,7 +1201,7 @@ clobRoutes.post('/redeem/debug', async (c) => {
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('redeem'), 401)
   }
   const tradingAddress = session.tradingAddress
 
@@ -1062,7 +1308,7 @@ clobRoutes.post('/redeem', async (c) => {
     body = await c.req.json()
   } catch {
     console.warn('[clob] Redeem bad request: invalid JSON body')
-    return c.json({ error: 'Bad request' }, 400)
+    return c.json(failedOperation('redeem', 'Bad request', null), 400)
   }
 
   const { polygonAddress, conditionId, asset, outcomeIndex, negativeRisk } = body
@@ -1079,18 +1325,18 @@ clobRoutes.post('/redeem', async (c) => {
       hasPolygonAddress: !!polygonAddress,
       hasConditionId: !!conditionId,
     })
-    return c.json({ error: 'Missing polygonAddress or conditionId' }, 400)
+    return c.json(failedOperation('redeem', 'Missing polygonAddress or conditionId', null), 400)
   }
 
   const session = sessions.get(polygonAddress.toLowerCase())
   if (!session) {
     console.warn(`[clob] Redeem no active session for ${polygonAddress}. Active sessions=${sessions.size}`)
-    return c.json({ error: 'No active session — call POST /clob/auth first' }, 401)
+    return c.json(sessionExpired('redeem'), 401)
   }
 
   if (!relayerBuilderConfig) {
     console.error('[clob] Redeem relayer not configured: missing POLYMARKET_BUILDER_* env vars')
-    return c.json({ error: 'Relayer not configured' }, 500)
+    return c.json(failedOperation('redeem', 'Relayer not configured', null), 500)
   }
 
   try {
@@ -1105,28 +1351,42 @@ clobRoutes.post('/redeem', async (c) => {
     if (negativeRisk) {
       redeemMode = 'neg-risk'
       if (!asset) {
-        return c.json({
+        return c.json(withOperation({
           error: 'Missing neg-risk redeem fields',
           detail: 'negativeRisk redeem requires asset',
-        }, 400)
+        }, {
+          ok: false,
+          operation: 'redeem',
+          status: 'failed',
+          userMessage: 'This market needs one more position detail before it can be collected.',
+          retry: { canRetry: true },
+          lifecycleError: { code: 'PREDICT_REDEEM_FAILED' },
+        }), 400)
       }
 
       let assetId: bigint
       try {
         assetId = BigInt(asset)
       } catch {
-        return c.json({ error: 'Invalid asset', detail: 'asset must be a uint256 token ID string' }, 400)
+        return c.json(failedOperation('redeem', 'Invalid asset', 'asset must be a uint256 token ID string'), 400)
       }
 
       const assetBalanceRaw = await getCtfPositionBalance(session.tradingAddress, assetId)
       if (assetBalanceRaw === 0n) {
-        return c.json({
+        return c.json(withOperation({
           error: 'No redeemable position balance',
           detail: 'No balance found for supplied neg-risk asset',
           asset,
           outcomeIndex,
           assetBalanceRaw: assetBalanceRaw.toString(),
-        }, 400)
+        }, {
+          ok: false,
+          operation: 'redeem',
+          status: 'failed',
+          userMessage: 'No collectable balance was found for this pick.',
+          retry: { canRetry: true },
+          lifecycleError: { code: 'PREDICT_REDEEM_FAILED' },
+        }), 400)
       }
 
       redeemContext = {
@@ -1167,12 +1427,19 @@ clobRoutes.post('/redeem', async (c) => {
           asset,
           collateralBalances,
         })
-        return c.json({
+        return c.json(withOperation({
           error: 'No redeemable position balance',
           detail: 'No position balance found for pUSD or USDC.e collateral token IDs for this condition',
           asset,
           collateralBalances,
-        }, 400)
+        }, {
+          ok: false,
+          operation: 'redeem',
+          status: 'failed',
+          userMessage: 'No collectable balance was found for this pick.',
+          retry: { canRetry: true },
+          lifecycleError: { code: 'PREDICT_REDEEM_FAILED' },
+        }), 400)
       }
 
       redeemContext = {
@@ -1217,14 +1484,21 @@ clobRoutes.post('/redeem', async (c) => {
         redeemContext,
         collateralBalances,
       })
-      return c.json({
+      return c.json(withOperation({
         error: 'Redeem simulation failed',
         detail: simErr?.reason ?? simErr?.message ?? 'Redeem call would revert',
         code: simErr?.code ?? null,
         data: simErr?.data ?? null,
         redeemContext,
         collateralBalances,
-      }, 400)
+      }, {
+        ok: false,
+        operation: 'redeem',
+        status: 'failed',
+        userMessage: 'Collect could not be submitted for this pick.',
+        retry: { canRetry: true },
+        lifecycleError: { code: 'PREDICT_REDEEM_FAILED' },
+      }), 400)
     }
 
     console.log('[clob] Redeem relay execute:', {
@@ -1260,19 +1534,43 @@ clobRoutes.post('/redeem', async (c) => {
       }
 
       console.warn('[clob] Redeem relay completed without transaction hash; treating as not confirmed')
-      return c.json({
+      return c.json(withOperation({
         error: 'Redeem not confirmed',
         detail: 'Relayer completed without returning a transaction hash',
         relayer: relayInfo,
         relayerTransaction,
         redeemContext,
         collateralBalances,
-      }, 502)
+      }, {
+        ok: false,
+        operation: 'redeem',
+        status: 'failed',
+        userMessage: 'Collect was submitted but not confirmed. Refresh before trying again.',
+        retry: { canRetry: true, pollAfterMs: 10_000 },
+        lifecycleError: { code: 'PREDICT_REDEEM_FAILED' },
+      }), 502)
     }
 
     console.log(`[clob] Redeemed positions for ${polygonAddress} condition=${conditionId.slice(0, 10)}... tx=${txHash}`)
 
-    return c.json({ ok: true, txHash, redeemContext, collateralBalances, redeemedCollaterals: redeemableCollaterals })
+    return c.json(withOperation({
+      txHash,
+      redeemContext,
+      collateralBalances,
+      redeemedCollaterals: redeemableCollaterals,
+    }, {
+      ok: true,
+      operation: 'redeem',
+      status: 'collecting',
+      userMessage: 'Collect submitted. We will keep this pick visible until it confirms.',
+      identifiers: {
+        txHash,
+        conditionId,
+        tokenId: asset,
+        relayerTransactionId: relayInfo.transactionID ?? undefined,
+      },
+      retry: { canRetry: false, pollAfterMs: 10_000 },
+    }))
   } catch (err: any) {
     console.error('[clob] Redeem failed:', {
       message: err?.message,
@@ -1280,7 +1578,7 @@ clobRoutes.post('/redeem', async (c) => {
       response: err?.response?.data ?? err?.response,
       stack: err?.stack,
     })
-    return c.json({ error: 'Redeem failed', detail: err.message }, 500)
+    return c.json(failedOperation('redeem', 'Redeem failed', err.message), 500)
   }
 })
 
