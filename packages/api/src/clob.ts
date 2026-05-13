@@ -639,18 +639,42 @@ clobRoutes.post('/order', async (c) => {
     let result: any
     if (isMarketOrder) {
       const marketOrderType = resolvedOrderType === OrderType.FAK ? OrderType.FAK : OrderType.FOK
-      result = await client.createAndPostMarketOrder(
-        {
-          tokenID,
-          price,
-          amount: marketAmount as number,
-          side: clobSide,
-          orderType: marketOrderType,
-          builderCode: BUILDER_CODE,
-        },
-        { tickSize: '0.01', negRisk: !!negRisk },
-        marketOrderType,
-      )
+      const marketableBuySize = side === 'BUY'
+        ? typeof size === 'number' && Number.isFinite(size) && size > 0
+          ? Math.floor(size * 100) / 100
+          : Math.floor(((marketAmount as number) / price) * 100) / 100
+        : null
+
+      if (side === 'BUY' && marketableBuySize !== null && marketableBuySize > 0) {
+        // The SDK's market-buy path derives shares from dollar amount / price, which can
+        // create repeating decimals rejected by CLOB precision checks. A FOK/FAK limit
+        // order at the executable limit price still takes existing liquidity immediately
+        // and cannot rest on the book.
+        result = await client.createAndPostOrder(
+          {
+            tokenID,
+            price,
+            size: marketableBuySize,
+            side: clobSide,
+            builderCode: BUILDER_CODE,
+          },
+          { tickSize: '0.01', negRisk: !!negRisk },
+          marketOrderType,
+        )
+      } else {
+        result = await client.createAndPostMarketOrder(
+          {
+            tokenID,
+            price,
+            amount: marketAmount as number,
+            side: clobSide,
+            orderType: marketOrderType,
+            builderCode: BUILDER_CODE,
+          },
+          { tickSize: '0.01', negRisk: !!negRisk },
+          marketOrderType,
+        )
+      }
     } else {
       const limitOrderType = resolvedOrderType === OrderType.GTD ? OrderType.GTD : OrderType.GTC
       result = await client.createAndPostOrder(
