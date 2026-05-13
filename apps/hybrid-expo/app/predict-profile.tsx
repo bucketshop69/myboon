@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -10,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -34,14 +36,31 @@ function truncate(addr: string, start = 6, end = 4): string {
 
 const PREDICT_PROFILE_FALLBACK_USD_TO_INR = 95.67;
 const USD_INR_RATE_URL = 'https://open.er-api.com/v6/latest/USD';
+const PREDICT_PROFILE_CURRENCY_STORAGE_KEY = 'predict_profile_currency';
 
-function formatProfileCurrency(value: number | null | undefined, usdToInr = PREDICT_PROFILE_FALLBACK_USD_TO_INR): string {
-  if (value == null || !Number.isFinite(value)) return '--';
-  const inr = Math.abs(value * usdToInr);
+type ProfileCurrency = 'USD' | 'INR';
+
+const PROFILE_CURRENCIES: { code: ProfileCurrency; label: string; detail: string }[] = [
+  { code: 'USD', label: 'USD', detail: 'US dollars' },
+  { code: 'INR', label: 'INR', detail: 'Indian rupees' },
+];
+
+function formatCompactCurrency(value: number, symbol: string, decimals: number): string {
+  const abs = Math.abs(value);
   const prefix = value < 0 ? '-' : '';
-  if (inr >= 100000) return `${prefix}₹${(inr / 100000).toFixed(1)}L`;
-  if (inr >= 1000) return `${prefix}₹${(inr / 1000).toFixed(1)}K`;
-  return `${prefix}₹${inr.toFixed(0)}`;
+  if (abs >= 100000) return `${prefix}${symbol}${(abs / 100000).toFixed(1)}L`;
+  if (abs >= 1000) return `${prefix}${symbol}${(abs / 1000).toFixed(1)}K`;
+  return `${prefix}${symbol}${abs.toFixed(decimals)}`;
+}
+
+function formatProfileCurrency(
+  value: number | null | undefined,
+  currency: ProfileCurrency,
+  usdToInr = PREDICT_PROFILE_FALLBACK_USD_TO_INR,
+): string {
+  if (value == null || !Number.isFinite(value)) return '--';
+  if (currency === 'INR') return formatCompactCurrency(value * usdToInr, '₹', 0);
+  return formatCompactCurrency(value, '$', 2);
 }
 
 async function fetchUsdToInrRate(): Promise<number | null> {
@@ -85,6 +104,8 @@ export default function PredictProfileScreen() {
     stale: false,
     error: null,
   });
+  const [profileCurrency, setProfileCurrency] = useState<ProfileCurrency>('INR');
+  const [currencySelectorOpen, setCurrencySelectorOpen] = useState(false);
   const [usdToInrRate, setUsdToInrRate] = useState(PREDICT_PROFILE_FALLBACK_USD_TO_INR);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
   const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
@@ -97,9 +118,28 @@ export default function PredictProfileScreen() {
   const walletScopedKey = connected && solanaAddress ? `${sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
   const walletScopedKeyRef = useRef(walletScopedKey);
   const formatProfileMoney = useCallback(
-    (value: number | null | undefined) => formatProfileCurrency(value, usdToInrRate),
-    [usdToInrRate],
+    (value: number | null | undefined) => formatProfileCurrency(value, profileCurrency, usdToInrRate),
+    [profileCurrency, usdToInrRate],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(PREDICT_PROFILE_CURRENCY_STORAGE_KEY)
+      .then((stored) => {
+        if (cancelled) return;
+        if (stored === 'USD' || stored === 'INR') setProfileCurrency(stored);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectProfileCurrency = useCallback((currency: ProfileCurrency) => {
+    setProfileCurrency(currency);
+    setCurrencySelectorOpen(false);
+    AsyncStorage.setItem(PREDICT_PROFILE_CURRENCY_STORAGE_KEY, currency).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -434,8 +474,8 @@ export default function PredictProfileScreen() {
             )}
             <AppTopBarIconButton
               icon="settings"
-              onPress={openDrawer}
-              accessibilityLabel="Open wallet settings"
+              onPress={() => setCurrencySelectorOpen(true)}
+              accessibilityLabel="Select display currency"
               color={semantic.text.dim}
             />
           </View>
@@ -632,6 +672,61 @@ export default function PredictProfileScreen() {
         onConfirm={handleConfirmCashOut}
         formatMoney={formatProfileMoney}
       />
+
+      <Modal
+        visible={currencySelectorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCurrencySelectorOpen(false)}
+      >
+        <View style={styles.currencyBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close currency selector"
+            style={StyleSheet.absoluteFill}
+            onPress={() => setCurrencySelectorOpen(false)}
+          />
+          <View style={styles.currencySheet}>
+            <View style={styles.currencyHeader}>
+              <View>
+                <Text style={styles.currencyTitle}>Display currency</Text>
+                <Text style={styles.currencySubtitle}>Predict values only</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close currency selector"
+                style={styles.currencyClose}
+                onPress={() => setCurrencySelectorOpen(false)}
+              >
+                <MaterialIcons name="close" size={16} color={semantic.text.dim} />
+              </Pressable>
+            </View>
+            <View style={styles.currencyOptions}>
+              {PROFILE_CURRENCIES.map((currency) => {
+                const selected = profileCurrency === currency.code;
+                return (
+                  <Pressable
+                    key={currency.code}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use ${currency.label}`}
+                    accessibilityState={{ selected }}
+                    style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
+                    onPress={() => selectProfileCurrency(currency.code)}
+                  >
+                    <View style={styles.currencyOptionCopy}>
+                      <Text style={[styles.currencyCode, selected && styles.currencyCodeSelected]}>
+                        {currency.label}
+                      </Text>
+                      <Text style={styles.currencyDetail}>{currency.detail}</Text>
+                    </View>
+                    {selected && <MaterialIcons name="check" size={16} color={tokens.colors.viridian} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -661,6 +756,87 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
     color: tokens.colors.viridian,
+  },
+
+  currencyBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.48)',
+  },
+  currencySheet: {
+    marginHorizontal: tokens.spacing.lg,
+    marginBottom: tokens.spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    padding: 14,
+    gap: 12,
+  },
+  currencyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  currencyTitle: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  currencySubtitle: {
+    marginTop: 3,
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  currencyClose: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: semantic.background.lift,
+  },
+  currencyOptions: {
+    gap: 8,
+  },
+  currencyOption: {
+    minHeight: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.lift,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  currencyOptionSelected: {
+    borderColor: 'rgba(52,199,123,0.35)',
+    backgroundColor: 'rgba(52,199,123,0.09)',
+  },
+  currencyOptionCopy: {
+    gap: 3,
+  },
+  currencyCode: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: '800',
+    color: semantic.text.primary,
+    letterSpacing: 0.4,
+  },
+  currencyCodeSelected: {
+    color: tokens.colors.viridian,
+  },
+  currencyDetail: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    color: semantic.text.faint,
   },
 
   scroll: { flex: 1 },
