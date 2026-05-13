@@ -45,10 +45,14 @@ function actionCopy(item: PredictActivityItem): string {
       return 'Your pick was submitted. It can take a moment for Polymarket to show the matching order or position.';
     case 'waiting_to_match':
       return 'Cash for this order is reserved until it matches or you cancel it.';
+    case 'cancel_requested':
+      return 'Cancel has been requested. Cash remains reserved until Polymarket confirms the cancellation.';
     case 'active':
       return 'This pick is live. You can cash out or add more to the same side.';
     case 'ready_to_collect':
       return 'This market settled in your favor and is ready to redeem.';
+    case 'collecting':
+      return 'Collect has been submitted. Your cash will update after confirmation.';
     case 'closed_won':
       return 'This settled as a win.';
     case 'closed_lost':
@@ -134,6 +138,15 @@ export function PredictActivityDetailModal({
                   <Text style={styles.dangerActionText}>Cancel order</Text>
                 </Pressable>
               )}
+              {item.status === 'cancel_requested' && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Done"
+                  style={styles.secondaryAction}
+                  onPress={onClose}>
+                  <Text style={styles.secondaryActionText}>Done</Text>
+                </Pressable>
+              )}
               {item.status === 'active' && (
                 <>
                   <Pressable
@@ -174,7 +187,7 @@ export function PredictActivityDetailModal({
                   )}
                 </Pressable>
               )}
-              {(item.status === 'syncing' || item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
+              {(item.status === 'syncing' || item.status === 'collecting' || item.status === 'closed_won' || item.status === 'closed_lost' || item.status === 'failed') && (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Done"

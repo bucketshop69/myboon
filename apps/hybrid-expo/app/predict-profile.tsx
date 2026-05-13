@@ -84,7 +84,10 @@ export default function PredictProfileScreen() {
     try {
       const result = await cancelOrder(poly.polygonAddress, orderId);
       if (result.ok) {
-        setOpenOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setOpenOrders((prev) => prev.map((order) =>
+          order.id === orderId ? { ...order, status: 'cancel_requested' } : order
+        ));
+        void fetchOpenOrders(poly.polygonAddress).then(setOpenOrders).catch(() => {});
       } else {
         Alert.alert('Cancel failed', result.error ?? 'Unknown error');
       }

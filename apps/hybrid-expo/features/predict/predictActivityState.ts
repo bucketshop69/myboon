@@ -5,8 +5,10 @@ import { portfolioPositionCost } from '@/features/predict/formatPredictMoney';
 export type PredictActivityStatus =
   | 'syncing'
   | 'waiting_to_match'
+  | 'cancel_requested'
   | 'active'
   | 'ready_to_collect'
+  | 'collecting'
   | 'closed_won'
   | 'closed_lost'
   | 'failed';
@@ -166,10 +168,11 @@ export function buildPredictActivityItems({
     const price = Number.parseFloat(order.price) || 0;
     const putIn = orderCost(order);
     const pending = order.status === 'local-pending' || order.id.startsWith('pending-');
+    const cancelRequested = order.status === 'cancel_requested';
     const pendingValue = pending ? putIn : null;
     return {
       id: `${pending ? 'pending' : 'order'}-${order.id}`,
-      status: pending ? 'syncing' : 'waiting_to_match',
+      status: pending ? 'syncing' : cancelRequested ? 'cancel_requested' : 'waiting_to_match',
       marketSlug: order.market || null,
       eventSlug: null,
       marketTitle: orderMarketTitle(order),
@@ -245,10 +248,12 @@ export function sortPredictActivityItems(items: PredictActivityItem[]): PredictA
     failed: 0,
     syncing: 1,
     waiting_to_match: 2,
-    active: 3,
-    ready_to_collect: 4,
-    closed_won: 5,
-    closed_lost: 6,
+    cancel_requested: 3,
+    active: 4,
+    ready_to_collect: 5,
+    collecting: 6,
+    closed_won: 7,
+    closed_lost: 8,
   };
   return [...items].sort((a, b) => {
     const rankDelta = statusRank[a.status] - statusRank[b.status];
@@ -263,10 +268,14 @@ export function getPredictActivityStatusLabel(status: PredictActivityStatus): st
       return 'Syncing with market';
     case 'waiting_to_match':
       return 'Waiting to match';
+    case 'cancel_requested':
+      return 'Cancel requested';
     case 'active':
       return 'Active';
     case 'ready_to_collect':
       return 'Ready to collect';
+    case 'collecting':
+      return 'Collecting';
     case 'closed_won':
       return 'Settled win';
     case 'closed_lost':

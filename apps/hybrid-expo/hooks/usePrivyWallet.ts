@@ -16,6 +16,8 @@ export interface PrivyWalletState {
   connected: boolean;
   /** Whether the user is authenticated via Privy (may not have wallet yet) */
   isPrivyUser: boolean;
+  /** Whether Privy auth is complete but the embedded wallet is still hydrating/creating */
+  isPreparing: boolean;
   /** Solana address from embedded wallet */
   address: string | null;
   /** Shortened address for display */
@@ -51,6 +53,7 @@ export function usePrivyWallet(): PrivyWalletState {
   const walletConnected = isConnected(solanaWallet);
   const wallet = walletConnected ? solanaWallet.wallets?.[0] ?? null : null;
   const address = wallet?.address ?? null;
+  const isPreparing = authenticated && !wallet;
   const solanaWalletStatus = solanaWallet.status;
   const createSolanaWallet = solanaWallet.create;
 
@@ -132,6 +135,7 @@ export function usePrivyWallet(): PrivyWalletState {
   return {
     connected: authenticated && !!wallet,
     isPrivyUser: authenticated,
+    isPreparing,
     address,
     shortAddress: address ? `${address.slice(0, 4)}···${address.slice(-4)}` : null,
     loginWithPasskey: async () => {

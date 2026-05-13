@@ -39,6 +39,58 @@ function toStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string');
 }
 
+export type PredictOperationStatus =
+  | 'submitted'
+  | 'waiting_to_match'
+  | 'filled'
+  | 'not_filled'
+  | 'cancel_requested'
+  | 'cancelled'
+  | 'collecting'
+  | 'bridging'
+  | 'completed'
+  | 'failed'
+  | 'session_expired';
+
+export interface PredictOperationMeta {
+  operationId?: string;
+  status?: PredictOperationStatus;
+  userMessage?: string;
+  code?: string;
+  isSessionExpired?: boolean;
+}
+
+function parseOperationMeta(data: Record<string, unknown>): PredictOperationMeta {
+  const status = typeof data.status === 'string' ? data.status : undefined;
+  const lifecycleError = data.lifecycleError && typeof data.lifecycleError === 'object'
+    ? data.lifecycleError as Record<string, unknown>
+    : null;
+  const code = typeof lifecycleError?.code === 'string'
+    ? lifecycleError.code
+    : typeof data.code === 'string'
+      ? data.code
+      : undefined;
+  return {
+    operationId: typeof data.operationId === 'string' ? data.operationId : undefined,
+    status: status === 'submitted'
+      || status === 'waiting_to_match'
+      || status === 'filled'
+      || status === 'not_filled'
+      || status === 'cancel_requested'
+      || status === 'cancelled'
+      || status === 'collecting'
+      || status === 'bridging'
+      || status === 'completed'
+      || status === 'failed'
+      || status === 'session_expired'
+      ? status
+      : undefined,
+    userMessage: typeof data.userMessage === 'string' ? data.userMessage : undefined,
+    code,
+    isSessionExpired: status === 'session_expired' || code === 'PREDICT_SESSION_EXPIRED',
+  };
+}
+
 function mapGeopoliticsMarket(row: unknown): GeopoliticsMarket | null {
   if (!row || typeof row !== 'object') return null;
   const market = row as Record<string, unknown>;
@@ -439,13 +491,14 @@ export interface PlaceBetParams {
   polygonAddress: string;
   tokenID: string;
   price: number;
-  size: number;
+  size?: number;
+  amount?: number;
   side: 'BUY' | 'SELL';
   negRisk?: boolean;
-  orderType?: 'GTC' | 'FOK';
+  orderType?: 'GTC' | 'FOK' | 'FAK';
 }
 
-export interface PlaceBetResult {
+export interface PlaceBetResult extends PredictOperationMeta {
   orderID?: string;
   success: boolean;
   error?: string;
@@ -457,6 +510,14 @@ function formatOrderMinimum(value: number): string {
 }
 
 function friendlyPlaceBetError(detail: string): string {
+  if (/FOK_ORDER_NOT_FILLED|not filled|fill[- ]?or[- ]?kill|couldn'?t be fully filled/iu.test(detail)) {
+    return 'Not filled. Price or liquidity changed. Try a smaller amount or refresh the market.';
+  }
+
+  if (/not enough liquidity|insufficient liquidity/iu.test(detail)) {
+    return 'Not enough liquidity at the current price. Try a smaller amount.';
+  }
+
   if (/min option validation/iu.test(detail)) {
     return 'Select at least one option to continue.';
   }
@@ -485,10 +546,17 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
   });
 
   const data = await response.json() as Record<string, unknown>;
+  const operationMeta = parseOperationMeta(data);
 
   if (!response.ok) {
-    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Order failed';
-    return { success: false, error: friendlyPlaceBetError(detail) };
+    const detail = typeof data.userMessage === 'string'
+      ? data.userMessage
+      : typeof data.detail === 'string'
+        ? data.detail
+        : typeof data.error === 'string'
+          ? data.error
+          : 'Order failed';
+    return { success: false, error: friendlyPlaceBetError(detail), ...operationMeta };
   }
 
   return {
@@ -500,6 +568,7 @@ export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> 
         : typeof data.id === 'string'
           ? data.id
           : undefined,
+    ...operationMeta,
   };
 }
 
@@ -527,17 +596,29 @@ export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder
   return Array.isArray(data.orders) ? data.orders as OpenOrder[] : [];
 }
 
-export async function cancelOrder(polygonAddress: string, orderId: string): Promise<{ ok: boolean; error?: string }> {
+export async function cancelOrder(
+  polygonAddress: string,
+  orderId: string,
+): Promise<{ ok: boolean; error?: string } & PredictOperationMeta> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetchWithTimeout(
     `${baseUrl}/clob/order/${encodeURIComponent(orderId)}?address=${encodeURIComponent(polygonAddress)}`,
     { method: 'DELETE' },
   );
   const data = await response.json() as Record<string, unknown>;
+  const operationMeta = parseOperationMeta(data);
   if (!response.ok) {
-    return { ok: false, error: typeof data.detail === 'string' ? data.detail : 'Cancel failed' };
+    return {
+      ok: false,
+      error: typeof data.userMessage === 'string'
+        ? data.userMessage
+        : typeof data.detail === 'string'
+          ? data.detail
+          : 'Cancel failed',
+      ...operationMeta,
+    };
   }
-  return { ok: true };
+  return { ok: true, ...operationMeta };
 }
 
 // --- CLOB Balance ---
@@ -727,7 +808,7 @@ export interface WithdrawParams {
   solanaAddress: string;
 }
 
-export interface WithdrawResult {
+export interface WithdrawResult extends PredictOperationMeta {
   ok: boolean;
   amount?: number;
   txHash?: string | null;
@@ -743,22 +824,30 @@ export async function withdrawFromPolymarket(params: WithdrawParams): Promise<Wi
   });
 
   const data = await response.json() as Record<string, unknown>;
+  const operationMeta = parseOperationMeta(data);
 
   if (!response.ok) {
-    const detail = typeof data.detail === 'string' ? data.detail : typeof data.error === 'string' ? data.error : 'Withdraw failed';
-    return { ok: false, error: detail };
+    const detail = typeof data.userMessage === 'string'
+      ? data.userMessage
+      : typeof data.detail === 'string'
+        ? data.detail
+        : typeof data.error === 'string'
+          ? data.error
+          : 'Withdraw failed';
+    return { ok: false, error: detail, ...operationMeta };
   }
 
   return {
     ok: true,
     amount: typeof data.amount === 'number' ? data.amount : undefined,
     txHash: typeof data.txHash === 'string' ? data.txHash : null,
+    ...operationMeta,
   };
 }
 
 // --- Redeem ---
 
-export interface RedeemResult {
+export interface RedeemResult extends PredictOperationMeta {
   ok: boolean;
   txHash?: string | null;
   error?: string;
@@ -800,17 +889,20 @@ export async function redeemPosition(
 
   if (!response.ok) {
     const detail =
-      typeof data.detail === 'string'
+      typeof data.userMessage === 'string'
+        ? data.userMessage
+        : typeof data.detail === 'string'
         ? data.detail
         : typeof data.error === 'string'
           ? data.error
           : `Redeem failed (${response.status})`;
-    return { ok: false, error: detail };
+    return { ok: false, error: detail, ...parseOperationMeta(data) };
   }
 
   return {
     ok: true,
     txHash: typeof data.txHash === 'string' ? data.txHash : null,
+    ...parseOperationMeta(data),
   };
 }
 

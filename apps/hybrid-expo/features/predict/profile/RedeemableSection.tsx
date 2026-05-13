@@ -17,9 +17,9 @@ function redeemablePositionKey(position: PortfolioPosition): string {
 }
 
 export function RedeemableSection({ positions, polygonAddress, onRedeemed }: RedeemableSectionProps) {
-  const [redeemedKeys, setRedeemedKeys] = useState<Set<string>>(() => new Set());
+  const [, setCollectingKeys] = useState<Set<string>>(() => new Set());
   const visiblePositions = positions.filter((position) =>
-    (position.currentValue ?? 0) >= 0.01 && !redeemedKeys.has(redeemablePositionKey(position))
+    (position.currentValue ?? 0) >= 0.01
   );
   if (visiblePositions.length === 0) return null;
 
@@ -38,7 +38,7 @@ export function RedeemableSection({ positions, polygonAddress, onRedeemed }: Red
           position={p}
           polygonAddress={polygonAddress}
           onRedeemed={() => {
-            setRedeemedKeys((current) => {
+            setCollectingKeys((current) => {
               const next = new Set(current);
               next.add(redeemablePositionKey(p));
               return next;
@@ -125,7 +125,7 @@ function RedeemRow({
               <Text style={styles.redeemBtnText}>Redeeming</Text>
             </View>
           ) : status === 'success' ? (
-            <Text style={styles.redeemBtnText}>Redeemed</Text>
+            <Text style={styles.redeemBtnText}>Collecting</Text>
           ) : status === 'error' ? (
             <Text style={[styles.redeemBtnText, styles.errorText]}>Try again</Text>
           ) : (

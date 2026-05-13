@@ -26,6 +26,7 @@ export function useWallet() {
       connection: null,
       walletOptions: [],
       source: 'mwa' as WalletSource,
+      isPreparing: false,
     };
   }
 
@@ -33,21 +34,25 @@ export function useWallet() {
   const raw = account?.address;
   const mwaAddress = raw ? (typeof raw === 'string' ? raw : raw.toBase58()) : null;
 
-  // Privy user takes priority — they authenticated via passkey (in-app, no app switch)
-  if (privy.isPrivyUser && privy.connected) {
+  // Privy user takes priority as soon as auth exists, even while the embedded wallet hydrates.
+  if (privy.isPrivyUser) {
     return {
-      connected: true as const,
-      address: privy.address,
-      shortAddress: privy.shortAddress,
-      connect: async (_walletName?: string) => privy.loginWithPasskey(),
+      connected: privy.connected,
+      address: privy.connected ? privy.address : null,
+      shortAddress: privy.connected ? privy.shortAddress : null,
+      connect: async (_walletName?: string) => {
+        if (privy.connected) return;
+        await privy.waitForWallet();
+      },
       disconnect: privy.disconnect,
-      signMessage: privy.signMessage,
+      signMessage: privy.connected ? privy.signMessage : null,
       // Privy embedded wallets don't support signAndSendTransaction directly —
       // Polymarket orders are signed locally (EIP-712) and proxied via VPS
       signAndSendTransaction: null,
       connection: null,
       walletOptions: [],
       source: 'privy' as WalletSource,
+      isPreparing: privy.isPreparing,
     };
   }
 
@@ -65,5 +70,6 @@ export function useWallet() {
     connection,
     walletOptions: [],
     source: 'mwa' as WalletSource,
+    isPreparing: false,
   };
 }

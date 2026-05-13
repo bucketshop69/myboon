@@ -44,20 +44,22 @@ export function YourPicksSection({
   const [selectedItem, setSelectedItem] = useState<PredictActivityItem | null>(null);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<{ id: string; message: string } | null>(null);
-  const [redeemedIds, setRedeemedIds] = useState<Set<string>>(() => new Set());
+  const [collectingIds, setCollectingIds] = useState<Set<string>>(() => new Set());
   const allPicks = useMemo(
     () => buildPredictActivityItems({ positions, redeemablePositions, openOrders, closedPositions }),
     [positions, redeemablePositions, openOrders, closedPositions],
   );
   const visiblePicks = useMemo(
-    () => allPicks.filter((item) => !redeemedIds.has(item.id)),
-    [allPicks, redeemedIds],
+    () => allPicks.map((item) => collectingIds.has(item.id) ? { ...item, status: 'collecting' as const } : item),
+    [allPicks, collectingIds],
   );
   const activePicks = visiblePicks.filter((item) =>
     item.status === 'syncing'
     || item.status === 'waiting_to_match'
+    || item.status === 'cancel_requested'
     || item.status === 'active'
     || item.status === 'ready_to_collect'
+    || item.status === 'collecting'
   );
   const picks = scope === 'all' ? visiblePicks : activePicks;
   const allCount = visiblePicks.length;
@@ -66,7 +68,9 @@ export function YourPicksSection({
   const activeCount = visiblePicks.filter((item) =>
     item.status === 'syncing'
     || item.status === 'waiting_to_match'
+    || item.status === 'cancel_requested'
     || item.status === 'active'
+    || item.status === 'collecting'
   ).length;
   const readyCount = visiblePicks.filter((item) => item.status === 'ready_to_collect').length;
   const closedCount = visiblePicks.filter((item) => item.status === 'closed_won' || item.status === 'closed_lost').length;
@@ -85,7 +89,7 @@ export function YourPicksSection({
       });
       if (!result.ok) throw new Error(result.error || 'Redeem failed');
       setRedeemError(null);
-      setRedeemedIds((current) => {
+      setCollectingIds((current) => {
         const next = new Set(current);
         next.add(item.id);
         return next;
