@@ -27,6 +27,7 @@ export function useWallet() {
       walletOptions: [],
       source: 'mwa' as WalletSource,
       isPreparing: false,
+      sessionKey: `mwa:${fakeAddress}`,
     };
   }
 
@@ -34,7 +35,9 @@ export function useWallet() {
   const raw = account?.address;
   const mwaAddress = raw ? (typeof raw === 'string' ? raw : raw.toBase58()) : null;
 
-  // Privy user takes priority as soon as auth exists, even while the embedded wallet hydrates.
+  // Privy user takes priority — they authenticated via passkey/email (in-app, no app switch).
+  // While Privy's embedded wallet is hydrating, expose a disconnected Privy session instead
+  // of falling back to any stale MWA account still cached by the mobile wallet adapter.
   if (privy.isPrivyUser) {
     return {
       connected: privy.connected,
@@ -53,6 +56,7 @@ export function useWallet() {
       walletOptions: [],
       source: 'privy' as WalletSource,
       isPreparing: privy.isPreparing,
+      sessionKey: privy.connected && privy.address ? `privy:${privy.address}` : 'privy:disconnected',
     };
   }
 
@@ -71,5 +75,6 @@ export function useWallet() {
     walletOptions: [],
     source: 'mwa' as WalletSource,
     isPreparing: false,
+    sessionKey: mwaAddress ? `mwa:${mwaAddress}` : 'mwa:disconnected',
   };
 }

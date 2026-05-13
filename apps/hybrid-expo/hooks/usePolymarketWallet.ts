@@ -5,14 +5,14 @@
  * - The EVM private key is NEVER stored on the device. It lives only on the server, in-memory.
  * - The phone stores public Polygon/deposit-wallet addresses in AsyncStorage so the UI
  *   remembers the user is "enabled" across app restarts.
- * - On enable: Phantom signs a message → signature sent to server → server derives EVM key,
+ * - On enable: Phantom signs a message -> signature sent to server -> server derives EVM key,
  *   creates CLOB session, returns polygon address.
  * - On app reopen: phone reads stored address from AsyncStorage. If the server session expired,
  *   the next CLOB operation will fail and the user re-signs with Phantom.
  * - On disable: clears both local storage and server session.
  */
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
@@ -56,17 +56,28 @@ export interface PolymarketWallet {
 }
 
 export function usePolymarketWallet(): PolymarketWallet {
-  const { connected, address: solanaAddress, signMessage, isPreparing: walletPreparing } = useWallet();
+  const {
+    connected,
+    address: solanaAddress,
+    signMessage,
+    isPreparing: walletPreparing,
+    sessionKey,
+  } = useWallet();
   const [polygonAddress, setPolygonAddress] = useState<string | null>(null);
   const [safeAddress, setSafeAddress] = useState<string | null>(null);
   const [depositWalletAddress, setDepositWalletAddress] = useState<string | null>(null);
   const [walletMode, setWalletMode] = useState<PolymarketWalletMode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [canSignLocally, setCanSignLocally] = useState(false);
-  const prevSolanaAddress = useRef<string | null>(null);
-  const loadSeqRef = useRef(0);
-  const walletSnapshotRef = useRef({ connected, solanaAddress });
-  walletSnapshotRef.current = { connected, solanaAddress };
+  const prevWalletSessionKey = useRef<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const activePolygonAddressRef = useRef<string | null>(null);
+  const walletSnapshotRef = useRef({ connected, solanaAddress, sessionKey, walletPreparing });
+  walletSnapshotRef.current = { connected, solanaAddress, sessionKey, walletPreparing };
+
+  useEffect(() => {
+    activePolygonAddressRef.current = polygonAddress;
+  }, [polygonAddress]);
 
   const removeStoredSessionForAddress = useCallback((address: string) => {
     AsyncStorage.multiRemove([
@@ -76,52 +87,60 @@ export function usePolymarketWallet(): PolymarketWallet {
     ]).catch(() => {});
   }, []);
 
-  const clearStoredSession = useCallback(() => {
-    loadSeqRef.current += 1;
-    if (solanaAddress) removeStoredSessionForAddress(solanaAddress);
+  const clearWalletSessionState = useCallback(() => {
     setPolygonAddress(null);
     setSafeAddress(null);
     setDepositWalletAddress(null);
     setWalletMode(null);
     setCanSignLocally(false);
-  }, [solanaAddress, removeStoredSessionForAddress]);
+  }, []);
 
-  // Load stored addresses when Solana wallet connects/changes; clear when disconnected
+  const clearStoredSession = useCallback(() => {
+    loadGenerationRef.current += 1;
+    if (solanaAddress) removeStoredSessionForAddress(solanaAddress);
+    clearWalletSessionState();
+  }, [solanaAddress, removeStoredSessionForAddress, clearWalletSessionState]);
+
+  const clearServerSession = useCallback((address: string | null) => {
+    if (address) {
+      fetchWithTimeout(`${API_BASE}/clob/session/${address}`, { method: 'DELETE' }).catch(() => {});
+    }
+  }, []);
+
+  // Load stored addresses when wallet/provider connects or changes; clear when disconnected.
   useEffect(() => {
-    const clearLocalState = () => {
-      setPolygonAddress(null);
-      setSafeAddress(null);
-      setDepositWalletAddress(null);
-      setWalletMode(null);
-      setCanSignLocally(false);
-    };
-
     if (walletPreparing) {
-      loadSeqRef.current += 1;
-      clearLocalState();
+      loadGenerationRef.current += 1;
+      clearWalletSessionState();
       setIsLoading(true);
-      prevSolanaAddress.current = null;
+      prevWalletSessionKey.current = null;
       return;
     }
 
-    // Wallet disconnected or address changed — clear everything
-    if (!connected || !solanaAddress) {
-      loadSeqRef.current += 1;
-      clearLocalState();
+    const nextWalletSessionKey = connected && solanaAddress ? sessionKey : null;
+    const previousWalletSessionKey = prevWalletSessionKey.current;
+
+    if (previousWalletSessionKey && previousWalletSessionKey !== nextWalletSessionKey) {
+      clearServerSession(activePolygonAddressRef.current);
+    }
+
+    // Wallet disconnected or provider/address changed - immediately clear UI-visible state.
+    if (!connected || !solanaAddress || !nextWalletSessionKey) {
+      loadGenerationRef.current += 1;
+      clearWalletSessionState();
       setIsLoading(false);
-      prevSolanaAddress.current = null;
+      prevWalletSessionKey.current = null;
       return;
     }
 
-    // Same wallet, already loaded — skip
-    if (prevSolanaAddress.current === solanaAddress) return;
-    prevSolanaAddress.current = solanaAddress;
+    // Same wallet session, already loaded - skip.
+    if (previousWalletSessionKey === nextWalletSessionKey) return;
+    prevWalletSessionKey.current = nextWalletSessionKey;
 
-    // New wallet connected — clear old state, load stored addresses (if any)
-    const loadSeq = loadSeqRef.current + 1;
-    loadSeqRef.current = loadSeq;
+    // New wallet connected - clear old state before loading stored addresses for the new wallet.
+    const loadGeneration = ++loadGenerationRef.current;
     setIsLoading(true);
-    clearLocalState();
+    clearWalletSessionState();
 
     Promise.all([
       AsyncStorage.getItem(`${STORAGE_KEY}:${solanaAddress}`),
@@ -129,7 +148,12 @@ export function usePolymarketWallet(): PolymarketWallet {
       AsyncStorage.getItem(`${WALLET_MODE_STORAGE_KEY}:${solanaAddress}`),
     ])
       .then(([storedEoa, storedDepositWallet, storedWalletMode]) => {
-        if (loadSeqRef.current !== loadSeq || walletSnapshotRef.current.solanaAddress !== solanaAddress) {
+        const current = walletSnapshotRef.current;
+        if (
+          loadGenerationRef.current !== loadGeneration
+          || current.solanaAddress !== solanaAddress
+          || current.sessionKey !== nextWalletSessionKey
+        ) {
           return;
         }
 
@@ -148,27 +172,47 @@ export function usePolymarketWallet(): PolymarketWallet {
       })
       .catch(() => {})
       .finally(() => {
-        if (loadSeqRef.current === loadSeq && walletSnapshotRef.current.solanaAddress === solanaAddress) {
+        const current = walletSnapshotRef.current;
+        if (
+          loadGenerationRef.current === loadGeneration
+          && current.solanaAddress === solanaAddress
+          && current.sessionKey === nextWalletSessionKey
+        ) {
           setIsLoading(false);
         }
       });
-  }, [connected, solanaAddress, walletPreparing, removeStoredSessionForAddress]);
+  }, [
+    connected,
+    solanaAddress,
+    sessionKey,
+    walletPreparing,
+    clearWalletSessionState,
+    clearServerSession,
+    removeStoredSessionForAddress,
+  ]);
 
   const enable = useCallback(async () => {
     const startAddress = solanaAddress;
+    const startSessionKey = connected && startAddress ? sessionKey : null;
     const startSignMessage = signMessage;
 
-    if (!connected || !startAddress || !startSignMessage) {
+    if (!startSessionKey || !startAddress || !startSignMessage) {
       throw new Error('Connect your Solana wallet first');
     }
 
     const assertWalletUnchanged = () => {
       const current = walletSnapshotRef.current;
-      if (!current.connected || current.solanaAddress !== startAddress) {
+      if (
+        !current.connected
+        || current.walletPreparing
+        || current.solanaAddress !== startAddress
+        || current.sessionKey !== startSessionKey
+      ) {
         throw new Error(WALLET_CHANGED_MESSAGE);
       }
     };
 
+    const enableGeneration = ++loadGenerationRef.current;
     setIsLoading(true);
     try {
       // Step 1: Sign deterministic message with Solana wallet (MWA prompt)
@@ -201,10 +245,12 @@ export function usePolymarketWallet(): PolymarketWallet {
       const data = await res.json();
       assertWalletUnchanged();
       if (!data.depositWalletAddress) {
-        throw new Error('Deposit wallet setup incomplete — please try again');
+        throw new Error('Deposit wallet setup incomplete - please try again');
+      }
+      if (loadGenerationRef.current !== enableGeneration) {
+        throw new Error(WALLET_CHANGED_MESSAGE);
       }
 
-      // Persist addresses locally (public info only, scoped to Solana wallet)
       await AsyncStorage.multiSet([
         [`${STORAGE_KEY}:${startAddress}`, data.polygonAddress],
         [`${DEPOSIT_WALLET_STORAGE_KEY}:${startAddress}`, data.depositWalletAddress],
@@ -219,27 +265,28 @@ export function usePolymarketWallet(): PolymarketWallet {
     } catch (err) {
       if (isWalletChangedError(err)) {
         removeStoredSessionForAddress(startAddress);
+        clearWalletSessionState();
       }
       throw err;
     } finally {
-      if (walletSnapshotRef.current.solanaAddress === startAddress) {
+      const current = walletSnapshotRef.current;
+      if (current.solanaAddress === startAddress && current.sessionKey === startSessionKey) {
         setIsLoading(false);
       }
     }
   }, [
     connected,
-    signMessage,
     solanaAddress,
+    sessionKey,
+    signMessage,
     removeStoredSessionForAddress,
+    clearWalletSessionState,
   ]);
 
   const disable = useCallback(() => {
-    // Clear server session
-    if (polygonAddress) {
-      fetchWithTimeout(`${API_BASE}/clob/session/${polygonAddress}`, { method: 'DELETE' }).catch(() => {});
-    }
+    clearServerSession(polygonAddress);
     clearStoredSession();
-  }, [polygonAddress, clearStoredSession]);
+  }, [polygonAddress, clearStoredSession, clearServerSession]);
 
   const tradingAddress = depositWalletAddress;
   const isReady = !!polygonAddress && walletMode === 'deposit_wallet' && !!depositWalletAddress;

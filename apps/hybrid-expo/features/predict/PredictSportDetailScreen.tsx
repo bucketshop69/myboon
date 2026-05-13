@@ -20,6 +20,7 @@ import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPositio
 import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
+import { useWallet } from '@/hooks/useWallet';
 import { semantic, tokens } from '@/theme';
 import { formatUsdCompact } from '@/lib/format';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -123,6 +124,7 @@ function marketHrefForSlug(rowSlug: string): Href {
 export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScreenProps) {
   const router = useRouter();
   const poly = usePolymarketWallet();
+  const wallet = useWallet();
   const { format, setFormat, formatOdds } = useOddsFormat();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -168,6 +170,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   });
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
+  const [setupAfterConnect, setSetupAfterConnect] = useState(false);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
 
   // Soft zone animation
@@ -175,6 +179,8 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const reconcileTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const submitInFlightRef = useRef(false);
   const buyBookRefreshInFlight = useRef(false);
+  const walletScopedKey = wallet.connected && wallet.address ? `${wallet.sessionKey}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
+  const walletScopedKeyRef = useRef(walletScopedKey);
 
   // Drag gesture — swipe down to collapse numpad
   const dragResponder = useRef(
@@ -253,15 +259,18 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   }
 
   async function loadCashBalance() {
+    const requestKey = walletScopedKeyRef.current;
     if (!poly.polygonAddress) {
       setCashBalance(null);
       return;
     }
     const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
+    if (walletScopedKeyRef.current !== requestKey) return;
     setCashBalance(balance?.balance ?? null);
   }
 
   async function loadPicks() {
+    const requestKey = walletScopedKeyRef.current;
     const gammaAddr = poly.tradingAddress ?? poly.polygonAddress;
     if (!gammaAddr) {
       setMarketPositions([]);
@@ -282,6 +291,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         fetchPortfolio(gammaAddr),
         poly.polygonAddress ? fetchOpenOrders(poly.polygonAddress) : Promise.resolve([]),
       ]);
+      if (walletScopedKeyRef.current !== requestKey) return;
       const now = Date.now();
       const market = marketResult.status === 'fulfilled' ? marketResult.value : null;
       const portfolio = portfolioResult.status === 'fulfilled' ? portfolioResult.value : null;
@@ -357,11 +367,14 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   }
 
   function scheduleFollowUpReconcile(polygonAddress: string) {
+    const requestKey = walletScopedKeyRef.current;
     const timeout = setTimeout(() => {
       reconcileTimeouts.current = reconcileTimeouts.current.filter((item) => item !== timeout);
       void Promise.allSettled([
         loadPicks(),
-        fetchClobBalance(polygonAddress).then((balance) => setCashBalance(balance?.balance ?? null)),
+        fetchClobBalance(polygonAddress).then((balance) => {
+          if (walletScopedKeyRef.current === requestKey) setCashBalance(balance?.balance ?? null);
+        }),
       ]);
     }, 1_800);
     reconcileTimeouts.current.push(timeout);
@@ -375,6 +388,24 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       reconcileTimeouts.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    if (walletScopedKeyRef.current === walletScopedKey) return;
+    walletScopedKeyRef.current = walletScopedKey;
+    reconcileTimeouts.current.forEach(clearTimeout);
+    reconcileTimeouts.current = [];
+    setMarketPositions([]);
+    setAllPositions([]);
+    setRedeemablePositions([]);
+    setClosedPositions([]);
+    setOpenOrders([]);
+    setActivityItems([]);
+    setPendingOpenOrders([]);
+    setCashBalance(null);
+    setCashOutPosition(null);
+    setSetupAfterConnect(false);
+    setPicksFreshness({ lastUpdatedAt: null, loading: false, stale: false, error: null });
+  }, [walletScopedKey]);
 
   useFocusedAppStateInterval(async (isCurrent) => {
     const tokenIds = liveTokenKey.split(',').filter(Boolean);
@@ -428,8 +459,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         setCashBalance(null);
         return;
       }
+      const requestKey = walletScopedKeyRef.current;
       const balance = await fetchClobBalance(poly.polygonAddress).catch(() => null);
-      if (!cancelled) setCashBalance(balance?.balance ?? null);
+      if (!cancelled && walletScopedKeyRef.current === requestKey) setCashBalance(balance?.balance ?? null);
     }
     void run();
     return () => { cancelled = true; };
@@ -662,6 +694,42 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
   const visibleOpenOrders = mergeOpenOrders(pendingOpenOrders, openOrders);
   const amountNum = parseFloat(numpadAmount) || 0;
   const marketClosed = detail ? detail.active === false || detail.status === 'closed' : false;
+
+  async function runPredictSetup() {
+    if (setupSubmitting) return;
+    setSetupSubmitting(true);
+    try {
+      await poly.enable();
+      await Promise.allSettled([loadCashBalance(), loadPicks()]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to sign in to Predict';
+      Alert.alert('Sign in failed', msg);
+    } finally {
+      setSetupSubmitting(false);
+    }
+  }
+
+  async function handlePredictSetupPress() {
+    if (setupSubmitting) return;
+    if (!wallet.connected) {
+      setSetupAfterConnect(true);
+      try {
+        await wallet.connect();
+      } catch (err: unknown) {
+        setSetupAfterConnect(false);
+        const msg = err instanceof Error ? err.message : 'Connect your wallet first.';
+        Alert.alert('Sign in failed', msg);
+      }
+      return;
+    }
+    await runPredictSetup();
+  }
+
+  useEffect(() => {
+    if (!setupAfterConnect || !wallet.connected || poly.isReady) return;
+    setSetupAfterConnect(false);
+    void runPredictSetup();
+  }, [setupAfterConnect, wallet.connected, poly.isReady]);
   const orderGuardrail = selectedOutcome
     ? getPredictOrderGuardrail({
         amount: amountNum,
@@ -915,6 +983,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
               submittingLabel={submitLabel}
               disabled={!poly.isReady}
               guardrail={orderGuardrail}
+              setupRequired={!poly.isReady}
+              onSetupPress={() => { void handlePredictSetupPress(); }}
+              setupSubmitting={setupSubmitting || setupAfterConnect || poly.isLoading}
             />
           </Animated.View>
         </View>
