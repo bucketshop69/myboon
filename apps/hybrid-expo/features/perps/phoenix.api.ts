@@ -92,6 +92,30 @@ export interface PhoenixActivationResult {
   raw: unknown;
 }
 
+export interface PhoenixPaginatedResponse<T = unknown> {
+  venueId?: 'phoenix';
+  action?: string;
+  authority?: string;
+  data: T[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  prevCursor: string | null;
+  raw?: unknown;
+}
+
+export type PhoenixOrderHistoryItem = Record<string, unknown>;
+export type PhoenixTradeHistoryItem = Record<string, unknown>;
+export type PhoenixCollateralHistoryItem = Record<string, unknown>;
+
+export interface PhoenixHistoryQuery {
+  pdaIndex?: number;
+  traderPdaIndex?: number;
+  marketSymbol?: string;
+  symbol?: string;
+  limit?: number;
+  cursor?: string;
+}
+
 export interface PhoenixInstructionAccountMetaDto {
   pubkey: string;
   isSigner: boolean;
@@ -172,6 +196,18 @@ export interface PhoenixReferralActivationInput extends Record<string, unknown> 
   referral_code: string;
 }
 
+export interface PhoenixTransferBuilderInput extends Record<string, unknown> {
+  authority: string;
+  amount?: string | number;
+  amountUsdc?: string | number;
+  amountAtomic?: string | number;
+  feePayer?: string;
+  pdaIndex?: number;
+  traderPdaIndex?: number;
+  traderSubaccountIndex?: number;
+  permissionAddress?: string;
+}
+
 export class PhoenixUnsupportedBuilderError extends Error {
   readonly code = 'PHOENIX_BUILDER_UNSUPPORTED';
   readonly operation: string;
@@ -227,6 +263,32 @@ function payloadArray(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   const record = asRecord(payload);
   return Array.isArray(record?.data) ? record.data : [];
+}
+
+function normalizePaginatedResponse<T = unknown>(payload: unknown): PhoenixPaginatedResponse<T> {
+  const record = asRecord(payload) ?? {};
+  return {
+    venueId: asString(record.venueId) === 'phoenix' ? 'phoenix' : undefined,
+    action: asString(record.action) ?? undefined,
+    authority: asString(record.authority) ?? undefined,
+    data: payloadArray(payload) as T[],
+    hasMore: asBoolean(record.hasMore) ?? false,
+    nextCursor: asString(record.nextCursor),
+    prevCursor: asString(record.prevCursor),
+    raw: 'raw' in record ? record.raw : payload,
+  };
+}
+
+function historyParams(query: PhoenixHistoryQuery = {}, useTraderPdaIndex = false): URLSearchParams {
+  const params = new URLSearchParams();
+  const index = useTraderPdaIndex ? query.traderPdaIndex ?? query.pdaIndex : query.pdaIndex;
+  if (typeof index === 'number' && Number.isFinite(index)) {
+    params.set(useTraderPdaIndex ? 'traderPdaIndex' : 'pdaIndex', String(Math.trunc(index)));
+  }
+  if (query.marketSymbol ?? query.symbol) params.set('marketSymbol', query.marketSymbol ?? query.symbol ?? '');
+  if (typeof query.limit === 'number' && Number.isFinite(query.limit)) params.set('limit', String(Math.trunc(query.limit)));
+  if (query.cursor) params.set('cursor', query.cursor);
+  return params;
 }
 
 function normalizeLeverageTiers(input: unknown): PhoenixLeverageTier[] {
@@ -463,6 +525,33 @@ export async function fetchPhoenixTraderState(authority: string, pdaIndex = 0): 
   return payload as PhoenixTraderState;
 }
 
+export async function fetchPhoenixOrderHistory(
+  authority: string,
+  query: PhoenixHistoryQuery = {},
+): Promise<PhoenixPaginatedResponse<PhoenixOrderHistoryItem>> {
+  const params = historyParams({ limit: 50, ...query }, true);
+  const payload = await phoenixGet(`/trader/${encodeURIComponent(authority)}/order-history?${params.toString()}`);
+  return normalizePaginatedResponse<PhoenixOrderHistoryItem>(payload);
+}
+
+export async function fetchPhoenixTradeHistory(
+  authority: string,
+  query: PhoenixHistoryQuery = {},
+): Promise<PhoenixPaginatedResponse<PhoenixTradeHistoryItem>> {
+  const params = historyParams({ limit: 50, ...query });
+  const payload = await phoenixGet(`/trader/${encodeURIComponent(authority)}/trades-history?${params.toString()}`);
+  return normalizePaginatedResponse<PhoenixTradeHistoryItem>(payload);
+}
+
+export async function fetchPhoenixCollateralHistory(
+  authority: string,
+  query: PhoenixHistoryQuery = {},
+): Promise<PhoenixPaginatedResponse<PhoenixCollateralHistoryItem>> {
+  const params = historyParams({ limit: 50, ...query });
+  const payload = await phoenixGet(`/trader/${encodeURIComponent(authority)}/collateral-history?${params.toString()}`);
+  return normalizePaginatedResponse<PhoenixCollateralHistoryItem>(payload);
+}
+
 export async function activatePhoenixInvite(input: PhoenixInviteActivationInput): Promise<PhoenixActivationResult> {
   const payload = await phoenixPost('/invite/activate', input);
   return payload as PhoenixActivationResult;
@@ -504,12 +593,14 @@ export async function buildPhoenixCancelConditionalOrder(
   return normalizeInstructionBuilderResult(payload, 'cancel_conditional_order', '/tx/cancel-conditional-order');
 }
 
-export async function buildPhoenixDeposit(): Promise<never> {
-  throw new PhoenixUnsupportedBuilderError('deposit');
+export async function buildPhoenixDeposit(input: PhoenixTransferBuilderInput): Promise<PhoenixInstructionBuilderResult> {
+  const payload = await phoenixPost('/tx/deposit', input);
+  return normalizeInstructionBuilderResult(payload, 'deposit', '/tx/deposit');
 }
 
-export async function buildPhoenixWithdraw(): Promise<never> {
-  throw new PhoenixUnsupportedBuilderError('withdraw');
+export async function buildPhoenixWithdraw(input: PhoenixTransferBuilderInput): Promise<PhoenixInstructionBuilderResult> {
+  const payload = await phoenixPost('/tx/withdraw', input);
+  return normalizeInstructionBuilderResult(payload, 'withdraw', '/tx/withdraw');
 }
 
 export function formatPhoenixPrice(price: number | null): string {

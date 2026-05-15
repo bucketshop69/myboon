@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import { createPhoenixClient } from '@ellipsis-labs/rise'
 
 const PHOENIX_API_BASE = process.env.PHOENIX_API_BASE || 'https://perp-api.phoenix.trade'
 const PHOENIX_WS_URL = process.env.PHOENIX_WS_URL || `${PHOENIX_API_BASE.replace(/^http/i, 'ws').replace(/\/$/, '')}/v1/ws`
+const PHOENIX_RPC_URL = process.env.PHOENIX_RPC_URL || process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'
 const REQUEST_TIMEOUT_MS = parseEnvInt('PHOENIX_REQUEST_TIMEOUT_MS', 10_000)
 const STATUS_CACHE_TTL_MS = parseEnvInt('PHOENIX_STATUS_CACHE_TTL_MS', 15_000)
 const MARKETS_CACHE_TTL_MS = parseEnvInt('PHOENIX_MARKETS_CACHE_TTL_MS', 60_000)
@@ -114,6 +116,10 @@ interface PhoenixInstructionBuilderResult {
   raw: unknown
   estimatedLiquidationPriceUsd?: number | null
 }
+
+type PhoenixSdkClient = ReturnType<typeof createPhoenixClient>
+
+let phoenixSdkClient: PhoenixSdkClient | null = null
 
 interface NormalizedPhoenixMarket {
   venueId: 'phoenix'
@@ -234,6 +240,16 @@ function parseNonNegativeInteger(input: unknown): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null
 }
 
+function parsePositiveInteger(input: unknown): number | null {
+  const parsed = parseNonNegativeInteger(input)
+  return parsed !== null && parsed > 0 ? parsed : null
+}
+
+function historyLimit(input: string | undefined, fallback = 50, max = 100): number {
+  const parsed = input === undefined ? null : parsePositiveInteger(input)
+  return parsed === null ? fallback : Math.min(parsed, max)
+}
+
 function isNonNegativeInteger(input: unknown): boolean {
   return typeof input === 'number' && Number.isSafeInteger(input) && input >= 0
 }
@@ -246,6 +262,11 @@ function normalizeVenueSymbol(input: string | null | undefined): string | null {
 
 function appSymbolFromVenueSymbol(venueSymbol: string): string {
   return `${venueSymbol}-PERP`
+}
+
+function normalizeMarketSymbol(input: string | null | undefined): string | null {
+  const venueSymbol = normalizeVenueSymbol(input)
+  return venueSymbol ? appSymbolFromVenueSymbol(venueSymbol) : null
 }
 
 function maxLeverage(leverageTiers: PhoenixLeverageTier[] | undefined): number | null {
@@ -539,6 +560,20 @@ function appendOptionalQuery(params: URLSearchParams, name: string, value: strin
   if (value !== undefined && value.trim() !== '') params.set(name, value)
 }
 
+function appendOptionalIntegerQuery(
+  params: URLSearchParams,
+  name: string,
+  value: string | undefined,
+): Response | null {
+  if (value === undefined || value.trim() === '') return null
+  const parsed = parseNonNegativeInteger(value)
+  if (parsed === null) {
+    return Response.json({ error: `Invalid ${name}`, code: 'INVALID_QUERY_PARAM', field: name }, { status: 400 })
+  }
+  params.set(name, String(parsed))
+  return null
+}
+
 async function readJsonRecord(c: Context): Promise<{ body: Record<string, unknown> } | { response: Response }> {
   let parsed: unknown
   try {
@@ -602,6 +637,147 @@ function instructionBuilderResponse(
   }
 
   return result
+}
+
+function getPhoenixSdkClient(): PhoenixSdkClient {
+  if (!phoenixSdkClient) {
+    phoenixSdkClient = createPhoenixClient({
+      apiUrl: PHOENIX_API_BASE,
+      rpcUrl: PHOENIX_RPC_URL,
+      ws: false,
+      exchangeMetadata: { stream: false },
+    })
+  }
+  return phoenixSdkClient
+}
+
+function parseUsdcAmountAtomic(input: unknown): bigint | null {
+  if (typeof input !== 'string' && typeof input !== 'number') return null
+  const text = String(input).trim().replace(/,/g, '')
+  if (!/^\d+(\.\d{0,6})?$/.test(text)) return null
+
+  const [whole, fraction = ''] = text.split('.')
+  const atomic = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'))
+  return atomic > 0n ? atomic : null
+}
+
+function parseAtomicAmount(input: unknown): bigint | null {
+  if (typeof input !== 'string' && typeof input !== 'number') return null
+  const text = String(input).trim()
+  if (!/^\d+$/.test(text)) return null
+  const atomic = BigInt(text)
+  return atomic > 0n ? atomic : null
+}
+
+function parseTransferBuilderInput(body: Record<string, unknown>): { input: Record<string, unknown>; response?: Response } {
+  const authority = asNonEmptyString(body.authority)
+  const amount = body.amountAtomic === undefined
+    ? parseUsdcAmountAtomic(body.amount ?? body.amountUsdc)
+    : parseAtomicAmount(body.amountAtomic)
+  if (!authority || amount === null) {
+    return {
+      input: {},
+      response: Response.json({
+        error: 'Missing required fields',
+        code: 'MISSING_REQUIRED_FIELDS',
+        fields: ['authority', 'amount'],
+      }, { status: 400 }),
+    }
+  }
+
+  const input: Record<string, unknown> = {
+    authority,
+    amount,
+  }
+
+  const feePayer = asNonEmptyString(body.feePayer)
+  if (feePayer) input.feePayer = feePayer
+
+  const traderPdaIndex = body.traderPdaIndex ?? body.pdaIndex
+  if (traderPdaIndex !== undefined) {
+    const parsed = parseNonNegativeInteger(traderPdaIndex)
+    if (parsed === null) {
+      return {
+        input: {},
+        response: Response.json({ error: 'Invalid traderPdaIndex', code: 'INVALID_PDA_INDEX' }, { status: 400 }),
+      }
+    }
+    input.traderPdaIndex = parsed
+  }
+
+  if (body.traderSubaccountIndex !== undefined) {
+    const parsed = parseNonNegativeInteger(body.traderSubaccountIndex)
+    if (parsed === null) {
+      return {
+        input: {},
+        response: Response.json({ error: 'Invalid traderSubaccountIndex', code: 'INVALID_SUBACCOUNT_INDEX' }, { status: 400 }),
+      }
+    }
+    input.traderSubaccountIndex = parsed
+  }
+
+  const permissionAddress = asNonEmptyString(body.permissionAddress)
+  if (permissionAddress) input.permissionAddress = permissionAddress
+
+  return { input }
+}
+
+function roleIsSigner(role: unknown): boolean {
+  return role === 2 || role === 3 || role === 'READONLY_SIGNER' || role === 'WRITABLE_SIGNER'
+}
+
+function roleIsWritable(role: unknown): boolean {
+  return role === 1 || role === 3 || role === 'WRITABLE' || role === 'WRITABLE_SIGNER'
+}
+
+function serializeInstructionData(data: unknown): number[] {
+  if (data instanceof Uint8Array) return Array.from(data)
+  if (Array.isArray(data)) return data.map((value) => Number(value))
+  if (data && typeof data === 'object' && 'length' in data) {
+    return Array.from(data as ArrayLike<number>)
+  }
+  return []
+}
+
+function serializeSdkInstruction(raw: unknown) {
+  const ix = asRecord(raw) ?? {}
+  const accounts = Array.isArray(ix.accounts) ? ix.accounts : []
+  return {
+    programId: asString(ix.programAddress) ?? asString(ix.programId),
+    keys: accounts.map((rawAccount) => {
+      const account = asRecord(rawAccount) ?? {}
+      const role = account.role
+      return {
+        pubkey: asString(account.address) ?? asString(account.pubkey),
+        isSigner: account.isSigner === true || roleIsSigner(role),
+        isWritable: account.isWritable === true || roleIsWritable(role),
+      }
+    }),
+    data: serializeInstructionData(ix.data),
+  }
+}
+
+function sdkInstructionBuilderResponse(
+  action: string,
+  endpoint: string,
+  raw: unknown,
+): PhoenixInstructionBuilderResult {
+  const rawRecord = asRecord(raw)
+  const instructions = Array.isArray(rawRecord?.instructions)
+    ? rawRecord.instructions.map(serializeSdkInstruction)
+    : []
+
+  return {
+    venueId: 'phoenix',
+    action,
+    mode: 'solana_instruction_builder',
+    endpoint,
+    instructions,
+    raw: {
+      instructionCount: instructions.length,
+      named: rawRecord && asRecord(rawRecord.named) ? Object.keys(asRecord(rawRecord.named) ?? {}) : [],
+    },
+  }
 }
 
 function normalizeCandle(raw: unknown) {
@@ -678,7 +854,8 @@ phoenixRoutes.get('/health', (c) => {
     upstreamBase: PHOENIX_API_BASE,
     readOnly: false,
     executionMode: 'solana_instruction_builder',
-    depositBuilderAvailable: false,
+    depositBuilderAvailable: true,
+    withdrawBuilderAvailable: true,
   })
 })
 
@@ -761,6 +938,111 @@ phoenixRoutes.get('/trader/:authority/state', async (c) => {
   } catch (err) {
     console.error(`[api] Phoenix trader state ${authority} unavailable:`, err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix trader state unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// GET /perps/phoenix/trader/:authority/order-history?traderPdaIndex=0&limit=50
+phoenixRoutes.get('/trader/:authority/order-history', async (c) => {
+  const authority = asNonEmptyString(c.req.param('authority'))
+  if (!authority) return c.json({ error: 'Missing or invalid authority' }, 400)
+
+  const params = new URLSearchParams({ limit: String(historyLimit(c.req.query('limit'))) })
+  const traderPdaIndex = c.req.query('traderPdaIndex') ?? c.req.query('pdaIndex')
+  const invalidPda = appendOptionalIntegerQuery(params, 'traderPdaIndex', traderPdaIndex)
+  if (invalidPda) return invalidPda
+
+  const marketSymbol = normalizeMarketSymbol(c.req.query('marketSymbol') ?? c.req.query('symbol'))
+  if ((c.req.query('marketSymbol') ?? c.req.query('symbol')) && !marketSymbol) {
+    return c.json({ error: 'Invalid marketSymbol', code: 'INVALID_MARKET_SYMBOL' }, 400)
+  }
+  if (marketSymbol) params.set('marketSymbol', marketSymbol)
+  appendOptionalQuery(params, 'cursor', c.req.query('cursor'))
+  appendOptionalQuery(params, 'privyId', c.req.query('privyId'))
+  appendOptionalQuery(params, 'orderStatus', c.req.query('orderStatus'))
+
+  try {
+    const raw = await phoenixFetchJson<unknown>(`/trader/${encodeURIComponent(authority)}/order-history?${params.toString()}`)
+    const rawRecord = asRecord(raw)
+    return c.json({
+      venueId: 'phoenix',
+      action: 'get_order_history',
+      authority,
+      data: Array.isArray(rawRecord?.data) ? rawRecord.data : [],
+      hasMore: asBoolean(rawRecord?.hasMore) ?? false,
+      nextCursor: asString(rawRecord?.nextCursor),
+      prevCursor: asString(rawRecord?.prevCursor),
+      raw,
+    })
+  } catch (err) {
+    console.error(`[api] Phoenix order history ${authority} unavailable:`, err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix order history unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// GET /perps/phoenix/trader/:authority/trades-history?pdaIndex=0&limit=50
+phoenixRoutes.get('/trader/:authority/trades-history', async (c) => {
+  const authority = asNonEmptyString(c.req.param('authority'))
+  if (!authority) return c.json({ error: 'Missing or invalid authority' }, 400)
+
+  const params = new URLSearchParams({ limit: String(historyLimit(c.req.query('limit'))) })
+  const invalidPda = appendOptionalIntegerQuery(params, 'pdaIndex', c.req.query('pdaIndex'))
+  if (invalidPda) return invalidPda
+
+  const marketSymbol = normalizeMarketSymbol(c.req.query('marketSymbol') ?? c.req.query('symbol'))
+  if ((c.req.query('marketSymbol') ?? c.req.query('symbol')) && !marketSymbol) {
+    return c.json({ error: 'Invalid marketSymbol', code: 'INVALID_MARKET_SYMBOL' }, 400)
+  }
+  if (marketSymbol) params.set('marketSymbol', marketSymbol)
+  appendOptionalQuery(params, 'cursor', c.req.query('cursor'))
+
+  try {
+    const raw = await phoenixFetchJson<unknown>(`/trader/${encodeURIComponent(authority)}/trades-history?${params.toString()}`)
+    const rawRecord = asRecord(raw)
+    return c.json({
+      venueId: 'phoenix',
+      action: 'get_trade_history',
+      authority,
+      data: Array.isArray(rawRecord?.data) ? rawRecord.data : [],
+      hasMore: asBoolean(rawRecord?.hasMore) ?? false,
+      nextCursor: asString(rawRecord?.nextCursor),
+      prevCursor: asString(rawRecord?.prevCursor),
+      raw,
+    })
+  } catch (err) {
+    console.error(`[api] Phoenix trade history ${authority} unavailable:`, err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix trade history unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// GET /perps/phoenix/trader/:authority/collateral-history?pdaIndex=0&limit=50
+phoenixRoutes.get('/trader/:authority/collateral-history', async (c) => {
+  const authority = asNonEmptyString(c.req.param('authority'))
+  if (!authority) return c.json({ error: 'Missing or invalid authority' }, 400)
+
+  const params = new URLSearchParams({ limit: String(historyLimit(c.req.query('limit'))) })
+  const invalidPda = appendOptionalIntegerQuery(params, 'pdaIndex', c.req.query('pdaIndex'))
+  if (invalidPda) return invalidPda
+
+  appendOptionalQuery(params, 'cursor', c.req.query('cursor'))
+  appendOptionalQuery(params, 'nextCursor', c.req.query('nextCursor'))
+  appendOptionalQuery(params, 'prevCursor', c.req.query('prevCursor'))
+
+  try {
+    const raw = await phoenixFetchJson<unknown>(`/trader/${encodeURIComponent(authority)}/collateral-history?${params.toString()}`)
+    const rawRecord = asRecord(raw)
+    return c.json({
+      venueId: 'phoenix',
+      action: 'get_collateral_history',
+      authority,
+      data: Array.isArray(rawRecord?.data) ? rawRecord.data : [],
+      hasMore: asBoolean(rawRecord?.hasMore) ?? false,
+      nextCursor: asString(rawRecord?.nextCursor),
+      prevCursor: asString(rawRecord?.prevCursor),
+      raw,
+    })
+  } catch (err) {
+    console.error(`[api] Phoenix collateral history ${authority} unavailable:`, err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix collateral history unavailable'), upstreamProxyStatusCode(err))
   }
 })
 
@@ -870,16 +1152,37 @@ phoenixRoutes.post('/tx/cancel-conditional-order', async (c) => {
 })
 
 // POST /perps/phoenix/tx/deposit
-phoenixRoutes.post('/tx/deposit', (c) => {
-  return c.json({
-    venueId: 'phoenix',
-    action: 'deposit',
-    mode: 'solana_instruction_builder',
-    code: 'PHOENIX_DEPOSIT_BUILDER_UNAVAILABLE',
-    error: 'Phoenix deposit instruction builder is not available through the public REST API',
-    detail: 'No deposit or withdraw builder route exists in the public Phoenix OpenAPI. This route is intentionally a 501 instead of inventing an upstream path.',
-    instructions: [],
-  }, 501)
+phoenixRoutes.post('/tx/deposit', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const builder = parseTransferBuilderInput(parsed.body)
+  if (builder.response) return builder.response
+
+  try {
+    const raw = await getPhoenixSdkClient().ixs.buildDepositIxs(builder.input as never)
+    return c.json(sdkInstructionBuilderResponse('deposit', '/tx/deposit', raw))
+  } catch (err) {
+    console.error('[api] Phoenix deposit builder unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix deposit builder unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/tx/withdraw
+phoenixRoutes.post('/tx/withdraw', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const builder = parseTransferBuilderInput(parsed.body)
+  if (builder.response) return builder.response
+
+  try {
+    const raw = await getPhoenixSdkClient().ixs.buildWithdrawIxs(builder.input as never)
+    return c.json(sdkInstructionBuilderResponse('withdraw', '/tx/withdraw', raw))
+  } catch (err) {
+    console.error('[api] Phoenix withdraw builder unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix withdraw builder unavailable'), upstreamProxyStatusCode(err))
+  }
 })
 
 // GET /perps/phoenix/candles?symbol=&interval=&count=&startTime=&endTime=

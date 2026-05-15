@@ -1,8 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,17 +17,28 @@ import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/App
 import { useWallet } from '@/hooks/useWallet';
 import {
   activatePhoenixInvite,
+  buildPhoenixDeposit,
+  buildPhoenixWithdraw,
+  fetchPhoenixCollateralHistory,
+  fetchPhoenixOrderHistory,
   fetchPhoenixTraderState,
+  fetchPhoenixTradeHistory,
   formatPhoenixPrice,
+  type PhoenixCollateralHistoryItem,
+  type PhoenixOrderHistoryItem,
+  type PhoenixTradeHistoryItem,
   type PhoenixTraderState,
 } from '@/features/perps/phoenix.api';
+import { sendPhoenixBuiltTransaction, type PhoenixSignAndSendTransactionFn } from '@/features/perps/phoenix.execution';
 import { semantic, tokens } from '@/theme';
 
-type Tab = 'positions' | 'orders' | 'collateral';
+type Tab = 'positions' | 'orders' | 'history';
+type TransferAction = 'deposit' | 'withdraw';
 
 type PhoenixTraderRecord = Record<string, unknown>;
 
 interface PhoenixPositionRow {
+  id: string;
   symbol: string;
   side: 'long' | 'short';
   size: number;
@@ -36,6 +48,7 @@ interface PhoenixPositionRow {
   notionalUsd: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
+  accountLabel: string;
 }
 
 interface PhoenixOrderRow {
@@ -47,6 +60,30 @@ interface PhoenixOrderRow {
   initialSize: number | null;
   reduceOnly: boolean;
   conditional: boolean;
+  accountLabel: string;
+}
+
+interface PhoenixHistoryRow {
+  id: string;
+  kind: 'trade' | 'order' | 'collateral';
+  symbol: string;
+  title: string;
+  detail: string;
+  value: string;
+  tone?: 'pos' | 'neg';
+  timestamp: number;
+}
+
+interface PhoenixAccountSummary {
+  portfolioValue: number | null;
+  collateralBalance: number | null;
+  effectiveCollateral: number | null;
+  withdrawable: number | null;
+  unrealizedPnl: number;
+  initialMargin: number | null;
+  maintenanceMargin: number | null;
+  accountLeverage: number | null;
+  riskLabel: string;
 }
 
 export function PhoenixProfileScreen() {
@@ -55,40 +92,74 @@ export function PhoenixProfileScreen() {
   const wallet = useWallet();
 
   const [state, setState] = useState<PhoenixTraderState | null>(null);
+  const [tradeHistory, setTradeHistory] = useState<PhoenixTradeHistoryItem[]>([]);
+  const [orderHistory, setOrderHistory] = useState<PhoenixOrderHistoryItem[]>([]);
+  const [collateralHistory, setCollateralHistory] = useState<PhoenixCollateralHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [accountChecked, setAccountChecked] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState('');
   const [activationBusy, setActivationBusy] = useState(false);
   const [activationMessage, setActivationMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('positions');
+  const [transferAction, setTransferAction] = useState<TransferAction | null>(null);
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferMessage, setTransferMessage] = useState<string | null>(null);
 
-  const trader = useMemo(() => primaryTrader(state), [state]);
-  const positions = useMemo(() => normalizePositions(trader), [trader]);
-  const orders = useMemo(() => normalizeOrders(trader), [trader]);
-  const summary = useMemo(() => accountSummary(trader), [trader]);
+  const traders = useMemo(() => normalizeTraders(state), [state]);
+  const positions = useMemo(() => normalizePositions(traders), [traders]);
+  const orders = useMemo(() => normalizeOrders(traders), [traders]);
+  const historyRows = useMemo(
+    () => normalizeHistoryRows(tradeHistory, orderHistory, collateralHistory),
+    [tradeHistory, orderHistory, collateralHistory],
+  );
+  const summary = useMemo(() => accountSummary(traders), [traders]);
+
+  const hasPhoenixProfile = accountChecked && (traders.length > 0 || historyRows.length > 0);
+  const noPhoenixProfile = accountChecked && !hasPhoenixProfile;
   const walletUnsupported = wallet.connected && typeof wallet.signAndSendTransaction !== 'function';
 
   const loadProfile = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (!wallet.address) {
       setState(null);
+      setTradeHistory([]);
+      setOrderHistory([]);
+      setCollateralHistory([]);
       setErrorMessage(null);
+      setAccountChecked(false);
       return;
     }
 
-    if (mode === 'initial') setLoading(true);
-    if (mode === 'refresh') setRefreshing(true);
+    if (mode === 'initial') {
+      setLoading(true);
+      setAccountChecked(false);
+    } else {
+      setRefreshing(true);
+    }
     setErrorMessage(null);
 
-    try {
-      setState(await fetchPhoenixTraderState(wallet.address));
-    } catch (err) {
+    const [stateResult, tradesResult, ordersResult, collateralResult] = await Promise.allSettled([
+      fetchPhoenixTraderState(wallet.address),
+      fetchPhoenixTradeHistory(wallet.address, { limit: 50 }),
+      fetchPhoenixOrderHistory(wallet.address, { limit: 50 }),
+      fetchPhoenixCollateralHistory(wallet.address, { limit: 50 }),
+    ]);
+
+    if (stateResult.status === 'fulfilled') {
+      setState(stateResult.value);
+    } else {
       setState(null);
-      setErrorMessage(err instanceof Error ? err.message : 'Phoenix account unavailable');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setErrorMessage(stateResult.reason instanceof Error ? stateResult.reason.message : 'Phoenix account unavailable');
     }
+
+    setTradeHistory(tradesResult.status === 'fulfilled' ? tradesResult.value.data : []);
+    setOrderHistory(ordersResult.status === 'fulfilled' ? ordersResult.value.data : []);
+    setCollateralHistory(collateralResult.status === 'fulfilled' ? collateralResult.value.data : []);
+    setLoading(false);
+    setRefreshing(false);
+    setAccountChecked(true);
   }, [wallet.address]);
 
   useEffect(() => {
@@ -98,8 +169,13 @@ export function PhoenixProfileScreen() {
     }
 
     setState(null);
+    setTradeHistory([]);
+    setOrderHistory([]);
+    setCollateralHistory([]);
     setErrorMessage(null);
     setLoading(false);
+    setRefreshing(false);
+    setAccountChecked(false);
   }, [wallet.connected, wallet.address, loadProfile]);
 
   const onRefresh = useCallback(() => {
@@ -123,6 +199,69 @@ export function PhoenixProfileScreen() {
     }
   }, [wallet.address, accessCode, loadProfile]);
 
+  const openTransfer = useCallback((action: TransferAction) => {
+    if (walletUnsupported) {
+      setTransferMessage('This wallet cannot send Phoenix transactions from the app.');
+      return;
+    }
+    setTransferAction(action);
+    setTransferAmount('');
+    setTransferMessage(null);
+  }, [walletUnsupported]);
+
+  const closeTransfer = useCallback(() => {
+    if (transferBusy) return;
+    setTransferAction(null);
+    setTransferAmount('');
+    setTransferMessage(null);
+  }, [transferBusy]);
+
+  const handleTransferSubmit = useCallback(async () => {
+    const amount = Number.parseFloat(transferAmount);
+    const signAndSendTransaction: PhoenixSignAndSendTransactionFn | null = typeof wallet.signAndSendTransaction === 'function'
+      ? async (transaction) => {
+        const send = wallet.signAndSendTransaction as PhoenixSignAndSendTransactionFn;
+        return send(transaction);
+      }
+      : null;
+
+    if (!transferAction || !wallet.address || !amount || amount <= 0) {
+      setTransferMessage('Enter a valid USDC amount.');
+      return;
+    }
+    if (!wallet.connection) {
+      setTransferMessage('Phoenix transaction send requires a Solana connection.');
+      return;
+    }
+    if (!signAndSendTransaction) {
+      setTransferMessage('This wallet cannot send Phoenix transactions from the app.');
+      return;
+    }
+
+    setTransferBusy(true);
+    setTransferMessage(null);
+    try {
+      const builtTransaction = transferAction === 'deposit'
+        ? await buildPhoenixDeposit({ authority: wallet.address, amount: transferAmount.trim() })
+        : await buildPhoenixWithdraw({ authority: wallet.address, amount: transferAmount.trim() });
+
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction,
+      });
+
+      setTransferMessage(`${transferAction === 'deposit' ? 'Deposit' : 'Withdraw'} submitted: ${shortKey(signature)}`);
+      setTransferAmount('');
+      await loadProfile('refresh');
+    } catch (err) {
+      setTransferMessage(err instanceof Error ? err.message : 'Phoenix transfer failed.');
+    } finally {
+      setTransferBusy(false);
+    }
+  }, [transferAction, transferAmount, wallet.address, wallet.connection, wallet.signAndSendTransaction, loadProfile]);
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <AppTopBar
@@ -130,8 +269,19 @@ export function PhoenixProfileScreen() {
         center={<AppTopBarTitle align="left">Phoenix Profile</AppTopBarTitle>}
         right={(
           <View style={styles.headerActions}>
-            <DisabledHeaderAction icon="arrow-downward" label="Deposit" tone="positive" />
-            <DisabledHeaderAction icon="arrow-upward" label="Withdraw" />
+            <HeaderAction
+              icon="arrow-downward"
+              label="Deposit"
+              tone="positive"
+              disabled={walletUnsupported}
+              onPress={() => openTransfer('deposit')}
+            />
+            <HeaderAction
+              icon="arrow-upward"
+              label="Withdraw"
+              disabled={walletUnsupported}
+              onPress={() => openTransfer('withdraw')}
+            />
           </View>
         )}
       />
@@ -140,7 +290,7 @@ export function PhoenixProfileScreen() {
         <View style={styles.emptyState}>
           <MaterialIcons name="account-balance-wallet" size={28} color={semantic.text.faint} />
           <Text style={styles.emptyTitle}>Connect Wallet</Text>
-          <Text style={styles.emptyDesc}>Connect a Solana wallet to view your Phoenix account.</Text>
+          <Text style={styles.emptyDesc}>Connect a Solana wallet to view your Phoenix trading account.</Text>
           <Pressable style={styles.primaryBtn} onPress={() => wallet.connect()}>
             <Text style={styles.primaryBtnText}>Connect Wallet</Text>
           </Pressable>
@@ -159,7 +309,7 @@ export function PhoenixProfileScreen() {
           <View style={styles.identity}>
             <View style={styles.avatarRing}>
               <View style={styles.avatarInner}>
-                <MaterialIcons name="bolt" size={18} color={semantic.text.primary} />
+                <MaterialIcons name="person" size={18} color={semantic.text.primary} />
               </View>
             </View>
             <View style={styles.identityInfo}>
@@ -169,21 +319,27 @@ export function PhoenixProfileScreen() {
                 <Text style={styles.connectedText}>{wallet.source.toUpperCase()} connected</Text>
               </View>
             </View>
-            <View style={styles.accountBadge}>
-              <Text style={styles.accountBadgeText}>{trader ? statusText(trader.state) : 'No Account'}</Text>
+            {hasPhoenixProfile ? (
+              <View style={styles.accountActiveBadge}>
+                <View style={styles.connectedDot} />
+                <Text style={styles.accountActiveText}>Phoenix</Text>
+              </View>
+            ) : noPhoenixProfile ? (
+              <View style={styles.noAccountBadge}>
+                <MaterialIcons name="info-outline" size={12} color={tokens.colors.primary} />
+                <Text style={styles.noAccountText}>No Account</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {walletUnsupported && (
+            <View style={styles.noticeCard}>
+              <MaterialIcons name="error-outline" size={16} color={tokens.colors.accent} />
+              <Text style={styles.noticeText}>Phoenix order execution needs a Solana wallet that can sign and send transactions.</Text>
             </View>
-          </View>
+          )}
 
-          <View style={styles.noticeCard}>
-            <MaterialIcons name={walletUnsupported ? 'error-outline' : 'info-outline'} size={16} color={tokens.colors.accent} />
-            <Text style={styles.noticeText}>
-              {walletUnsupported
-                ? 'Phoenix orders need a wallet that can sign and send Solana transactions.'
-                : 'Phoenix collateral deposit and withdraw are disabled until a documented builder is available.'}
-            </Text>
-          </View>
-
-          {!trader ? (
+          {noPhoenixProfile ? (
             <View style={styles.emptyCard}>
               <MaterialIcons name="vpn-key" size={26} color={semantic.text.faint} />
               <Text style={styles.emptyTitle}>Phoenix Account Needed</Text>
@@ -212,27 +368,41 @@ export function PhoenixProfileScreen() {
               </View>
               {activationMessage && <Text style={styles.inlineMessage}>{activationMessage}</Text>}
             </View>
-          ) : (
+          ) : hasPhoenixProfile ? (
             <>
               <View style={styles.equityCard}>
-                <Metric label="Portfolio" value={formatUsd(summary.portfolioValue)} />
-                <Metric label="Collateral" value={formatUsd(summary.collateralBalance)} align="center" />
+                <Metric label="Equity" value={formatUsd(summary.portfolioValue)} />
+                <Metric label="Margin Used" value={formatUsd(summary.initialMargin)} align="center" />
                 <Metric label="Available" value={formatUsd(summary.withdrawable)} align="right" />
                 <View style={styles.equityDivider} />
-                <Metric label="Unrealized PnL" value={formatSignedUsd(summary.unrealizedPnl)} tone={summary.unrealizedPnl >= 0 ? 'pos' : 'neg'} />
-                <Metric label="Initial Margin" value={formatUsd(summary.initialMargin)} align="center" />
-                <Metric label="Risk" value={statusText(trader.riskTier)} align="right" />
+                <Metric
+                  label="Unrealized PnL"
+                  value={formatSignedUsd(summary.unrealizedPnl)}
+                  tone={summary.unrealizedPnl >= 0 ? 'pos' : 'neg'}
+                />
+                <Metric label="Acct Leverage" value={summary.accountLeverage === null ? '--' : `${summary.accountLeverage.toFixed(2)}x`} align="center" />
+                <Metric label="Risk" value={summary.riskLabel} align="right" />
               </View>
 
               <View style={styles.actionRow}>
-                <DisabledAction icon="arrow-downward" label="Deposit" />
-                <DisabledAction icon="arrow-upward" label="Withdraw" />
+                <TransferActionButton
+                  icon="arrow-downward"
+                  label="Deposit"
+                  disabled={walletUnsupported}
+                  onPress={() => openTransfer('deposit')}
+                />
+                <TransferActionButton
+                  icon="arrow-upward"
+                  label="Withdraw"
+                  disabled={walletUnsupported}
+                  onPress={() => openTransfer('withdraw')}
+                />
               </View>
 
               <View style={styles.tabBar}>
                 <TabButton label="Positions" count={positions.length} active={activeTab === 'positions'} onPress={() => setActiveTab('positions')} />
                 <TabButton label="Orders" count={orders.length} active={activeTab === 'orders'} onPress={() => setActiveTab('orders')} />
-                <TabButton label="Collateral" active={activeTab === 'collateral'} onPress={() => setActiveTab('collateral')} />
+                <TabButton label="History" count={historyRows.length} active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
               </View>
 
               {activeTab === 'positions' && (
@@ -241,18 +411,21 @@ export function PhoenixProfileScreen() {
                     <EmptyRows icon="inbox" text="No open Phoenix positions" />
                   ) : positions.map((position) => (
                     <Pressable
-                      key={position.symbol}
+                      key={position.id}
                       style={styles.positionCard}
                       onPress={() => router.push(`/markets/phoenix/${encodeURIComponent(position.symbol)}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${position.symbol} market details`}
                     >
                       <View style={styles.positionLeft}>
                         <Text style={styles.positionSymbol}>{position.symbol}</Text>
                         <Text style={[styles.positionSide, position.side === 'long' ? styles.textPos : styles.textNeg]}>
-                          {position.side.toUpperCase()} · {formatBase(position.size)}
+                          {position.side.toUpperCase()} - {formatBase(position.size)}
                         </Text>
+                        <Text style={styles.positionMeta}>{position.accountLabel}</Text>
                         {(position.takeProfitPrice || position.stopLossPrice) && (
                           <Text style={styles.positionMeta}>
-                            TP {formatPhoenixPrice(position.takeProfitPrice)} · SL {formatPhoenixPrice(position.stopLossPrice)}
+                            TP {formatPhoenixPrice(position.takeProfitPrice)} - SL {formatPhoenixPrice(position.stopLossPrice)}
                           </Text>
                         )}
                       </View>
@@ -277,13 +450,15 @@ export function PhoenixProfileScreen() {
                       <View style={styles.orderLeft}>
                         <Text style={styles.positionSymbol}>{order.symbol}</Text>
                         <Text style={styles.orderMeta}>
-                          {order.side.toUpperCase()} · {formatBase(order.sizeRemaining ?? 0)} remaining
+                          {sideLabel(order.side)} - {formatBase(order.sizeRemaining ?? 0)} remaining
                         </Text>
-                        {(order.reduceOnly || order.conditional) && (
-                          <Text style={styles.orderFlags}>
-                            {order.reduceOnly ? 'Reduce only' : ''}{order.reduceOnly && order.conditional ? ' · ' : ''}{order.conditional ? 'Conditional' : ''}
-                          </Text>
-                        )}
+                        <Text style={styles.orderFlags}>
+                          {[
+                            order.accountLabel,
+                            order.reduceOnly ? 'Reduce only' : null,
+                            order.conditional ? 'Conditional' : null,
+                          ].filter(Boolean).join(' - ')}
+                        </Text>
                       </View>
                       <Text style={styles.orderPrice}>{formatPhoenixPrice(order.price)}</Text>
                     </View>
@@ -291,41 +466,158 @@ export function PhoenixProfileScreen() {
                 </View>
               )}
 
-              {activeTab === 'collateral' && (
+              {activeTab === 'history' && (
                 <View style={styles.tabContent}>
-                  <InfoRow label="Effective collateral" value={formatUsd(summary.effectiveCollateral)} />
-                  <InfoRow label="Withdrawal collateral" value={formatUsd(summary.withdrawable)} />
-                  <InfoRow label="Maintenance margin" value={formatUsd(summary.maintenanceMargin)} />
-                  <InfoRow label="Risk state" value={statusText(trader.riskState)} />
-                  <InfoRow label="Trader key" value={shortKey(asString(trader.traderKey))} />
+                  {historyRows.length === 0 ? (
+                    <EmptyRows icon="history" text="No Phoenix history yet" />
+                  ) : historyRows.map((row) => (
+                    <View key={row.id} style={styles.orderCard}>
+                      <View style={styles.orderLeft}>
+                        <View style={styles.historyTitleRow}>
+                          <Text style={styles.positionSymbol}>{row.title}</Text>
+                          <View style={styles.historyBadge}>
+                            <Text style={styles.historyBadgeText}>{row.kind}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.orderMeta}>{row.detail}</Text>
+                        <Text style={styles.orderFlags}>{formatHistoryTime(row.timestamp)}</Text>
+                      </View>
+                      <Text style={[styles.orderPrice, row.tone === 'pos' && styles.textPos, row.tone === 'neg' && styles.textNeg]}>
+                        {row.value}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               )}
             </>
-          )}
+          ) : null}
 
           <View style={{ height: 28 }} />
         </ScrollView>
       )}
+
+      <PhoenixTransferModal
+        action={transferAction}
+        amount={transferAmount}
+        busy={transferBusy}
+        message={transferMessage}
+        onAmountChange={setTransferAmount}
+        onClose={closeTransfer}
+        onSubmit={handleTransferSubmit}
+      />
     </View>
   );
 }
 
-function DisabledHeaderAction({ icon, label, tone }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; tone?: 'positive' }) {
+function HeaderAction({
+  icon,
+  label,
+  tone,
+  disabled,
+  onPress,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  label: string;
+  tone?: 'positive';
+  disabled?: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.headerActionBtn}>
+    <Pressable
+      style={[styles.headerActionBtn, disabled && styles.actionDisabled]}
+      disabled={disabled}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} Phoenix collateral`}
+    >
       <MaterialIcons name={icon} size={12} color={tone === 'positive' ? tokens.colors.viridian : tokens.colors.primary} />
       <Text style={[styles.headerActionText, tone === 'positive' && { color: tokens.colors.viridian }]}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 
-function DisabledAction({ icon, label }: { icon: keyof typeof MaterialIcons.glyphMap; label: string }) {
+function TransferActionButton({
+  icon,
+  label,
+  disabled,
+  onPress,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.disabledAction}>
+    <Pressable
+      style={[styles.disabledAction, !disabled && styles.transferActionEnabled, disabled && styles.actionDisabled]}
+      disabled={disabled}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} Phoenix collateral`}
+    >
       <MaterialIcons name={icon} size={14} color={semantic.text.faint} />
       <Text style={styles.disabledActionText}>{label}</Text>
-      <Text style={styles.disabledActionSub}>Not wired</Text>
-    </View>
+      <Text style={styles.disabledActionSub}>{disabled ? 'Unavailable' : 'USDC'}</Text>
+    </Pressable>
+  );
+}
+
+function PhoenixTransferModal({
+  action,
+  amount,
+  busy,
+  message,
+  onAmountChange,
+  onClose,
+  onSubmit,
+}: {
+  action: TransferAction | null;
+  amount: string;
+  busy: boolean;
+  message: string | null;
+  onAmountChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const title = action === 'withdraw' ? 'Withdraw Phoenix USDC' : 'Deposit Phoenix USDC';
+  return (
+    <Modal visible={action !== null} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={() => {}}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={8} disabled={busy}>
+              <MaterialIcons name="close" size={18} color={semantic.text.dim} />
+            </Pressable>
+          </View>
+          <Text style={styles.modalDesc}>
+            Phoenix uses Solana USDC through Ember collateral instructions.
+          </Text>
+          <TextInput
+            style={styles.amountInput}
+            value={amount}
+            onChangeText={onAmountChange}
+            placeholder="0.00"
+            placeholderTextColor={semantic.text.faint}
+            keyboardType="decimal-pad"
+            editable={!busy}
+            autoFocus
+          />
+          {message && <Text style={styles.transferMessage}>{message}</Text>}
+          <Pressable
+            style={[styles.submitTransferBtn, busy && styles.actionDisabled]}
+            disabled={busy}
+            onPress={onSubmit}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color={semantic.background.screen} />
+            ) : (
+              <Text style={styles.submitTransferText}>{action === 'withdraw' ? 'Withdraw' : 'Deposit'}</Text>
+            )}
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -355,14 +647,14 @@ function TabButton({
   onPress,
 }: {
   label: string;
-  count?: number;
+  count: number;
   active: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
       <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-      {typeof count === 'number' && count > 0 && (
+      {count > 0 && (
         <View style={[styles.tabBadge, active && styles.tabBadgeActive]}>
           <Text style={[styles.tabBadgeText, active && styles.tabBadgeTextActive]}>{count}</Text>
         </View>
@@ -380,31 +672,28 @@ function EmptyRows({ icon, text }: { icon: keyof typeof MaterialIcons.glyphMap; 
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
-    </View>
-  );
+function normalizeTraders(state: PhoenixTraderState | null): PhoenixTraderRecord[] {
+  return (state?.traders ?? [])
+    .map(asRecord)
+    .filter((trader): trader is PhoenixTraderRecord => trader !== null);
 }
 
-function primaryTrader(state: PhoenixTraderState | null): PhoenixTraderRecord | null {
-  const first = state?.traders?.[0];
-  return first && typeof first === 'object' ? first as PhoenixTraderRecord : null;
-}
+function normalizePositions(traders: PhoenixTraderRecord[]): PhoenixPositionRow[] {
+  const rows: PhoenixPositionRow[] = [];
 
-function normalizePositions(trader: PhoenixTraderRecord | null): PhoenixPositionRow[] {
-  const rawPositions = Array.isArray(trader?.positions) ? trader.positions : [];
-  return rawPositions
-    .map((item) => {
+  traders.forEach((trader, traderIndex) => {
+    const rawPositions = Array.isArray(trader.positions) ? trader.positions : [];
+    rawPositions.forEach((item, positionIndex) => {
       const record = asRecord(item);
-      if (!record) return null;
+      if (!record) return;
+
       const symbol = asString(record.symbol);
       const size = toNumber(record.positionSize) ?? 0;
-      if (!symbol || size === 0) return null;
+      if (!symbol || size === 0) return;
 
-      return {
+      const accountLabel = traderLabel(trader, traderIndex);
+      rows.push({
+        id: `${accountLabel}-${symbol}-${positionIndex}`,
         symbol,
         side: size >= 0 ? 'long' : 'short',
         size: Math.abs(size),
@@ -414,48 +703,170 @@ function normalizePositions(trader: PhoenixTraderRecord | null): PhoenixPosition
         notionalUsd: toUsd(record.positionValue),
         takeProfitPrice: toUsd(record.takeProfitPrice),
         stopLossPrice: toUsd(record.stopLossPrice),
-      };
-    })
-    .filter((item): item is PhoenixPositionRow => item !== null);
-}
-
-function normalizeOrders(trader: PhoenixTraderRecord | null): PhoenixOrderRow[] {
-  const limitOrders = asRecord(trader?.limitOrders);
-  if (!limitOrders) return [];
-
-  const rows: PhoenixOrderRow[] = [];
-  for (const [symbol, rawOrders] of Object.entries(limitOrders)) {
-    if (!Array.isArray(rawOrders)) continue;
-    rawOrders.forEach((rawOrder, index) => {
-      const order = asRecord(rawOrder);
-      if (!order) return;
-      const id = asString(order.orderSequenceNumber) ?? `${symbol}-${index}`;
-      rows.push({
-        id: `${symbol}-${id}`,
-        symbol,
-        side: asString(order.side) ?? 'bid',
-        price: toUsd(order.price),
-        sizeRemaining: toNumber(order.tradeSizeRemaining),
-        initialSize: toNumber(order.initialTradeSize),
-        reduceOnly: order.isReduceOnly === true,
-        conditional: order.isConditionalOrder === true,
+        accountLabel,
       });
     });
-  }
+  });
+
+  return rows.sort((a, b) => Math.abs(b.notionalUsd ?? 0) - Math.abs(a.notionalUsd ?? 0));
+}
+
+function normalizeOrders(traders: PhoenixTraderRecord[]): PhoenixOrderRow[] {
+  const rows: PhoenixOrderRow[] = [];
+
+  traders.forEach((trader, traderIndex) => {
+    const limitOrders = asRecord(trader.limitOrders);
+    if (!limitOrders) return;
+
+    for (const [symbol, rawOrders] of Object.entries(limitOrders)) {
+      if (!Array.isArray(rawOrders)) continue;
+      rawOrders.forEach((rawOrder, orderIndex) => {
+        const order = asRecord(rawOrder);
+        if (!order) return;
+
+        const accountLabel = traderLabel(trader, traderIndex);
+        const sequence = asString(order.orderSequenceNumber) ?? String(orderIndex);
+        rows.push({
+          id: `${accountLabel}-${symbol}-${sequence}`,
+          symbol,
+          side: asString(order.side) ?? 'bid',
+          price: toUsd(order.price),
+          sizeRemaining: toNumber(order.tradeSizeRemaining),
+          initialSize: toNumber(order.initialTradeSize),
+          reduceOnly: order.isReduceOnly === true,
+          conditional: order.isConditionalOrder === true,
+          accountLabel,
+        });
+      });
+    }
+  });
 
   return rows;
 }
 
-function accountSummary(trader: PhoenixTraderRecord | null) {
+function normalizeHistoryRows(
+  trades: PhoenixTradeHistoryItem[],
+  orders: PhoenixOrderHistoryItem[],
+  collateral: PhoenixCollateralHistoryItem[],
+): PhoenixHistoryRow[] {
+  const tradeRows = trades.map((item, index): PhoenixHistoryRow | null => {
+    const record = asRecord(item);
+    if (!record) return null;
+
+    const symbol = asString(record.marketSymbol) ?? 'Phoenix';
+    const delta = toNumber(record.baseLotsDelta);
+    const pnl = toUsd(record.realizedPnl);
+    const fees = toUsd(record.fees);
+    const timestamp = timestampMs(record.timestamp);
+
+    return {
+      id: `trade-${asString(record.fillId) ?? asString(record.signature) ?? `${timestamp}-${index}`}`,
+      kind: 'trade',
+      symbol,
+      title: symbol,
+      detail: [
+        delta === null ? null : `${delta >= 0 ? 'Buy' : 'Sell'} ${formatBase(Math.abs(delta))}`,
+        `Price ${formatPhoenixPrice(toUsd(record.price))}`,
+        fees === null ? null : `Fee ${formatUsd(fees)}`,
+      ].filter(Boolean).join(' - '),
+      value: formatSignedUsd(pnl),
+      tone: pnl === null ? undefined : pnl >= 0 ? 'pos' : 'neg',
+      timestamp,
+    };
+  }).filter((row): row is PhoenixHistoryRow => row !== null);
+
+  const orderRows = orders.map((item, index): PhoenixHistoryRow | null => {
+    const record = asRecord(item);
+    if (!record) return null;
+
+    const symbol = asString(record.marketSymbol) ?? 'Phoenix';
+    const status = statusText(record.status);
+    const timestamp = timestampMs(record.completedAt ?? record.placedAt);
+
+    return {
+      id: `order-${asString(record.orderSequenceNumber) ?? `${timestamp}-${index}`}`,
+      kind: 'order',
+      symbol,
+      title: `${symbol} ${status}`,
+      detail: [
+        sideLabel(asString(record.side)),
+        `${formatBase(toNumber(record.filledBaseQty) ?? 0)} / ${formatBase(toNumber(record.baseQty) ?? 0)}`,
+        `Price ${formatPhoenixPrice(toUsd(record.price))}`,
+      ].filter(Boolean).join(' - '),
+      value: status,
+      timestamp,
+    };
+  }).filter((row): row is PhoenixHistoryRow => row !== null);
+
+  const collateralRows = collateral.map((item, index): PhoenixHistoryRow | null => {
+    const record = asRecord(item);
+    if (!record) return null;
+
+    const eventType = asString(record.eventType) ?? 'collateral';
+    const amount = quoteLotsToUsd(record.amount);
+    const timestamp = timestampMs(record.timestamp);
+    const isDeposit = eventType.toLowerCase().includes('deposit');
+
+    return {
+      id: `collateral-${asString(record.slot) ?? timestamp}-${asString(record.eventIndex) ?? index}`,
+      kind: 'collateral',
+      symbol: 'USDC',
+      title: statusText(eventType),
+      detail: `Collateral after ${formatUsd(quoteLotsToUsd(record.collateralAfter))}`,
+      value: formatSignedUsd(isDeposit ? amount : amount === null ? null : -Math.abs(amount)),
+      tone: isDeposit ? 'pos' : 'neg',
+      timestamp,
+    };
+  }).filter((row): row is PhoenixHistoryRow => row !== null);
+
+  return [...tradeRows, ...orderRows, ...collateralRows]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 80);
+}
+
+function accountSummary(traders: PhoenixTraderRecord[]): PhoenixAccountSummary {
+  const portfolioValue = sumUsd(traders, 'portfolioValue');
+  const effectiveCollateral = sumUsd(traders, 'effectiveCollateral');
+  const initialMargin = sumUsd(traders, 'initialMargin');
+
   return {
-    portfolioValue: toUsd(trader?.portfolioValue),
-    collateralBalance: toUsd(trader?.collateralBalance),
-    effectiveCollateral: toUsd(trader?.effectiveCollateral),
-    withdrawable: toUsd(trader?.effectiveCollateralForWithdrawals),
-    unrealizedPnl: toUsd(trader?.unrealizedPnl) ?? 0,
-    initialMargin: toUsd(trader?.initialMargin),
-    maintenanceMargin: toUsd(trader?.maintenanceMargin),
+    portfolioValue,
+    collateralBalance: sumUsd(traders, 'collateralBalance'),
+    effectiveCollateral,
+    withdrawable: sumUsd(traders, 'effectiveCollateralForWithdrawals'),
+    unrealizedPnl: sumUsd(traders, 'unrealizedPnl') ?? 0,
+    initialMargin,
+    maintenanceMargin: sumUsd(traders, 'maintenanceMargin'),
+    accountLeverage: effectiveCollateral && effectiveCollateral > 0 && initialMargin !== null
+      ? initialMargin / effectiveCollateral
+      : null,
+    riskLabel: worstRiskLabel(traders),
   };
+}
+
+function sumUsd(records: PhoenixTraderRecord[], key: string): number | null {
+  const values = records
+    .map((record) => toUsd(record[key]))
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function worstRiskLabel(traders: PhoenixTraderRecord[]): string {
+  const order = ['Safe', 'At Risk', 'Cancellable', 'Liquidatable', 'Backstop Liquidatable', 'High Risk'];
+  let worst = 'Safe';
+  for (const trader of traders) {
+    const label = statusText(trader.riskTier ?? trader.riskState);
+    if (!label || label === '--') continue;
+    if (order.indexOf(label) > order.indexOf(worst)) worst = label;
+  }
+  return traders.length > 0 ? worst : '--';
+}
+
+function traderLabel(trader: PhoenixTraderRecord, fallbackIndex: number): string {
+  const pda = toNumber(trader.traderPdaIndex) ?? fallbackIndex;
+  const subaccount = toNumber(trader.traderSubaccountIndex) ?? 0;
+  return subaccount === 0 ? `Cross ${pda}` : `Iso ${pda}.${subaccount}`;
 }
 
 function asRecord(input: unknown): Record<string, unknown> | null {
@@ -463,6 +874,7 @@ function asRecord(input: unknown): Record<string, unknown> | null {
 }
 
 function asString(input: unknown): string | null {
+  if (typeof input === 'number' && Number.isFinite(input)) return String(input);
   return typeof input === 'string' && input.trim().length > 0 ? input : null;
 }
 
@@ -476,10 +888,25 @@ function toNumber(input: unknown): number | null {
 function toUsd(input: unknown): number | null {
   const value = toNumber(input);
   if (value === null) return null;
-  if (typeof input === 'string' && !input.includes('.') && Math.abs(value) >= 1_000_000) {
+  if (
+    ((typeof input === 'string' && !input.includes('.')) || typeof input === 'number')
+    && Math.abs(value) >= 1_000_000
+  ) {
     return value / 1_000_000;
   }
   return value;
+}
+
+function quoteLotsToUsd(input: unknown): number | null {
+  const value = toNumber(input);
+  return value === null ? null : value / 1_000_000;
+}
+
+function timestampMs(input: unknown): number {
+  const text = asString(input);
+  if (!text) return 0;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatUsd(value: number | null): string {
@@ -504,7 +931,7 @@ function formatBase(value: number): string {
 function shortKey(value: string | null): string {
   if (!value) return '--';
   if (value.length <= 12) return value;
-  return `${value.slice(0, 4)}···${value.slice(-4)}`;
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 function statusText(value: unknown): string {
@@ -513,8 +940,23 @@ function statusText(value: unknown): string {
   return text
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .split(/[_\s-]+/)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
+}
+
+function sideLabel(value: unknown): string {
+  const text = asString(value)?.toLowerCase();
+  if (!text) return '--';
+  if (text === 'bid' || text === 'buy') return 'Buy';
+  if (text === 'ask' || text === 'sell') return 'Sell';
+  return statusText(text);
+}
+
+function formatHistoryTime(value: number): string {
+  if (!value) return '--';
+  const date = new Date(value);
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 const styles = StyleSheet.create({
@@ -538,6 +980,9 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.xs,
     backgroundColor: semantic.background.surface,
     opacity: 0.58,
+  },
+  actionDisabled: {
+    opacity: 0.42,
   },
   headerActionText: {
     fontFamily: 'monospace',
@@ -643,16 +1088,36 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
     textTransform: 'uppercase',
   },
-  accountBadge: {
+  accountActiveBadge: {
     minHeight: 30,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(0,212,170,0.44)',
+    paddingHorizontal: tokens.spacing.sm,
+    backgroundColor: 'rgba(0,212,170,0.10)',
+  },
+  accountActiveText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.viridian,
+    textTransform: 'uppercase',
+  },
+  noAccountBadge: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: 15,
     borderWidth: 1,
     borderColor: 'rgba(245,250,252,0.12)',
     paddingHorizontal: tokens.spacing.sm,
     backgroundColor: semantic.background.surface,
   },
-  accountBadgeText: {
+  noAccountText: {
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xxs,
     fontWeight: '800',
@@ -776,6 +1241,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,250,252,0.10)',
     backgroundColor: semantic.background.surface,
     opacity: 0.62,
+  },
+  transferActionEnabled: {
+    opacity: 1,
+    borderColor: 'rgba(0,212,170,0.18)',
+    backgroundColor: 'rgba(6,51,67,0.76)',
   },
   disabledActionText: {
     marginTop: 4,
@@ -937,28 +1407,92 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     fontWeight: '900',
     color: semantic.text.primary,
+    textAlign: 'right',
   },
-  infoRow: {
+  historyTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.xs,
+  },
+  historyBadge: {
+    borderRadius: 4,
+    backgroundColor: semantic.background.screen,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  historyBadgeText: {
+    fontFamily: 'monospace',
+    fontSize: 8,
+    fontWeight: '900',
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.54)',
+    padding: tokens.spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surface,
+    padding: tokens.spacing.lg,
+  },
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: tokens.spacing.md,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(24,90,112,0.54)',
   },
-  infoLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    color: semantic.text.faint,
-  },
-  infoValue: {
+  modalTitle: {
     flex: 1,
+    fontSize: tokens.fontSize.md,
+    fontWeight: '900',
+    color: semantic.text.primary,
+  },
+  modalDesc: {
+    marginTop: tokens.spacing.sm,
+    fontSize: tokens.fontSize.sm,
+    lineHeight: 18,
+    color: semantic.text.dim,
+  },
+  amountInput: {
+    marginTop: tokens.spacing.md,
+    minHeight: 56,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.screen,
+    paddingHorizontal: tokens.spacing.md,
+    fontFamily: 'monospace',
+    fontSize: 24,
+    fontWeight: '900',
+    color: semantic.text.primary,
+  },
+  transferMessage: {
+    marginTop: tokens.spacing.sm,
+    fontSize: tokens.fontSize.xs,
+    color: semantic.text.dim,
+  },
+  submitTransferBtn: {
+    marginTop: tokens.spacing.md,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: tokens.colors.accent,
+  },
+  submitTransferText: {
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xs,
-    fontWeight: '800',
-    color: semantic.text.primary,
-    textAlign: 'right',
+    fontWeight: '900',
+    color: semantic.background.screen,
+    textTransform: 'uppercase',
   },
   textPos: {
     color: tokens.colors.viridian,

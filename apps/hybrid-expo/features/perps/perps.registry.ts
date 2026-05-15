@@ -93,14 +93,14 @@ export const PHOENIX_VENUE_DESCRIPTOR = {
     accountRead: true,
     positionsRead: true,
     ordersRead: true,
-    deposit: false,
-    withdraw: false,
+    deposit: true,
+    withdraw: true,
     marketOrder: true,
     limitOrder: true,
     cancelOrder: true,
     closePosition: false,
     takeProfitStopLoss: false,
-    history: false,
+    history: true,
     messageSigningExecution: false,
     transactionSigningExecution: true,
     accessCodeRequired: true,
@@ -109,7 +109,7 @@ export const PHOENIX_VENUE_DESCRIPTOR = {
   },
   notes: [
     'Phoenix order execution uses public REST instruction builders and Solana wallet transaction signing.',
-    'Deposit and withdraw remain disabled until Phoenix exposes or we integrate a documented Ember collateral builder.',
+    'Phoenix deposit and withdraw use Rise SDK Ember collateral builders through the API transaction builder.',
   ],
 } as const satisfies PerpsVenueDescriptor;
 

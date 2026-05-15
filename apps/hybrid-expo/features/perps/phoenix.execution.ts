@@ -132,12 +132,12 @@ export function getPhoenixExecutionReadiness(wallet: PhoenixWalletSnapshot): Per
     venueId: 'phoenix',
     status: 'ready',
     canView: true,
-    canDeposit: false,
-    canWithdraw: false,
+    canDeposit: true,
+    canWithdraw: true,
     canTrade: true,
     canCancel: true,
     wallet: perpsWallet,
-    message: 'Phoenix can build Solana order transactions for this wallet.',
+    message: 'Phoenix can build Solana collateral and order transactions for this wallet.',
     requirements: ['sign_transaction'],
   };
 }
