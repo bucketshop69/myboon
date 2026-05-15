@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 
 const PHOENIX_API_BASE = process.env.PHOENIX_API_BASE || 'https://perp-api.phoenix.trade'
 const REQUEST_TIMEOUT_MS = parseEnvInt('PHOENIX_REQUEST_TIMEOUT_MS', 10_000)
@@ -84,6 +85,21 @@ interface PhoenixCandle {
   externalSource?: unknown
 }
 
+interface PhoenixFetchOptions {
+  method?: 'GET' | 'POST'
+  body?: unknown
+}
+
+interface PhoenixInstructionBuilderResult {
+  venueId: 'phoenix'
+  action: string
+  mode: 'solana_instruction_builder'
+  endpoint: string
+  instructions: unknown[]
+  raw: unknown
+  estimatedLiquidationPriceUsd?: number | null
+}
+
 interface NormalizedPhoenixMarket {
   venueId: 'phoenix'
   symbol: string
@@ -157,6 +173,12 @@ function asString(input: unknown): string | null {
   return typeof input === 'string' && input.length > 0 ? input : null
 }
 
+function asNonEmptyString(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  const trimmed = input.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 function asBoolean(input: unknown): boolean | null {
   return typeof input === 'boolean' ? input : null
 }
@@ -186,6 +208,20 @@ function rawNumberOrString(input: unknown): number | string | null {
   return null
 }
 
+function parseNonNegativeInteger(input: unknown): number | null {
+  if (typeof input === 'number') {
+    return Number.isSafeInteger(input) && input >= 0 ? input : null
+  }
+
+  if (typeof input !== 'string' || !/^\d+$/.test(input)) return null
+  const parsed = Number.parseInt(input, 10)
+  return Number.isSafeInteger(parsed) ? parsed : null
+}
+
+function isNonNegativeInteger(input: unknown): boolean {
+  return typeof input === 'number' && Number.isSafeInteger(input) && input >= 0
+}
+
 function normalizeVenueSymbol(input: string | null | undefined): string | null {
   if (!input) return null
   const normalized = input.trim().toUpperCase().replace(/-PERP$/, '')
@@ -213,21 +249,29 @@ function fundingConfig(market: PhoenixMarketConfig): PhoenixFundingConfig {
   }
 }
 
-async function phoenixFetchJson<T>(path: string): Promise<T> {
+async function phoenixFetchJson<T>(path: string, options: PhoenixFetchOptions = {}): Promise<T> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const method = options.method ?? 'GET'
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  const init: RequestInit = { method, signal: controller.signal, headers }
+
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    init.body = JSON.stringify(options.body)
+  }
+
   try {
-    const res = await fetch(`${PHOENIX_API_BASE}${path}`, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    })
+    const res = await fetch(`${PHOENIX_API_BASE}${path}`, init)
 
     if (!res.ok) {
       const upstreamBody = await res.text().catch(() => '')
       throw new PhoenixUpstreamError(res.status, upstreamBody)
     }
 
-    return await res.json() as T
+    const text = await res.text()
+    if (text.trim() === '') return null as T
+    return JSON.parse(text) as T
   } finally {
     clearTimeout(timeout)
   }
@@ -368,6 +412,71 @@ function appendOptionalQuery(params: URLSearchParams, name: string, value: strin
   if (value !== undefined && value.trim() !== '') params.set(name, value)
 }
 
+async function readJsonRecord(c: Context): Promise<{ body: Record<string, unknown> } | { response: Response }> {
+  let parsed: unknown
+  try {
+    parsed = await c.req.json()
+  } catch {
+    return { response: c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400) }
+  }
+
+  const body = !Array.isArray(parsed) ? asRecord(parsed) : null
+  if (!body) {
+    return { response: c.json({ error: 'Expected JSON object body', code: 'INVALID_JSON_OBJECT' }, 400) }
+  }
+
+  return { body }
+}
+
+function missingStringFields(body: Record<string, unknown>, fields: string[]): string[] {
+  return fields.filter((field) => asNonEmptyString(body[field]) === null)
+}
+
+function invalidNonNegativeIntegerFields(body: Record<string, unknown>, fields: string[]): string[] {
+  return fields.filter((field) => !isNonNegativeInteger(body[field]))
+}
+
+function missingFieldsPayload(fields: string[]) {
+  return {
+    error: 'Missing required fields',
+    code: 'MISSING_REQUIRED_FIELDS',
+    fields,
+  }
+}
+
+function invalidFieldsPayload(fields: string[]) {
+  return {
+    error: 'Invalid required fields',
+    code: 'INVALID_REQUIRED_FIELDS',
+    fields,
+  }
+}
+
+function instructionBuilderResponse(
+  action: string,
+  endpoint: string,
+  raw: unknown,
+): PhoenixInstructionBuilderResult {
+  const rawRecord = asRecord(raw)
+  const instructions = Array.isArray(raw)
+    ? raw
+    : (Array.isArray(rawRecord?.instructions) ? rawRecord.instructions : [])
+  const result: PhoenixInstructionBuilderResult = {
+    venueId: 'phoenix',
+    action,
+    mode: 'solana_instruction_builder',
+    endpoint,
+    instructions,
+    raw,
+  }
+
+  if (rawRecord && 'estimatedLiquidationPriceUsd' in rawRecord) {
+    result.estimatedLiquidationPriceUsd = parseNullableNumber(rawRecord.estimatedLiquidationPriceUsd)
+  }
+
+  return result
+}
+
 function normalizeCandle(raw: unknown) {
   const candle = asRecord(raw) as PhoenixCandle | null
   if (!candle) return null
@@ -403,6 +512,15 @@ function upstreamStatusCode(err: unknown): 429 | 502 {
   return 502
 }
 
+function upstreamProxyStatusCode(err: unknown): 400 | 409 | 429 | 502 | 504 {
+  if (err instanceof PhoenixUpstreamError) {
+    if (err.status === 400 || err.status === 409 || err.status === 429 || err.status === 504) {
+      return err.status
+    }
+  }
+  return 502
+}
+
 function upstreamErrorPayload(err: unknown, fallback: string) {
   if (err instanceof PhoenixUpstreamError) {
     const upstream = err.upstreamBody ? asRecord(safeJsonParse(err.upstreamBody)) : null
@@ -431,7 +549,9 @@ phoenixRoutes.get('/health', (c) => {
     venueId: 'phoenix',
     status: 'ok',
     upstreamBase: PHOENIX_API_BASE,
-    readOnly: true,
+    readOnly: false,
+    executionMode: 'solana_instruction_builder',
+    depositBuilderAvailable: false,
   })
 })
 
@@ -478,6 +598,154 @@ phoenixRoutes.get('/markets/:symbol', async (c) => {
     console.error(`[api] Phoenix market ${venueSymbol} unavailable:`, err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix market unavailable'), upstreamStatusCode(err))
   }
+})
+
+// GET /perps/phoenix/trader/:authority/state?pdaIndex=0
+phoenixRoutes.get('/trader/:authority/state', async (c) => {
+  const authority = asNonEmptyString(c.req.param('authority'))
+  if (!authority) return c.json({ error: 'Missing or invalid authority' }, 400)
+
+  const pdaIndex = parseNonNegativeInteger(c.req.query('pdaIndex') ?? '0')
+  if (pdaIndex === null) {
+    return c.json({ error: 'Invalid pdaIndex', code: 'INVALID_PDA_INDEX' }, 400)
+  }
+
+  const params = new URLSearchParams({ pdaIndex: String(pdaIndex) })
+  try {
+    const raw = await phoenixFetchJson<unknown>(`/trader/${encodeURIComponent(authority)}/state?${params.toString()}`)
+    const rawRecord = asRecord(raw)
+    return c.json({
+      venueId: 'phoenix',
+      action: 'get_trader_state',
+      authority,
+      pdaIndex,
+      slot: parseNullableInt(rawRecord?.slot),
+      slotIndex: parseNullableInt(rawRecord?.slotIndex),
+      traders: Array.isArray(rawRecord?.traders) ? rawRecord.traders : [],
+      raw,
+    })
+  } catch (err) {
+    console.error(`[api] Phoenix trader state ${authority} unavailable:`, err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix trader state unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/invite/activate
+phoenixRoutes.post('/invite/activate', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const missing = missingStringFields(parsed.body, ['authority', 'code'])
+  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+
+  try {
+    const raw = await phoenixFetchJson<unknown>('/v1/invite/activate', { method: 'POST', body: parsed.body })
+    const rawRecord = asRecord(raw)
+    return c.json({
+      venueId: 'phoenix',
+      action: 'activate_invite',
+      authority: asNonEmptyString(parsed.body.authority),
+      traderPda: asString(rawRecord?.trader_pda),
+      raw,
+    })
+  } catch (err) {
+    console.error('[api] Phoenix invite activation unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix invite activation unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/invite/activate-with-referral
+phoenixRoutes.post('/invite/activate-with-referral', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const missing = missingStringFields(parsed.body, ['authority', 'referral_code'])
+  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+
+  try {
+    const raw = await phoenixFetchJson<unknown>('/v1/invite/activate-with-referral', { method: 'POST', body: parsed.body })
+    const rawRecord = asRecord(raw)
+    return c.json({
+      venueId: 'phoenix',
+      action: 'activate_referral',
+      authority: asNonEmptyString(parsed.body.authority),
+      traderPda: asString(rawRecord?.trader_pda),
+      raw,
+    })
+  } catch (err) {
+    console.error('[api] Phoenix referral activation unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix referral activation unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/tx/market-order
+phoenixRoutes.post('/tx/market-order', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'side'])
+  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+
+  const endpoint = '/v1/ix/place-isolated-market-order-enhanced'
+  try {
+    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: parsed.body })
+    return c.json(instructionBuilderResponse('place_isolated_market_order', endpoint, raw))
+  } catch (err) {
+    console.error('[api] Phoenix market order builder unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix market order builder unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/tx/limit-order
+phoenixRoutes.post('/tx/limit-order', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'side'])
+  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+
+  const endpoint = '/v1/ix/place-isolated-limit-order-enhanced'
+  try {
+    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: parsed.body })
+    return c.json(instructionBuilderResponse('place_isolated_limit_order', endpoint, raw))
+  } catch (err) {
+    console.error('[api] Phoenix limit order builder unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix limit order builder unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/tx/cancel-conditional-order
+phoenixRoutes.post('/tx/cancel-conditional-order', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'executionDirection'])
+  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+
+  const invalid = invalidNonNegativeIntegerFields(parsed.body, ['traderPdaIndex', 'conditionalOrderIndex'])
+  if (invalid.length > 0) return c.json(invalidFieldsPayload(invalid), 400)
+
+  const endpoint = '/v1/ix/cancel-conditional-order'
+  try {
+    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: parsed.body })
+    return c.json(instructionBuilderResponse('cancel_conditional_order', endpoint, raw))
+  } catch (err) {
+    console.error('[api] Phoenix conditional cancel builder unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix conditional cancel builder unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/tx/deposit
+phoenixRoutes.post('/tx/deposit', (c) => {
+  return c.json({
+    venueId: 'phoenix',
+    action: 'deposit',
+    mode: 'solana_instruction_builder',
+    code: 'PHOENIX_DEPOSIT_BUILDER_UNAVAILABLE',
+    error: 'Phoenix deposit instruction builder is not available through the public REST API',
+    detail: 'No deposit or withdraw builder route exists in the public Phoenix OpenAPI. This route is intentionally a 501 instead of inventing an upstream path.',
+    instructions: [],
+  }, 501)
 })
 
 // GET /perps/phoenix/candles?symbol=&interval=&count=&startTime=&endTime=
