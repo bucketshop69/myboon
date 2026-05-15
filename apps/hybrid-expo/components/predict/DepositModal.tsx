@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { semantic, tokens } from '@/theme';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 import { fetchClobBalance, fetchDepositStatus } from '@/features/predict/predict.api';
@@ -67,6 +68,7 @@ interface DepositStatusView {
 const DEPOSIT_POLL_MS = 10_000;
 const DELAYED_AFTER_MS = 5 * 60_000;
 const TRANSACTION_TIME_TOLERANCE_MS = 30_000;
+const DEPOSIT_TRACKING_STORAGE_PREFIX = 'predict.deposit.tracking.v1';
 
 function transactionKey(transaction: DepositBridgeTransaction): string {
   return [
@@ -170,7 +172,11 @@ export function DepositModal({
   const [trackedDeposit, setTrackedDeposit] = useState<TrackedDeposit | null>(null);
   const [statusView, setStatusView] = useState<DepositStatusView | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [trackingStorageKey, setTrackingStorageKey] = useState<string | null>(null);
   const fundsNotifiedRef = useRef(false);
+  const storageKey = polygonAddress && depositWalletAddress
+    ? `${DEPOSIT_TRACKING_STORAGE_PREFIX}:${polygonAddress.toLowerCase()}:${depositWalletAddress.toLowerCase()}`
+    : null;
 
   useEffect(() => {
     if (!isOpen || !depositWalletAddress) return;
@@ -196,15 +202,63 @@ export function DepositModal({
   useEffect(() => {
     if (!isOpen) {
       setCopied(null);
-      setTrackedDeposit(null);
-      setStatusView(null);
       setStatusLoading(false);
-      fundsNotifiedRef.current = false;
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fundsNotifiedRef.current = false;
+    setCopied(null);
+    setStatusLoading(false);
+    setTrackingStorageKey(null);
+    setTrackedDeposit(null);
+    setStatusView(null);
+
+    if (!storageKey) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    AsyncStorage.getItem(storageKey)
+      .then((raw) => {
+        if (cancelled) return;
+        if (!raw) {
+          setTrackedDeposit(null);
+          setStatusView(null);
+          return;
+        }
+
+        const saved = JSON.parse(raw) as {
+          trackedDeposit?: TrackedDeposit | null;
+          statusView?: DepositStatusView | null;
+        };
+        setTrackedDeposit(saved.trackedDeposit ?? null);
+        setStatusView(saved.statusView ?? null);
+        setTrackingStorageKey(saved.trackedDeposit ? storageKey : null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTrackedDeposit(null);
+          setStatusView(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey || !trackedDeposit || trackingStorageKey !== storageKey) return;
+
+    AsyncStorage.setItem(storageKey, JSON.stringify({ trackedDeposit, statusView })).catch(() => {});
+  }, [statusView, storageKey, trackedDeposit, trackingStorageKey]);
+
   const refreshDepositStatus = useCallback(async () => {
     if (!trackedDeposit || !polygonAddress) return;
+    if (!storageKey || trackingStorageKey !== storageKey) return;
 
     setStatusLoading(true);
     try {
@@ -255,10 +309,11 @@ export function DepositModal({
     } finally {
       setStatusLoading(false);
     }
-  }, [onFundsAvailable, polygonAddress, trackedDeposit]);
+  }, [onFundsAvailable, polygonAddress, storageKey, trackedDeposit, trackingStorageKey]);
 
   useEffect(() => {
     if (!isOpen || !trackedDeposit) return;
+    if (!storageKey || trackingStorageKey !== storageKey) return;
 
     void refreshDepositStatus();
     const interval = setInterval(() => {
@@ -266,7 +321,7 @@ export function DepositModal({
     }, DEPOSIT_POLL_MS);
 
     return () => clearInterval(interval);
-  }, [isOpen, refreshDepositStatus, trackedDeposit]);
+  }, [isOpen, refreshDepositStatus, storageKey, trackedDeposit, trackingStorageKey]);
 
   const handleCopy = async (chain: string, address: string) => {
     await Clipboard.setStringAsync(address);
@@ -297,6 +352,7 @@ export function DepositModal({
       hasStatusSnapshot: existingTransactions.ok,
       startedAt,
     });
+    setTrackingStorageKey(storageKey);
     setStatusView({
       label: 'Waiting for deposit',
       detail: 'Send funds to the copied address. We will keep checking while this is open.',

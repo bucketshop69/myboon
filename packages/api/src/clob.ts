@@ -23,6 +23,18 @@ import { RelayClient, TransactionType } from '@polymarket/builder-relayer-client
 import type { DepositWalletCall, Transaction } from '@polymarket/builder-relayer-client'
 import { BuilderConfig as RelayerBuilderConfig } from '@polymarket/builder-signing-sdk'
 import { encodeFunctionData, maxUint256 } from 'viem'
+import {
+  cancelStatusFromProviderPayload,
+  createOperationId,
+  findStoredOperation,
+  getStoredOperation,
+  storeOperation,
+  type OperationStoreLookup,
+  type PredictOperation,
+  type PredictOperationEnvelope,
+  type PredictOperationIdentifiers,
+  type PredictOperationStatus,
+} from './polymarket/lifecycle.js'
 
 // V2 is live on production URL after April 28 cutover
 const CLOB_HOST = process.env.CLOB_HOST || 'https://clob.polymarket.com'
@@ -242,63 +254,12 @@ const sessions = new Map<string, ClobSession>()
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 
-type PredictOperation =
-  | 'predict_setup'
-  | 'buy'
-  | 'sell'
-  | 'cancel'
-  | 'redeem'
-  | 'withdraw'
-  | 'deposit'
-  | 'wrap'
-  | 'predict_session'
-
-type PredictOperationStatus =
-  | 'submitted'
-  | 'waiting_to_match'
-  | 'filled'
-  | 'not_filled'
-  | 'cancel_requested'
-  | 'cancelled'
-  | 'collecting'
-  | 'bridging'
-  | 'completed'
-  | 'failed'
-  | 'session_expired'
-
-type PredictOperationIdentifiers = {
-  orderId?: string
-  tokenId?: string
-  conditionId?: string
-  txHash?: string
-  bridgeAddress?: string
-  relayerTransactionId?: string
-  tradingAddress?: string
-  depositWalletAddress?: string
-}
-
-type PredictOperationEnvelope = {
-  ok: boolean
-  operationId: string
-  operation: PredictOperation
-  status: PredictOperationStatus
-  userMessage: string
-  identifiers?: PredictOperationIdentifiers
-  retry?: { canRetry: boolean; retryAfterMs?: number; pollAfterMs?: number }
-  lifecycleError?: { code: string; detailsId?: string }
-}
-
-function createOperationId(operation: PredictOperation) {
-  const suffix = Math.random().toString(36).slice(2, 8)
-  return `op_${operation}_${Date.now()}_${suffix}`
-}
-
 function withOperation<T extends Record<string, unknown>>(
   payload: T,
-  args: Omit<PredictOperationEnvelope, 'operationId'> & { operationId?: string },
+  args: Omit<PredictOperationEnvelope, 'operationId'> & { operationId?: string; rawProviderPayload?: unknown },
 ): T & PredictOperationEnvelope {
   const operationId = args.operationId ?? createOperationId(args.operation)
-  return {
+  const envelope = {
     ...payload,
     ok: args.ok,
     operationId,
@@ -309,6 +270,7 @@ function withOperation<T extends Record<string, unknown>>(
     ...(args.retry ? { retry: args.retry } : {}),
     ...(args.lifecycleError ? { lifecycleError: { ...args.lifecycleError, detailsId: args.lifecycleError.detailsId ?? operationId } } : {}),
   }
+  return storeOperation(envelope, args.rawProviderPayload) as T & PredictOperationEnvelope
 }
 
 function sessionExpired(operation: PredictOperation = 'predict_session') {
@@ -328,6 +290,13 @@ function sessionExpired(operation: PredictOperation = 'predict_session') {
 function orderIdFromResult(result: any): string | undefined {
   const id = result?.orderID ?? result?.orderId ?? result?.id
   return typeof id === 'string' ? id : undefined
+}
+
+function safeOrderPayload(result: any) {
+  const orderId = orderIdFromResult(result)
+  return {
+    ...(orderId ? { orderID: orderId, orderId } : {}),
+  }
 }
 
 function stableErrorCode(operation: PredictOperation, detail: string) {
@@ -433,6 +402,67 @@ async function submitTradingWalletCalls(session: ClobSession, txs: Transaction[]
 export const clobRoutes = new Hono()
 
 console.log('[clob] Routes loaded: /auth, /order, /positions/:polygonAddress, /balance/:polygonAddress, /redeem')
+
+/**
+ * GET /clob/operation/:operationId
+ * Returns the stored, user-safe lifecycle envelope for an operation.
+ */
+clobRoutes.get('/operation/:operationId', async (c) => {
+  const operationId = c.req.param('operationId')
+  const operation = getStoredOperation(operationId)
+  if (!operation) {
+    return c.json({ ok: false, error: 'Operation not found' }, 404)
+  }
+  return c.json(operation)
+})
+
+/**
+ * POST /clob/operations/reconcile
+ * Body: { operationIds?: string[], operations?: [{ operationId?, identifiers? }], identifiers?: {...} }
+ */
+clobRoutes.post('/operations/reconcile', async (c) => {
+  let body: {
+    operationIds?: unknown
+    operations?: unknown
+    identifiers?: PredictOperationIdentifiers
+  }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ ok: false, error: 'Bad request' }, 400)
+  }
+
+  const lookups: OperationStoreLookup[] = []
+  if (Array.isArray(body.operationIds)) {
+    for (const operationId of body.operationIds) {
+      if (typeof operationId === 'string') lookups.push({ operationId })
+    }
+  }
+  if (Array.isArray(body.operations)) {
+    for (const entry of body.operations) {
+      if (!entry || typeof entry !== 'object') continue
+      const item = entry as Record<string, unknown>
+      lookups.push({
+        operationId: typeof item.operationId === 'string' ? item.operationId : undefined,
+        identifiers: item.identifiers && typeof item.identifiers === 'object'
+          ? item.identifiers as PredictOperationIdentifiers
+          : undefined,
+      })
+    }
+  }
+  if (body.identifiers && typeof body.identifiers === 'object') {
+    lookups.push({ identifiers: body.identifiers })
+  }
+
+  const operations = lookups
+    .map((lookup) => ({
+      lookup,
+      operation: findStoredOperation(lookup),
+    }))
+    .filter((result) => result.operation)
+
+  return c.json({ ok: true, operations })
+})
 
 /**
  * POST /clob/auth
@@ -691,7 +721,7 @@ clobRoutes.post('/order', async (c) => {
 
     console.log(`[clob] Deposit-wallet order posted for ${polygonAddress}: ${side}`)
     const orderId = orderIdFromResult(result)
-    const payload = result && typeof result === 'object' ? result : { raw: result }
+    const payload = safeOrderPayload(result)
     return c.json(withOperation(payload, {
       ok: true,
       operation,
@@ -704,6 +734,7 @@ clobRoutes.post('/order', async (c) => {
         tokenId: tokenID,
       },
       retry: isMarketOrder ? undefined : { canRetry: false, pollAfterMs: 5_000 },
+      rawProviderPayload: result,
     }))
   } catch (err: any) {
     console.error('[clob] Deposit-wallet order failed:', err.message || err)
@@ -752,15 +783,19 @@ clobRoutes.delete('/order/:orderId', async (c) => {
   try {
     const client = getClient(session)
     const result = await client.cancelOrder({ orderID: orderId })
-    console.log(`[clob] Order cancelled: ${orderId} for ${polygonAddress}`)
-    return c.json(withOperation({ ...result }, {
-      ok: true,
+    const cancelStatus = cancelStatusFromProviderPayload(result, orderId)
+    console.log(`[clob] Order cancel result ${cancelStatus.status}: ${orderId} for ${polygonAddress}`)
+    const payload = cancelStatus.error ? { error: cancelStatus.error } : {}
+    return c.json(withOperation(payload, {
+      ok: cancelStatus.ok,
       operation: 'cancel',
-      status: 'cancel_requested',
-      userMessage: 'Cancel requested. We will keep this pick visible until Polymarket confirms it.',
+      status: cancelStatus.status,
+      userMessage: cancelStatus.userMessage,
       identifiers: { orderId },
-      retry: { canRetry: false, pollAfterMs: 5_000 },
-    }))
+      retry: cancelStatus.status === 'cancel_requested' ? { canRetry: false, pollAfterMs: 5_000 } : undefined,
+      ...(cancelStatus.ok ? {} : { lifecycleError: { code: 'PREDICT_CANCEL_FAILED' } }),
+      rawProviderPayload: result,
+    }), cancelStatus.ok ? 200 : 400)
   } catch (err: any) {
     console.error('[clob] Cancel failed:', err.message || err)
     return c.json(failedOperation('cancel', 'Cancel failed', err.message), 500)
