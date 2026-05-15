@@ -28,7 +28,7 @@ type MarketHomeApp = {
   id: 'polymarket' | 'pacifica' | 'phoenix';
   name: string;
   icon: MarketAppIcon;
-  route?: '/predict' | '/trade';
+  route?: '/predict' | '/trade' | '/markets/phoenix';
 };
 
 const MARKET_APPS: MarketHomeApp[] = [
@@ -48,6 +48,7 @@ const MARKET_APPS: MarketHomeApp[] = [
     id: 'phoenix',
     name: 'Phoenix',
     icon: { xml: PHOENIX_MARK_SVG, width: 46, height: 50 },
+    route: '/markets/phoenix',
   },
 ];
 
