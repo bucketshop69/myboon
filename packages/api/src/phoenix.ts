@@ -2,9 +2,12 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 
 const PHOENIX_API_BASE = process.env.PHOENIX_API_BASE || 'https://perp-api.phoenix.trade'
+const PHOENIX_WS_URL = process.env.PHOENIX_WS_URL || `${PHOENIX_API_BASE.replace(/^http/i, 'ws').replace(/\/$/, '')}/v1/ws`
 const REQUEST_TIMEOUT_MS = parseEnvInt('PHOENIX_REQUEST_TIMEOUT_MS', 10_000)
 const STATUS_CACHE_TTL_MS = parseEnvInt('PHOENIX_STATUS_CACHE_TTL_MS', 15_000)
 const MARKETS_CACHE_TTL_MS = parseEnvInt('PHOENIX_MARKETS_CACHE_TTL_MS', 60_000)
+const MARKET_STATS_CACHE_TTL_MS = parseEnvInt('PHOENIX_MARKET_STATS_CACHE_TTL_MS', 10_000)
+const MARKET_STATS_TIMEOUT_MS = parseEnvInt('PHOENIX_MARKET_STATS_TIMEOUT_MS', 5_000)
 const CANDLES_CACHE_TTL_MS = parseEnvInt('PHOENIX_CANDLES_CACHE_TTL_MS', 15_000)
 const MAX_CANDLE_LIMIT = parseEnvInt('PHOENIX_MAX_CANDLE_LIMIT', 500)
 
@@ -85,6 +88,18 @@ interface PhoenixCandle {
   externalSource?: unknown
 }
 
+interface PhoenixMarketStats {
+  symbol: string
+  markPrice: number | null
+  midPrice: number | null
+  oraclePrice: number | null
+  fundingRate: number | null
+  openInterest: number | null
+  volume24h: number | null
+  yesterdayPrice: number | null
+  receivedAt: number
+}
+
 interface PhoenixFetchOptions {
   method?: 'GET' | 'POST'
   body?: unknown
@@ -122,7 +137,7 @@ interface NormalizedPhoenixMarket {
   change24h: number | null
   yesterdayPrice: number | null
   iconPath: string | null
-  dataFreshness: 'partial'
+  dataFreshness: 'live' | 'partial'
   dataFreshnessReason: string
   configFetchedAt: string
   precision: {
@@ -158,6 +173,7 @@ interface NormalizedPhoenixMarket {
 
 const statusCache = new Map<string, CacheEntry<PhoenixExchangeSnapshot>>()
 const marketsCache = new Map<string, CacheEntry<PhoenixMarketConfig[]>>()
+const marketStatsCache = new Map<string, CacheEntry<Map<string, PhoenixMarketStats>>>()
 const candlesCache = new Map<string, CacheEntry<unknown[]>>()
 
 function parseEnvInt(name: string, fallback: number): number {
@@ -315,6 +331,117 @@ async function getMarketByVenueSymbol(venueSymbol: string): Promise<{ market: Ph
   const entry = await getRawMarkets()
   const market = entry.data.find((candidate) => normalizeVenueSymbol(asString(candidate.symbol)) === venueSymbol)
   return market ? { market, fetchedAt: entry.fetchedAt } : null
+}
+
+function marketStatsCacheKey(venueSymbols: string[]): string {
+  return [...new Set(venueSymbols)].sort().join(',')
+}
+
+async function getMarketStats(venueSymbols: string[]): Promise<Map<string, PhoenixMarketStats>> {
+  const symbols = [...new Set(venueSymbols.map((symbol) => normalizeVenueSymbol(symbol)).filter((symbol): symbol is string => symbol !== null))]
+  if (symbols.length === 0) return new Map()
+
+  return (await cachedJson(marketStatsCache, marketStatsCacheKey(symbols), MARKET_STATS_CACHE_TTL_MS, () => (
+    fetchMarketStatsViaWebSocket(symbols)
+  ))).data
+}
+
+function fetchMarketStatsViaWebSocket(venueSymbols: string[]): Promise<Map<string, PhoenixMarketStats>> {
+  return new Promise((resolve) => {
+    const expected = new Set(venueSymbols)
+    const stats = new Map<string, PhoenixMarketStats>()
+    let settled = false
+    let ws: WebSocket | null = null
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close()
+      }
+      resolve(stats)
+    }
+
+    const timeout = setTimeout(finish, MARKET_STATS_TIMEOUT_MS)
+
+    try {
+      ws = new WebSocket(PHOENIX_WS_URL)
+      ws.onopen = () => {
+        for (const symbol of expected) {
+          ws?.send(JSON.stringify({
+            type: 'subscribe',
+            subscription: { channel: 'market', symbol },
+          }))
+        }
+      }
+      ws.onmessage = (event: MessageEvent) => {
+        const message = parseMarketStatsMessage(event.data)
+        if (!message || !expected.has(message.symbol)) return
+
+        stats.set(message.symbol, message)
+        if (stats.size >= expected.size) finish()
+      }
+      ws.onerror = finish
+      ws.onclose = finish
+    } catch {
+      finish()
+    }
+  })
+}
+
+function parseMarketStatsMessage(input: unknown): PhoenixMarketStats | null {
+  const raw = typeof input === 'string' ? input : input instanceof Buffer ? input.toString('utf8') : null
+  if (!raw) return null
+
+  const record = asRecord(safeJsonParse(raw))
+  if (!record || record.channel !== 'market') return null
+
+  const symbol = normalizeVenueSymbol(asString(record.symbol))
+  if (!symbol) return null
+
+  return {
+    symbol,
+    markPrice: parseNullableNumber(record.markPx),
+    midPrice: parseNullableNumber(record.midPx),
+    oraclePrice: parseNullableNumber(record.oraclePx),
+    fundingRate: parseNullableNumber(record.funding),
+    openInterest: parseNullableNumber(record.openInterest),
+    volume24h: parseNullableNumber(record.dayNtlVlm),
+    yesterdayPrice: parseNullableNumber(record.prevDayPx),
+    receivedAt: Date.now(),
+  }
+}
+
+function changeFromPrices(markPrice: number | null, yesterdayPrice: number | null): number | null {
+  if (markPrice === null || yesterdayPrice === null || yesterdayPrice <= 0) return null
+  return ((markPrice - yesterdayPrice) / yesterdayPrice) * 100
+}
+
+function notionalOpenInterest(openInterestBase: number | null, markPrice: number | null): number | null {
+  if (openInterestBase === null || markPrice === null) return null
+  return openInterestBase * markPrice
+}
+
+function mergeMarketStats(market: NormalizedPhoenixMarket, stats: PhoenixMarketStats | undefined): NormalizedPhoenixMarket {
+  if (!stats) return market
+
+  const markPrice = stats.markPrice ?? market.markPrice
+  const yesterdayPrice = stats.yesterdayPrice ?? market.yesterdayPrice
+
+  return {
+    ...market,
+    markPrice,
+    midPrice: stats.midPrice ?? market.midPrice,
+    oraclePrice: stats.oraclePrice ?? market.oraclePrice,
+    fundingRate: stats.fundingRate ?? market.fundingRate,
+    openInterest: notionalOpenInterest(stats.openInterest, markPrice) ?? market.openInterest,
+    volume24h: stats.volume24h ?? market.volume24h,
+    change24h: changeFromPrices(markPrice, yesterdayPrice) ?? market.change24h,
+    yesterdayPrice,
+    dataFreshness: 'live',
+    dataFreshnessReason: 'Phoenix WebSocket market channel live stats merged with REST market config.',
+  }
 }
 
 function normalizeMarket(market: PhoenixMarketConfig, fetchedAt: number): NormalizedPhoenixMarket | null {
@@ -569,9 +696,15 @@ phoenixRoutes.get('/status', async (c) => {
 phoenixRoutes.get('/markets', async (c) => {
   try {
     const markets = await getRawMarkets()
+    const stats = await getMarketStats(
+      markets.data
+        .map((market) => normalizeVenueSymbol(asString(market.symbol)))
+        .filter((symbol): symbol is string => symbol !== null),
+    )
     const data = markets.data
       .map((market) => normalizeMarket(market, markets.fetchedAt))
       .filter((market): market is NormalizedPhoenixMarket => market !== null)
+      .map((market) => mergeMarketStats(market, stats.get(market.venueSymbol)))
       .sort((a, b) => a.baseSymbol.localeCompare(b.baseSymbol))
 
     return c.json(data)
@@ -593,7 +726,8 @@ phoenixRoutes.get('/markets/:symbol', async (c) => {
     const market = normalizeMarket(result.market, result.fetchedAt)
     if (!market) return c.json({ error: 'Phoenix market not found' }, 404)
 
-    return c.json(market)
+    const stats = await getMarketStats([market.venueSymbol])
+    return c.json(mergeMarketStats(market, stats.get(market.venueSymbol)))
   } catch (err) {
     console.error(`[api] Phoenix market ${venueSymbol} unavailable:`, err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix market unavailable'), upstreamStatusCode(err))
