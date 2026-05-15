@@ -14,11 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
-import { formatUsdCompact } from '@/lib/format';
 import {
   fetchPhoenixMarkets,
-  formatPhoenixPercent,
-  formatPhoenixPrice,
   type PhoenixMarket,
 } from '@/features/perps/phoenix.api';
 import { semantic, tokens } from '@/theme';
@@ -30,9 +27,6 @@ const MarketRow = memo(function MarketRow({
   market: PhoenixMarket;
   onPress: (symbol: string) => void;
 }) {
-  const change = market.change24h;
-  const isUp = (change ?? 0) >= 0;
-
   return (
     <Pressable
       style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
@@ -44,25 +38,27 @@ const MarketRow = memo(function MarketRow({
         <Text style={styles.tokenFallbackText}>{market.baseSymbol[0] ?? 'P'}</Text>
       </View>
       <View style={styles.symCol}>
-        <Text style={styles.rowSym}>
-          {market.symbol}{' '}
-          <Text style={styles.rowLev}>
-            {market.maxLeverage ? `${market.maxLeverage}x` : '--'}
+        <Text style={styles.rowSym}>{market.symbol}</Text>
+        <View style={styles.rowMetaLine}>
+          <Text style={styles.rowSub} numberOfLines={1}>
+            {market.baseSymbol}/{market.quoteSymbol}
           </Text>
-        </Text>
-        <Text style={styles.rowSub} numberOfLines={1}>
-          {market.tradeable ? 'Active config' : statusLabel(market.status)}
+          <Text style={styles.rowDot}>·</Text>
+          <Text style={styles.rowSub} numberOfLines={1}>
+            {formatFeePair(market)}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.configCol}>
+        <View style={[styles.statusPill, market.tradeable ? styles.statusPillActive : styles.statusPillMuted]}>
+          <Text style={[styles.statusText, market.tradeable ? styles.statusTextActive : styles.statusTextMuted]}>
+            {market.tradeable ? 'Active' : statusLabel(market.status)}
+          </Text>
+        </View>
+        <Text style={styles.leverageText}>
+          {market.maxLeverage ? `${market.maxLeverage}x max` : 'Max --'}
         </Text>
       </View>
-      <Text style={[styles.rowCell, styles.rowPrice]}>
-        {formatPhoenixPrice(market.markPrice)}
-      </Text>
-      <Text style={[styles.rowCell, styles.rowChange, isUp ? styles.textPos : styles.textNeg]}>
-        {formatPhoenixPercent(change)}
-      </Text>
-      <Text style={[styles.rowCell, styles.rowOi]}>
-        {formatUsdCompact(market.openInterest)}
-      </Text>
     </Pressable>
   );
 });
@@ -84,10 +80,6 @@ export function PhoenixMarketListScreen() {
       || market.baseSymbol.toLowerCase().includes(query)
     ));
   }, [markets, searchText]);
-
-  const activeCount = useMemo(() => (
-    markets.filter((market) => market.tradeable).length
-  ), [markets]);
 
   const loadMarkets = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -143,25 +135,9 @@ export function PhoenixMarketListScreen() {
         </View>
       ) : (
         <View style={styles.tableContainer}>
-          <View style={styles.summaryBand}>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.summaryEyebrow}>Phoenix Perps</Text>
-              <Text style={styles.summaryTitle}>Solana perpetual markets</Text>
-              <Text style={styles.summaryText}>
-                Public configs and candles are live. Orders use REST-built Solana transactions with compatible wallets.
-              </Text>
-            </View>
-            <View style={styles.summaryMetrics}>
-              <SummaryMetric label="Markets" value={String(markets.length)} />
-              <SummaryMetric label="Active" value={String(activeCount)} />
-            </View>
-          </View>
-
           <View style={styles.tableHeader}>
             <Text style={[styles.th, styles.thLeft]}>Market</Text>
-            <Text style={[styles.th, styles.thRight]}>Price</Text>
-            <Text style={[styles.th, styles.thRight, styles.thActive]}>24h</Text>
-            <Text style={[styles.th, styles.thRight]}>OI</Text>
+            <Text style={[styles.th, styles.thRight]}>Setup</Text>
           </View>
 
           <FlatList
@@ -209,15 +185,6 @@ export function PhoenixMarketListScreen() {
   );
 }
 
-function SummaryMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.summaryMetric}>
-      <Text style={styles.summaryMetricValue}>{value}</Text>
-      <Text style={styles.summaryMetricLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function EmptyMarketSearch({ searchText }: { searchText: string }) {
   return (
     <View style={styles.emptySearch}>
@@ -235,9 +202,19 @@ function statusLabel(status: string): string {
     .join(' ');
 }
 
-const COL_PRICE = 80;
-const COL_CHANGE = 58;
-const COL_OI = 60;
+function formatFeePair(market: PhoenixMarket): string {
+  const maker = formatFee(market.fees?.makerFee);
+  const taker = formatFee(market.fees?.takerFee);
+  if (!maker && !taker) return 'Fees --';
+  return `M/T ${maker ?? '--'} / ${taker ?? '--'}`;
+}
+
+function formatFee(value: number | null | undefined): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const percentage = value * 100;
+  const fixed = percentage >= 0.1 ? percentage.toFixed(2) : percentage.toFixed(3);
+  return `${fixed.replace(/\.?0+$/, '')}%`;
+}
 
 const styles = StyleSheet.create({
   screen: {
@@ -281,70 +258,6 @@ const styles = StyleSheet.create({
   tableContainer: {
     flex: 1,
   },
-  summaryBand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-    marginHorizontal: tokens.spacing.lg,
-    marginBottom: tokens.spacing.sm,
-    padding: tokens.spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: 'rgba(6,51,67,0.72)',
-  },
-  summaryCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  summaryEyebrow: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: tokens.colors.accent,
-    marginBottom: 5,
-  },
-  summaryTitle: {
-    fontSize: tokens.fontSize.md,
-    fontWeight: '800',
-    color: semantic.text.primary,
-    marginBottom: 5,
-  },
-  summaryText: {
-    fontSize: tokens.fontSize.sm,
-    lineHeight: 17,
-    color: semantic.text.dim,
-  },
-  summaryMetrics: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-  },
-  summaryMetric: {
-    minWidth: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: 8,
-    backgroundColor: 'rgba(1,11,18,0.28)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,250,252,0.08)',
-  },
-  summaryMetricValue: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.md,
-    fontWeight: '900',
-    color: semantic.text.primary,
-  },
-  summaryMetricLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    color: semantic.text.faint,
-    textTransform: 'uppercase',
-    marginTop: 3,
-  },
   tableList: {
     flex: 1,
   },
@@ -371,7 +284,6 @@ const styles = StyleSheet.create({
   },
   thActive: {
     color: tokens.colors.primaryDim,
-    width: COL_CHANGE,
   },
   tableBody: {
     paddingTop: 0,
@@ -413,42 +325,60 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: semantic.text.primary,
   },
-  rowLev: {
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '400',
-    color: semantic.text.faint,
+  rowMetaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 3,
   },
   rowSub: {
-    marginTop: 3,
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xxs,
     color: semantic.text.faint,
   },
-  rowCell: {
+  rowDot: {
     fontFamily: 'monospace',
-    textAlign: 'right',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.faint,
   },
-  rowPrice: {
-    fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
-    color: semantic.text.primary,
-    width: COL_PRICE,
+  configCol: {
+    alignItems: 'flex-end',
+    gap: 5,
+    marginLeft: tokens.spacing.sm,
   },
-  rowChange: {
-    fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
-    width: COL_CHANGE,
+  statusPill: {
+    minWidth: 64,
+    alignItems: 'center',
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  rowOi: {
-    fontSize: tokens.fontSize.xs,
-    color: semantic.text.dim,
-    width: COL_OI,
+  statusPillActive: {
+    borderColor: 'rgba(0,218,175,0.48)',
+    backgroundColor: 'rgba(0,218,175,0.09)',
   },
-  textPos: {
+  statusPillMuted: {
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+  },
+  statusText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  statusTextActive: {
     color: tokens.colors.viridian,
   },
-  textNeg: {
-    color: tokens.colors.vermillion,
+  statusTextMuted: {
+    color: semantic.text.faint,
+  },
+  leverageText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    color: semantic.text.faint,
   },
   searchBar: {
     flexDirection: 'row',
