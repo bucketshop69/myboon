@@ -16,7 +16,6 @@ import { useWallet } from '@/hooks/useWallet';
 import { formatUsdCompact } from '@/lib/format';
 import {
   fetchPhoenixMarket,
-  activatePhoenixInvite,
   formatPhoenixPercent,
   formatPhoenixPrice,
   formatPhoenixRate,
@@ -53,7 +52,9 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   const [amountMode, setAmountMode] = useState<AmountMode>('usd');
   const [amountText, setAmountText] = useState('');
   const [limitPriceText, setLimitPriceText] = useState('');
-  const [accessCode, setAccessCode] = useState('');
+  const [tpslExpanded, setTpslExpanded] = useState(false);
+  const [tpPriceText, setTpPriceText] = useState('');
+  const [slPriceText, setSlPriceText] = useState('');
   const [ticketMessage, setTicketMessage] = useState<string | null>(null);
   const [ticketBusy, setTicketBusy] = useState(false);
 
@@ -134,23 +135,6 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     setLatestPrice(price);
   }, []);
 
-  const handleActivate = useCallback(async () => {
-    if (!wallet.address || !accessCode.trim()) return;
-    setTicketBusy(true);
-    setTicketMessage(null);
-    try {
-      await activatePhoenixInvite({
-        authority: wallet.address,
-        code: accessCode.trim(),
-      });
-      setTicketMessage('Phoenix invite activation submitted.');
-    } catch (err) {
-      setTicketMessage(err instanceof Error ? err.message : 'Phoenix invite activation failed.');
-    } finally {
-      setTicketBusy(false);
-    }
-  }, [wallet.address, accessCode]);
-
   const handleSubmit = useCallback(async () => {
     if (!wallet.address || !market || amountUsdc <= 0 || amountBase <= 0) return;
     setTicketBusy(true);
@@ -217,7 +201,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     }
     if (amountUsdc <= 0) {
       return {
-        label: 'Enter Amount',
+        label: `Hold to ${side === 'long' ? 'Long' : 'Short'}`,
         disabled: true,
         onPress: undefined,
       };
@@ -237,7 +221,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
       };
     }
     return {
-      label: 'Submit Phoenix Order',
+      label: `${orderType === 'limit' ? 'Limit ' : ''}${side === 'long' ? 'Long' : 'Short'} $${amountUsdc.toFixed(0)}`,
       disabled: false,
       onPress: handleSubmit,
     };
@@ -247,6 +231,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     market?.tradeable,
     amountUsdc,
     amountBase,
+    side,
     orderType,
     limitPriceText,
     handleSubmit,
@@ -276,7 +261,13 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
             )}
           </View>
         )}
-        right={<StatusPill status={market?.status ?? 'loading'} tradeable={market?.tradeable ?? false} />}
+        right={(
+          <Pressable onPress={() => router.push('/markets/phoenix/profile')} style={styles.avatarRing}>
+            <View style={styles.avatarInner}>
+              <MaterialIcons name="person" size={12} color={semantic.text.primary} />
+            </View>
+          </Pressable>
+        )}
       />
 
       {loadingMarket ? (
@@ -296,37 +287,30 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
         <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
           <PhoenixPriceChart
             symbol={market.symbol}
-            height={142}
+            height={140}
             onScrub={handleScrub}
             onLatestPrice={handleLatestPrice}
           />
 
           <View style={styles.statsStrip}>
             <StatBox label="Mark" value={formatPhoenixPrice(displayedPrice)} />
-            <StatBox label="Funding" value={formatPhoenixRate(market.fundingRate)} tone={(market.fundingRate ?? 0) >= 0 ? 'pos' : 'neg'} />
+            <StatBox label="Fund/1h" value={formatPhoenixRate(market.fundingRate)} tone={(market.fundingRate ?? 0) >= 0 ? 'pos' : 'neg'} />
             <StatBox label="OI" value={formatUsdCompact(market.openInterest)} />
             <StatBox label="24h Vol" value={formatUsdCompact(market.volume24h)} />
           </View>
 
-          <View style={styles.infoPanel}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>Market Setup</Text>
-              <Text style={styles.panelMeta}>{market.dataFreshness.toUpperCase()}</Text>
+          {!wallet.connected ? (
+            <View style={styles.disconnectedCta}>
+              <MaterialIcons name="lock" size={32} color={semantic.text.dim} />
+              <Text style={styles.disconnectedText}>
+                Connect your wallet to trade {market.baseSymbol} perpetuals
+              </Text>
+              <Pressable style={styles.connectWalletBtn} onPress={() => wallet.connect()}>
+                <Text style={styles.connectWalletText}>Connect Wallet</Text>
+              </Pressable>
             </View>
-            <InfoRow label="Max leverage" value={market.maxLeverage ? `${market.maxLeverage}x` : '--'} />
-            <InfoRow label="Tick size" value={market.tickSize ?? market.precision.tickSize ?? '--'} />
-            <InfoRow label="Fees" value={`${formatFee(market.fees.makerFee)} maker / ${formatFee(market.fees.takerFee)} taker`} />
-            <InfoRow label="Funding interval" value={formatSeconds(market.funding.fundingIntervalSeconds)} />
-            <InfoRow label="Market key" value={shortKey(market.metadata.marketPubkey)} />
-          </View>
-
-          <View style={styles.orderSection}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>Order Ticket</Text>
-              <Text style={styles.panelMeta}>Phoenix</Text>
-            </View>
-
-            <TicketNotice readinessMessage={readiness.message ?? null} status={readiness.status} />
+          ) : (
+            <View style={styles.orderSection}>
 
             <View style={styles.sideToggle}>
               <Pressable
@@ -356,12 +340,12 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
             </View>
 
             {orderType === 'limit' && (
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Limit Price</Text>
-                <View style={styles.inputRow}>
+              <View style={styles.limitPriceSection}>
+                <Text style={styles.amountLabel}>Limit Price (USD)</Text>
+                <View style={styles.limitPriceRow}>
                   <Text style={styles.inputPrefix}>$</Text>
                   <TextInput
-                    style={styles.amountInput}
+                    style={styles.limitPriceInput}
                     value={limitPriceText}
                     onChangeText={(value) => setLimitPriceText(value.replace(/[^0-9.]/g, ''))}
                     keyboardType="decimal-pad"
@@ -372,15 +356,15 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
               </View>
             )}
 
-            <View style={styles.fieldBlock}>
+            <View style={styles.amountSection}>
               <Pressable onPress={() => setAmountMode(amountMode === 'usd' ? 'base' : 'usd')}>
-                <Text style={styles.fieldLabel}>
+                <Text style={styles.amountLabel}>
                   {amountMode === 'usd' ? 'Amount (USDC)' : `Amount (${market.baseSymbol})`}
                   {'  '}
-                  <Text style={styles.fieldHint}>tap to switch</Text>
+                  <Text style={styles.amountToggleHint}>tap to switch</Text>
                 </Text>
               </Pressable>
-              <View style={styles.inputRow}>
+              <View style={styles.amountRow}>
                 {amountMode === 'usd' && <Text style={styles.inputPrefix}>$</Text>}
                 <TextInput
                   style={styles.amountInput}
@@ -401,41 +385,59 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
               )}
             </View>
 
-            <View style={styles.activationPanel}>
-              <View style={styles.activationCopy}>
-                <MaterialIcons name="vpn-key" size={15} color={tokens.colors.accent} />
-                <Text style={styles.activationText}>Access code may be required before a Phoenix trader account exists.</Text>
-              </View>
-              <View style={styles.accessRow}>
-                <TextInput
-                  style={styles.accessInput}
-                  value={accessCode}
-                  onChangeText={setAccessCode}
-                  placeholder="Invite code"
-                  placeholderTextColor={semantic.text.faint}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
-                <Pressable
-                  style={[styles.activateBtn, (!wallet.connected || !wallet.address || !accessCode.trim() || ticketBusy) && styles.disabledBtn]}
-                  disabled={!wallet.connected || !wallet.address || !accessCode.trim() || ticketBusy}
-                  onPress={handleActivate}
-                >
-                  <Text style={styles.activateText}>Activate</Text>
-                </Pressable>
-              </View>
+            <View style={styles.leverageRow}>
+              <Text style={styles.availText}>$-- balance</Text>
+              {readiness.wallet.canSignAndSendTransaction ? (
+                <Text style={styles.leverageText}>Phoenix ready</Text>
+              ) : (
+                <Text style={[styles.leverageText, styles.textNeg]}>TX wallet needed</Text>
+              )}
+              <Text style={styles.availText}>max {market.maxLeverage ?? '--'}x</Text>
             </View>
 
-            <View style={styles.statusGrid}>
-              <StatusRow label="Wallet" value={wallet.connected ? `${wallet.source.toUpperCase()} connected` : 'Not connected'} />
-              <StatusRow label="Transactions" value={readiness.wallet.canSignAndSendTransaction ? 'Can sign and send' : 'Unavailable'} />
-              <StatusRow label="Collateral" value="Deposit not wired in app" />
-            </View>
+            {orderType === 'market' && (
+              <View style={styles.tpslSection}>
+                <Pressable style={styles.tpslHeader} onPress={() => setTpslExpanded(!tpslExpanded)}>
+                  <Text style={styles.tpslHeaderText}>Take Profit / Stop Loss</Text>
+                  <MaterialIcons
+                    name={tpslExpanded ? 'expand-less' : 'expand-more'}
+                    size={18}
+                    color={semantic.text.dim}
+                  />
+                </Pressable>
+                {tpslExpanded && (
+                  <View style={styles.tpslInputRow}>
+                    <View style={styles.tpslField}>
+                      <Text style={styles.tpslFieldLabel}>TP Price</Text>
+                      <TextInput
+                        style={styles.tpslInput}
+                        value={tpPriceText}
+                        onChangeText={(value) => setTpPriceText(value.replace(/[^0-9.]/g, ''))}
+                        placeholder="--"
+                        placeholderTextColor={semantic.text.faint}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={styles.tpslField}>
+                      <Text style={[styles.tpslFieldLabel, styles.textNeg]}>SL Price</Text>
+                      <TextInput
+                        style={[styles.tpslInput, styles.tpslInputSl]}
+                        value={slPriceText}
+                        onChangeText={(value) => setSlPriceText(value.replace(/[^0-9.]/g, ''))}
+                        placeholder="--"
+                        placeholderTextColor={semantic.text.faint}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
 
             <View style={styles.orderSummary}>
               <SummaryItem label="Size" value={amountUsdc > 0 ? `$${amountUsdc.toFixed(0)}` : '--'} sub={amountBase > 0 ? `${amountBase.toFixed(4)} ${market.baseSymbol}` : undefined} />
               <SummaryItem label="Est. Fee" value={estimatedFee > 0 ? `$${estimatedFee.toFixed(3)}` : '--'} />
-              <SummaryItem label="Mode" value={orderType === 'market' ? 'Market' : 'Limit'} align="right" />
+              <SummaryItem label="Liq. Price" value="--" align="right" tone="neg" />
             </View>
 
             <Pressable
@@ -458,20 +460,11 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
               <Text style={styles.ticketMessage}>{ticketMessage}</Text>
             )}
           </View>
+          )}
 
           <View style={{ height: 24 }} />
         </ScrollView>
       ) : null}
-    </View>
-  );
-}
-
-function StatusPill({ status, tradeable }: { status: string; tradeable: boolean }) {
-  return (
-    <View style={[styles.statusPill, tradeable ? styles.statusPillActive : styles.statusPillMuted]}>
-      <Text style={[styles.statusPillText, tradeable ? styles.textPos : styles.statusPillTextMuted]} numberOfLines={1}>
-        {statusLabel(status)}
-      </Text>
     </View>
   );
 }
@@ -483,24 +476,6 @@ function StatBox({ label, value, tone }: { label: string; value: string; tone?: 
       <Text style={[styles.statVal, tone === 'pos' && styles.textPos, tone === 'neg' && styles.textNeg]}>
         {value}
       </Text>
-    </View>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
-    </View>
-  );
-}
-
-function TicketNotice({ readinessMessage, status }: { readinessMessage: string | null; status: string }) {
-  return (
-    <View style={styles.ticketNotice}>
-      <MaterialIcons name={status === 'wallet_unsupported' ? 'error-outline' : 'info-outline'} size={16} color={tokens.colors.accent} />
-      <Text style={styles.ticketNoticeText}>{readinessMessage ?? 'Phoenix execution status unavailable.'}</Text>
     </View>
   );
 }
@@ -518,58 +493,31 @@ function SegmentButton({ label, active, onPress }: { label: string; active: bool
   );
 }
 
-function StatusRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statusRow}>
-      <Text style={styles.statusLabel}>{label}</Text>
-      <Text style={styles.statusValue} numberOfLines={2}>{value}</Text>
-    </View>
-  );
-}
-
 function SummaryItem({
   label,
   value,
   sub,
   align = 'left',
+  tone,
 }: {
   label: string;
   value: string;
   sub?: string;
   align?: 'left' | 'right';
+  tone?: 'pos' | 'neg';
 }) {
   return (
     <View style={[styles.summaryItem, align === 'right' && { alignItems: 'flex-end' }]}>
       <Text style={styles.sumLabel}>{label}</Text>
-      <Text style={styles.sumVal}>{value}</Text>
+      <Text style={[styles.sumVal, tone === 'pos' && styles.textPos, tone === 'neg' && styles.textNeg]}>{value}</Text>
       {sub && <Text style={styles.sumSubVal}>{sub}</Text>}
     </View>
   );
 }
 
-function statusLabel(status: string): string {
-  return status
-    .split('_')
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function shortKey(value: string | null): string {
-  if (!value) return '--';
+function shortKey(value: string): string {
   if (value.length <= 12) return value;
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
-}
-
-function formatFee(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return '--';
-  return `${(value * 100).toFixed(3)}%`;
-}
-
-function formatSeconds(value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) return '--';
-  if (value % 3600 === 0) return `${value / 3600}h`;
-  if (value % 60 === 0) return `${value / 60}m`;
-  return `${value}s`;
 }
 
 function formatBaseQuantity(value: number): string {
@@ -617,31 +565,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 1,
   },
-  statusPill: {
-    minWidth: 72,
-    minHeight: 28,
+  avatarRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: semantic.text.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: tokens.spacing.sm,
   },
-  statusPillActive: {
-    backgroundColor: 'rgba(6,214,160,0.10)',
-    borderColor: 'rgba(6,214,160,0.32)',
-  },
-  statusPillMuted: {
-    backgroundColor: 'rgba(245,250,252,0.05)',
-    borderColor: 'rgba(245,250,252,0.12)',
-  },
-  statusPillText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  statusPillTextMuted: {
-    color: semantic.text.faint,
+  avatarInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: semantic.background.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   centeredState: {
     flex: 1,
@@ -679,294 +620,258 @@ const styles = StyleSheet.create({
   statsStrip: {
     flexDirection: 'row',
     paddingHorizontal: tokens.spacing.lg,
-    paddingVertical: tokens.spacing.md,
-    borderTopWidth: 1,
+    paddingVertical: tokens.spacing.sm,
     borderBottomWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surface,
+    borderBottomColor: semantic.border.muted,
   },
   stat: {
     flex: 1,
+    alignItems: 'center',
+    gap: 2,
   },
   statLabel: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    color: semantic.text.faint,
+    fontSize: tokens.fontSize.xxs - 1,
+    letterSpacing: 1,
     textTransform: 'uppercase',
-    marginBottom: 4,
+    color: semantic.text.faint,
   },
   statVal: {
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.sm,
-    fontWeight: '700',
+    fontWeight: '600',
     color: semantic.text.primary,
   },
-  infoPanel: {
-    margin: tokens.spacing.lg,
-    marginBottom: tokens.spacing.sm,
-    padding: tokens.spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: 'rgba(6,51,67,0.72)',
-  },
-  orderSection: {
-    marginHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.sm,
-    padding: tokens.spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surface,
-  },
-  panelHeader: {
-    flexDirection: 'row',
+  disconnectedCta: {
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: tokens.spacing.md,
-    marginBottom: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.xl,
+    paddingVertical: tokens.spacing.xl,
   },
-  panelTitle: {
-    fontSize: tokens.fontSize.md,
-    fontWeight: '800',
-    color: semantic.text.primary,
-  },
-  panelMeta: {
+  disconnectedText: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    color: semantic.text.faint,
+    fontSize: tokens.fontSize.sm,
+    lineHeight: 18,
+    color: semantic.text.dim,
+    textAlign: 'center',
+  },
+  connectWalletBtn: {
+    backgroundColor: tokens.colors.viridian,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
+    borderRadius: 10,
+  },
+  connectWalletText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '800',
+    color: semantic.background.screen,
     textTransform: 'uppercase',
   },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-    paddingVertical: 9,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(24,90,112,0.54)',
-  },
-  infoLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    color: semantic.text.faint,
-  },
-  infoValue: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '700',
-    color: semantic.text.primary,
-    textAlign: 'right',
-  },
-  ticketNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: tokens.spacing.sm,
-    padding: tokens.spacing.sm,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,209,102,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,209,102,0.18)',
-    marginBottom: tokens.spacing.md,
-  },
-  ticketNoticeText: {
-    flex: 1,
-    fontSize: tokens.fontSize.sm,
-    lineHeight: 17,
-    color: semantic.text.dim,
+  orderSection: {
+    padding: tokens.spacing.lg,
+    gap: 14,
   },
   sideToggle: {
     flexDirection: 'row',
-    backgroundColor: semantic.background.screen,
-    borderRadius: 8,
+    backgroundColor: semantic.background.surfaceRaised,
+    borderRadius: 10,
     padding: 3,
-    marginBottom: tokens.spacing.sm,
+    gap: 3,
   },
   sideBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 6,
+    paddingVertical: 9,
+    borderRadius: 8,
   },
   sideBtnLongActive: {
-    backgroundColor: 'rgba(6,214,160,0.13)',
+    backgroundColor: 'rgba(74,140,111,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.25)',
   },
   sideBtnShortActive: {
-    backgroundColor: 'rgba(239,71,111,0.13)',
+    backgroundColor: 'rgba(217,83,79,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.22)',
   },
   sideBtnText: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
-    fontWeight: '800',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 1.5,
     color: semantic.text.dim,
     textTransform: 'uppercase',
   },
   orderTypeRow: {
     flexDirection: 'row',
-    gap: tokens.spacing.sm,
-    marginBottom: tokens.spacing.md,
+    gap: 6,
   },
   orderTypePill: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: semantic.background.screen,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.xs,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: semantic.border.muted,
   },
   orderTypePillActive: {
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surfaceRaised,
+    borderColor: tokens.colors.primary,
+    backgroundColor: 'rgba(199,183,112,0.10)',
   },
   orderTypePillText: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
+    fontSize: tokens.fontSize.xxs,
     fontWeight: '700',
-    color: semantic.text.faint,
-    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: semantic.text.dim,
   },
   orderTypePillTextActive: {
-    color: semantic.text.primary,
+    color: tokens.colors.primary,
   },
-  fieldBlock: {
-    marginBottom: tokens.spacing.md,
-  },
-  fieldLabel: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    color: semantic.text.faint,
-    marginBottom: tokens.spacing.xs,
-  },
-  fieldHint: {
-    color: semantic.text.accent,
-  },
-  inputRow: {
-    minHeight: 54,
-    flexDirection: 'row',
+  limitPriceSection: {
     alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.screen,
-    paddingHorizontal: tokens.spacing.md,
+    gap: 4,
+  },
+  limitPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  limitPriceInput: {
+    fontFamily: 'monospace',
+    fontSize: 28,
+    fontWeight: '700',
+    color: semantic.text.primary,
+    minWidth: 80,
+    textAlign: 'center',
+    padding: 0,
+  },
+  amountSection: {
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  amountLabel: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: semantic.text.faint,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
   },
   inputPrefix: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.lg,
+    fontSize: 22,
+    fontWeight: '700',
     color: semantic.text.faint,
-    marginRight: tokens.spacing.xs,
   },
   inputSuffix: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.sm,
+    fontSize: 22,
+    fontWeight: '700',
     color: semantic.text.faint,
-    marginLeft: tokens.spacing.sm,
+    marginLeft: 4,
   },
   amountInput: {
-    flex: 1,
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.lg,
+    fontSize: 38,
     fontWeight: '700',
     color: semantic.text.primary,
+    minWidth: 60,
+    textAlign: 'center',
     padding: 0,
   },
+  amountToggleHint: {
+    fontSize: tokens.fontSize.xxs - 2,
+    color: semantic.text.accent,
+    letterSpacing: 0.5,
+    textTransform: 'none',
+  },
   amountSecondary: {
-    marginTop: tokens.spacing.xs,
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xs,
     color: semantic.text.faint,
+    letterSpacing: 0.5,
   },
-  activationPanel: {
-    padding: tokens.spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(245,250,252,0.10)',
-    backgroundColor: 'rgba(7,59,76,0.45)',
-    marginBottom: tokens.spacing.md,
-  },
-  activationCopy: {
+  leverageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.spacing.sm,
-    marginBottom: tokens.spacing.sm,
+    justifyContent: 'space-between',
+    marginTop: 2,
   },
-  activationText: {
-    flex: 1,
+  availText: {
+    fontFamily: 'monospace',
     fontSize: tokens.fontSize.xs,
-    lineHeight: 16,
-    color: semantic.text.dim,
+    color: semantic.text.faint,
+    letterSpacing: 0.5,
   },
-  accessRow: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
+  leverageText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: tokens.colors.viridian,
   },
-  accessInput: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 8,
+  tpslSection: {
     borderWidth: 1,
     borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.screen,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  tpslHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  tpslHeaderText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: semantic.text.dim,
+  },
+  tpslInputRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.md,
+    paddingBottom: tokens.spacing.md,
+  },
+  tpslField: {
+    flex: 1,
+  },
+  tpslFieldLabel: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.faint,
+    marginBottom: 4,
+  },
+  tpslInput: {
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 8,
+    paddingHorizontal: tokens.spacing.sm,
+    paddingVertical: 8,
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.sm,
     color: semantic.text.primary,
   },
-  activateBtn: {
-    minWidth: 86,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    backgroundColor: tokens.colors.accent,
-    paddingHorizontal: tokens.spacing.md,
-  },
-  activateText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '900',
-    color: semantic.background.screen,
-    textTransform: 'uppercase',
-  },
-  disabledBtn: {
-    opacity: 0.48,
-  },
-  statusGrid: {
-    gap: tokens.spacing.xs,
-    marginBottom: tokens.spacing.md,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(24,90,112,0.42)',
-  },
-  statusLabel: {
-    width: 92,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    color: semantic.text.faint,
-    textTransform: 'uppercase',
-  },
-  statusValue: {
-    flex: 1,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    color: semantic.text.dim,
-    textAlign: 'right',
+  tpslInputSl: {
+    borderColor: 'rgba(217,83,79,0.28)',
   },
   orderSummary: {
     flexDirection: 'row',
-    paddingVertical: tokens.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: semantic.border.muted,
+    backgroundColor: semantic.background.surfaceRaised,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    padding: tokens.spacing.md,
   },
   summaryItem: {
     flex: 1,
@@ -991,10 +896,11 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
   },
   submitBtn: {
-    minHeight: 52,
+    paddingVertical: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
   },
   submitLong: {
     backgroundColor: tokens.colors.viridian,
