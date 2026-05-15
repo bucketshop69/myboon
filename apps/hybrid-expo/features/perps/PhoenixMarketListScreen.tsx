@@ -14,8 +14,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
+import { formatUsdCompact } from '@/lib/format';
 import {
   fetchPhoenixMarkets,
+  formatPhoenixPercent,
+  formatPhoenixPrice,
   type PhoenixMarket,
 } from '@/features/perps/phoenix.api';
 import { semantic, tokens } from '@/theme';
@@ -27,6 +30,9 @@ const MarketRow = memo(function MarketRow({
   market: PhoenixMarket;
   onPress: (symbol: string) => void;
 }) {
+  const hasChange = typeof market.change24h === 'number' && Number.isFinite(market.change24h);
+  const isUp = (market.change24h ?? 0) >= 0;
+
   return (
     <Pressable
       style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
@@ -38,27 +44,26 @@ const MarketRow = memo(function MarketRow({
         <Text style={styles.tokenFallbackText}>{market.baseSymbol[0] ?? 'P'}</Text>
       </View>
       <View style={styles.symCol}>
-        <Text style={styles.rowSym}>{market.symbol}</Text>
-        <View style={styles.rowMetaLine}>
-          <Text style={styles.rowSub} numberOfLines={1}>
-            {market.baseSymbol}/{market.quoteSymbol}
+        <Text style={styles.rowSym} numberOfLines={1}>
+          {marketLabel(market)}{' '}
+          <Text style={styles.rowLev}>
+            {market.maxLeverage ? `${market.maxLeverage}×` : '--'}
           </Text>
-          <Text style={styles.rowDot}>·</Text>
-          <Text style={styles.rowSub} numberOfLines={1}>
-            {formatFeePair(market)}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.configCol}>
-        <View style={[styles.statusPill, market.tradeable ? styles.statusPillActive : styles.statusPillMuted]}>
-          <Text style={[styles.statusText, market.tradeable ? styles.statusTextActive : styles.statusTextMuted]}>
-            {market.tradeable ? 'Active' : statusLabel(market.status)}
-          </Text>
-        </View>
-        <Text style={styles.leverageText}>
-          {market.maxLeverage ? `${market.maxLeverage}x max` : 'Max --'}
         </Text>
       </View>
+      <Text style={[styles.rowCell, styles.rowPrice]}>
+        {formatPhoenixPrice(market.markPrice)}
+      </Text>
+      <Text style={[
+        styles.rowCell,
+        styles.rowChange,
+        hasChange ? (isUp ? styles.textPos : styles.textNeg) : styles.textMuted,
+      ]}>
+        {formatPhoenixPercent(market.change24h)}
+      </Text>
+      <Text style={[styles.rowCell, styles.rowOi]}>
+        {formatUsdCompact(market.openInterest)}
+      </Text>
     </Pressable>
   );
 });
@@ -137,7 +142,9 @@ export function PhoenixMarketListScreen() {
         <View style={styles.tableContainer}>
           <View style={styles.tableHeader}>
             <Text style={[styles.th, styles.thLeft]}>Market</Text>
-            <Text style={[styles.th, styles.thRight]}>Setup</Text>
+            <Text style={[styles.th, styles.thRight, styles.thPrice]}>Price</Text>
+            <Text style={[styles.th, styles.thRight, styles.thActive]}>24h</Text>
+            <Text style={[styles.th, styles.thRight, styles.thOi]}>OI</Text>
           </View>
 
           <FlatList
@@ -195,26 +202,13 @@ function EmptyMarketSearch({ searchText }: { searchText: string }) {
   );
 }
 
-function statusLabel(status: string): string {
-  return status
-    .split('_')
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(' ');
+function marketLabel(market: PhoenixMarket): string {
+  return market.baseSymbol || market.venueSymbol || market.symbol.replace(/-PERP$/i, '');
 }
 
-function formatFeePair(market: PhoenixMarket): string {
-  const maker = formatFee(market.fees?.makerFee);
-  const taker = formatFee(market.fees?.takerFee);
-  if (!maker && !taker) return 'Fees --';
-  return `M/T ${maker ?? '--'} / ${taker ?? '--'}`;
-}
-
-function formatFee(value: number | null | undefined): string | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  const percentage = value * 100;
-  const fixed = percentage >= 0.1 ? percentage.toFixed(2) : percentage.toFixed(3);
-  return `${fixed.replace(/\.?0+$/, '')}%`;
-}
+const COL_PRICE = 80;
+const COL_CHANGE = 58;
+const COL_OI = 60;
 
 const styles = StyleSheet.create({
   screen: {
@@ -282,8 +276,15 @@ const styles = StyleSheet.create({
   thRight: {
     textAlign: 'right',
   },
+  thPrice: {
+    width: COL_PRICE,
+  },
   thActive: {
     color: tokens.colors.primaryDim,
+    width: COL_CHANGE,
+  },
+  thOi: {
+    width: COL_OI,
   },
   tableBody: {
     paddingTop: 0,
@@ -317,6 +318,8 @@ const styles = StyleSheet.create({
   },
   symCol: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     minWidth: 0,
   },
   rowSym: {
@@ -324,61 +327,41 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.md,
     fontWeight: '700',
     color: semantic.text.primary,
+    letterSpacing: 0.2,
   },
-  rowMetaLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 3,
-  },
-  rowSub: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
+  rowLev: {
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '400',
     color: semantic.text.faint,
   },
-  rowDot: {
+  rowCell: {
     fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    color: semantic.text.faint,
+    textAlign: 'right',
   },
-  configCol: {
-    alignItems: 'flex-end',
-    gap: 5,
-    marginLeft: tokens.spacing.sm,
+  rowPrice: {
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '600',
+    color: semantic.text.primary,
+    width: COL_PRICE,
   },
-  statusPill: {
-    minWidth: 64,
-    alignItems: 'center',
-    paddingHorizontal: tokens.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
+  rowChange: {
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '600',
+    width: COL_CHANGE,
   },
-  statusPillActive: {
-    borderColor: 'rgba(0,218,175,0.48)',
-    backgroundColor: 'rgba(0,218,175,0.09)',
+  rowOi: {
+    fontSize: tokens.fontSize.xs,
+    color: semantic.text.dim,
+    width: COL_OI,
   },
-  statusPillMuted: {
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.surfaceRaised,
-  },
-  statusText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xxs,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  statusTextActive: {
+  textPos: {
     color: tokens.colors.viridian,
   },
-  statusTextMuted: {
-    color: semantic.text.faint,
+  textNeg: {
+    color: tokens.colors.vermillion,
   },
-  leverageText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '700',
-    color: semantic.text.faint,
+  textMuted: {
+    color: semantic.text.dim,
   },
   searchBar: {
     flexDirection: 'row',
