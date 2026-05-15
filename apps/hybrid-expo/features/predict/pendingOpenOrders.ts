@@ -31,26 +31,57 @@ export function prunePendingOpenOrders(
   fetchedOrders: OpenOrder[],
   positions: PortfolioPosition[],
 ): OpenOrder[] {
+  const pendingIds = new Set(pending.map((order) => order.id).filter(Boolean));
+  const fetchedOrderIds = new Set(fetchedOrders.map((order) => order.id).filter(Boolean));
+  const remoteAssetCounts = new Map<string, number>();
+
+  for (const order of fetchedOrders) {
+    if (pendingIds.has(order.id)) continue;
+    const assetId = order.asset_id?.toLowerCase();
+    if (assetId) remoteAssetCounts.set(assetId, (remoteAssetCounts.get(assetId) ?? 0) + 1);
+  }
+  for (const position of positions) {
+    const assetId = position.asset?.toLowerCase();
+    if (assetId) remoteAssetCounts.set(assetId, (remoteAssetCounts.get(assetId) ?? 0) + 1);
+  }
+
   return pending.filter((order) => {
     const assetId = order.asset_id?.toLowerCase();
     if (!assetId) return false;
-    const fetchedOrder = fetchedOrders.some((candidate) =>
-      candidate.id === order.id || candidate.asset_id?.toLowerCase() === assetId
-    );
-    const fetchedPosition = positions.some((position) => position.asset?.toLowerCase() === assetId);
-    return !fetchedOrder && !fetchedPosition;
+    if (fetchedOrderIds.has(order.id)) return false;
+
+    const remoteCount = remoteAssetCounts.get(assetId) ?? 0;
+    if (remoteCount > 0) {
+      remoteAssetCounts.set(assetId, remoteCount - 1);
+      return false;
+    }
+
+    return true;
   });
 }
 
 export function mergeOpenOrders(pending: OpenOrder[], fetched: OpenOrder[]): OpenOrder[] {
+  const pendingIds = new Set(pending.map((order) => order.id).filter(Boolean));
   const fetchedIds = new Set(fetched.map((order) => order.id));
-  const fetchedAssets = new Set(fetched.map((order) => order.asset_id?.toLowerCase()).filter(Boolean));
-  return [
-    ...pending.filter((order) =>
-      !fetchedIds.has(order.id) && !fetchedAssets.has(order.asset_id?.toLowerCase())
-    ),
-    ...fetched,
-  ];
+  const fetchedAssetCounts = new Map<string, number>();
+  for (const order of fetched) {
+    if (pendingIds.has(order.id)) continue;
+    const assetId = order.asset_id?.toLowerCase();
+    if (assetId) fetchedAssetCounts.set(assetId, (fetchedAssetCounts.get(assetId) ?? 0) + 1);
+  }
+
+  const visiblePending = pending.filter((order) => {
+    if (fetchedIds.has(order.id)) return false;
+    const assetId = order.asset_id?.toLowerCase();
+    const remoteCount = assetId ? fetchedAssetCounts.get(assetId) ?? 0 : 0;
+    if (assetId && remoteCount > 0) {
+      fetchedAssetCounts.set(assetId, remoteCount - 1);
+      return false;
+    }
+    return true;
+  });
+
+  return [...visiblePending, ...fetched];
 }
 
 export interface PendingPredictAction {
@@ -69,10 +100,23 @@ export function reconcilePendingActions(
   pending: PendingPredictAction[],
   remoteItems: PredictActivityItem[],
 ): PendingPredictAction[] {
+  const pendingOrderIds = new Set(pending.map((action) => action.orderId).filter(Boolean));
+  const remoteOrderIds = new Set(remoteItems.map((item) => item.orderId).filter(Boolean));
+  const remoteTokenCounts = new Map<string, number>();
+  for (const item of remoteItems) {
+    if (item.orderId && pendingOrderIds.has(item.orderId)) continue;
+    if (item.tokenId) remoteTokenCounts.set(item.tokenId, (remoteTokenCounts.get(item.tokenId) ?? 0) + 1);
+  }
+
   return pending.filter((action) => {
-    return !remoteItems.some((item) =>
-      item.orderId === action.orderId
-      || (action.tokenId !== null && item.tokenId === action.tokenId)
-    );
+    if (action.orderId && remoteOrderIds.has(action.orderId)) return false;
+    if (action.tokenId !== null) {
+      const remoteCount = remoteTokenCounts.get(action.tokenId) ?? 0;
+      if (remoteCount > 0) {
+        remoteTokenCounts.set(action.tokenId, remoteCount - 1);
+        return false;
+      }
+    }
+    return true;
   });
 }
