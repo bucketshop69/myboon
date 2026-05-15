@@ -49,6 +49,8 @@ export default function RootLayout() {
             <Stack.Screen name="swap" options={{ headerShown: false }} />
             <Stack.Screen name="trade" options={{ headerShown: false }} />
             <Stack.Screen name="trade/[symbol]" options={{ headerShown: false }} />
+            <Stack.Screen name="markets/phoenix" options={{ headerShown: false }} />
+            <Stack.Screen name="markets/phoenix/[symbol]" options={{ headerShown: false }} />
           </Stack>
         </ErrorBoundary>
         <WalletDrawerMount />
