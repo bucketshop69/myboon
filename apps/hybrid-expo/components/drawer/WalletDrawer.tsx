@@ -20,6 +20,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { fetchClobBalance, fetchPortfolio } from '@/features/predict/predict.api';
+import { fetchPhoenixTraderState } from '@/features/perps/phoenix.api';
 import { semantic, tokens } from '@/theme';
 
 const DRAWER_WIDTH = 280;
@@ -48,6 +49,7 @@ export function WalletDrawer() {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const [visible, setVisible] = useState(false);
   const [predictValue, setPredictValue] = useState<string | null>(null);
+  const [phoenixValue, setPhoenixValue] = useState<string | null>(null);
   const walletScopedKey = connected && address ? `${source}:${address}:${poly.polygonAddress ?? ''}:${poly.tradingAddress ?? ''}` : 'disconnected';
   const walletScopedKeyRef = useRef(walletScopedKey);
 
@@ -55,6 +57,7 @@ export function WalletDrawer() {
     if (walletScopedKeyRef.current === walletScopedKey) return;
     walletScopedKeyRef.current = walletScopedKey;
     setPredictValue(null);
+    setPhoenixValue(null);
   }, [walletScopedKey]);
 
   // Fetch predict portfolio value when drawer opens
@@ -74,6 +77,24 @@ export function WalletDrawer() {
       setPredictValue(total > 0 ? `$${total.toFixed(0)}` : '$0');
     });
   }, [isOpen, poly.polygonAddress, poly.tradingAddress, walletScopedKey]);
+
+  useEffect(() => {
+    const requestKey = walletScopedKeyRef.current;
+    if (!isOpen || !address) {
+      setPhoenixValue(null);
+      return;
+    }
+
+    fetchPhoenixTraderState(address)
+      .then((state) => {
+        if (walletScopedKeyRef.current !== requestKey) return;
+        setPhoenixValue(formatProtocolUsd(readPhoenixPortfolioValue(state)));
+      })
+      .catch(() => {
+        if (walletScopedKeyRef.current !== requestKey) return;
+        setPhoenixValue(null);
+      });
+  }, [isOpen, address, walletScopedKey]);
 
   // Email OTP state
   const [emailInput, setEmailInput] = useState('');
@@ -329,6 +350,23 @@ export function WalletDrawer() {
                 <Text style={styles.protocolValue}>$1,204</Text>
                 <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
               </TouchableOpacity>
+
+              {/* Phoenix */}
+              <TouchableOpacity
+                style={styles.protocolCard}
+                activeOpacity={0.7}
+                onPress={() => { close(); router.push('/markets/phoenix/profile'); }}
+              >
+                <View style={[styles.protocolIcon, styles.protocolIconPhoenix]}>
+                  <MaterialIcons name="bolt" size={14} color={tokens.colors.accent} />
+                </View>
+                <View style={styles.protocolInfo}>
+                  <Text style={styles.protocolName}>Phoenix</Text>
+                  <Text style={styles.protocolSub}>Perps · Phoenix</Text>
+                </View>
+                <Text style={styles.protocolValue}>{phoenixValue ?? '--'}</Text>
+                <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.footer}>
@@ -535,6 +573,27 @@ export function WalletDrawer() {
   );
 }
 
+function readPhoenixPortfolioValue(state: unknown): number | null {
+  if (!state || typeof state !== 'object') return null;
+  const traders = (state as { traders?: unknown }).traders;
+  if (!Array.isArray(traders) || traders.length === 0) return null;
+  const trader = traders[0];
+  if (!trader || typeof trader !== 'object') return null;
+  const value = (trader as { portfolioValue?: unknown }).portfolioValue;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return null;
+  return !value.includes('.') && Math.abs(parsed) >= 1_000_000 ? parsed / 1_000_000 : parsed;
+}
+
+function formatProtocolUsd(value: number | null): string | null {
+  if (value === null) return null;
+  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  return `$${value.toFixed(0)}`;
+}
+
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -673,6 +732,9 @@ const styles = StyleSheet.create({
   },
   protocolIconTrade: {
     backgroundColor: 'rgba(199,183,112,0.12)',
+  },
+  protocolIconPhoenix: {
+    backgroundColor: 'rgba(40,169,201,0.12)',
   },
   protocolInfo: {
     flex: 1,

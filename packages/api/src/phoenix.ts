@@ -512,9 +512,9 @@ function upstreamStatusCode(err: unknown): 429 | 502 {
   return 502
 }
 
-function upstreamProxyStatusCode(err: unknown): 400 | 409 | 429 | 502 | 504 {
+function upstreamProxyStatusCode(err: unknown): 400 | 404 | 409 | 429 | 502 | 504 {
   if (err instanceof PhoenixUpstreamError) {
-    if (err.status === 400 || err.status === 409 || err.status === 429 || err.status === 504) {
+    if (err.status === 400 || err.status === 404 || err.status === 409 || err.status === 429 || err.status === 504) {
       return err.status
     }
   }
