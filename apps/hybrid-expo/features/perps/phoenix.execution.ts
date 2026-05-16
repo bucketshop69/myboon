@@ -302,6 +302,16 @@ export async function sendPhoenixBuiltTransaction(input: PhoenixSendBuiltTransac
   throw new Error('Phoenix wallet did not return a transaction signature');
 }
 
+function phoenixBuilderNumber(value: string | undefined): string | number | undefined {
+  if (value === undefined) return undefined;
+
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : value;
+}
+
 function perpsOrderToPhoenixBuilderInput(input: PerpsOrderInput): PhoenixMarketOrderBuilderInput | PhoenixLimitOrderBuilderInput {
   if (input.amountMode === 'notional_usdc') {
     throw new Error('Phoenix order execution requires a base quantity. Convert the USDC amount with the latest price before building.');
@@ -312,7 +322,7 @@ function perpsOrderToPhoenixBuilderInput(input: PerpsOrderInput): PhoenixMarketO
     authority: input.authority,
     symbol: input.symbol,
     side,
-    quantity: input.amount,
+    quantity: phoenixBuilderNumber(input.amount),
     isReduceOnly: input.reduceOnly,
     tpSl: input.tpSl,
     clientOrderId: input.clientOrderId,
@@ -321,7 +331,7 @@ function perpsOrderToPhoenixBuilderInput(input: PerpsOrderInput): PhoenixMarketO
   if (input.orderType === 'limit') {
     return {
       ...base,
-      price: input.limitPrice,
+      price: phoenixBuilderNumber(input.limitPrice),
       isPostOnly: input.postOnly,
     };
   }

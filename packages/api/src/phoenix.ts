@@ -212,6 +212,17 @@ function parseNullableNumber(input: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function parseFiniteJsonNumber(input: unknown): number | null {
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null
+  if (typeof input !== 'string') return null
+
+  const trimmed = input.trim()
+  if (!trimmed) return null
+
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function parseNullableInt(input: unknown): number | null {
   const value = parseNullableNumber(input)
   return value === null ? null : Math.trunc(value)
@@ -614,6 +625,68 @@ function invalidFieldsPayload(fields: string[]) {
   }
 }
 
+function normalizeOrderBuilderBody(body: Record<string, unknown>): { body: Record<string, unknown> } | { response: Response } {
+  const normalized = { ...body }
+  const invalid: string[] = []
+
+  for (const field of ['quantity', 'price']) {
+    if (field in normalized) {
+      const parsed = parseFiniteJsonNumber(normalized[field])
+      if (parsed === null) invalid.push(field)
+      else normalized[field] = parsed
+    }
+  }
+
+  for (const field of ['transferAmount', 'numBaseLots', 'maxPriceInTicks', 'priceInTicks', 'pdaIndex']) {
+    if (field in normalized) {
+      const parsed = parseNonNegativeInteger(normalized[field])
+      if (parsed === null) invalid.push(field)
+      else normalized[field] = parsed
+    }
+  }
+
+  if (invalid.length > 0) return { response: Response.json(invalidFieldsPayload(invalid), { status: 400 }) }
+  return { body: normalized }
+}
+
+function upstreamMessage(err: unknown): string {
+  if (!(err instanceof PhoenixUpstreamError)) return ''
+  const record = asRecord(safeJsonParse(err.upstreamBody))
+  return (typeof record?.error === 'string' ? record.error : err.upstreamBody).trim()
+}
+
+function needsTransferAmountRetry(err: unknown): boolean {
+  return upstreamMessage(err).toLowerCase().includes('transfer_amount must be greater than 0')
+}
+
+async function withAutoTransferAmount(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  if (body.transferAmount !== undefined) return null
+
+  const venueSymbol = normalizeVenueSymbol(asString(body.symbol))
+  const quantity = parseFiniteJsonNumber(body.quantity)
+  if (!venueSymbol || quantity === null || quantity <= 0) return null
+
+  const market = await getMarketByVenueSymbol(venueSymbol)
+  if (!market) return null
+
+  const normalizedMarket = normalizeMarket(market.market, market.fetchedAt)
+  if (!normalizedMarket?.maxLeverage || normalizedMarket.maxLeverage <= 0) return null
+
+  const limitPrice = parseFiniteJsonNumber(body.price)
+  let referencePrice = limitPrice !== null && limitPrice > 0 ? limitPrice : null
+  if (referencePrice === null) {
+    const stats = await getMarketStats([venueSymbol])
+    referencePrice = stats.get(venueSymbol)?.markPrice ?? null
+  }
+  if (referencePrice === null || referencePrice <= 0) return null
+
+  const transferAmount = Math.ceil((Math.abs(quantity) * referencePrice / normalizedMarket.maxLeverage) * 1_000_000)
+  return {
+    ...body,
+    transferAmount: Math.max(transferAmount, 1_000_000),
+  }
+}
+
 function instructionBuilderResponse(
   action: string,
   endpoint: string,
@@ -815,9 +888,9 @@ function upstreamStatusCode(err: unknown): 429 | 502 {
   return 502
 }
 
-function upstreamProxyStatusCode(err: unknown): 400 | 404 | 409 | 429 | 502 | 504 {
+function upstreamProxyStatusCode(err: unknown): 400 | 404 | 409 | 422 | 429 | 502 | 504 {
   if (err instanceof PhoenixUpstreamError) {
-    if (err.status === 400 || err.status === 404 || err.status === 409 || err.status === 429 || err.status === 504) {
+    if (err.status === 400 || err.status === 404 || err.status === 409 || err.status === 422 || err.status === 429 || err.status === 504) {
       return err.status
     }
   }
@@ -828,8 +901,9 @@ function upstreamErrorPayload(err: unknown, fallback: string) {
   if (err instanceof PhoenixUpstreamError) {
     const upstream = err.upstreamBody ? asRecord(safeJsonParse(err.upstreamBody)) : null
     const upstreamError = upstream?.error
+    const upstreamText = err.upstreamBody.trim()
     return {
-      error: typeof upstreamError === 'string' ? upstreamError : fallback,
+      error: typeof upstreamError === 'string' ? upstreamError : upstreamText || fallback,
       upstreamStatus: err.status,
     }
   }
@@ -1102,11 +1176,25 @@ phoenixRoutes.post('/tx/market-order', async (c) => {
   const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'side'])
   if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
 
+  const normalized = normalizeOrderBuilderBody(parsed.body)
+  if ('response' in normalized) return normalized.response
+
   const endpoint = '/v1/ix/place-isolated-market-order-enhanced'
   try {
-    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: parsed.body })
+    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: normalized.body })
     return c.json(instructionBuilderResponse('place_isolated_market_order', endpoint, raw))
   } catch (err) {
+    if (needsTransferAmountRetry(err)) {
+      try {
+        const retryBody = await withAutoTransferAmount(normalized.body)
+        if (retryBody) {
+          const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: retryBody })
+          return c.json(instructionBuilderResponse('place_isolated_market_order', endpoint, raw))
+        }
+      } catch (retryErr) {
+        err = retryErr
+      }
+    }
     console.error('[api] Phoenix market order builder unavailable:', err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix market order builder unavailable'), upstreamProxyStatusCode(err))
   }
@@ -1120,11 +1208,25 @@ phoenixRoutes.post('/tx/limit-order', async (c) => {
   const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'side'])
   if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
 
+  const normalized = normalizeOrderBuilderBody(parsed.body)
+  if ('response' in normalized) return normalized.response
+
   const endpoint = '/v1/ix/place-isolated-limit-order-enhanced'
   try {
-    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: parsed.body })
+    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: normalized.body })
     return c.json(instructionBuilderResponse('place_isolated_limit_order', endpoint, raw))
   } catch (err) {
+    if (needsTransferAmountRetry(err)) {
+      try {
+        const retryBody = await withAutoTransferAmount(normalized.body)
+        if (retryBody) {
+          const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: retryBody })
+          return c.json(instructionBuilderResponse('place_isolated_limit_order', endpoint, raw))
+        }
+      } catch (retryErr) {
+        err = retryErr
+      }
+    }
     console.error('[api] Phoenix limit order builder unavailable:', err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix limit order builder unavailable'), upstreamProxyStatusCode(err))
   }
