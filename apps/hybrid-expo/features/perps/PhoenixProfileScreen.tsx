@@ -880,6 +880,18 @@ function asString(input: unknown): string | null {
 
 function toNumber(input: unknown): number | null {
   if (typeof input === 'number') return Number.isFinite(input) ? input : null;
+  const record = asRecord(input);
+  if (record) {
+    const ui = toNumber(record.ui);
+    if (ui !== null) return ui;
+
+    const rawValue = toNumber(record.value);
+    const decimals = toNumber(record.decimals);
+    if (rawValue !== null && decimals !== null) {
+      const scaled = rawValue / (10 ** decimals);
+      return Number.isFinite(scaled) ? scaled : null;
+    }
+  }
   if (typeof input !== 'string' || input.trim() === '') return null;
   const parsed = Number.parseFloat(input);
   return Number.isFinite(parsed) ? parsed : null;
@@ -899,7 +911,8 @@ function toUsd(input: unknown): number | null {
 
 function quoteLotsToUsd(input: unknown): number | null {
   const value = toNumber(input);
-  return value === null ? null : value / 1_000_000;
+  if (value === null) return null;
+  return asRecord(input) ? value : value / 1_000_000;
 }
 
 function timestampMs(input: unknown): number {

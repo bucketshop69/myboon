@@ -577,10 +577,30 @@ function readPhoenixPortfolioValue(state: unknown): number | null {
   if (!state || typeof state !== 'object') return null;
   const traders = (state as { traders?: unknown }).traders;
   if (!Array.isArray(traders) || traders.length === 0) return null;
-  const trader = traders[0];
-  if (!trader || typeof trader !== 'object') return null;
-  const value = (trader as { portfolioValue?: unknown }).portfolioValue;
+  const values = traders
+    .map((trader) => {
+      if (!trader || typeof trader !== 'object') return null;
+      return readPhoenixDecimal((trader as { portfolioValue?: unknown }).portfolioValue);
+    })
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function readPhoenixDecimal(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (value && typeof value === 'object') {
+    const record = value as { ui?: unknown; value?: unknown; decimals?: unknown };
+    const ui = readPhoenixDecimal(record.ui);
+    if (ui !== null) return ui;
+
+    const raw = readPhoenixDecimal(record.value);
+    const decimals = readPhoenixDecimal(record.decimals);
+    if (raw !== null && decimals !== null) {
+      const scaled = raw / (10 ** decimals);
+      return Number.isFinite(scaled) ? scaled : null;
+    }
+  }
   if (typeof value !== 'string' || value.trim() === '') return null;
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed)) return null;
