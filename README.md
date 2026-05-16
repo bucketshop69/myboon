@@ -2,14 +2,14 @@
 
 > **A news feed for markets. Take action on everything you read.**
 
-myboon watches prediction markets, on-chain activity, and perps data around the clock — then tells you what's moving and lets you trade it right there. No app-switching, no tab-hopping. You read it, you trade it.
+myboon watches prediction markets, on-chain activity, and perps data around the clock, then turns the movement into a live market feed. Read the signal, open the market, and track the position from one Home canvas.
 
 ---
 
 ## How it works
 
 ```
-Markets move  →  AI picks it up  →  You see it in your feed  →  You trade it
+Markets move  →  myboon explains the signal  →  you act from Markets  →  Wallet tracks the position
 ```
 
 Whale drops $500K on a Polymarket bet. Funding rate spikes on BTC perps. Odds shift on an EPL match. myboon catches it, writes the story, and puts the market one tap away.
@@ -18,14 +18,15 @@ Whale drops $500K on a Polymarket bet. Funding rate spikes on BTC perps. Odds sh
 
 ## The app
 
-| Tab | What you do |
-|-----|-------------|
-| **Feed** | See what's moving — live, auto-updated, 24/7 |
-| **Predict** | Bet on Polymarket — geopolitics, crypto, sports |
-| **Trade** | Trade perps via Pacific |
-| **Swap** | Token swaps via Jupiter *(coming soon)* |
+myboon opens into one scrolling Home canvas, not a row of disconnected tabs.
 
-The Feed is the front door. Everything else is the action you take after reading it.
+| Chapter | What happens |
+|---------|--------------|
+| **Feed** | Read the live narratives and signals moving markets |
+| **Markets** | Act on the signal through prediction markets, perps, and future swap routes |
+| **Wallet** | Track positions, balances, venues, and outcomes in one place |
+
+Feed tells you what matters. Markets lets you act. Wallet shows what you own.
 
 ---
 
@@ -43,7 +44,7 @@ apps/
   web/            Landing page (Next.js 15)
 
 packages/
-  api/            API server (Hono) — Feed + Predict + Trade endpoints
+  api/            API server (Hono) — Feed, markets, wallet/action data
   brain/          AI agents — narrative analyst, publisher, intelligence scoring
   collectors/     Data ingestion — Polymarket, Pacific
   shared/         Shared SDK — PolymarketClient, PacificClient, types
@@ -95,9 +96,9 @@ pnpm --filter @myboon/brain publisher
 
 ## Revenue
 
-- **Predict** — Polymarket builder affiliate %
-- **Trade / Swap** — fee share
-- **Feed API** — x402 micropayments *(post-MVP)*
+- **Prediction market actions** — Polymarket builder affiliate %
+- **Perps / swap routes** — fee share
+- **Feed API / intelligence** — x402 micropayments *(post-MVP)*
 
 ---
 
