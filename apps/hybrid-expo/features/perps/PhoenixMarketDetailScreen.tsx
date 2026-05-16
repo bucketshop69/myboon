@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,15 +16,19 @@ import { AppTopBar } from '@/components/AppTopBar';
 import { useWallet } from '@/hooks/useWallet';
 import { formatUsdCompact } from '@/lib/format';
 import {
+  buildPhoenixMarketOrder,
   fetchPhoenixMarket,
+  fetchPhoenixTraderState,
   formatPhoenixPercent,
   formatPhoenixPrice,
   formatPhoenixRate,
   type PhoenixMarket,
+  type PhoenixTraderState,
 } from '@/features/perps/phoenix.api';
 import {
   getPhoenixExecutionReadiness,
   placePhoenixOrder,
+  sendPhoenixBuiltTransaction,
   type PhoenixExecutionContext,
 } from '@/features/perps/phoenix.execution';
 import { PhoenixPriceChart } from '@/features/perps/PhoenixPriceChart';
@@ -32,6 +37,22 @@ import { semantic, tokens } from '@/theme';
 type Side = 'long' | 'short';
 type OrderType = 'market' | 'limit';
 type AmountMode = 'usd' | 'base';
+
+interface PhoenixPositionRow {
+  id: string;
+  symbol: string;
+  side: Side;
+  size: number;
+  entryPrice: number | null;
+  markPrice: number | null;
+  liquidationPrice: number | null;
+  unrealizedPnl: number | null;
+  notionalUsd: number | null;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
+  traderPdaIndex: number;
+  traderSubaccountIndex: number;
+}
 
 interface PhoenixMarketDetailScreenProps {
   symbol: string;
@@ -57,6 +78,14 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   const [slPriceText, setSlPriceText] = useState('');
   const [ticketMessage, setTicketMessage] = useState<string | null>(null);
   const [ticketBusy, setTicketBusy] = useState(false);
+  const [positions, setPositions] = useState<PhoenixPositionRow[]>([]);
+  const [positionsLoading, setPositionsLoading] = useState(false);
+  const [positionActionMessage, setPositionActionMessage] = useState<string | null>(null);
+  const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
+  const [tpslModalPosition, setTpslModalPosition] = useState<PhoenixPositionRow | null>(null);
+  const [tpslModalTp, setTpslModalTp] = useState('');
+  const [tpslModalSl, setTpslModalSl] = useState('');
+  const [tpslModalMessage, setTpslModalMessage] = useState('');
 
   const phoenixSignAndSendTransaction = useMemo<NonNullable<PhoenixExecutionContext['signAndSendTransaction']> | null>(() => {
     if (typeof wallet.signAndSendTransaction !== 'function') return null;
@@ -110,6 +139,33 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     void loadMarket();
   }, [loadMarket]);
 
+  const loadPositions = useCallback(async () => {
+    if (!wallet.address) {
+      setPositions([]);
+      return;
+    }
+
+    setPositionsLoading(true);
+    try {
+      const state = await fetchPhoenixTraderState(wallet.address);
+      setPositions(normalizePhoenixPositions(state));
+    } catch (err) {
+      setPositions([]);
+      setPositionActionMessage(err instanceof Error ? err.message : 'Phoenix positions unavailable.');
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, [wallet.address]);
+
+  useEffect(() => {
+    if (wallet.connected && wallet.address) {
+      void loadPositions();
+      return;
+    }
+
+    setPositions([]);
+  }, [wallet.connected, wallet.address, loadPositions]);
+
   const amountValue = useMemo(() => {
     const value = Number.parseFloat(amountText);
     return Number.isFinite(value) && value > 0 ? value : 0;
@@ -159,6 +215,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
       }, context);
 
       setTicketMessage(result.error?.message ?? (result.txSignature ? `Submitted: ${shortKey(result.txSignature)}` : 'Phoenix order submitted.'));
+      if (result.status !== 'failed') void loadPositions();
     } catch (err) {
       setTicketMessage(err instanceof Error ? err.message : 'Phoenix order failed.');
     } finally {
@@ -175,7 +232,62 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     limitPriceText,
     readiness.wallet,
     phoenixSignAndSendTransaction,
+    loadPositions,
   ]);
+
+  const handleClosePosition = useCallback(async (position: PhoenixPositionRow) => {
+    if (!wallet.address) {
+      setPositionActionMessage('Connect a Solana wallet before closing a Phoenix position.');
+      return;
+    }
+    if (!wallet.connection || !phoenixSignAndSendTransaction) {
+      setPositionActionMessage('Phoenix close needs a Solana wallet that can sign and send transactions.');
+      return;
+    }
+
+    setClosingPositionId(position.id);
+    setPositionActionMessage(null);
+    try {
+      const builtTransaction = await buildPhoenixMarketOrder({
+        authority: wallet.address,
+        symbol: position.symbol,
+        side: position.side === 'long' ? 'short' : 'long',
+        quantity: formatBaseQuantity(position.size),
+        isReduceOnly: true,
+        pdaIndex: position.traderPdaIndex,
+        traderSubaccountIndex: position.traderSubaccountIndex,
+      });
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
+      });
+
+      setPositionActionMessage(`Close submitted: ${shortKey(signature)}`);
+      void loadPositions();
+    } catch (err) {
+      setPositionActionMessage(err instanceof Error ? err.message : 'Phoenix close failed.');
+    } finally {
+      setClosingPositionId(null);
+    }
+  }, [
+    wallet.address,
+    wallet.connection,
+    phoenixSignAndSendTransaction,
+    loadPositions,
+  ]);
+
+  const openTpslModal = useCallback((position: PhoenixPositionRow) => {
+    setTpslModalPosition(position);
+    setTpslModalTp(position.takeProfitPrice ? String(position.takeProfitPrice) : '');
+    setTpslModalSl(position.stopLossPrice ? String(position.stopLossPrice) : '');
+    setTpslModalMessage('');
+  }, []);
+
+  const handleSetPositionTpsl = useCallback(() => {
+    setTpslModalMessage('Phoenix TP/SL editing from position cards needs the conditional-order builder route before this can submit.');
+  }, []);
 
   const primaryButton = useMemo(() => {
     if (!wallet.connected) {
@@ -238,6 +350,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   ]);
 
   return (
+    <>
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <AppTopBar
         left={(
@@ -459,6 +572,28 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
             {ticketMessage && (
               <Text style={styles.ticketMessage}>{ticketMessage}</Text>
             )}
+
+            <View style={styles.myPositionsSection}>
+              <Text style={styles.myPositionsTitle}>My Positions</Text>
+              {positionsLoading ? (
+                <ActivityIndicator size="small" color={semantic.text.accent} style={{ marginTop: 8 }} />
+              ) : positions.length === 0 ? (
+                <Text style={styles.myPositionsEmpty}>No open positions</Text>
+              ) : (
+                positions.map((position) => (
+                  <PhoenixPositionCard
+                    key={position.id}
+                    position={position}
+                    isClosing={closingPositionId === position.id}
+                    onPressTpsl={() => openTpslModal(position)}
+                    onPressClose={() => void handleClosePosition(position)}
+                  />
+                ))
+              )}
+              {positionActionMessage && (
+                <Text style={styles.positionActionMessage}>{positionActionMessage}</Text>
+              )}
+            </View>
           </View>
           )}
 
@@ -466,6 +601,17 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
         </ScrollView>
       ) : null}
     </View>
+    <PhoenixTpslModal
+      position={tpslModalPosition}
+      tpValue={tpslModalTp}
+      slValue={tpslModalSl}
+      message={tpslModalMessage}
+      onChangeTp={(value) => setTpslModalTp(value.replace(/[^0-9.]/g, ''))}
+      onChangeSl={(value) => setTpslModalSl(value.replace(/[^0-9.]/g, ''))}
+      onClose={() => setTpslModalPosition(null)}
+      onSubmit={handleSetPositionTpsl}
+    />
+    </>
   );
 }
 
@@ -515,6 +661,118 @@ function SummaryItem({
   );
 }
 
+function PhoenixPositionCard({
+  position,
+  isClosing,
+  onPressTpsl,
+  onPressClose,
+}: {
+  position: PhoenixPositionRow;
+  isClosing: boolean;
+  onPressTpsl: () => void;
+  onPressClose: () => void;
+}) {
+  const pnl = position.unrealizedPnl ?? 0;
+  const pnlPositive = pnl >= 0;
+  const hasTpsl = position.takeProfitPrice !== null || position.stopLossPrice !== null;
+
+  return (
+    <View style={styles.posCard}>
+      <View style={styles.posCardTop}>
+        <View style={[styles.posSideBadge, position.side === 'long' ? styles.posSideLong : styles.posSideShort]}>
+          <Text style={[styles.posSideText, position.side === 'long' ? styles.textPos : styles.textNeg]}>
+            {position.side.toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.posSymbol}>{position.symbol}</Text>
+        <Text style={styles.posSize}>{formatBaseQuantity(position.size)}</Text>
+        <Text style={[styles.posPnl, pnlPositive ? styles.textPos : styles.textNeg]}>
+          {formatPhoenixSignedUsd(position.unrealizedPnl)}
+        </Text>
+      </View>
+      <View style={styles.posCardMeta}>
+        <Text style={styles.posMetaText}>Entry {formatPhoenixPrice(position.entryPrice)}</Text>
+        <Text style={styles.posMetaText}>Mark {formatPhoenixPrice(position.markPrice)}</Text>
+        {position.takeProfitPrice !== null && <Text style={[styles.posMetaText, styles.textPos]}>TP {formatPhoenixPrice(position.takeProfitPrice)}</Text>}
+        {position.stopLossPrice !== null && <Text style={[styles.posMetaText, styles.textNeg]}>SL {formatPhoenixPrice(position.stopLossPrice)}</Text>}
+      </View>
+      <View style={styles.posCardActions}>
+        <Pressable style={styles.posActionBtn} onPress={onPressTpsl}>
+          <Text style={styles.posActionBtnText}>{hasTpsl ? 'Edit TP/SL' : 'TP/SL'}</Text>
+        </Pressable>
+        <Pressable style={[styles.posActionBtn, styles.posActionBtnClose]} onPress={onPressClose} disabled={isClosing}>
+          <Text style={[styles.posActionBtnText, styles.textNeg]}>{isClosing ? 'Closing...' : 'Close'}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function PhoenixTpslModal({
+  position,
+  tpValue,
+  slValue,
+  message,
+  onChangeTp,
+  onChangeSl,
+  onClose,
+  onSubmit,
+}: {
+  position: PhoenixPositionRow | null;
+  tpValue: string;
+  slValue: string;
+  message: string;
+  onChangeTp: (value: string) => void;
+  onChangeSl: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Modal visible={position !== null} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={() => {}}>
+          <Text style={styles.modalTitle}>
+            {position?.takeProfitPrice || position?.stopLossPrice ? 'Edit' : 'Set'} TP / SL - {position?.symbol} {position?.side.toUpperCase()}
+          </Text>
+          <View style={styles.tpslInputRow}>
+            <View style={styles.tpslField}>
+              <Text style={styles.tpslFieldLabel}>TP Price</Text>
+              <TextInput
+                style={styles.tpslInput}
+                value={tpValue}
+                onChangeText={onChangeTp}
+                keyboardType="decimal-pad"
+                placeholder="--"
+                placeholderTextColor={semantic.text.faint}
+              />
+            </View>
+            <View style={styles.tpslField}>
+              <Text style={[styles.tpslFieldLabel, styles.textNeg]}>SL Price</Text>
+              <TextInput
+                style={[styles.tpslInput, styles.tpslInputSl]}
+                value={slValue}
+                onChangeText={onChangeSl}
+                keyboardType="decimal-pad"
+                placeholder="--"
+                placeholderTextColor={semantic.text.faint}
+              />
+            </View>
+          </View>
+          {message ? <Text style={styles.tpslModalMsg}>{message}</Text> : null}
+          <View style={styles.modalActionRow}>
+            <Pressable style={styles.modalCancelBtn} onPress={onClose}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.modalConfirmBtn} onPress={onSubmit}>
+              <Text style={styles.modalConfirmText}>Confirm</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function shortKey(value: string): string {
   if (value.length <= 12) return value;
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
@@ -523,6 +781,91 @@ function shortKey(value: string): string {
 function formatBaseQuantity(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0';
   return value.toFixed(8).replace(/\.?0+$/, '');
+}
+
+function normalizePhoenixPositions(state: PhoenixTraderState | null): PhoenixPositionRow[] {
+  const traders = (state?.traders ?? [])
+    .map((item) => (item && typeof item === 'object' ? item as Record<string, unknown> : null))
+    .filter((item): item is Record<string, unknown> => item !== null);
+  const rows: PhoenixPositionRow[] = [];
+
+  traders.forEach((trader, traderIndex) => {
+    const rawPositions = Array.isArray(trader.positions) ? trader.positions : [];
+    const traderPdaIndex = toNumber(trader.traderPdaIndex) ?? traderIndex;
+    const traderSubaccountIndex = toNumber(trader.traderSubaccountIndex) ?? 0;
+    rawPositions.forEach((item, positionIndex) => {
+      const record = item && typeof item === 'object' ? item as Record<string, unknown> : null;
+      if (!record) return;
+
+      const rawSymbol = typeof record.symbol === 'string' ? record.symbol : null;
+      const size = toNumber(record.positionSize) ?? 0;
+      if (!rawSymbol || size === 0) return;
+
+      rows.push({
+        id: `${traderIndex}-${rawSymbol}-${positionIndex}`,
+        symbol: rawSymbol,
+        side: size >= 0 ? 'long' : 'short',
+        size: Math.abs(size),
+        entryPrice: toUsd(record.entryPrice),
+        markPrice: toMarkPrice(record),
+        liquidationPrice: toUsd(record.liquidationPrice),
+        unrealizedPnl: toUsd(record.unrealizedPnl),
+        notionalUsd: toUsd(record.positionValue),
+        takeProfitPrice: toUsd(record.takeProfitPrice),
+        stopLossPrice: toUsd(record.stopLossPrice),
+        traderPdaIndex,
+        traderSubaccountIndex,
+      });
+    });
+  });
+
+  return rows.sort((a, b) => Math.abs(b.notionalUsd ?? 0) - Math.abs(a.notionalUsd ?? 0));
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value && typeof value === 'object' && 'ui' in value) {
+    const parsed = Number((value as { ui?: unknown }).ui);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value && typeof value === 'object' && 'value' in value) {
+    const record = value as { value?: unknown; decimals?: unknown };
+    const raw = typeof record.value === 'number' ? record.value : typeof record.value === 'string' ? Number(record.value) : null;
+    const decimals = typeof record.decimals === 'number' ? record.decimals : 0;
+    if (raw !== null && Number.isFinite(raw)) return raw / 10 ** decimals;
+  }
+  return null;
+}
+
+function toUsd(value: unknown): number | null {
+  const number = toNumber(value);
+  if (number === null) return null;
+  if (
+    ((typeof value === 'string' && !value.includes('.')) || typeof value === 'number')
+    && Math.abs(number) >= 1_000_000
+  ) {
+    return number / 1_000_000;
+  }
+  return number;
+}
+
+function toMarkPrice(record: Record<string, unknown>): number | null {
+  const explicit = toUsd(record.markPrice ?? record.oraclePrice);
+  if (explicit !== null) return explicit;
+  const positionValue = toUsd(record.positionValue);
+  const size = toNumber(record.positionSize);
+  if (positionValue !== null && size !== null && size !== 0) return Math.abs(positionValue / size);
+  return null;
+}
+
+function formatPhoenixSignedUsd(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '--';
+  const sign = value >= 0 ? '+' : '-';
+  return `${sign}${formatPhoenixPrice(Math.abs(value))}`;
 }
 
 const styles = StyleSheet.create({
@@ -925,6 +1268,182 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xs,
     lineHeight: 16,
     color: semantic.text.dim,
+    textAlign: 'center',
+  },
+  myPositionsSection: {
+    gap: 8,
+    marginTop: 4,
+  },
+  myPositionsTitle: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: semantic.text.dim,
+  },
+  myPositionsEmpty: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    color: semantic.text.faint,
+    textAlign: 'center',
+    paddingVertical: tokens.spacing.sm,
+  },
+  positionActionMessage: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  posCard: {
+    backgroundColor: semantic.background.surfaceRaised,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    gap: 6,
+    padding: tokens.spacing.sm,
+  },
+  posCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  posSideBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: tokens.radius.xs,
+  },
+  posSideLong: {
+    backgroundColor: 'rgba(74,140,111,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,140,111,0.25)',
+  },
+  posSideShort: {
+    backgroundColor: 'rgba(217,83,79,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.22)',
+  },
+  posSideText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs - 1,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  posSymbol: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+    color: semantic.text.primary,
+  },
+  posSize: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+  },
+  posPnl: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '700',
+  },
+  posCardMeta: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  posMetaText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+  },
+  posCardActions: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 2,
+  },
+  posActionBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.lift,
+  },
+  posActionBtnClose: {
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.08)',
+  },
+  posActionBtnText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: tokens.colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: tokens.spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: semantic.background.lift,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    padding: tokens.spacing.lg,
+    gap: tokens.spacing.md,
+  },
+  modalTitle: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '700',
+    color: semantic.text.primary,
+    letterSpacing: 0.5,
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
+  modalCancelText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    color: semantic.text.dim,
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: tokens.radius.xs,
+    backgroundColor: tokens.colors.viridian,
+  },
+  modalConfirmText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  tpslModalMsg: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: tokens.colors.vermillion,
     textAlign: 'center',
   },
   textPos: {

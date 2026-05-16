@@ -17,6 +17,7 @@ import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/App
 import { useWallet } from '@/hooks/useWallet';
 import {
   activatePhoenixInvite,
+  buildPhoenixMarketOrder,
   buildPhoenixDeposit,
   buildPhoenixWithdraw,
   fetchPhoenixCollateralHistory,
@@ -44,12 +45,15 @@ interface PhoenixPositionRow {
   side: 'long' | 'short';
   size: number;
   entryPrice: number | null;
+  markPrice: number | null;
   liquidationPrice: number | null;
   unrealizedPnl: number | null;
   notionalUsd: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
   accountLabel: string;
+  traderPdaIndex: number;
+  traderSubaccountIndex: number;
 }
 
 interface PhoenixOrderRow {
@@ -109,6 +113,13 @@ export function PhoenixProfileScreen() {
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
   const [transferMessageTone, setTransferMessageTone] = useState<TransferMessageTone>('info');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [tpslPosition, setTpslPosition] = useState<PhoenixPositionRow | null>(null);
+  const [tpPrice, setTpPrice] = useState('');
+  const [slPrice, setSlPrice] = useState('');
+  const [closePosition, setClosePosition] = useState<PhoenixPositionRow | null>(null);
+  const [closeAmountText, setCloseAmountText] = useState('');
 
   const traders = useMemo(() => normalizeTraders(state), [state]);
   const positions = useMemo(() => normalizePositions(traders), [traders]);
@@ -131,6 +142,19 @@ export function PhoenixProfileScreen() {
       && transferAmountValid
       && !transferBusy,
   );
+
+  const phoenixSignAndSendTransaction = useMemo<PhoenixSignAndSendTransactionFn | null>(() => {
+    if (typeof wallet.signAndSendTransaction !== 'function') return null;
+    return async (transaction) => {
+      const result = await (wallet.signAndSendTransaction as (tx: unknown) => Promise<unknown>)(transaction);
+      if (typeof result === 'string') return result;
+      if (result !== null && typeof result === 'object') {
+        const signature = (result as { signature?: unknown }).signature;
+        if (typeof signature === 'string') return signature;
+      }
+      throw new Error('Phoenix wallet did not return a transaction signature');
+    };
+  }, [wallet.signAndSendTransaction]);
 
   const loadProfile = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (!wallet.address) {
@@ -231,13 +255,6 @@ export function PhoenixProfileScreen() {
   }, [transferBusy]);
 
   const handleTransferSubmit = useCallback(async () => {
-    const signAndSendTransaction: PhoenixSignAndSendTransactionFn | null = typeof wallet.signAndSendTransaction === 'function'
-      ? async (transaction) => {
-        const send = wallet.signAndSendTransaction as PhoenixSignAndSendTransactionFn;
-        return send(transaction);
-      }
-      : null;
-
     if (!transferAction || !wallet.address || !isValidPhoenixTransferAmount(transferAmount)) {
       setTransferMessage('Enter a valid USDC amount.');
       setTransferMessageTone('error');
@@ -248,7 +265,7 @@ export function PhoenixProfileScreen() {
       setTransferMessageTone('error');
       return;
     }
-    if (!signAndSendTransaction) {
+    if (!phoenixSignAndSendTransaction) {
       setTransferMessage('This wallet cannot send Phoenix transactions from the app.');
       setTransferMessageTone('error');
       return;
@@ -266,7 +283,7 @@ export function PhoenixProfileScreen() {
         builtTransaction,
         connection: wallet.connection,
         walletAddress: wallet.address,
-        signAndSendTransaction,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
       });
 
       setTransferMessage(`${transferAction === 'deposit' ? 'Deposit' : 'Withdraw'} submitted: ${shortKey(signature)}`);
@@ -279,7 +296,70 @@ export function PhoenixProfileScreen() {
     } finally {
       setTransferBusy(false);
     }
-  }, [transferAction, transferAmount, wallet.address, wallet.connection, wallet.signAndSendTransaction, loadProfile]);
+  }, [transferAction, transferAmount, wallet.address, wallet.connection, phoenixSignAndSendTransaction, loadProfile]);
+
+  const openTPSLModal = useCallback((position: PhoenixPositionRow) => {
+    setTpslPosition(position);
+    setTpPrice(position.takeProfitPrice ? String(position.takeProfitPrice) : '');
+    setSlPrice(position.stopLossPrice ? String(position.stopLossPrice) : '');
+    setActionMessage('Phoenix TP/SL editing is not wired yet: the app has no set/edit conditional-order transaction builder for positions.');
+  }, []);
+
+  const openCloseModal = useCallback((position: PhoenixPositionRow) => {
+    setClosePosition(position);
+    setCloseAmountText(formatPhoenixQuantity(position.size));
+    setActionMessage(null);
+  }, []);
+
+  const handleClosePosition = useCallback(async () => {
+    if (!closePosition) return;
+
+    const closeAmount = Number.parseFloat(closeAmountText);
+    if (!Number.isFinite(closeAmount) || closeAmount <= 0) {
+      setActionMessage('Enter a valid amount to close.');
+      return;
+    }
+    if (closeAmount > closePosition.size) {
+      setActionMessage('Close amount cannot exceed the open position size.');
+      return;
+    }
+    if (!wallet.address || !wallet.connection) {
+      setActionMessage('Phoenix close requires a connected Solana wallet.');
+      return;
+    }
+    if (!phoenixSignAndSendTransaction) {
+      setActionMessage('This wallet cannot send Phoenix Solana transactions from the app.');
+      return;
+    }
+
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const builtTransaction = await buildPhoenixMarketOrder({
+        authority: wallet.address,
+        symbol: closePosition.symbol,
+        side: closePosition.side === 'long' ? 'short' : 'long',
+        quantity: formatPhoenixQuantity(closeAmount),
+        isReduceOnly: true,
+        pdaIndex: closePosition.traderPdaIndex,
+        traderSubaccountIndex: closePosition.traderSubaccountIndex,
+      });
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
+      });
+      setActionMessage(`Close submitted: ${shortKey(signature)}`);
+      setClosePosition(null);
+      setCloseAmountText('');
+      await loadProfile('refresh');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Phoenix close failed.');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [closePosition, closeAmountText, wallet.address, wallet.connection, phoenixSignAndSendTransaction, loadProfile]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -428,35 +508,66 @@ export function PhoenixProfileScreen() {
                 <View style={styles.tabContent}>
                   {positions.length === 0 ? (
                     <EmptyRows icon="inbox" text="No open Phoenix positions" />
-                  ) : positions.map((position) => (
-                    <Pressable
+                  ) : positions.map((position) => {
+                    const hasTpsl = !!(position.takeProfitPrice || position.stopLossPrice);
+                    return (
+                    <View
                       key={position.id}
                       style={styles.positionCard}
-                      onPress={() => router.push(`/markets/phoenix/${encodeURIComponent(position.symbol)}`)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${position.symbol} market details`}
                     >
-                      <View style={styles.positionLeft}>
-                        <Text style={styles.positionSymbol}>{position.symbol}</Text>
-                        <Text style={[styles.positionSide, position.side === 'long' ? styles.textPos : styles.textNeg]}>
-                          {position.side.toUpperCase()} - {formatBase(position.size)}
-                        </Text>
-                        <Text style={styles.positionMeta}>{position.accountLabel}</Text>
-                        {(position.takeProfitPrice || position.stopLossPrice) && (
-                          <Text style={styles.positionMeta}>
-                            TP {formatPhoenixPrice(position.takeProfitPrice)} - SL {formatPhoenixPrice(position.stopLossPrice)}
+                      <Pressable
+                        style={styles.positionRow}
+                        onPress={() => router.push(`/markets/phoenix/${encodeURIComponent(position.symbol)}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${position.symbol} market details`}
+                      >
+                        <View style={styles.positionLeft}>
+                          <Text style={styles.positionSymbol}>{position.symbol}</Text>
+                          <Text style={[styles.positionSide, position.side === 'long' ? styles.textPos : styles.textNeg]}>
+                            {position.side.toUpperCase()} - {formatBase(position.size)}
                           </Text>
-                        )}
+                          <Text style={styles.positionMeta}>{position.accountLabel}</Text>
+                          {hasTpsl && (
+                            <View style={styles.tpslStack}>
+                              {position.takeProfitPrice && (
+                                <View style={styles.tpslRow}>
+                                  <Text style={styles.tpslLabelTP}>TP</Text>
+                                  <Text style={styles.tpslValueTP}>{formatPhoenixPrice(position.takeProfitPrice)}</Text>
+                                </View>
+                              )}
+                              {position.stopLossPrice && (
+                                <View style={styles.tpslRow}>
+                                  <Text style={styles.tpslLabelSL}>SL</Text>
+                                  <Text style={styles.tpslValueSL}>{formatPhoenixPrice(position.stopLossPrice)}</Text>
+                                </View>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.positionRight}>
+                          <Text style={styles.positionMeta}>Entry {formatPhoenixPrice(position.entryPrice)}</Text>
+                          <Text style={[styles.positionPnl, (position.unrealizedPnl ?? 0) >= 0 ? styles.textPos : styles.textNeg]}>
+                            {formatSignedUsd(position.unrealizedPnl)}
+                          </Text>
+                          <Text style={styles.positionMeta}>Liq {formatPhoenixPrice(position.liquidationPrice)}</Text>
+                        </View>
+                      </Pressable>
+                      <View style={styles.positionActionRow}>
+                        <Pressable style={styles.positionActionBtn} onPress={() => openTPSLModal(position)}>
+                          <MaterialIcons name="flag" size={12} color={tokens.colors.primary} />
+                          <Text style={styles.positionActionText}>{hasTpsl ? 'Edit TP/SL' : 'TP/SL'}</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.positionActionBtn, styles.positionActionBtnClose]}
+                          onPress={() => openCloseModal(position)}
+                          disabled={actionLoading}
+                        >
+                          <MaterialIcons name="close" size={12} color={tokens.colors.vermillion} />
+                          <Text style={[styles.positionActionText, styles.textNeg]}>Close</Text>
+                        </Pressable>
                       </View>
-                      <View style={styles.positionRight}>
-                        <Text style={styles.positionMeta}>Entry {formatPhoenixPrice(position.entryPrice)}</Text>
-                        <Text style={[styles.positionPnl, (position.unrealizedPnl ?? 0) >= 0 ? styles.textPos : styles.textNeg]}>
-                          {formatSignedUsd(position.unrealizedPnl)}
-                        </Text>
-                        <Text style={styles.positionMeta}>Liq {formatPhoenixPrice(position.liquidationPrice)}</Text>
-                      </View>
-                    </Pressable>
-                  ))}
+                    </View>
+                  ); })}
                 </View>
               )}
 
@@ -508,6 +619,12 @@ export function PhoenixProfileScreen() {
                   ))}
                 </View>
               )}
+
+              {actionMessage && (
+                <View style={styles.actionMsgBar}>
+                  <Text style={styles.actionMsgText}>{actionMessage}</Text>
+                </View>
+              )}
             </>
           ) : null}
 
@@ -526,6 +643,125 @@ export function PhoenixProfileScreen() {
         onClose={closeTransfer}
         onSubmit={handleTransferSubmit}
       />
+
+      <Modal visible={tpslPosition !== null} transparent animationType="fade" onRequestClose={() => setTpslPosition(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setTpslPosition(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {tpslPosition?.takeProfitPrice || tpslPosition?.stopLossPrice ? 'Edit' : 'Set'} TP / SL - {tpslPosition?.symbol}
+              </Text>
+              <Pressable onPress={() => setTpslPosition(null)} hitSlop={8}>
+                <MaterialIcons name="close" size={18} color={semantic.text.dim} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalDesc}>
+              Phoenix position TP/SL needs a set/edit conditional-order builder before this can submit.
+            </Text>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>
+                Take Profit {tpslPosition?.side === 'long' ? '(above mark)' : '(below mark)'}
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                value={tpPrice}
+                onChangeText={(value) => setTpPrice(value.replace(/[^0-9.]/g, ''))}
+                placeholder={tpslPosition?.markPrice ? formatPhoenixPrice(tpslPosition.markPrice) : '--'}
+                placeholderTextColor={semantic.text.faint}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>
+                Stop Loss {tpslPosition?.side === 'long' ? '(below mark)' : '(above mark)'}
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                value={slPrice}
+                onChangeText={(value) => setSlPrice(value.replace(/[^0-9.]/g, ''))}
+                placeholder={tpslPosition?.markPrice ? formatPhoenixPrice(tpslPosition.markPrice) : '--'}
+                placeholderTextColor={semantic.text.faint}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            {(tpslPosition?.takeProfitPrice || tpslPosition?.stopLossPrice) && (
+              <Pressable style={[styles.removeTPSLBtn, styles.actionDisabled]} disabled>
+                <MaterialIcons name="delete-outline" size={14} color={tokens.colors.vermillion} />
+                <Text style={styles.removeTPSLText}>Remove All TP/SL</Text>
+              </Pressable>
+            )}
+            {actionMessage && <Text style={styles.modalErrorText}>{actionMessage}</Text>}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setTpslPosition(null)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.modalConfirmBtn, styles.actionDisabled]} disabled>
+                <Text style={styles.modalConfirmText}>Not Wired</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={closePosition !== null} transparent animationType="fade" onRequestClose={() => setClosePosition(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setClosePosition(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Close {closePosition?.symbol} {closePosition?.side.toUpperCase()}
+              </Text>
+              <Pressable onPress={() => setClosePosition(null)} hitSlop={8} disabled={actionLoading}>
+                <MaterialIcons name="close" size={18} color={semantic.text.dim} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalDesc}>
+              Size: {closePosition ? formatBase(closePosition.size) : '--'} - Entry {formatPhoenixPrice(closePosition?.entryPrice ?? null)}
+            </Text>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Amount to Close</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={closeAmountText}
+                onChangeText={(value) => setCloseAmountText(value.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                editable={!actionLoading}
+                selectTextOnFocus
+              />
+              <View style={styles.closeQuickRow}>
+                {([25, 50, 75, 100] as const).map((pct) => (
+                  <Pressable
+                    key={pct}
+                    style={styles.closeQuickPill}
+                    disabled={!closePosition || actionLoading}
+                    onPress={() => {
+                      if (closePosition) setCloseAmountText(formatPhoenixQuantity((closePosition.size * pct) / 100));
+                    }}
+                  >
+                    <Text style={styles.closeQuickPillText}>{pct === 100 ? 'Full' : `${pct}%`}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            {actionMessage && <Text style={styles.modalErrorText}>{actionMessage}</Text>}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setClosePosition(null)} disabled={actionLoading}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, styles.closeConfirmBtn, actionLoading && styles.actionDisabled]}
+                onPress={handleClosePosition}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Close Position</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -735,18 +971,23 @@ function normalizePositions(traders: PhoenixTraderRecord[]): PhoenixPositionRow[
       if (!symbol || size === 0) return;
 
       const accountLabel = traderLabel(trader, traderIndex);
+      const traderPdaIndex = toNumber(trader.traderPdaIndex) ?? traderIndex;
+      const traderSubaccountIndex = toNumber(trader.traderSubaccountIndex) ?? 0;
       rows.push({
         id: `${accountLabel}-${symbol}-${positionIndex}`,
         symbol,
         side: size >= 0 ? 'long' : 'short',
         size: Math.abs(size),
         entryPrice: toUsd(record.entryPrice),
+        markPrice: toUsd(record.markPrice ?? record.oraclePrice),
         liquidationPrice: toUsd(record.liquidationPrice),
         unrealizedPnl: toUsd(record.unrealizedPnl),
         notionalUsd: toUsd(record.positionValue),
         takeProfitPrice: toUsd(record.takeProfitPrice),
         stopLossPrice: toUsd(record.stopLossPrice),
         accountLabel,
+        traderPdaIndex,
+        traderSubaccountIndex,
       });
     });
   });
@@ -982,6 +1223,11 @@ function formatBase(value: number): string {
   if (!Number.isFinite(value)) return '--';
   if (Math.abs(value) >= 1000) return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
   return value.toFixed(4).replace(/\.?0+$/, '');
+}
+
+function formatPhoenixQuantity(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  return value.toFixed(8).replace(/\.?0+$/, '');
 }
 
 function shortKey(value: string | null): string {
@@ -1387,16 +1633,21 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
   },
   positionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-    padding: tokens.spacing.md,
+    gap: tokens.spacing.sm,
     marginBottom: tokens.spacing.sm,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: semantic.border.muted,
     backgroundColor: semantic.background.surface,
+    overflow: 'hidden',
+  },
+  positionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingTop: tokens.spacing.md,
   },
   positionLeft: {
     flex: 1,
@@ -1428,6 +1679,71 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.sm,
     fontWeight: '900',
+  },
+  tpslStack: {
+    marginTop: 7,
+    gap: 4,
+  },
+  tpslRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tpslLabelTP: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: '900',
+    color: tokens.colors.viridian,
+    letterSpacing: 0.8,
+  },
+  tpslValueTP: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.viridian,
+  },
+  tpslLabelSL: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: '900',
+    color: tokens.colors.vermillion,
+    letterSpacing: 0.8,
+  },
+  tpslValueSL: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.vermillion,
+  },
+  positionActionRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: tokens.spacing.md,
+    paddingBottom: tokens.spacing.md,
+  },
+  positionActionBtn: {
+    flex: 1,
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(199,183,112,0.25)',
+    backgroundColor: 'rgba(199,183,112,0.06)',
+  },
+  positionActionBtnClose: {
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.06)',
+  },
+  positionActionText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.primary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   orderCard: {
     flexDirection: 'row',
@@ -1516,6 +1832,128 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     lineHeight: 18,
     color: semantic.text.dim,
+  },
+  modalField: {
+    gap: 5,
+    marginTop: tokens.spacing.md,
+  },
+  modalLabel: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: semantic.text.dim,
+    letterSpacing: 0.8,
+  },
+  modalInput: {
+    minHeight: 40,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: semantic.background.screen,
+    paddingHorizontal: tokens.spacing.md,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.sm,
+    color: semantic.text.primary,
+  },
+  removeTPSLBtn: {
+    marginTop: tokens.spacing.md,
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.06)',
+  },
+  removeTPSLText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.vermillion,
+    letterSpacing: 0.5,
+  },
+  modalErrorText: {
+    marginTop: tokens.spacing.sm,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: tokens.colors.vermillion,
+    textAlign: 'center',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: tokens.spacing.md,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
+  modalCancelText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: semantic.text.dim,
+    textTransform: 'uppercase',
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radius.xs,
+    backgroundColor: tokens.colors.viridian,
+  },
+  closeConfirmBtn: {
+    backgroundColor: tokens.colors.vermillion,
+  },
+  modalConfirmText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  closeQuickRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
+  closeQuickPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+  },
+  closeQuickPillText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs - 1,
+    fontWeight: '800',
+    color: semantic.text.dim,
+  },
+  actionMsgBar: {
+    marginHorizontal: tokens.spacing.lg,
+    marginTop: tokens.spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,209,102,0.18)',
+    backgroundColor: 'rgba(255,209,102,0.08)',
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+  },
+  actionMsgText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    color: semantic.text.dim,
+    textAlign: 'center',
   },
   amountInput: {
     marginTop: tokens.spacing.md,
