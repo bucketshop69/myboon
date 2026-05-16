@@ -34,6 +34,7 @@ import { semantic, tokens } from '@/theme';
 
 type Tab = 'positions' | 'orders' | 'history';
 type TransferAction = 'deposit' | 'withdraw';
+type TransferMessageTone = 'info' | 'success' | 'error';
 
 type PhoenixTraderRecord = Record<string, unknown>;
 
@@ -107,6 +108,7 @@ export function PhoenixProfileScreen() {
   const [transferAmount, setTransferAmount] = useState('');
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const [transferMessageTone, setTransferMessageTone] = useState<TransferMessageTone>('info');
 
   const traders = useMemo(() => normalizeTraders(state), [state]);
   const positions = useMemo(() => normalizePositions(traders), [traders]);
@@ -120,6 +122,15 @@ export function PhoenixProfileScreen() {
   const hasPhoenixProfile = accountChecked && (traders.length > 0 || historyRows.length > 0);
   const noPhoenixProfile = accountChecked && !hasPhoenixProfile;
   const walletUnsupported = wallet.connected && typeof wallet.signAndSendTransaction !== 'function';
+  const transferAmountValid = useMemo(() => isValidPhoenixTransferAmount(transferAmount), [transferAmount]);
+  const transferCanSubmit = Boolean(
+    transferAction
+      && wallet.address
+      && wallet.connection
+      && typeof wallet.signAndSendTransaction === 'function'
+      && transferAmountValid
+      && !transferBusy,
+  );
 
   const loadProfile = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (!wallet.address) {
@@ -202,11 +213,13 @@ export function PhoenixProfileScreen() {
   const openTransfer = useCallback((action: TransferAction) => {
     if (walletUnsupported) {
       setTransferMessage('This wallet cannot send Phoenix transactions from the app.');
+      setTransferMessageTone('error');
       return;
     }
     setTransferAction(action);
     setTransferAmount('');
     setTransferMessage(null);
+    setTransferMessageTone('info');
   }, [walletUnsupported]);
 
   const closeTransfer = useCallback(() => {
@@ -214,10 +227,10 @@ export function PhoenixProfileScreen() {
     setTransferAction(null);
     setTransferAmount('');
     setTransferMessage(null);
+    setTransferMessageTone('info');
   }, [transferBusy]);
 
   const handleTransferSubmit = useCallback(async () => {
-    const amount = Number.parseFloat(transferAmount);
     const signAndSendTransaction: PhoenixSignAndSendTransactionFn | null = typeof wallet.signAndSendTransaction === 'function'
       ? async (transaction) => {
         const send = wallet.signAndSendTransaction as PhoenixSignAndSendTransactionFn;
@@ -225,21 +238,25 @@ export function PhoenixProfileScreen() {
       }
       : null;
 
-    if (!transferAction || !wallet.address || !amount || amount <= 0) {
+    if (!transferAction || !wallet.address || !isValidPhoenixTransferAmount(transferAmount)) {
       setTransferMessage('Enter a valid USDC amount.');
+      setTransferMessageTone('error');
       return;
     }
     if (!wallet.connection) {
       setTransferMessage('Phoenix transaction send requires a Solana connection.');
+      setTransferMessageTone('error');
       return;
     }
     if (!signAndSendTransaction) {
       setTransferMessage('This wallet cannot send Phoenix transactions from the app.');
+      setTransferMessageTone('error');
       return;
     }
 
     setTransferBusy(true);
     setTransferMessage(null);
+    setTransferMessageTone('info');
     try {
       const builtTransaction = transferAction === 'deposit'
         ? await buildPhoenixDeposit({ authority: wallet.address, amount: transferAmount.trim() })
@@ -253,10 +270,12 @@ export function PhoenixProfileScreen() {
       });
 
       setTransferMessage(`${transferAction === 'deposit' ? 'Deposit' : 'Withdraw'} submitted: ${shortKey(signature)}`);
+      setTransferMessageTone('success');
       setTransferAmount('');
       await loadProfile('refresh');
     } catch (err) {
       setTransferMessage(err instanceof Error ? err.message : 'Phoenix transfer failed.');
+      setTransferMessageTone('error');
     } finally {
       setTransferBusy(false);
     }
@@ -500,7 +519,9 @@ export function PhoenixProfileScreen() {
         action={transferAction}
         amount={transferAmount}
         busy={transferBusy}
+        canSubmit={transferCanSubmit}
         message={transferMessage}
+        messageTone={transferMessageTone}
         onAmountChange={setTransferAmount}
         onClose={closeTransfer}
         onSubmit={handleTransferSubmit}
@@ -566,7 +587,9 @@ function PhoenixTransferModal({
   action,
   amount,
   busy,
+  canSubmit,
   message,
+  messageTone,
   onAmountChange,
   onClose,
   onSubmit,
@@ -574,7 +597,9 @@ function PhoenixTransferModal({
   action: TransferAction | null;
   amount: string;
   busy: boolean;
+  canSubmit: boolean;
   message: string | null;
+  messageTone: TransferMessageTone;
   onAmountChange: (value: string) => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -603,10 +628,20 @@ function PhoenixTransferModal({
             editable={!busy}
             autoFocus
           />
-          {message && <Text style={styles.transferMessage}>{message}</Text>}
+          {message && (
+            <Text
+              style={[
+                styles.transferMessage,
+                messageTone === 'success' && styles.transferMessageSuccess,
+                messageTone === 'error' && styles.transferMessageError,
+              ]}
+            >
+              {message}
+            </Text>
+          )}
           <Pressable
-            style={[styles.submitTransferBtn, busy && styles.actionDisabled]}
-            disabled={busy}
+            style={[styles.submitTransferBtn, (!canSubmit || busy) && styles.actionDisabled]}
+            disabled={!canSubmit || busy}
             onPress={onSubmit}
           >
             {busy ? (
@@ -676,6 +711,14 @@ function normalizeTraders(state: PhoenixTraderState | null): PhoenixTraderRecord
   return (state?.traders ?? [])
     .map(asRecord)
     .filter((trader): trader is PhoenixTraderRecord => trader !== null);
+}
+
+function isValidPhoenixTransferAmount(value: string): boolean {
+  const trimmed = value.trim();
+  if (!/^\d+(\.\d{1,6})?$/.test(trimmed)) return false;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0;
 }
 
 function normalizePositions(traders: PhoenixTraderRecord[]): PhoenixPositionRow[] {
@@ -1491,6 +1534,12 @@ const styles = StyleSheet.create({
     marginTop: tokens.spacing.sm,
     fontSize: tokens.fontSize.xs,
     color: semantic.text.dim,
+  },
+  transferMessageSuccess: {
+    color: tokens.colors.viridian,
+  },
+  transferMessageError: {
+    color: tokens.colors.vermillion,
   },
   submitTransferBtn: {
     marginTop: tokens.spacing.md,

@@ -14,6 +14,7 @@ const CANDLES_CACHE_TTL_MS = parseEnvInt('PHOENIX_CANDLES_CACHE_TTL_MS', 15_000)
 const MAX_CANDLE_LIMIT = parseEnvInt('PHOENIX_MAX_CANDLE_LIMIT', 500)
 
 const SUPPORTED_CANDLE_INTERVALS = new Set(['1m', '5m', '15m', '30m', '1h', '4h', '1d'])
+const SOLANA_PUBLIC_KEY_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 
 type CacheEntry<T> = {
   data: T
@@ -726,8 +727,8 @@ function getPhoenixSdkClient(): PhoenixSdkClient {
 
 function parseUsdcAmountAtomic(input: unknown): bigint | null {
   if (typeof input !== 'string' && typeof input !== 'number') return null
-  const text = String(input).trim().replace(/,/g, '')
-  if (!/^\d+(\.\d{0,6})?$/.test(text)) return null
+  const text = String(input).trim()
+  if (!/^\d+(\.\d{1,6})?$/.test(text)) return null
 
   const [whole, fraction = ''] = text.split('.')
   const atomic = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'))
@@ -742,19 +743,60 @@ function parseAtomicAmount(input: unknown): bigint | null {
   return atomic > 0n ? atomic : null
 }
 
+function isBlankInput(input: unknown): boolean {
+  return input === undefined || input === null || (typeof input === 'string' && input.trim() === '')
+}
+
+function isPlausibleSolanaPublicKey(input: string): boolean {
+  return SOLANA_PUBLIC_KEY_PATTERN.test(input.trim())
+}
+
+function invalidPublicKeyPayload(field: string) {
+  return {
+    error: `Invalid ${field}`,
+    code: field === 'authority' ? 'INVALID_AUTHORITY' : `INVALID_${field.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`,
+    field,
+  }
+}
+
 function parseTransferBuilderInput(body: Record<string, unknown>): { input: Record<string, unknown>; response?: Response } {
   const authority = asNonEmptyString(body.authority)
-  const amount = body.amountAtomic === undefined
-    ? parseUsdcAmountAtomic(body.amount ?? body.amountUsdc)
-    : parseAtomicAmount(body.amountAtomic)
-  if (!authority || amount === null) {
+  if (!authority) {
     return {
       input: {},
       response: Response.json({
         error: 'Missing required fields',
         code: 'MISSING_REQUIRED_FIELDS',
-        fields: ['authority', 'amount'],
+        fields: ['authority'],
       }, { status: 400 }),
+    }
+  }
+  if (!isPlausibleSolanaPublicKey(authority)) {
+    return {
+      input: {},
+      response: Response.json(invalidPublicKeyPayload('authority'), { status: 400 }),
+    }
+  }
+
+  const amountSource = body.amountAtomic === undefined ? body.amount ?? body.amountUsdc : body.amountAtomic
+  if (isBlankInput(amountSource)) {
+    return {
+      input: {},
+      response: Response.json({
+        error: 'Missing required fields',
+        code: 'MISSING_REQUIRED_FIELDS',
+        fields: ['amount'],
+      }, { status: 400 }),
+    }
+  }
+
+  const amount = body.amountAtomic === undefined
+    ? parseUsdcAmountAtomic(amountSource)
+    : parseAtomicAmount(amountSource)
+  if (amount === null) {
+    return {
+      input: {},
+      response: Response.json({ error: 'Invalid amount', code: 'INVALID_AMOUNT', field: 'amount' }, { status: 400 }),
     }
   }
 
@@ -764,7 +806,15 @@ function parseTransferBuilderInput(body: Record<string, unknown>): { input: Reco
   }
 
   const feePayer = asNonEmptyString(body.feePayer)
-  if (feePayer) input.feePayer = feePayer
+  if (feePayer) {
+    if (!isPlausibleSolanaPublicKey(feePayer)) {
+      return {
+        input: {},
+        response: Response.json(invalidPublicKeyPayload('feePayer'), { status: 400 }),
+      }
+    }
+    input.feePayer = feePayer
+  }
 
   const traderPdaIndex = body.traderPdaIndex ?? body.pdaIndex
   if (traderPdaIndex !== undefined) {
@@ -790,7 +840,15 @@ function parseTransferBuilderInput(body: Record<string, unknown>): { input: Reco
   }
 
   const permissionAddress = asNonEmptyString(body.permissionAddress)
-  if (permissionAddress) input.permissionAddress = permissionAddress
+  if (permissionAddress) {
+    if (!isPlausibleSolanaPublicKey(permissionAddress)) {
+      return {
+        input: {},
+        response: Response.json(invalidPublicKeyPayload('permissionAddress'), { status: 400 }),
+      }
+    }
+    input.permissionAddress = permissionAddress
+  }
 
   return { input }
 }
