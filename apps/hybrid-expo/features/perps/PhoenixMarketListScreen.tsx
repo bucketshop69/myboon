@@ -79,11 +79,14 @@ export function PhoenixMarketListScreen() {
 
   const filteredMarkets = useMemo(() => {
     const query = searchText.trim().toLowerCase();
-    if (!query) return markets;
-    return markets.filter((market) => (
-      market.symbol.toLowerCase().includes(query)
-      || market.baseSymbol.toLowerCase().includes(query)
-    ));
+    const filtered = query
+      ? markets.filter((market) => (
+        market.symbol.toLowerCase().includes(query)
+        || market.baseSymbol.toLowerCase().includes(query)
+      ))
+      : markets;
+
+    return [...filtered].sort(sortByOpenInterestDesc);
   }, [markets, searchText]);
 
   const loadMarkets = useCallback(async (showLoading = true) => {
@@ -204,6 +207,19 @@ function EmptyMarketSearch({ searchText }: { searchText: string }) {
 
 function marketLabel(market: PhoenixMarket): string {
   return market.baseSymbol || market.venueSymbol || market.symbol.replace(/-PERP$/i, '');
+}
+
+function sortByOpenInterestDesc(a: PhoenixMarket, b: PhoenixMarket): number {
+  const aOi = marketOpenInterest(a);
+  const bOi = marketOpenInterest(b);
+  if (aOi !== bOi) return bOi - aOi;
+  return marketLabel(a).localeCompare(marketLabel(b));
+}
+
+function marketOpenInterest(market: PhoenixMarket): number {
+  return typeof market.openInterest === 'number' && Number.isFinite(market.openInterest)
+    ? market.openInterest
+    : -1;
 }
 
 const COL_PRICE = 80;
