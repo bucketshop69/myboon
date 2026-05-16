@@ -180,9 +180,9 @@ export function TradeListScreen() {
             <View style={styles.tableContainer}>
               <View style={styles.tableHeader}>
                 <Text style={[styles.th, styles.thLeft]}>Market</Text>
-                <Text style={[styles.th, styles.thRight]}>Price</Text>
-                <Text style={[styles.th, styles.thRight, styles.thActive]}>24h ▾</Text>
-                <Text style={[styles.th, styles.thRight]}>OI</Text>
+                <Text style={[styles.th, styles.thRight, styles.thPrice]}>Price</Text>
+                <Text style={[styles.th, styles.thRight, styles.thActive]}>24h</Text>
+                <Text style={[styles.th, styles.thRight, styles.thOi]}>OI</Text>
               </View>
               <FlatList
                 data={filteredMarkets}
@@ -311,9 +311,15 @@ const styles = StyleSheet.create({
   thRight: {
     textAlign: 'right',
   },
+  thPrice: {
+    width: COL_PRICE,
+  },
   thActive: {
     color: tokens.colors.primaryDim,
     width: COL_CHANGE,
+  },
+  thOi: {
+    width: COL_OI,
   },
   tableBody: {
     paddingTop: 0,
