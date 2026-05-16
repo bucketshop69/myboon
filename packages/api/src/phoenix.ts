@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { createPhoenixClient } from '@ellipsis-labs/rise'
+import { OrderFlags, Side, createPhoenixClient } from '@ellipsis-labs/rise'
+import type { Authority, Symbol as PhoenixSymbol } from '@ellipsis-labs/rise'
 
 const PHOENIX_API_BASE = process.env.PHOENIX_API_BASE || 'https://perp-api.phoenix.trade'
 const PHOENIX_WS_URL = process.env.PHOENIX_WS_URL || `${PHOENIX_API_BASE.replace(/^http/i, 'ws').replace(/\/$/, '')}/v1/ws`
 const PHOENIX_RPC_URL = process.env.PHOENIX_RPC_URL || process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'
+const PHOENIX_BUILDER_AUTHORITY = sdkAuthority(process.env.PHOENIX_BUILDER_AUTHORITY || '9R2btPADiQUZ4p7duXJJFxW9jnUeUqafb5Ln6DU8jnwu')
+const PHOENIX_BUILDER_PDA_INDEX = parseEnvIntAllowZero('PHOENIX_BUILDER_PDA_INDEX', 0)
+const PHOENIX_BUILDER_SUBACCOUNT_INDEX = parseEnvIntAllowZero('PHOENIX_BUILDER_SUBACCOUNT_INDEX', 0)
 const REQUEST_TIMEOUT_MS = parseEnvInt('PHOENIX_REQUEST_TIMEOUT_MS', 10_000)
 const STATUS_CACHE_TTL_MS = parseEnvInt('PHOENIX_STATUS_CACHE_TTL_MS', 15_000)
 const MARKETS_CACHE_TTL_MS = parseEnvInt('PHOENIX_MARKETS_CACHE_TTL_MS', 60_000)
@@ -186,6 +190,11 @@ const candlesCache = new Map<string, CacheEntry<unknown[]>>()
 function parseEnvInt(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? '', 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function parseEnvIntAllowZero(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? '', 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 function asRecord(input: unknown): Record<string, unknown> | null {
@@ -626,68 +635,6 @@ function invalidFieldsPayload(fields: string[]) {
   }
 }
 
-function normalizeOrderBuilderBody(body: Record<string, unknown>): { body: Record<string, unknown> } | { response: Response } {
-  const normalized = { ...body }
-  const invalid: string[] = []
-
-  for (const field of ['quantity', 'price']) {
-    if (field in normalized) {
-      const parsed = parseFiniteJsonNumber(normalized[field])
-      if (parsed === null) invalid.push(field)
-      else normalized[field] = parsed
-    }
-  }
-
-  for (const field of ['transferAmount', 'numBaseLots', 'maxPriceInTicks', 'priceInTicks', 'pdaIndex']) {
-    if (field in normalized) {
-      const parsed = parseNonNegativeInteger(normalized[field])
-      if (parsed === null) invalid.push(field)
-      else normalized[field] = parsed
-    }
-  }
-
-  if (invalid.length > 0) return { response: Response.json(invalidFieldsPayload(invalid), { status: 400 }) }
-  return { body: normalized }
-}
-
-function upstreamMessage(err: unknown): string {
-  if (!(err instanceof PhoenixUpstreamError)) return ''
-  const record = asRecord(safeJsonParse(err.upstreamBody))
-  return (typeof record?.error === 'string' ? record.error : err.upstreamBody).trim()
-}
-
-function needsTransferAmountRetry(err: unknown): boolean {
-  return upstreamMessage(err).toLowerCase().includes('transfer_amount must be greater than 0')
-}
-
-async function withAutoTransferAmount(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-  if (body.transferAmount !== undefined) return null
-
-  const venueSymbol = normalizeVenueSymbol(asString(body.symbol))
-  const quantity = parseFiniteJsonNumber(body.quantity)
-  if (!venueSymbol || quantity === null || quantity <= 0) return null
-
-  const market = await getMarketByVenueSymbol(venueSymbol)
-  if (!market) return null
-
-  const normalizedMarket = normalizeMarket(market.market, market.fetchedAt)
-  if (!normalizedMarket?.maxLeverage || normalizedMarket.maxLeverage <= 0) return null
-
-  const limitPrice = parseFiniteJsonNumber(body.price)
-  let referencePrice = limitPrice !== null && limitPrice > 0 ? limitPrice : null
-  if (referencePrice === null) {
-    const stats = await getMarketStats([venueSymbol])
-    referencePrice = stats.get(venueSymbol)?.markPrice ?? null
-  }
-  if (referencePrice === null || referencePrice <= 0) return null
-
-  const transferAmount = Math.ceil((Math.abs(quantity) * referencePrice / normalizedMarket.maxLeverage) * 1_000_000)
-  return {
-    ...body,
-    transferAmount: Math.max(transferAmount, 1_000_000),
-  }
-}
-
 function instructionBuilderResponse(
   action: string,
   endpoint: string,
@@ -718,8 +665,12 @@ function getPhoenixSdkClient(): PhoenixSdkClient {
     phoenixSdkClient = createPhoenixClient({
       apiUrl: PHOENIX_API_BASE,
       rpcUrl: PHOENIX_RPC_URL,
-      ws: false,
-      exchangeMetadata: { stream: false },
+      exchangeMetadata: { stream: true },
+      flight: {
+        builderAuthority: PHOENIX_BUILDER_AUTHORITY,
+        builderPdaIndex: PHOENIX_BUILDER_PDA_INDEX,
+        builderSubaccountIndex: PHOENIX_BUILDER_SUBACCOUNT_INDEX,
+      },
     })
   }
   return phoenixSdkClient
@@ -749,6 +700,14 @@ function isBlankInput(input: unknown): boolean {
 
 function isPlausibleSolanaPublicKey(input: string): boolean {
   return SOLANA_PUBLIC_KEY_PATTERN.test(input.trim())
+}
+
+function sdkAuthority(input: string): Authority {
+  return input as Authority
+}
+
+function sdkSymbol(input: string): PhoenixSymbol {
+  return input as PhoenixSymbol
 }
 
 function invalidPublicKeyPayload(field: string) {
@@ -888,15 +847,27 @@ function serializeSdkInstruction(raw: unknown) {
   }
 }
 
+function sdkInstructionsFromRaw(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw.map(serializeSdkInstruction)
+
+  const rawRecord = asRecord(raw)
+  if (Array.isArray(rawRecord?.instructions)) {
+    return rawRecord.instructions.map(serializeSdkInstruction)
+  }
+  if (rawRecord && (Array.isArray(rawRecord.accounts) || 'programAddress' in rawRecord || 'programId' in rawRecord)) {
+    return [serializeSdkInstruction(raw)]
+  }
+
+  return []
+}
+
 function sdkInstructionBuilderResponse(
   action: string,
   endpoint: string,
   raw: unknown,
 ): PhoenixInstructionBuilderResult {
   const rawRecord = asRecord(raw)
-  const instructions = Array.isArray(rawRecord?.instructions)
-    ? rawRecord.instructions.map(serializeSdkInstruction)
-    : []
+  const instructions = sdkInstructionsFromRaw(raw)
 
   return {
     venueId: 'phoenix',
@@ -909,6 +880,110 @@ function sdkInstructionBuilderResponse(
       named: rawRecord && asRecord(rawRecord.named) ? Object.keys(asRecord(rawRecord.named) ?? {}) : [],
     },
   }
+}
+
+function sdkSideFromInput(input: unknown): Side | null {
+  const normalized = String(input ?? '').trim().toLowerCase()
+  if (normalized === 'long' || normalized === 'bid' || normalized === 'side.bid') return Side.Bid
+  if (normalized === 'short' || normalized === 'ask' || normalized === 'side.ask') return Side.Ask
+  return null
+}
+
+function parseOrderFlag(input: unknown): OrderFlags {
+  return input === true ? OrderFlags.ReduceOnly : OrderFlags.None
+}
+
+function parseOrderBuilderIndexes(body: Record<string, unknown>): {
+  traderPdaIndex: number
+  traderSubaccountIndex: number
+} | { response: Response } {
+  const traderPdaIndexInput = body.traderPdaIndex ?? body.pdaIndex
+  const traderSubaccountIndexInput = body.traderSubaccountIndex ?? body.subaccountIndex
+
+  const traderPdaIndex = traderPdaIndexInput === undefined ? 0 : parseNonNegativeInteger(traderPdaIndexInput)
+  if (traderPdaIndex === null) {
+    return { response: Response.json({ error: 'Invalid traderPdaIndex', code: 'INVALID_PDA_INDEX' }, { status: 400 }) }
+  }
+
+  const traderSubaccountIndex = traderSubaccountIndexInput === undefined ? 0 : parseNonNegativeInteger(traderSubaccountIndexInput)
+  if (traderSubaccountIndex === null) {
+    return { response: Response.json({ error: 'Invalid traderSubaccountIndex', code: 'INVALID_SUBACCOUNT_INDEX' }, { status: 400 }) }
+  }
+
+  return { traderPdaIndex, traderSubaccountIndex }
+}
+
+function parseSdkOrderBuilderBody(body: Record<string, unknown>, kind: 'market' | 'limit'): {
+  authority: Authority
+  positionAuthority?: Authority
+  symbol: PhoenixSymbol
+  side: Side
+  baseUnits: string
+  priceUsd?: string
+  priceLimitUsd?: string | null
+  traderPdaIndex: number
+  traderSubaccountIndex: number
+  orderFlags: OrderFlags
+} | { response: Response } {
+  const authority = asNonEmptyString(body.authority)
+  if (!authority) {
+    return { response: Response.json(missingFieldsPayload(['authority']), { status: 400 }) }
+  }
+  if (!isPlausibleSolanaPublicKey(authority)) {
+    return { response: Response.json(invalidPublicKeyPayload('authority'), { status: 400 }) }
+  }
+
+  const positionAuthority = asNonEmptyString(body.positionAuthority)
+  if (positionAuthority && !isPlausibleSolanaPublicKey(positionAuthority)) {
+    return { response: Response.json(invalidPublicKeyPayload('positionAuthority'), { status: 400 }) }
+  }
+
+  const symbol = normalizeVenueSymbol(asNonEmptyString(body.symbol))
+  if (!symbol) {
+    return { response: Response.json({ error: 'Invalid Phoenix market symbol', code: 'INVALID_MARKET_SYMBOL' }, { status: 400 }) }
+  }
+
+  const side = sdkSideFromInput(body.side)
+  if (side === null) {
+    return { response: Response.json({ error: 'Invalid side', code: 'INVALID_SIDE', field: 'side' }, { status: 400 }) }
+  }
+
+  const quantitySource = body.quantity ?? body.baseUnits ?? body.baseQuantity ?? body.numBaseUnits
+  const quantity = parseFiniteJsonNumber(quantitySource)
+  if (quantity === null || quantity <= 0) {
+    return { response: Response.json({ error: 'Invalid quantity', code: 'INVALID_QUANTITY', field: 'quantity' }, { status: 400 }) }
+  }
+
+  const indexes = parseOrderBuilderIndexes(body)
+  if ('response' in indexes) return indexes
+
+  const orderFlags = parseOrderFlag(body.isReduceOnly ?? body.reduceOnly)
+  const base = {
+    authority: sdkAuthority(authority),
+    positionAuthority: positionAuthority ? sdkAuthority(positionAuthority) : undefined,
+    symbol: sdkSymbol(symbol),
+    side,
+    baseUnits: String(quantity),
+    traderPdaIndex: indexes.traderPdaIndex,
+    traderSubaccountIndex: indexes.traderSubaccountIndex,
+    orderFlags,
+  }
+
+  if (kind === 'limit') {
+    const price = parseFiniteJsonNumber(body.price ?? body.priceUsd)
+    if (price === null || price <= 0) {
+      return { response: Response.json({ error: 'Invalid price', code: 'INVALID_PRICE', field: 'price' }, { status: 400 }) }
+    }
+    return { ...base, priceUsd: String(price) }
+  }
+
+  const priceLimitSource = body.priceLimitUsd ?? body.limitPriceUsd ?? body.price ?? body.maxPriceUsd
+  const priceLimit = isBlankInput(priceLimitSource) ? null : parseFiniteJsonNumber(priceLimitSource)
+  if (priceLimitSource !== undefined && !isBlankInput(priceLimitSource) && (priceLimit === null || priceLimit <= 0)) {
+    return { response: Response.json({ error: 'Invalid priceLimitUsd', code: 'INVALID_PRICE_LIMIT', field: 'priceLimitUsd' }, { status: 400 }) }
+  }
+
+  return { ...base, priceLimitUsd: priceLimit === null ? null : String(priceLimit) }
 }
 
 function normalizeCandle(raw: unknown) {
@@ -1231,28 +1306,30 @@ phoenixRoutes.post('/tx/market-order', async (c) => {
   const parsed = await readJsonRecord(c)
   if ('response' in parsed) return parsed.response
 
-  const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'side'])
-  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+  const builder = parseSdkOrderBuilderBody(parsed.body, 'market')
+  if ('response' in builder) return builder.response
 
-  const normalized = normalizeOrderBuilderBody(parsed.body)
-  if ('response' in normalized) return normalized.response
-
-  const endpoint = '/v1/ix/place-isolated-market-order-enhanced'
+  const endpoint = 'sdk:ixs.buildPlaceMarketOrder'
   try {
-    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: normalized.body })
-    return c.json(instructionBuilderResponse('place_isolated_market_order', endpoint, raw))
+    const client = getPhoenixSdkClient()
+    await client.exchange.ready()
+    const orderPacket = await client.orderPackets.buildMarketOrderPacket({
+      symbol: builder.symbol,
+      side: builder.side,
+      baseUnits: builder.baseUnits,
+      priceLimitUsd: builder.priceLimitUsd,
+      orderFlags: builder.orderFlags,
+    })
+    const raw = await client.ixs.buildPlaceMarketOrder({
+      authority: builder.authority,
+      positionAuthority: builder.positionAuthority,
+      symbol: builder.symbol,
+      orderPacket,
+      traderPdaIndex: builder.traderPdaIndex,
+      traderSubaccountIndex: builder.traderSubaccountIndex,
+    })
+    return c.json(sdkInstructionBuilderResponse('place_market_order', endpoint, raw))
   } catch (err) {
-    if (needsTransferAmountRetry(err)) {
-      try {
-        const retryBody = await withAutoTransferAmount(normalized.body)
-        if (retryBody) {
-          const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: retryBody })
-          return c.json(instructionBuilderResponse('place_isolated_market_order', endpoint, raw))
-        }
-      } catch (retryErr) {
-        err = retryErr
-      }
-    }
     console.error('[api] Phoenix market order builder unavailable:', err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix market order builder unavailable'), upstreamProxyStatusCode(err))
   }
@@ -1263,28 +1340,30 @@ phoenixRoutes.post('/tx/limit-order', async (c) => {
   const parsed = await readJsonRecord(c)
   if ('response' in parsed) return parsed.response
 
-  const missing = missingStringFields(parsed.body, ['authority', 'symbol', 'side'])
-  if (missing.length > 0) return c.json(missingFieldsPayload(missing), 400)
+  const builder = parseSdkOrderBuilderBody(parsed.body, 'limit')
+  if ('response' in builder) return builder.response
 
-  const normalized = normalizeOrderBuilderBody(parsed.body)
-  if ('response' in normalized) return normalized.response
-
-  const endpoint = '/v1/ix/place-isolated-limit-order-enhanced'
+  const endpoint = 'sdk:ixs.buildPlaceLimitOrder'
   try {
-    const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: normalized.body })
-    return c.json(instructionBuilderResponse('place_isolated_limit_order', endpoint, raw))
+    const client = getPhoenixSdkClient()
+    await client.exchange.ready()
+    const orderPacket = await client.orderPackets.buildLimitOrderPacket({
+      symbol: builder.symbol,
+      side: builder.side,
+      priceUsd: builder.priceUsd,
+      baseUnits: builder.baseUnits,
+      orderFlags: builder.orderFlags,
+    })
+    const raw = await client.ixs.buildPlaceLimitOrder({
+      authority: builder.authority,
+      positionAuthority: builder.positionAuthority,
+      symbol: builder.symbol,
+      orderPacket,
+      traderPdaIndex: builder.traderPdaIndex,
+      traderSubaccountIndex: builder.traderSubaccountIndex,
+    })
+    return c.json(sdkInstructionBuilderResponse('place_limit_order', endpoint, raw))
   } catch (err) {
-    if (needsTransferAmountRetry(err)) {
-      try {
-        const retryBody = await withAutoTransferAmount(normalized.body)
-        if (retryBody) {
-          const raw = await phoenixFetchJson<unknown>(endpoint, { method: 'POST', body: retryBody })
-          return c.json(instructionBuilderResponse('place_isolated_limit_order', endpoint, raw))
-        }
-      } catch (retryErr) {
-        err = retryErr
-      }
-    }
     console.error('[api] Phoenix limit order builder unavailable:', err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix limit order builder unavailable'), upstreamProxyStatusCode(err))
   }
