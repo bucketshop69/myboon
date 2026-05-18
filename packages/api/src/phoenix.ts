@@ -1084,13 +1084,15 @@ async function positionConditionalTriggers(
   }
   const tradeSide = positionSide === 'long' ? Side.Ask : Side.Bid
   const buildTrigger = (direction: Direction, priceUsd: string): TriggerOrderParams => {
-    const priceInTicks = priceUsdToTicksWithMarketParams(priceUsd, marketParams)
+    const triggerPrice = priceUsdToTicksWithMarketParams(priceUsd, marketParams)
+    const executionPriceUsd = iocExecutionPriceWithSlippage(priceUsd, tradeSide)
+    const executionPrice = priceUsdToTicksWithMarketParams(executionPriceUsd, marketParams)
     return {
       triggerDirection: direction,
       tradeSide,
       orderKind: StopLossOrderKind.IOC,
-      triggerPrice: priceInTicks,
-      executionPrice: priceInTicks,
+      triggerPrice,
+      executionPrice,
     }
   }
 
@@ -1114,6 +1116,57 @@ async function positionConditionalTriggers(
   }
 
   return { greaterTriggerOrder, lessTriggerOrder }
+}
+
+function iocExecutionPriceWithSlippage(priceUsd: string, tradeSide: Side): string {
+  const price = Number.parseFloat(priceUsd)
+  const buffered = tradeSide === Side.Ask ? price * 0.9 : price * 1.1
+  return buffered.toFixed(8).replace(/\.?0+$/, '')
+}
+
+async function phoenixAccountExists(client: PhoenixSdkClient, address: string): Promise<boolean | null> {
+  if (!client.rpc.available) return null
+
+  try {
+    await client.rpc.accounts.fetchAccount(address as never)
+    return true
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (/not found|does not exist|account does not exist|could not find|404/i.test(message)) {
+      return false
+    }
+    console.warn('[api] Phoenix conditional account existence check failed:', message)
+    return null
+  }
+}
+
+async function buildMissingConditionalOrdersAccountIxs(
+  client: PhoenixSdkClient,
+  builder: {
+    authority: Authority
+    positionAuthority?: Authority
+    traderPdaIndex: number
+    traderSubaccountIndex: number
+  },
+): Promise<unknown[]> {
+  const traderAccount = await client.pda.getTraderAddress({
+    authority: builder.authority,
+    traderPdaIndex: builder.traderPdaIndex,
+    subaccountIndex: builder.traderSubaccountIndex,
+  })
+  const conditionalOrdersAccount = await client.pda.getConditionalOrdersAddress({ traderAccount })
+  const exists = await phoenixAccountExists(client, conditionalOrdersAccount)
+
+  if (exists !== false) return []
+
+  const createIx = await client.ixs.buildCreateConditionalOrdersAccount({
+    authority: builder.authority,
+    positionAuthority: builder.positionAuthority,
+    traderPdaIndex: builder.traderPdaIndex,
+    traderSubaccountIndex: builder.traderSubaccountIndex,
+  })
+
+  return [createIx]
 }
 
 function normalizeCandle(raw: unknown) {
@@ -1538,7 +1591,8 @@ phoenixRoutes.post('/tx/position-conditional-order', async (c) => {
       builder.takeProfitPriceUsd,
       builder.stopLossPriceUsd,
     )
-    const raw = await client.ixs.buildPlacePositionConditionalOrder({
+    const setupIxs = await buildMissingConditionalOrdersAccountIxs(client, builder)
+    const placeIx = await client.ixs.buildPlacePositionConditionalOrder({
       authority: builder.authority,
       positionAuthority: builder.positionAuthority,
       symbol: builder.symbol,
@@ -1548,6 +1602,7 @@ phoenixRoutes.post('/tx/position-conditional-order', async (c) => {
       traderPdaIndex: builder.traderPdaIndex,
       traderSubaccountIndex: builder.traderSubaccountIndex,
     })
+    const raw = setupIxs.length > 0 ? [...setupIxs, placeIx] : placeIx
     return c.json(sdkInstructionBuilderResponse('place_position_conditional_order', endpoint, raw))
   } catch (err) {
     console.error('[api] Phoenix position conditional builder unavailable:', err instanceof Error ? err.message : err)
