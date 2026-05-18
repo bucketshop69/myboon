@@ -395,6 +395,7 @@ function syntheticOrderFromTrigger(
     ?? asString(row.conditionalStopLossId)
     ?? asString(row.orderId)
     ?? `${symbol}-${kind}-${price}`
+  const cancelMeta = conditionalTriggerCancelMeta(row, id)
 
   return {
     orderSequenceNumber: id,
@@ -407,9 +408,28 @@ function syntheticOrderFromTrigger(
     isReduceOnly: true,
     isConditionalOrder: true,
     conditionalOrderKind: kind,
+    conditionalOrderIndex: cancelMeta.conditionalOrderIndex,
+    executionDirection: cancelMeta.executionDirection,
     status: asString(row.status) ?? 'active',
     percent,
     raw: row,
+  }
+}
+
+function conditionalTriggerCancelMeta(
+  row: Record<string, unknown>,
+  id: string,
+): { conditionalOrderIndex: number | null; executionDirection: string | null } {
+  const directIndex = parseNullableInt(row.conditionalOrderIndex ?? row.index)
+  const directDirection = asString(row.executionDirection ?? row.triggerDirection)
+  if (directIndex !== null && directDirection !== null) {
+    return { conditionalOrderIndex: directIndex, executionDirection: directDirection }
+  }
+
+  const match = id.match(/-(\d+)-(gt|lt)$/i)
+  return {
+    conditionalOrderIndex: directIndex ?? (match ? Number.parseInt(match[1], 10) : null),
+    executionDirection: directDirection ?? (match ? match[2].toLowerCase() : null),
   }
 }
 

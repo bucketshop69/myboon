@@ -17,6 +17,7 @@ import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/App
 import { useWallet } from '@/hooks/useWallet';
 import {
   activatePhoenixInvite,
+  buildPhoenixCancelConditionalOrder,
   buildPhoenixMarketOrder,
   buildPhoenixDeposit,
   buildPhoenixPositionConditionalOrder,
@@ -66,7 +67,12 @@ interface PhoenixOrderRow {
   initialSize: number | null;
   reduceOnly: boolean;
   conditional: boolean;
+  conditionalOrderIndex: number | null;
+  executionDirection: string | null;
+  canCancel: boolean;
   accountLabel: string;
+  traderPdaIndex: number;
+  traderSubaccountIndex: number;
 }
 
 interface PhoenixHistoryRow {
@@ -386,6 +392,46 @@ export function PhoenixProfileScreen() {
     setActionMessage(null);
   }, []);
 
+  const handleCancelOrder = useCallback(async (order: PhoenixOrderRow) => {
+    if (!order.canCancel || order.conditionalOrderIndex === null || !order.executionDirection) {
+      setActionMessage('This Phoenix order cannot be canceled from this screen yet.');
+      return;
+    }
+    if (!wallet.address || !wallet.connection) {
+      setActionMessage('Phoenix order cancel requires a connected Solana wallet.');
+      return;
+    }
+    if (!phoenixSignAndSendTransaction) {
+      setActionMessage('This wallet cannot send Phoenix Solana transactions from the app.');
+      return;
+    }
+
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const builtTransaction = await buildPhoenixCancelConditionalOrder({
+        authority: wallet.address,
+        symbol: order.symbol,
+        executionDirection: order.executionDirection,
+        conditionalOrderIndex: order.conditionalOrderIndex,
+        traderPdaIndex: order.traderPdaIndex,
+        traderSubaccountIndex: order.traderSubaccountIndex,
+      });
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
+      });
+      setActionMessage(`Cancel submitted: ${shortKey(signature)}`);
+      await loadProfile('refresh');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Phoenix cancel failed.');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [loadProfile, phoenixSignAndSendTransaction, wallet.address, wallet.connection]);
+
   const handleClosePosition = useCallback(async () => {
     if (!closePosition) return;
 
@@ -665,7 +711,21 @@ export function PhoenixProfileScreen() {
                           ].filter(Boolean).join(' - ')}
                         </Text>
                       </View>
-                      <Text style={styles.orderPrice}>{formatPhoenixPrice(order.price)}</Text>
+                      <View style={styles.orderRight}>
+                        <Text style={styles.orderPrice}>{formatPhoenixPrice(order.price)}</Text>
+                        {order.canCancel && (
+                          <Pressable
+                            style={[styles.orderCancelBtn, actionLoading && styles.disabledBtn]}
+                            onPress={() => handleCancelOrder(order)}
+                            disabled={actionLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Cancel ${order.symbol} order`}
+                          >
+                            <MaterialIcons name="close" size={12} color={tokens.colors.vermillion} />
+                            <Text style={styles.orderCancelText}>Cancel</Text>
+                          </Pressable>
+                        )}
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -1085,6 +1145,8 @@ function normalizeOrders(traders: PhoenixTraderRecord[]): PhoenixOrderRow[] {
     const limitOrders = asRecord(trader.limitOrders);
     if (!limitOrders) return;
 
+    const traderPdaIndex = toNumber(trader.traderPdaIndex) ?? traderIndex;
+    const traderSubaccountIndex = toNumber(trader.traderSubaccountIndex) ?? 0;
     for (const [symbol, rawOrders] of Object.entries(limitOrders)) {
       if (!Array.isArray(rawOrders)) continue;
       rawOrders.forEach((rawOrder, orderIndex) => {
@@ -1093,6 +1155,8 @@ function normalizeOrders(traders: PhoenixTraderRecord[]): PhoenixOrderRow[] {
 
         const accountLabel = traderLabel(trader, traderIndex);
         const sequence = asString(order.orderSequenceNumber) ?? String(orderIndex);
+        const conditionalOrderIndex = toNumber(order.conditionalOrderIndex);
+        const executionDirection = asString(order.executionDirection);
         rows.push({
           id: `${accountLabel}-${symbol}-${sequence}`,
           symbol,
@@ -1102,7 +1166,12 @@ function normalizeOrders(traders: PhoenixTraderRecord[]): PhoenixOrderRow[] {
           initialSize: toNumber(order.initialTradeSize),
           reduceOnly: order.isReduceOnly === true,
           conditional: order.isConditionalOrder === true,
+          conditionalOrderIndex,
+          executionDirection,
+          canCancel: order.isConditionalOrder === true && conditionalOrderIndex !== null && executionDirection !== null,
           accountLabel,
+          traderPdaIndex,
+          traderSubaccountIndex,
         });
       });
     }
@@ -1857,12 +1926,35 @@ const styles = StyleSheet.create({
     color: semantic.text.faint,
     textTransform: 'uppercase',
   },
+  orderRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   orderPrice: {
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.sm,
     fontWeight: '900',
     color: semantic.text.primary,
     textAlign: 'right',
+  },
+  orderCancelBtn: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: tokens.spacing.sm,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.25)',
+    backgroundColor: 'rgba(217,83,79,0.06)',
+  },
+  orderCancelText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.vermillion,
+    textTransform: 'uppercase',
   },
   historyTitleRow: {
     flexDirection: 'row',
