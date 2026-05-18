@@ -186,6 +186,19 @@ export interface PhoenixCancelConditionalOrderBuilderInput extends Record<string
   conditionalOrderIndex: number;
 }
 
+export interface PhoenixPositionConditionalOrderBuilderInput extends Record<string, unknown> {
+  authority: string;
+  symbol: string;
+  positionSide: 'long' | 'short' | string;
+  takeProfitPrice?: string | number;
+  stopLossPrice?: string | number;
+  positionAuthority?: string;
+  pdaIndex?: number;
+  traderPdaIndex?: number;
+  traderSubaccountIndex?: number;
+  sizePercent?: number;
+}
+
 export interface PhoenixInviteActivationInput extends Record<string, unknown> {
   authority: string;
   code: string;
@@ -591,6 +604,13 @@ export async function buildPhoenixCancelConditionalOrder(
 ): Promise<PhoenixInstructionBuilderResult> {
   const payload = await phoenixPost('/tx/cancel-conditional-order', input);
   return normalizeInstructionBuilderResult(payload, 'cancel_conditional_order', '/tx/cancel-conditional-order');
+}
+
+export async function buildPhoenixPositionConditionalOrder(
+  input: PhoenixPositionConditionalOrderBuilderInput,
+): Promise<PhoenixInstructionBuilderResult> {
+  const payload = await phoenixPost('/tx/position-conditional-order', input);
+  return normalizeInstructionBuilderResult(payload, 'place_position_conditional_order', '/tx/position-conditional-order');
 }
 
 export async function buildPhoenixDeposit(input: PhoenixTransferBuilderInput): Promise<PhoenixInstructionBuilderResult> {

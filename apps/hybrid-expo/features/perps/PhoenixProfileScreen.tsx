@@ -19,6 +19,7 @@ import {
   activatePhoenixInvite,
   buildPhoenixMarketOrder,
   buildPhoenixDeposit,
+  buildPhoenixPositionConditionalOrder,
   buildPhoenixWithdraw,
   fetchPhoenixCollateralHistory,
   fetchPhoenixOrderHistory,
@@ -302,8 +303,73 @@ export function PhoenixProfileScreen() {
     setTpslPosition(position);
     setTpPrice(position.takeProfitPrice ? String(position.takeProfitPrice) : '');
     setSlPrice(position.stopLossPrice ? String(position.stopLossPrice) : '');
-    setActionMessage('Phoenix TP/SL editing is not wired yet: the app has no set/edit conditional-order transaction builder for positions.');
+    setActionMessage(null);
   }, []);
+
+  const handleSetTPSL = useCallback(async () => {
+    if (!tpslPosition) return;
+
+    const nextTpPrice = tpPrice.trim();
+    const nextSlPrice = slPrice.trim();
+    const tpValue = nextTpPrice ? Number.parseFloat(nextTpPrice) : null;
+    const slValue = nextSlPrice ? Number.parseFloat(nextSlPrice) : null;
+
+    if (tpValue === null && slValue === null) {
+      setActionMessage('Enter a take profit or stop loss price.');
+      return;
+    }
+    if ((tpValue !== null && (!Number.isFinite(tpValue) || tpValue <= 0))
+      || (slValue !== null && (!Number.isFinite(slValue) || slValue <= 0))) {
+      setActionMessage('TP/SL prices must be greater than zero.');
+      return;
+    }
+    if (!wallet.address || !wallet.connection) {
+      setActionMessage('Phoenix TP/SL requires a connected Solana wallet.');
+      return;
+    }
+    if (!phoenixSignAndSendTransaction) {
+      setActionMessage('This wallet cannot send Phoenix Solana transactions from the app.');
+      return;
+    }
+
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const builtTransaction = await buildPhoenixPositionConditionalOrder({
+        authority: wallet.address,
+        symbol: tpslPosition.symbol,
+        positionSide: tpslPosition.side,
+        takeProfitPrice: tpValue === null ? undefined : nextTpPrice,
+        stopLossPrice: slValue === null ? undefined : nextSlPrice,
+        pdaIndex: tpslPosition.traderPdaIndex,
+        traderSubaccountIndex: tpslPosition.traderSubaccountIndex,
+        sizePercent: 100,
+      });
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
+      });
+      setActionMessage(`TP/SL submitted: ${shortKey(signature)}`);
+      setTpslPosition(null);
+      setTpPrice('');
+      setSlPrice('');
+      await loadProfile('refresh');
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Phoenix TP/SL failed.');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [
+    tpslPosition,
+    tpPrice,
+    slPrice,
+    wallet.address,
+    wallet.connection,
+    phoenixSignAndSendTransaction,
+    loadProfile,
+  ]);
 
   const openCloseModal = useCallback((position: PhoenixPositionRow) => {
     setClosePosition(position);
@@ -644,19 +710,19 @@ export function PhoenixProfileScreen() {
         onSubmit={handleTransferSubmit}
       />
 
-      <Modal visible={tpslPosition !== null} transparent animationType="fade" onRequestClose={() => setTpslPosition(null)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setTpslPosition(null)}>
+      <Modal visible={tpslPosition !== null} transparent animationType="fade" onRequestClose={() => !actionLoading && setTpslPosition(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => !actionLoading && setTpslPosition(null)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {tpslPosition?.takeProfitPrice || tpslPosition?.stopLossPrice ? 'Edit' : 'Set'} TP / SL - {tpslPosition?.symbol}
               </Text>
-              <Pressable onPress={() => setTpslPosition(null)} hitSlop={8}>
+              <Pressable onPress={() => setTpslPosition(null)} hitSlop={8} disabled={actionLoading}>
                 <MaterialIcons name="close" size={18} color={semantic.text.dim} />
               </Pressable>
             </View>
             <Text style={styles.modalDesc}>
-              Phoenix position TP/SL needs a set/edit conditional-order builder before this can submit.
+              Builds Phoenix reduce-only conditional orders against the full position.
             </Text>
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>
@@ -692,11 +758,19 @@ export function PhoenixProfileScreen() {
             )}
             {actionMessage && <Text style={styles.modalErrorText}>{actionMessage}</Text>}
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalCancelBtn} onPress={() => setTpslPosition(null)}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setTpslPosition(null)} disabled={actionLoading}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={[styles.modalConfirmBtn, styles.actionDisabled]} disabled>
-                <Text style={styles.modalConfirmText}>Not Wired</Text>
+              <Pressable
+                style={[styles.modalConfirmBtn, actionLoading && styles.actionDisabled]}
+                onPress={() => void handleSetTPSL()}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Set TP/SL</Text>
+                )}
               </Pressable>
             </View>
           </Pressable>

@@ -17,6 +17,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { formatUsdCompact } from '@/lib/format';
 import {
   buildPhoenixMarketOrder,
+  buildPhoenixPositionConditionalOrder,
   fetchPhoenixMarket,
   fetchPhoenixTraderState,
   formatPhoenixPercent,
@@ -86,6 +87,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   const [tpslModalTp, setTpslModalTp] = useState('');
   const [tpslModalSl, setTpslModalSl] = useState('');
   const [tpslModalMessage, setTpslModalMessage] = useState('');
+  const [tpslModalBusy, setTpslModalBusy] = useState(false);
 
   const phoenixSignAndSendTransaction = useMemo<NonNullable<PhoenixExecutionContext['signAndSendTransaction']> | null>(() => {
     if (typeof wallet.signAndSendTransaction !== 'function') return null;
@@ -285,9 +287,70 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     setTpslModalMessage('');
   }, []);
 
-  const handleSetPositionTpsl = useCallback(() => {
-    setTpslModalMessage('Phoenix TP/SL editing from position cards needs the conditional-order builder route before this can submit.');
-  }, []);
+  const handleSetPositionTpsl = useCallback(async () => {
+    if (!tpslModalPosition) return;
+
+    const nextTpPrice = tpslModalTp.trim();
+    const nextSlPrice = tpslModalSl.trim();
+    const tpValue = nextTpPrice ? Number.parseFloat(nextTpPrice) : null;
+    const slValue = nextSlPrice ? Number.parseFloat(nextSlPrice) : null;
+
+    if (tpValue === null && slValue === null) {
+      setTpslModalMessage('Enter a TP or SL price.');
+      return;
+    }
+    if ((tpValue !== null && (!Number.isFinite(tpValue) || tpValue <= 0))
+      || (slValue !== null && (!Number.isFinite(slValue) || slValue <= 0))) {
+      setTpslModalMessage('TP/SL prices must be greater than zero.');
+      return;
+    }
+    if (!wallet.address || !wallet.connection) {
+      setTpslModalMessage('Phoenix TP/SL requires a connected Solana wallet.');
+      return;
+    }
+    if (!phoenixSignAndSendTransaction) {
+      setTpslModalMessage('This wallet cannot send Phoenix Solana transactions from the app.');
+      return;
+    }
+
+    setTpslModalBusy(true);
+    setTpslModalMessage('');
+    try {
+      const builtTransaction = await buildPhoenixPositionConditionalOrder({
+        authority: wallet.address,
+        symbol: tpslModalPosition.symbol,
+        positionSide: tpslModalPosition.side,
+        takeProfitPrice: tpValue === null ? undefined : nextTpPrice,
+        stopLossPrice: slValue === null ? undefined : nextSlPrice,
+        pdaIndex: tpslModalPosition.traderPdaIndex,
+        traderSubaccountIndex: tpslModalPosition.traderSubaccountIndex,
+        sizePercent: 100,
+      });
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
+      });
+      setPositionActionMessage(`TP/SL submitted: ${shortKey(signature)}`);
+      setTpslModalPosition(null);
+      setTpslModalTp('');
+      setTpslModalSl('');
+      void loadPositions();
+    } catch (err) {
+      setTpslModalMessage(err instanceof Error ? err.message : 'Phoenix TP/SL failed.');
+    } finally {
+      setTpslModalBusy(false);
+    }
+  }, [
+    tpslModalPosition,
+    tpslModalTp,
+    tpslModalSl,
+    wallet.address,
+    wallet.connection,
+    phoenixSignAndSendTransaction,
+    loadPositions,
+  ]);
 
   const primaryButton = useMemo(() => {
     if (!wallet.connected) {
@@ -606,9 +669,12 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
       tpValue={tpslModalTp}
       slValue={tpslModalSl}
       message={tpslModalMessage}
+      busy={tpslModalBusy}
       onChangeTp={(value) => setTpslModalTp(value.replace(/[^0-9.]/g, ''))}
       onChangeSl={(value) => setTpslModalSl(value.replace(/[^0-9.]/g, ''))}
-      onClose={() => setTpslModalPosition(null)}
+      onClose={() => {
+        if (!tpslModalBusy) setTpslModalPosition(null);
+      }}
       onSubmit={handleSetPositionTpsl}
     />
     </>
@@ -713,6 +779,7 @@ function PhoenixTpslModal({
   tpValue,
   slValue,
   message,
+  busy,
   onChangeTp,
   onChangeSl,
   onClose,
@@ -722,10 +789,11 @@ function PhoenixTpslModal({
   tpValue: string;
   slValue: string;
   message: string;
+  busy: boolean;
   onChangeTp: (value: string) => void;
   onChangeSl: (value: string) => void;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
 }) {
   return (
     <Modal visible={position !== null} transparent animationType="fade" onRequestClose={onClose}>
@@ -760,11 +828,15 @@ function PhoenixTpslModal({
           </View>
           {message ? <Text style={styles.tpslModalMsg}>{message}</Text> : null}
           <View style={styles.modalActionRow}>
-            <Pressable style={styles.modalCancelBtn} onPress={onClose}>
+            <Pressable style={styles.modalCancelBtn} onPress={onClose} disabled={busy}>
               <Text style={styles.modalCancelText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.modalConfirmBtn} onPress={onSubmit}>
-              <Text style={styles.modalConfirmText}>Confirm</Text>
+            <Pressable style={[styles.modalConfirmBtn, busy && styles.submitDisabled]} onPress={() => void onSubmit()} disabled={busy}>
+              {busy ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.modalConfirmText}>Set TP/SL</Text>
+              )}
             </Pressable>
           </View>
         </Pressable>

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { OrderFlags, Side, createPhoenixClient } from '@ellipsis-labs/rise'
-import type { Authority, Symbol as PhoenixSymbol } from '@ellipsis-labs/rise'
+import { Direction, OrderFlags, Side, StopLossOrderKind, createPhoenixClient, priceUsdToTicksWithMarketParams } from '@ellipsis-labs/rise'
+import type { Authority, Symbol as PhoenixSymbol, TriggerOrderParams } from '@ellipsis-labs/rise'
 
 const PHOENIX_API_BASE = process.env.PHOENIX_API_BASE || 'https://perp-api.phoenix.trade'
 const PHOENIX_WS_URL = process.env.PHOENIX_WS_URL || `${PHOENIX_API_BASE.replace(/^http/i, 'ws').replace(/\/$/, '')}/v1/ws`
@@ -893,6 +893,13 @@ function parseOrderFlag(input: unknown): OrderFlags {
   return input === true ? OrderFlags.ReduceOnly : OrderFlags.None
 }
 
+function sdkPositionSideFromInput(input: unknown): 'long' | 'short' | null {
+  const normalized = String(input ?? '').trim().toLowerCase()
+  if (normalized === 'long' || normalized === 'bid') return 'long'
+  if (normalized === 'short' || normalized === 'ask') return 'short'
+  return null
+}
+
 function parseOrderBuilderIndexes(body: Record<string, unknown>): {
   traderPdaIndex: number
   traderSubaccountIndex: number
@@ -984,6 +991,129 @@ function parseSdkOrderBuilderBody(body: Record<string, unknown>, kind: 'market' 
   }
 
   return { ...base, priceLimitUsd: priceLimit === null ? null : String(priceLimit) }
+}
+
+function parsePositionConditionalOrderBody(body: Record<string, unknown>): {
+  authority: Authority
+  positionAuthority?: Authority
+  symbol: PhoenixSymbol
+  positionSide: 'long' | 'short'
+  takeProfitPriceUsd: string | null
+  stopLossPriceUsd: string | null
+  sizePercent: number
+  traderPdaIndex: number
+  traderSubaccountIndex: number
+} | { response: Response } {
+  const authority = asNonEmptyString(body.authority)
+  if (!authority) {
+    return { response: Response.json(missingFieldsPayload(['authority']), { status: 400 }) }
+  }
+  if (!isPlausibleSolanaPublicKey(authority)) {
+    return { response: Response.json(invalidPublicKeyPayload('authority'), { status: 400 }) }
+  }
+
+  const positionAuthority = asNonEmptyString(body.positionAuthority)
+  if (positionAuthority && !isPlausibleSolanaPublicKey(positionAuthority)) {
+    return { response: Response.json(invalidPublicKeyPayload('positionAuthority'), { status: 400 }) }
+  }
+
+  const symbol = normalizeVenueSymbol(asNonEmptyString(body.symbol))
+  if (!symbol) {
+    return { response: Response.json({ error: 'Invalid Phoenix market symbol', code: 'INVALID_MARKET_SYMBOL' }, { status: 400 }) }
+  }
+
+  const positionSide = sdkPositionSideFromInput(body.positionSide ?? body.side)
+  if (!positionSide) {
+    return { response: Response.json({ error: 'Invalid positionSide', code: 'INVALID_POSITION_SIDE', field: 'positionSide' }, { status: 400 }) }
+  }
+
+  const takeProfitSource = body.takeProfitPriceUsd ?? body.takeProfitPrice ?? body.tpPrice ?? body.tp
+  const stopLossSource = body.stopLossPriceUsd ?? body.stopLossPrice ?? body.slPrice ?? body.sl
+  const takeProfitPrice = isBlankInput(takeProfitSource) ? null : parseFiniteJsonNumber(takeProfitSource)
+  const stopLossPrice = isBlankInput(stopLossSource) ? null : parseFiniteJsonNumber(stopLossSource)
+
+  if (takeProfitSource !== undefined && !isBlankInput(takeProfitSource) && (takeProfitPrice === null || takeProfitPrice <= 0)) {
+    return { response: Response.json({ error: 'Invalid takeProfitPrice', code: 'INVALID_TAKE_PROFIT_PRICE', field: 'takeProfitPrice' }, { status: 400 }) }
+  }
+  if (stopLossSource !== undefined && !isBlankInput(stopLossSource) && (stopLossPrice === null || stopLossPrice <= 0)) {
+    return { response: Response.json({ error: 'Invalid stopLossPrice', code: 'INVALID_STOP_LOSS_PRICE', field: 'stopLossPrice' }, { status: 400 }) }
+  }
+  if (takeProfitPrice === null && stopLossPrice === null) {
+    return { response: Response.json({ error: 'Enter a take profit or stop loss price', code: 'MISSING_TRIGGER_PRICE' }, { status: 400 }) }
+  }
+
+  const sizePercentSource = body.sizePercent ?? 100
+  const sizePercent = parseNonNegativeInteger(sizePercentSource)
+  if (sizePercent === null || sizePercent < 1 || sizePercent > 100) {
+    return { response: Response.json({ error: 'Invalid sizePercent', code: 'INVALID_SIZE_PERCENT', field: 'sizePercent' }, { status: 400 }) }
+  }
+
+  const indexes = parseOrderBuilderIndexes(body)
+  if ('response' in indexes) return indexes
+
+  return {
+    authority: sdkAuthority(authority),
+    positionAuthority: positionAuthority ? sdkAuthority(positionAuthority) : undefined,
+    symbol: sdkSymbol(symbol),
+    positionSide,
+    takeProfitPriceUsd: takeProfitPrice === null ? null : String(takeProfitPrice),
+    stopLossPriceUsd: stopLossPrice === null ? null : String(stopLossPrice),
+    sizePercent,
+    traderPdaIndex: indexes.traderPdaIndex,
+    traderSubaccountIndex: indexes.traderSubaccountIndex,
+  }
+}
+
+async function positionConditionalTriggers(
+  client: PhoenixSdkClient,
+  symbol: PhoenixSymbol,
+  positionSide: 'long' | 'short',
+  takeProfitPriceUsd: string | null,
+  stopLossPriceUsd: string | null,
+): Promise<{
+  greaterTriggerOrder: TriggerOrderParams | null
+  lessTriggerOrder: TriggerOrderParams | null
+}> {
+  await client.exchange.ready()
+  const market = client.exchange.market(symbol)
+  if (!market) throw new Error(`Unknown Phoenix market symbol '${symbol}'`)
+
+  const marketParams = {
+    tickSize: market.tickSize,
+    baseLotsDecimals: market.baseLotsDecimals,
+  }
+  const tradeSide = positionSide === 'long' ? Side.Ask : Side.Bid
+  const buildTrigger = (direction: Direction, priceUsd: string): TriggerOrderParams => {
+    const priceInTicks = priceUsdToTicksWithMarketParams(priceUsd, marketParams)
+    return {
+      triggerDirection: direction,
+      tradeSide,
+      orderKind: StopLossOrderKind.IOC,
+      triggerPrice: priceInTicks,
+      executionPrice: priceInTicks,
+    }
+  }
+
+  let greaterTriggerOrder: TriggerOrderParams | null = null
+  let lessTriggerOrder: TriggerOrderParams | null = null
+
+  if (takeProfitPriceUsd !== null) {
+    if (positionSide === 'long') {
+      greaterTriggerOrder = buildTrigger(Direction.GreaterThan, takeProfitPriceUsd)
+    } else {
+      lessTriggerOrder = buildTrigger(Direction.LessThan, takeProfitPriceUsd)
+    }
+  }
+
+  if (stopLossPriceUsd !== null) {
+    if (positionSide === 'long') {
+      lessTriggerOrder = buildTrigger(Direction.LessThan, stopLossPriceUsd)
+    } else {
+      greaterTriggerOrder = buildTrigger(Direction.GreaterThan, stopLossPriceUsd)
+    }
+  }
+
+  return { greaterTriggerOrder, lessTriggerOrder }
 }
 
 function normalizeCandle(raw: unknown) {
@@ -1387,6 +1517,41 @@ phoenixRoutes.post('/tx/cancel-conditional-order', async (c) => {
   } catch (err) {
     console.error('[api] Phoenix conditional cancel builder unavailable:', err instanceof Error ? err.message : err)
     return c.json(upstreamErrorPayload(err, 'Phoenix conditional cancel builder unavailable'), upstreamProxyStatusCode(err))
+  }
+})
+
+// POST /perps/phoenix/tx/position-conditional-order
+phoenixRoutes.post('/tx/position-conditional-order', async (c) => {
+  const parsed = await readJsonRecord(c)
+  if ('response' in parsed) return parsed.response
+
+  const builder = parsePositionConditionalOrderBody(parsed.body)
+  if ('response' in builder) return builder.response
+
+  const endpoint = 'sdk:ixs.buildPlacePositionConditionalOrder'
+  try {
+    const client = getPhoenixSdkClient()
+    const { greaterTriggerOrder, lessTriggerOrder } = await positionConditionalTriggers(
+      client,
+      builder.symbol,
+      builder.positionSide,
+      builder.takeProfitPriceUsd,
+      builder.stopLossPriceUsd,
+    )
+    const raw = await client.ixs.buildPlacePositionConditionalOrder({
+      authority: builder.authority,
+      positionAuthority: builder.positionAuthority,
+      symbol: builder.symbol,
+      greaterTriggerOrder,
+      lessTriggerOrder,
+      sizePercent: builder.sizePercent,
+      traderPdaIndex: builder.traderPdaIndex,
+      traderSubaccountIndex: builder.traderSubaccountIndex,
+    })
+    return c.json(sdkInstructionBuilderResponse('place_position_conditional_order', endpoint, raw))
+  } catch (err) {
+    console.error('[api] Phoenix position conditional builder unavailable:', err instanceof Error ? err.message : err)
+    return c.json(upstreamErrorPayload(err, 'Phoenix position conditional builder unavailable'), upstreamProxyStatusCode(err))
   }
 })
 
