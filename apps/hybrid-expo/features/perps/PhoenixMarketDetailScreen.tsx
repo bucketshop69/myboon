@@ -338,6 +338,15 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
       setTpslModalSl('');
       void loadPositions();
     } catch (err) {
+      console.error('[phoenix][tpsl][market-detail]', {
+        symbol: tpslModalPosition.symbol,
+        side: tpslModalPosition.side,
+        takeProfitPrice: tpValue === null ? null : nextTpPrice,
+        stopLossPrice: slValue === null ? null : nextSlPrice,
+        traderPdaIndex: tpslModalPosition.traderPdaIndex,
+        traderSubaccountIndex: tpslModalPosition.traderSubaccountIndex,
+        walletAddress: wallet.address,
+      }, err);
       setTpslModalMessage(err instanceof Error ? err.message : 'Phoenix TP/SL failed.');
     } finally {
       setTpslModalBusy(false);

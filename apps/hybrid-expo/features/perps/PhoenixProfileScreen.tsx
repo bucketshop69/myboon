@@ -357,6 +357,15 @@ export function PhoenixProfileScreen() {
       setSlPrice('');
       await loadProfile('refresh');
     } catch (err) {
+      console.error('[phoenix][tpsl][profile]', {
+        symbol: tpslPosition.symbol,
+        side: tpslPosition.side,
+        takeProfitPrice: tpValue === null ? null : nextTpPrice,
+        stopLossPrice: slValue === null ? null : nextSlPrice,
+        traderPdaIndex: tpslPosition.traderPdaIndex,
+        traderSubaccountIndex: tpslPosition.traderSubaccountIndex,
+        walletAddress: wallet.address,
+      }, err);
       setActionMessage(err instanceof Error ? err.message : 'Phoenix TP/SL failed.');
     } finally {
       setActionLoading(false);

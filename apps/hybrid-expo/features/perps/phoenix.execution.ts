@@ -61,6 +61,30 @@ export class PhoenixUnsupportedWalletError extends Error {
   }
 }
 
+function summarizePhoenixInstructions(input: PhoenixBuildTransactionInput) {
+  let instructions: readonly PhoenixInstructionDto[] = [];
+  try {
+    instructions = input.instructions ?? extractPhoenixInstructionDtos(input.builtTransaction);
+  } catch {
+    instructions = [];
+  }
+
+  return {
+    walletAddress: typeof input.walletAddress === 'string' ? input.walletAddress : input.walletAddress.toBase58(),
+    instructionCount: instructions.length,
+    programIds: instructions.map((instruction) => instruction.programId ?? instruction.program_id ?? 'unknown'),
+    keyCounts: instructions.map((instruction) => instruction.keys?.length ?? instruction.accounts?.length ?? 0),
+    actions: isRecord(input.builtTransaction) ? {
+      action: typeof input.builtTransaction.action === 'string' ? input.builtTransaction.action : undefined,
+      endpoint: typeof input.builtTransaction.endpoint === 'string' ? input.builtTransaction.endpoint : undefined,
+    } : undefined,
+  };
+}
+
+function logPhoenixExecutionError(stage: string, error: unknown, input: PhoenixBuildTransactionInput) {
+  console.error(`[phoenix][execution][${stage}]`, summarizePhoenixInstructions(input), error);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -295,11 +319,27 @@ export async function buildPhoenixTransaction(input: PhoenixBuildTransactionInpu
 export async function sendPhoenixBuiltTransaction(input: PhoenixSendBuiltTransactionInput): Promise<string> {
   if (!input.signAndSendTransaction) throw new PhoenixUnsupportedWalletError();
 
-  const tx = await buildPhoenixTransaction(input);
-  const result = await input.signAndSendTransaction(tx);
+  let tx: Transaction;
+  try {
+    tx = await buildPhoenixTransaction(input);
+  } catch (err) {
+    logPhoenixExecutionError('build-transaction-failed', err, input);
+    throw err;
+  }
+
+  let result: string | { signature?: string | null };
+  try {
+    result = await input.signAndSendTransaction(tx);
+  } catch (err) {
+    logPhoenixExecutionError('sign-and-send-failed', err, input);
+    throw err;
+  }
+
   if (typeof result === 'string') return result;
   if (result?.signature) return result.signature;
-  throw new Error('Phoenix wallet did not return a transaction signature');
+  const err = new Error('Phoenix wallet did not return a transaction signature');
+  logPhoenixExecutionError('missing-signature', { result, error: err.message }, input);
+  throw err;
 }
 
 function phoenixBuilderNumber(value: string | undefined): string | number | undefined {
