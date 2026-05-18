@@ -16,6 +16,7 @@ import { AppTopBar } from '@/components/AppTopBar';
 import { useWallet } from '@/hooks/useWallet';
 import { formatUsdCompact } from '@/lib/format';
 import {
+  buildPhoenixCancelConditionalOrder,
   buildPhoenixMarketOrder,
   buildPhoenixPositionConditionalOrder,
   fetchPhoenixMarket,
@@ -51,8 +52,15 @@ interface PhoenixPositionRow {
   notionalUsd: number | null;
   takeProfitPrice: number | null;
   stopLossPrice: number | null;
+  takeProfitCancel: PhoenixConditionalCancelParams | null;
+  stopLossCancel: PhoenixConditionalCancelParams | null;
   traderPdaIndex: number;
   traderSubaccountIndex: number;
+}
+
+interface PhoenixConditionalCancelParams {
+  conditionalOrderIndex: number;
+  executionDirection: string;
 }
 
 interface PhoenixMarketDetailScreenProps {
@@ -83,6 +91,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [positionActionMessage, setPositionActionMessage] = useState<string | null>(null);
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
+  const [clearingTpslKey, setClearingTpslKey] = useState<string | null>(null);
   const [tpslModalPosition, setTpslModalPosition] = useState<PhoenixPositionRow | null>(null);
   const [tpslModalTp, setTpslModalTp] = useState('');
   const [tpslModalSl, setTpslModalSl] = useState('');
@@ -360,6 +369,50 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
     phoenixSignAndSendTransaction,
     loadPositions,
   ]);
+
+  const handleClearPositionTpsl = useCallback(async (
+    position: PhoenixPositionRow,
+    kind: 'take_profit' | 'stop_loss',
+  ) => {
+    const cancelParams = kind === 'take_profit' ? position.takeProfitCancel : position.stopLossCancel;
+    if (!cancelParams) {
+      setPositionActionMessage('This TP/SL order cannot be cleared from this screen yet.');
+      return;
+    }
+    if (!wallet.address || !wallet.connection) {
+      setPositionActionMessage('Phoenix TP/SL clear requires a connected Solana wallet.');
+      return;
+    }
+    if (!phoenixSignAndSendTransaction) {
+      setPositionActionMessage('This wallet cannot send Phoenix Solana transactions from the app.');
+      return;
+    }
+
+    setClearingTpslKey(`${position.id}-${kind}`);
+    setPositionActionMessage(null);
+    try {
+      const builtTransaction = await buildPhoenixCancelConditionalOrder({
+        authority: wallet.address,
+        symbol: position.symbol,
+        executionDirection: cancelParams.executionDirection,
+        conditionalOrderIndex: cancelParams.conditionalOrderIndex,
+        traderPdaIndex: position.traderPdaIndex,
+        traderSubaccountIndex: position.traderSubaccountIndex,
+      });
+      const signature = await sendPhoenixBuiltTransaction({
+        builtTransaction,
+        connection: wallet.connection,
+        walletAddress: wallet.address,
+        signAndSendTransaction: phoenixSignAndSendTransaction,
+      });
+      setPositionActionMessage(`TP/SL clear submitted: ${shortKey(signature)}`);
+      void loadPositions();
+    } catch (err) {
+      setPositionActionMessage(err instanceof Error ? err.message : 'Phoenix TP/SL clear failed.');
+    } finally {
+      setClearingTpslKey(null);
+    }
+  }, [loadPositions, phoenixSignAndSendTransaction, wallet.address, wallet.connection]);
 
   const primaryButton = useMemo(() => {
     if (!wallet.connected) {
@@ -657,8 +710,10 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
                     key={position.id}
                     position={position}
                     isClosing={closingPositionId === position.id}
+                    clearingTpslKey={clearingTpslKey}
                     onPressTpsl={() => openTpslModal(position)}
                     onPressClose={() => void handleClosePosition(position)}
+                    onPressClearTpsl={(kind) => void handleClearPositionTpsl(position, kind)}
                   />
                 ))
               )}
@@ -739,17 +794,23 @@ function SummaryItem({
 function PhoenixPositionCard({
   position,
   isClosing,
+  clearingTpslKey,
   onPressTpsl,
   onPressClose,
+  onPressClearTpsl,
 }: {
   position: PhoenixPositionRow;
   isClosing: boolean;
+  clearingTpslKey: string | null;
   onPressTpsl: () => void;
   onPressClose: () => void;
+  onPressClearTpsl: (kind: 'take_profit' | 'stop_loss') => void;
 }) {
   const pnl = position.unrealizedPnl ?? 0;
   const pnlPositive = pnl >= 0;
   const hasTpsl = position.takeProfitPrice !== null || position.stopLossPrice !== null;
+  const clearingTakeProfit = clearingTpslKey === `${position.id}-take_profit`;
+  const clearingStopLoss = clearingTpslKey === `${position.id}-stop_loss`;
 
   return (
     <View style={styles.posCard}>
@@ -768,8 +829,30 @@ function PhoenixPositionCard({
       <View style={styles.posCardMeta}>
         <Text style={styles.posMetaText}>Entry {formatPhoenixPrice(position.entryPrice)}</Text>
         <Text style={styles.posMetaText}>Mark {formatPhoenixPrice(position.markPrice)}</Text>
-        {position.takeProfitPrice !== null && <Text style={[styles.posMetaText, styles.textPos]}>TP {formatPhoenixPrice(position.takeProfitPrice)}</Text>}
-        {position.stopLossPrice !== null && <Text style={[styles.posMetaText, styles.textNeg]}>SL {formatPhoenixPrice(position.stopLossPrice)}</Text>}
+        {position.takeProfitPrice !== null && (
+          <Pressable
+            style={styles.posTpslChip}
+            onPress={() => onPressClearTpsl('take_profit')}
+            disabled={!position.takeProfitCancel || clearingTakeProfit}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${position.symbol} take profit`}
+          >
+            <Text style={[styles.posMetaText, styles.textPos]}>TP {formatPhoenixPrice(position.takeProfitPrice)}</Text>
+            <MaterialIcons name="close" size={10} color={tokens.colors.vermillion} />
+          </Pressable>
+        )}
+        {position.stopLossPrice !== null && (
+          <Pressable
+            style={styles.posTpslChip}
+            onPress={() => onPressClearTpsl('stop_loss')}
+            disabled={!position.stopLossCancel || clearingStopLoss}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${position.symbol} stop loss`}
+          >
+            <Text style={[styles.posMetaText, styles.textNeg]}>SL {formatPhoenixPrice(position.stopLossPrice)}</Text>
+            <MaterialIcons name="close" size={10} color={tokens.colors.vermillion} />
+          </Pressable>
+        )}
       </View>
       <View style={styles.posCardActions}>
         <Pressable style={styles.posActionBtn} onPress={onPressTpsl}>
@@ -894,6 +977,8 @@ function normalizePhoenixPositions(state: PhoenixTraderState | null): PhoenixPos
         notionalUsd: toUsd(record.positionValue),
         takeProfitPrice: toUsd(record.takeProfitPrice),
         stopLossPrice: toUsd(record.stopLossPrice),
+        takeProfitCancel: conditionalCancelParams(record.conditionalTakeProfitTriggers),
+        stopLossCancel: conditionalCancelParams(record.conditionalStopLossTriggers),
         traderPdaIndex,
         traderSubaccountIndex,
       });
@@ -901,6 +986,43 @@ function normalizePhoenixPositions(state: PhoenixTraderState | null): PhoenixPos
   });
 
   return rows.sort((a, b) => Math.abs(b.notionalUsd ?? 0) - Math.abs(a.notionalUsd ?? 0));
+}
+
+function conditionalCancelParams(value: unknown): PhoenixConditionalCancelParams | null {
+  if (!Array.isArray(value)) return null;
+
+  for (const item of value) {
+    const record = item && typeof item === 'object' ? item as Record<string, unknown> : null;
+    if (!record) continue;
+
+    const status = typeof record.status === 'string' ? record.status.toLowerCase() : null;
+    if (status && status !== 'active' && status !== 'open') continue;
+
+    const directIndex = toNumber(record.conditionalOrderIndex ?? record.index);
+    const directDirection = typeof record.executionDirection === 'string'
+      ? record.executionDirection
+      : typeof record.triggerDirection === 'string'
+        ? record.triggerDirection
+        : null;
+    if (directIndex !== null && directDirection) {
+      return { conditionalOrderIndex: directIndex, executionDirection: directDirection };
+    }
+
+    const id = typeof record.conditionalTakeProfitId === 'string'
+      ? record.conditionalTakeProfitId
+      : typeof record.conditionalStopLossId === 'string'
+        ? record.conditionalStopLossId
+        : null;
+    const match = id?.match(/-(\d+)-(gt|lt)$/i);
+    if (match) {
+      return {
+        conditionalOrderIndex: Number.parseInt(match[1], 10),
+        executionDirection: match[2].toLowerCase(),
+      };
+    }
+  }
+
+  return null;
 }
 
 function toNumber(value: unknown): number | null {
@@ -1437,6 +1559,17 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xxs,
     color: semantic.text.dim,
+  },
+  posTpslChip: {
+    minHeight: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(217,83,79,0.18)',
+    backgroundColor: 'rgba(217,83,79,0.05)',
   },
   posCardActions: {
     flexDirection: 'row',
