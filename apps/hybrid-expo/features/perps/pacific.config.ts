@@ -1,4 +1,5 @@
 const env = (process.env.EXPO_PUBLIC_PACIFIC_ENV as 'mainnet' | 'testnet') || 'mainnet';
+const solanaRpcOverride = process.env.EXPO_PUBLIC_SOLANA_RPC_URL?.trim();
 
 export const PACIFIC_ENV = env;
 
@@ -13,9 +14,10 @@ export const PACIFIC_WS =
     : 'wss://ws.pacifica.fi/ws';
 
 export const SOLANA_RPC =
-  env === 'testnet'
-    ? 'https://api.devnet.solana.com'
-    : 'https://api.mainnet-beta.solana.com';
+  solanaRpcOverride
+    || (env === 'testnet'
+      ? 'https://api.devnet.solana.com'
+      : 'https://api.mainnet-beta.solana.com');
 
 // USDC-P on devnet, USDC on mainnet
 export const USDC_MINT =
