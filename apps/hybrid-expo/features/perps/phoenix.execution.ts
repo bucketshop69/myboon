@@ -37,12 +37,14 @@ export type PhoenixSignAndSendTransactionFn = (
   transaction: Transaction,
 ) => Promise<string | { signature?: string | null }>;
 
+type PhoenixConnectionLike = Pick<Connection, 'getLatestBlockhash'> & Partial<Pick<Connection, 'simulateTransaction'>>;
+
 export interface PhoenixExecutionContext extends PerpsExecutionContext<Transaction> {
-  connection?: Pick<Connection, 'getLatestBlockhash'> | null;
+  connection?: PhoenixConnectionLike | null;
 }
 
 export interface PhoenixBuildTransactionInput {
-  connection: Pick<Connection, 'getLatestBlockhash'> | null | undefined;
+  connection: PhoenixConnectionLike | null | undefined;
   walletAddress: string | PublicKey;
   builtTransaction?: PhoenixInstructionBuilderResult | readonly PhoenixInstructionDto[] | unknown;
   instructions?: readonly PhoenixInstructionDto[];
@@ -78,11 +80,70 @@ function summarizePhoenixInstructions(input: PhoenixBuildTransactionInput) {
       action: typeof input.builtTransaction.action === 'string' ? input.builtTransaction.action : undefined,
       endpoint: typeof input.builtTransaction.endpoint === 'string' ? input.builtTransaction.endpoint : undefined,
     } : undefined,
+    instructions: instructions.map((instruction, index) => ({
+      index,
+      programId: instruction.programId ?? instruction.program_id ?? 'unknown',
+      keyCount: instruction.keys?.length ?? instruction.accounts?.length ?? 0,
+      keys: (instruction.keys ?? instruction.accounts ?? []).map((account, accountIndex) => ({
+        index: accountIndex,
+        pubkey: account.pubkey,
+        isSigner: account.isSigner,
+        isWritable: account.isWritable,
+      })),
+      dataLength: Array.isArray(instruction.data) ? instruction.data.length : undefined,
+      dataPrefix: Array.isArray(instruction.data) ? instruction.data.slice(0, 16) : undefined,
+    })),
   };
 }
 
 function logPhoenixExecutionError(stage: string, error: unknown, input: PhoenixBuildTransactionInput) {
-  console.error(`[phoenix][execution][${stage}]`, summarizePhoenixInstructions(input), error);
+  console.error(`[phoenix][execution][${stage}]`, summarizePhoenixInstructions(input), serializePhoenixError(error));
+}
+
+function serializePhoenixError(error: unknown): unknown {
+  if (!isRecord(error)) return error;
+
+  const serialized: Record<string, unknown> = {};
+  for (const key of Object.getOwnPropertyNames(error)) {
+    serialized[key] = error[key];
+  }
+  for (const key of ['name', 'message', 'stack', 'code', 'logs', 'cause']) {
+    if (key in error && serialized[key] === undefined) {
+      serialized[key] = error[key];
+    }
+  }
+
+  return serialized;
+}
+
+async function logPhoenixSimulation(input: PhoenixBuildTransactionInput, tx: Transaction): Promise<void> {
+  if (!input.connection || typeof input.connection.simulateTransaction !== 'function') {
+    console.info('[phoenix][execution][simulate-skipped]', {
+      ...summarizePhoenixInstructions(input),
+      reason: 'connection.simulateTransaction is unavailable',
+    });
+    return;
+  }
+
+  try {
+    const result = await input.connection.simulateTransaction(tx);
+    const value = result.value;
+    const payload = {
+      ...summarizePhoenixInstructions(input),
+      err: value.err,
+      logs: value.logs,
+      unitsConsumed: value.unitsConsumed,
+      returnData: value.returnData,
+    };
+
+    if (value.err) {
+      console.error('[phoenix][execution][simulate-failed]', payload);
+    } else {
+      console.info('[phoenix][execution][simulate-ok]', payload);
+    }
+  } catch (err) {
+    logPhoenixExecutionError('simulate-threw', err, input);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -326,6 +387,8 @@ export async function sendPhoenixBuiltTransaction(input: PhoenixSendBuiltTransac
     logPhoenixExecutionError('build-transaction-failed', err, input);
     throw err;
   }
+
+  await logPhoenixSimulation(input, tx);
 
   let result: string | { signature?: string | null };
   try {
