@@ -324,7 +324,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
         stopLossPrice: slValue === null ? undefined : nextSlPrice,
         pdaIndex: tpslModalPosition.traderPdaIndex,
         traderSubaccountIndex: tpslModalPosition.traderSubaccountIndex,
-        sizePercent: 100,
+        baseUnits: String(tpslModalPosition.size),
       });
       const signature = await sendPhoenixBuiltTransaction({
         builtTransaction,

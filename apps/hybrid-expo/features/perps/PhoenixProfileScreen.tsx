@@ -343,7 +343,7 @@ export function PhoenixProfileScreen() {
         stopLossPrice: slValue === null ? undefined : nextSlPrice,
         pdaIndex: tpslPosition.traderPdaIndex,
         traderSubaccountIndex: tpslPosition.traderSubaccountIndex,
-        sizePercent: 100,
+        baseUnits: String(tpslPosition.size),
       });
       const signature = await sendPhoenixBuiltTransaction({
         builtTransaction,

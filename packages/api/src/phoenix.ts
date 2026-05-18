@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { Direction, OrderFlags, Side, StopLossOrderKind, createPhoenixClient, priceUsdToTicksWithMarketParams } from '@ellipsis-labs/rise'
-import type { Authority, Symbol as PhoenixSymbol, TriggerOrderParams } from '@ellipsis-labs/rise'
+import { Direction, OrderFlags, Side, StopLossOrderKind, baseLots, baseUnitsToBaseLotsWithMarketParams, createPhoenixClient, priceUsdToTicksWithMarketParams } from '@ellipsis-labs/rise'
+import type { Authority, BaseLots, Symbol as PhoenixSymbol, TriggerOrderParams } from '@ellipsis-labs/rise'
 
 const PHOENIX_API_BASE = process.env.PHOENIX_API_BASE || 'https://perp-api.phoenix.trade'
 const PHOENIX_WS_URL = process.env.PHOENIX_WS_URL || `${PHOENIX_API_BASE.replace(/^http/i, 'ws').replace(/\/$/, '')}/v1/ws`
@@ -1234,7 +1234,9 @@ function parsePositionConditionalOrderBody(body: Record<string, unknown>): {
   positionSide: 'long' | 'short'
   takeProfitPriceUsd: string | null
   stopLossPriceUsd: string | null
-  sizePercent: number
+  baseUnits: string | null
+  sizeBaseLots: BaseLots | null
+  sizePercent: number | null
   traderPdaIndex: number
   traderSubaccountIndex: number
 } | { response: Response } {
@@ -1276,10 +1278,29 @@ function parsePositionConditionalOrderBody(body: Record<string, unknown>): {
     return { response: Response.json({ error: 'Enter a take profit or stop loss price', code: 'MISSING_TRIGGER_PRICE' }, { status: 400 }) }
   }
 
-  const sizePercentSource = body.sizePercent ?? 100
-  const sizePercent = parseNonNegativeInteger(sizePercentSource)
-  if (sizePercent === null || sizePercent < 1 || sizePercent > 100) {
+  const baseUnitsSource = body.baseUnits ?? body.quantity ?? body.size
+  const baseUnitsValue = isBlankInput(baseUnitsSource) ? null : parseFiniteJsonNumber(baseUnitsSource)
+  if (baseUnitsSource !== undefined && !isBlankInput(baseUnitsSource) && (baseUnitsValue === null || baseUnitsValue <= 0)) {
+    return { response: Response.json({ error: 'Invalid baseUnits', code: 'INVALID_BASE_UNITS', field: 'baseUnits' }, { status: 400 }) }
+  }
+
+  const sizeBaseLotsSource = body.sizeBaseLots ?? body.baseLots
+  const sizeBaseLotsValue = isBlankInput(sizeBaseLotsSource) ? null : parsePositiveInteger(sizeBaseLotsSource)
+  if (sizeBaseLotsSource !== undefined && !isBlankInput(sizeBaseLotsSource) && sizeBaseLotsValue === null) {
+    return { response: Response.json({ error: 'Invalid sizeBaseLots', code: 'INVALID_SIZE_BASE_LOTS', field: 'sizeBaseLots' }, { status: 400 }) }
+  }
+
+  if (baseUnitsValue !== null && sizeBaseLotsValue !== null) {
+    return { response: Response.json({ error: 'baseUnits and sizeBaseLots cannot both be set', code: 'DUPLICATE_SIZE_FIELD' }, { status: 400 }) }
+  }
+
+  const sizePercentSource = baseUnitsValue === null && sizeBaseLotsValue === null ? body.sizePercent ?? 100 : body.sizePercent
+  const sizePercent = isBlankInput(sizePercentSource) ? null : parseNonNegativeInteger(sizePercentSource)
+  if (sizePercent !== null && (sizePercent < 1 || sizePercent > 100)) {
     return { response: Response.json({ error: 'Invalid sizePercent', code: 'INVALID_SIZE_PERCENT', field: 'sizePercent' }, { status: 400 }) }
+  }
+  if ((baseUnitsValue !== null || sizeBaseLotsValue !== null) && sizePercent !== null) {
+    return { response: Response.json({ error: 'Fixed size and sizePercent cannot both be set', code: 'DUPLICATE_SIZE_FIELD' }, { status: 400 }) }
   }
 
   const indexes = parseOrderBuilderIndexes(body)
@@ -1292,9 +1313,40 @@ function parsePositionConditionalOrderBody(body: Record<string, unknown>): {
     positionSide,
     takeProfitPriceUsd: takeProfitPrice === null ? null : String(takeProfitPrice),
     stopLossPriceUsd: stopLossPrice === null ? null : String(stopLossPrice),
+    baseUnits: baseUnitsValue === null ? null : String(baseUnitsValue),
+    sizeBaseLots: sizeBaseLotsValue === null ? null : baseLots(sizeBaseLotsValue),
     sizePercent,
     traderPdaIndex: indexes.traderPdaIndex,
     traderSubaccountIndex: indexes.traderSubaccountIndex,
+  }
+}
+
+async function resolvePositionConditionalSize(
+  client: PhoenixSdkClient,
+  symbol: PhoenixSymbol,
+  builder: {
+    baseUnits: string | null
+    sizeBaseLots: BaseLots | null
+    sizePercent: number | null
+  },
+): Promise<{ sizeBaseLots: BaseLots | null; sizePercent: number | null }> {
+  if (builder.sizeBaseLots !== null) {
+    return { sizeBaseLots: builder.sizeBaseLots, sizePercent: null }
+  }
+
+  if (builder.baseUnits === null) {
+    return { sizeBaseLots: null, sizePercent: builder.sizePercent }
+  }
+
+  await client.exchange.ready()
+  const market = client.exchange.market(symbol)
+  if (!market) throw new Error(`Unknown Phoenix market symbol '${symbol}'`)
+
+  return {
+    sizeBaseLots: baseUnitsToBaseLotsWithMarketParams(builder.baseUnits, {
+      baseLotsDecimals: market.baseLotsDecimals,
+    }),
+    sizePercent: null,
   }
 }
 
@@ -1834,6 +1886,7 @@ phoenixRoutes.post('/tx/position-conditional-order', async (c) => {
       builder.takeProfitPriceUsd,
       builder.stopLossPriceUsd,
     )
+    const size = await resolvePositionConditionalSize(client, builder.symbol, builder)
     const setupIxs = await buildMissingConditionalOrdersAccountIxs(client, builder)
     const placeIx = await client.ixs.buildPlacePositionConditionalOrder({
       authority: builder.authority,
@@ -1841,7 +1894,8 @@ phoenixRoutes.post('/tx/position-conditional-order', async (c) => {
       symbol: builder.symbol,
       greaterTriggerOrder,
       lessTriggerOrder,
-      sizePercent: builder.sizePercent,
+      sizeBaseLots: size.sizeBaseLots,
+      sizePercent: size.sizePercent,
       traderPdaIndex: builder.traderPdaIndex,
       traderSubaccountIndex: builder.traderSubaccountIndex,
     })

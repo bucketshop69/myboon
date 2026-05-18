@@ -196,6 +196,8 @@ export interface PhoenixPositionConditionalOrderBuilderInput extends Record<stri
   pdaIndex?: number;
   traderPdaIndex?: number;
   traderSubaccountIndex?: number;
+  baseUnits?: string | number;
+  sizeBaseLots?: string | number;
   sizePercent?: number;
 }
 
