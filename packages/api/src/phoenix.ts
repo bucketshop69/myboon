@@ -125,6 +125,7 @@ interface PhoenixInstructionBuilderResult {
 type PhoenixSdkClient = ReturnType<typeof createPhoenixClient>
 
 let phoenixSdkClient: PhoenixSdkClient | null = null
+let phoenixRawSdkClient: PhoenixSdkClient | null = null
 
 interface NormalizedPhoenixMarket {
   venueId: 'phoenix'
@@ -674,6 +675,17 @@ function getPhoenixSdkClient(): PhoenixSdkClient {
     })
   }
   return phoenixSdkClient
+}
+
+function getPhoenixRawSdkClient(): PhoenixSdkClient {
+  if (!phoenixRawSdkClient) {
+    phoenixRawSdkClient = createPhoenixClient({
+      apiUrl: PHOENIX_API_BASE,
+      rpcUrl: PHOENIX_RPC_URL,
+      exchangeMetadata: { stream: true },
+    })
+  }
+  return phoenixRawSdkClient
 }
 
 function parseUsdcAmountAtomic(input: unknown): bigint | null {
@@ -1581,9 +1593,9 @@ phoenixRoutes.post('/tx/position-conditional-order', async (c) => {
   const builder = parsePositionConditionalOrderBody(parsed.body)
   if ('response' in builder) return builder.response
 
-  const endpoint = 'sdk:ixs.buildPlacePositionConditionalOrder'
+  const endpoint = 'sdk:ixs.buildPlacePositionConditionalOrder:raw'
   try {
-    const client = getPhoenixSdkClient()
+    const client = getPhoenixRawSdkClient()
     const { greaterTriggerOrder, lessTriggerOrder } = await positionConditionalTriggers(
       client,
       builder.symbol,
