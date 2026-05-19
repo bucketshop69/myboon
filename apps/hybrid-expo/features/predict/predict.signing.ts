@@ -68,7 +68,7 @@ export interface SignedDepositWalletBatch {
 export type DepositWalletSigningContext =
   | { operation: 'predict_setup' }
   | { operation: 'wrap' }
-  | { operation: 'withdraw'; amount: number }
+  | { operation: 'withdraw'; amount: number; bridgeAddress: string }
   | { operation: 'redeem'; conditionId?: string; negativeRisk?: boolean };
 
 const DEPOSIT_WALLET_TYPES = {
@@ -193,13 +193,16 @@ function validateWrapCalls(calls: DepositWalletCallToSign[], depositWalletAddres
   }
 }
 
-function validateWithdrawCalls(calls: DepositWalletCallToSign[], amount: number) {
+function validateWithdrawCalls(calls: DepositWalletCallToSign[], amount: number, bridgeAddress: string) {
   if (calls.length !== 1) throw new Error('Predict refused to sign an unexpected withdraw action count.');
   const call = calls[0];
   assertZeroValue(call);
   const data = call.data.toLowerCase();
   if (normalizeAddress(call.target) !== CONTRACTS.PUSD || !data.startsWith(SELECTORS.transfer)) {
     throw new Error('Predict refused to sign an unexpected withdraw transfer.');
+  }
+  if (normalizeAddress(wordAddress(ensureHexWord(data, 0))) !== normalizeAddress(bridgeAddress)) {
+    throw new Error('Predict refused to sign withdraw to an unverified bridge address.');
   }
   const expectedAmount = BigInt(Math.floor(amount * 1_000_000));
   if (expectedAmount <= 0n || wordBigInt(ensureHexWord(data, 1)) !== expectedAmount) {
@@ -252,7 +255,7 @@ function validateDepositWalletSignatureRequest(
       validateWrapCalls(request.calls, request.depositWalletAddress);
       break;
     case 'withdraw':
-      validateWithdrawCalls(request.calls, context.amount);
+      validateWithdrawCalls(request.calls, context.amount, context.bridgeAddress);
       break;
     case 'redeem':
       validateRedeemCalls(request.calls, context);

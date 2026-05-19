@@ -16,6 +16,7 @@ interface WithdrawModalProps {
   isOpen: boolean;
   onClose: () => void;
   polygonAddress: string;
+  tradingAddress: string;
   solanaAddress: string;
   cashBalance: number | null;
   onSuccess?: () => void;
@@ -27,6 +28,7 @@ export function WithdrawModal({
   isOpen,
   onClose,
   polygonAddress,
+  tradingAddress,
   solanaAddress,
   cashBalance,
   onSuccess,
@@ -74,6 +76,7 @@ export function WithdrawModal({
     try {
       const result = await withdrawFromPolymarket({
         polygonAddress,
+        tradingAddress,
         amount: parsedAmount,
         solanaAddress: trimmedRecipientAddress,
       });

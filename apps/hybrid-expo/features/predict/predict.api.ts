@@ -865,6 +865,7 @@ export async function fetchMarketPositions(polygonAddress: string, slug: string)
 
 export interface WithdrawParams {
   polygonAddress: string;
+  tradingAddress: string;
   amount: number;
   solanaAddress: string;
 }
@@ -874,6 +875,39 @@ export interface WithdrawResult extends PredictOperationMeta {
   amount?: number;
   txHash?: string | null;
   error?: string;
+}
+
+const SOLANA_CHAIN_ID = '1151111081099710';
+const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+function bridgeAddressFromPayload(data: Record<string, unknown>): string | null {
+  const address = data.address;
+  if (address && typeof address === 'object') {
+    const evm = (address as Record<string, unknown>).evm;
+    if (typeof evm === 'string') return evm;
+  }
+  if (typeof data.depositAddress === 'string') return data.depositAddress;
+  if (typeof address === 'string') return address;
+  return null;
+}
+
+async function fetchExpectedWithdrawBridgeAddress(params: WithdrawParams): Promise<string> {
+  const response = await fetchWithTimeout('https://bridge.polymarket.com/withdraw', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address: params.tradingAddress,
+      toChainId: SOLANA_CHAIN_ID,
+      toTokenAddress: SOLANA_USDC_MINT,
+      recipientAddr: params.solanaAddress,
+    }),
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  const bridgeAddress = bridgeAddressFromPayload(data);
+  if (!response.ok || !bridgeAddress) {
+    throw new Error('Could not verify withdrawal route. Try again.');
+  }
+  return bridgeAddress;
 }
 
 export async function withdrawFromPolymarket(params: WithdrawParams): Promise<WithdrawResult> {
@@ -888,7 +922,12 @@ export async function withdrawFromPolymarket(params: WithdrawParams): Promise<Wi
   const operationMeta = parseOperationMeta(data);
   const signatureRequest = getSignatureRequest(data);
   if (signatureRequest) {
-    const batch = await signDepositWalletBatch(signatureRequest, { operation: 'withdraw', amount: params.amount });
+    const bridgeAddress = await fetchExpectedWithdrawBridgeAddress(params);
+    const batch = await signDepositWalletBatch(signatureRequest, {
+      operation: 'withdraw',
+      amount: params.amount,
+      bridgeAddress,
+    });
     const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/withdraw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

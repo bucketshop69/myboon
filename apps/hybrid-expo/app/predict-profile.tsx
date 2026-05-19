@@ -645,6 +645,7 @@ export default function PredictProfileScreen() {
           isOpen={withdrawOpen}
           onClose={() => setWithdrawOpen(false)}
           polygonAddress={poly.polygonAddress}
+          tradingAddress={poly.tradingAddress ?? poly.polygonAddress}
           solanaAddress={solanaAddress}
           cashBalance={cashBalance}
           onSuccess={loadPortfolio}
