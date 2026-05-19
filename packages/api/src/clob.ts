@@ -69,6 +69,7 @@ const CONTRACTS = {
 
 const DEPOSIT_WALLET_FACTORY = '0x00000000000Fb5C9ADea0298D729A0CB3823Cc07'
 const DEPOSIT_WALLET_IMPLEMENTATION = '0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB'
+const DEPOSIT_WALLET_BATCH_DEADLINE_SECONDS = 60 * 60
 
 const ERC20_APPROVE_ABI = [{
   name: 'approve', type: 'function',
@@ -331,7 +332,7 @@ async function prepareTradingWalletCalls(session: ClobSession, txs: Transaction[
   }
 
   if (!session.depositWalletAddress) throw new Error('Missing deposit wallet address')
-  const deadline = Math.floor(Date.now() / 1000 + 240).toString()
+  const deadline = Math.floor(Date.now() / 1000 + DEPOSIT_WALLET_BATCH_DEADLINE_SECONDS).toString()
   const relay = getReadOnlyRelay()
   const noncePayload = await relay.getNonce(session.eoaAddress, TransactionType.WALLET)
   const calls = txs.map(toDepositWalletCall)
