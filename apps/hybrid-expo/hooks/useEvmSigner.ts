@@ -13,16 +13,28 @@ import { Wallet } from '@ethersproject/wallet';
 import { keccak256 } from '@ethersproject/keccak256';
 
 let activeEvmWallet: Wallet | null = null;
+export const PREDICT_DERIVE_MESSAGE = 'myboon:polymarket:enable';
+
+function walletFromSolanaSignature(solanaSignature: Uint8Array): Wallet {
+  const sigHex = '0x' + Array.from(solanaSignature, (b: number) => b.toString(16).padStart(2, '0')).join('');
+  const evmPrivateKey = keccak256(sigHex);
+  return new Wallet(evmPrivateKey);
+}
+
+export function deriveReadonlyEvmSignerFromSignature(
+  solanaSignature: Uint8Array,
+): { eoaAddress: string; wallet: Wallet } {
+  const wallet = walletFromSolanaSignature(solanaSignature);
+  return { eoaAddress: wallet.address, wallet };
+}
 
 export function deriveEvmSignerFromSignature(
   solanaSignature: Uint8Array,
 ): { eoaAddress: string; wallet: Wallet } {
-  const sigHex = '0x' + Array.from(solanaSignature, (b: number) => b.toString(16).padStart(2, '0')).join('');
-  const evmPrivateKey = keccak256(sigHex);
-  const wallet = new Wallet(evmPrivateKey);
-  activeEvmWallet = wallet;
-  if (__DEV__) console.log('[evm-signer] Derived EOA:', wallet.address);
-  return { eoaAddress: wallet.address, wallet };
+  const signer = deriveReadonlyEvmSignerFromSignature(solanaSignature);
+  activeEvmWallet = signer.wallet;
+  if (__DEV__) console.log('[evm-signer] Derived EOA:', signer.eoaAddress);
+  return signer;
 }
 
 export function getActiveEvmWallet(): Wallet | null {
