@@ -290,6 +290,7 @@ export default function PredictProfileScreen() {
       const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
+        tradingAddress: poly.tradingAddress,
         tokenID: position.asset,
         price,
         size,
@@ -644,6 +645,7 @@ export default function PredictProfileScreen() {
           isOpen={withdrawOpen}
           onClose={() => setWithdrawOpen(false)}
           polygonAddress={poly.polygonAddress}
+          tradingAddress={poly.tradingAddress ?? poly.polygonAddress}
           solanaAddress={solanaAddress}
           cashBalance={cashBalance}
           onSuccess={loadPortfolio}

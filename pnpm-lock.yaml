@@ -41,6 +41,9 @@ importers:
       '@lazorkit/wallet':
         specifier: ^2.0.1
         version: 2.0.1(17ead120ad251825c008fcd7899b3d31)
+      '@polymarket/clob-client-v2':
+        specifier: 1.0.3-canary.0
+        version: 1.0.3-canary.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
       '@privy-io/expo':
         specifier: ^0.65.1
         version: 0.65.1(81f869a6a72ad1f6962ef31583c1e5ee)

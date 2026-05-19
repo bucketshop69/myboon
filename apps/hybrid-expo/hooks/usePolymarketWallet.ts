@@ -2,11 +2,11 @@
  * usePolymarketWallet — Derives a Polymarket-compatible Polygon wallet from a Solana signature.
  *
  * Architecture:
- * - The EVM private key is NEVER stored on the device. It lives only on the server, in-memory.
+ * - The EVM private key is derived and kept only in-memory on the phone.
  * - The phone stores public Polygon/deposit-wallet addresses in AsyncStorage so the UI
  *   remembers the user is "enabled" across app restarts.
- * - On enable: Phantom signs a message -> signature sent to server -> server derives EVM key,
- *   creates CLOB session, returns polygon address.
+ * - On enable: Phantom signs a message -> phone derives EVM key, creates CLOB creds,
+ *   then sends only public address + CLOB creds to the server.
  * - On app reopen: phone reads stored address from AsyncStorage. If the server session expired,
  *   the next CLOB operation will fail and the user re-signs with Phantom.
  * - On disable: clears both local storage and server session.
@@ -47,7 +47,7 @@ export interface PolymarketWallet {
   tradingAddress: string | null;
   isReady: boolean;
   isLoading: boolean;
-  /** Sign with Solana wallet, derive EVM key locally, send sig to server for deposit-wallet setup */
+  /** Sign with Solana wallet, derive EVM key locally, and set up deposit-wallet trading */
   enable: () => Promise<void>;
   /** Clear session (server + local + EVM key) */
   disable: () => void;
@@ -88,6 +88,7 @@ export function usePolymarketWallet(): PolymarketWallet {
   }, []);
 
   const clearWalletSessionState = useCallback(() => {
+    import('./useEvmSigner').then(({ clearActiveEvmWallet }) => clearActiveEvmWallet()).catch(() => {});
     setPolygonAddress(null);
     setSafeAddress(null);
     setDepositWalletAddress(null);
@@ -220,19 +221,23 @@ export function usePolymarketWallet(): PolymarketWallet {
       const signature = await startSignMessage(messageBytes);
       assertWalletUnchanged();
 
-      // Step 2: Derive EVM key locally (same derivation as server)
+      // Step 2: Derive EVM key locally. The signature never leaves the device.
       const { deriveEvmSignerFromSignature } = await import('./useEvmSigner');
-      await deriveEvmSignerFromSignature(signature);
+      const { eoaAddress } = deriveEvmSignerFromSignature(signature);
       assertWalletUnchanged();
       setCanSignLocally(true);
 
-      // Step 3: Send hex-encoded signature to server for deposit wallet setup + CLOB API creds
-      const sigHex = Array.from(signature, (b: number) => b.toString(16).padStart(2, '0')).join('');
+      // Step 3: Create/derive CLOB credentials locally, then send only public
+      // address + CLOB L2 credentials to the server. The server cannot recreate
+      // the EVM private key from this payload.
+      const { createPolymarketApiCreds, createPredictSessionProof, signAndSubmitDepositWalletBatch } = await import('@/features/predict/predict.signing');
+      const creds = await createPolymarketApiCreds();
+      const authProof = await createPredictSessionProof(eoaAddress);
 
       const res = await fetchWithTimeout(`${API_BASE}/clob/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signature: sigHex }),
+        body: JSON.stringify({ polygonAddress: eoaAddress, creds, ...authProof }),
       });
       assertWalletUnchanged();
 
@@ -246,6 +251,9 @@ export function usePolymarketWallet(): PolymarketWallet {
       assertWalletUnchanged();
       if (!data.depositWalletAddress) {
         throw new Error('Deposit wallet setup incomplete - please try again');
+      }
+      if (data.signatureRequest) {
+        await signAndSubmitDepositWalletBatch(eoaAddress, data.signatureRequest, { operation: 'predict_setup' });
       }
       if (loadGenerationRef.current !== enableGeneration) {
         throw new Error(WALLET_CHANGED_MESSAGE);

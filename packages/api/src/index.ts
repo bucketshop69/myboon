@@ -299,6 +299,11 @@ type ActivityFallbackGroup = {
   outcomeIndex: number
 }
 
+type ActivityCostBasis = {
+  totalSize: number
+  totalUsdc: number
+}
+
 function activityDedupeKey(input: unknown): string {
   const activity = asRecord(input)
   if (!activity) return JSON.stringify(input)
@@ -326,6 +331,92 @@ function dedupeActivity(input: unknown[]): unknown[] {
     deduped.push(item)
   }
   return deduped
+}
+
+function activityCostBasisKey(input: {
+  asset?: unknown
+  conditionId?: unknown
+  outcomeIndex?: unknown
+}): string | null {
+  const asset = typeof input.asset === 'string' ? input.asset.toLowerCase() : ''
+  const conditionId = typeof input.conditionId === 'string' ? input.conditionId.toLowerCase() : ''
+  const outcomeIndex = parseNullableNumber(input.outcomeIndex)
+  if (!asset || !conditionId || outcomeIndex === null) return null
+  return `${conditionId}:${outcomeIndex}:${asset}`
+}
+
+function buildActivityCostBasis(activity: unknown[]): Map<string, ActivityCostBasis> {
+  const basis = new Map<string, ActivityCostBasis>()
+  const seenTrades = new Set<string>()
+
+  for (const raw of activity) {
+    const trade = asRecord(raw)
+    if (!trade) continue
+    if (trade.type !== 'TRADE' || trade.side !== 'BUY') continue
+
+    const key = activityCostBasisKey(trade)
+    const size = parseNullableNumber(trade.size) ?? parseNullableNumber(trade.amount) ?? 0
+    const usdcSize = parseNullableNumber(trade.usdcSize) ?? 0
+    if (!key || size <= 0 || usdcSize <= 0) continue
+
+    const dedupeKey = [
+      trade.transactionHash,
+      trade.asset,
+      trade.conditionId,
+      trade.outcomeIndex,
+      size,
+      usdcSize,
+      trade.price,
+    ].join(':')
+    if (seenTrades.has(dedupeKey)) continue
+    seenTrades.add(dedupeKey)
+
+    const existing = basis.get(key)
+    if (existing) {
+      existing.totalSize += size
+      existing.totalUsdc += usdcSize
+    } else {
+      basis.set(key, { totalSize: size, totalUsdc: usdcSize })
+    }
+  }
+
+  return basis
+}
+
+function hydrateMissingPositionCostBasis(positions: unknown[], activity: unknown[]): unknown[] {
+  if (positions.length === 0 || activity.length === 0) return positions
+
+  const basis = buildActivityCostBasis(activity)
+  if (basis.size === 0) return positions
+
+  return positions.map((raw) => {
+    const position = asRecord(raw)
+    if (!position) return raw
+
+    const key = activityCostBasisKey(position)
+    const costBasis = key ? basis.get(key) : undefined
+    if (!costBasis || costBasis.totalSize <= 0 || costBasis.totalUsdc <= 0) return raw
+
+    const avgPrice = parseNullableNumber(position.avgPrice) ?? 0
+    const size = parseNullableNumber(position.size) ?? 0
+    const existingCost = avgPrice * size
+    if (avgPrice > 0 && existingCost > 0) return raw
+
+    const hydratedAvgPrice = Math.round((costBasis.totalUsdc / costBasis.totalSize) * 100) / 100
+    const currentValue = parseNullableNumber(position.currentValue)
+    const hydrated: Record<string, unknown> = {
+      ...position,
+      avgPrice: hydratedAvgPrice,
+    }
+
+    if (currentValue !== null) {
+      const cost = hydratedAvgPrice * size
+      hydrated.cashPnl = Math.round((currentValue - cost) * 100) / 100
+      hydrated.percentPnl = cost > 0 ? Math.round(((currentValue - cost) / cost) * 10_000) / 100 : position.percentPnl
+    }
+
+    return hydrated
+  })
 }
 
 async function fetchGammaMarketsForSlug(slug: string): Promise<Record<string, unknown>[]> {
@@ -1517,6 +1608,9 @@ app.get('/predict/portfolio/:address', async (c) => {
       activity = Array.isArray(body) ? dedupeActivity(body) : []
     }
 
+    positions = hydrateMissingPositionCostBasis(positions, activity)
+    redeemablePositions = hydrateMissingPositionCostBasis(redeemablePositions, activity)
+
     // Some deposit-wallet trades appear in data-api /activity before they appear in
     // /positions or /closed-positions. If portfolio state is otherwise empty, expose
     // closed historical picks reconstructed from activity and final Gamma prices.
@@ -1723,9 +1817,15 @@ app.get('/predict/positions/:address/market/:slug', async (c) => {
   if (!address?.trim() || !slug?.trim()) return c.json({ error: 'Bad request' }, 400)
 
   try {
-    const res = await dataApiFetch(
-      `positions?user=${encodeURIComponent(address)}&redeemable=false&sizeThreshold=0.1&limit=100&sortBy=CURRENT&sortDirection=DESC`
-    )
+    const [positionsRes, activityRes] = await Promise.allSettled([
+      dataApiFetch(`positions?user=${encodeURIComponent(address)}&redeemable=false&sizeThreshold=0.1&limit=100&sortBy=CURRENT&sortDirection=DESC`),
+      dataApiFetch(`activity?user=${encodeURIComponent(address)}&limit=500&sortBy=TIMESTAMP&sortDirection=DESC`),
+    ])
+    if (positionsRes.status !== 'fulfilled') {
+      console.error(`[api] data-api /positions request failed`, positionsRes.reason)
+      return c.json({ error: 'Failed to fetch positions' }, 502)
+    }
+    const res = positionsRes.value
     if (!res.ok) {
       console.error(`[api] data-api /positions error ${res.status}`)
       return c.json({ error: 'Failed to fetch positions' }, 502)
@@ -1733,8 +1833,14 @@ app.get('/predict/positions/:address/market/:slug', async (c) => {
     const body = await res.json() as unknown
     if (!Array.isArray(body)) return c.json([])
 
+    let activity: unknown[] = []
+    if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
+      const activityBody = await activityRes.value.json() as unknown
+      activity = Array.isArray(activityBody) ? dedupeActivity(activityBody) : []
+    }
+
     // Filter positions matching this market's slug or eventSlug
-    const filtered = body.filter((p: unknown) => {
+    const filtered = hydrateMissingPositionCostBasis(body, activity).filter((p: unknown) => {
       const pos = p as Record<string, unknown>
       return pos.slug === slug || pos.eventSlug === slug
     })

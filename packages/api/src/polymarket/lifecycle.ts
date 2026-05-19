@@ -19,6 +19,7 @@ export type PredictOperationStatus =
   | 'collecting'
   | 'bridging'
   | 'completed'
+  | 'needs_signature'
   | 'failed'
   | 'session_expired'
 
