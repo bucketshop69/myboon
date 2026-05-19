@@ -15,9 +15,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
+import { PREDICT_DERIVE_MESSAGE } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
-const DERIVE_MESSAGE = 'myboon:polymarket:enable';
 const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
 const DEPOSIT_WALLET_STORAGE_KEY = 'polymarket_deposit_wallet_address';
 const WALLET_MODE_STORAGE_KEY = 'polymarket_wallet_mode';
@@ -217,7 +217,7 @@ export function usePolymarketWallet(): PolymarketWallet {
     setIsLoading(true);
     try {
       // Step 1: Sign deterministic message with Solana wallet (MWA prompt)
-      const messageBytes = new TextEncoder().encode(DERIVE_MESSAGE);
+      const messageBytes = new TextEncoder().encode(PREDICT_DERIVE_MESSAGE);
       const signature = await startSignMessage(messageBytes);
       assertWalletUnchanged();
 

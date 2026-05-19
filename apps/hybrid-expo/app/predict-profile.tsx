@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { DepositModal } from '@/components/predict/DepositModal';
 import { WithdrawModal } from '@/components/predict/WithdrawModal';
+import { PredictOwnerKeyExportModal } from '@/features/predict/components/PredictOwnerKeyExportModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
@@ -39,6 +40,7 @@ const PREDICT_PROFILE_FALLBACK_USD_TO_INR = 95.67;
 const USD_INR_RATE_URL = 'https://open.er-api.com/v6/latest/USD';
 const PREDICT_PROFILE_CURRENCY_KEY = 'predict-profile-currency-format';
 type PredictProfileCurrency = 'USD' | 'INR';
+type PredictSettingsView = 'menu' | 'currency' | 'wallet';
 
 function formatProfileCurrency(
   value: number | null | undefined,
@@ -75,7 +77,7 @@ function getOrderCost(order: OpenOrder): number {
 export default function PredictProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { connected, address: solanaAddress, source, sessionKey } = useWallet();
+  const { connected, address: solanaAddress, source, sessionKey, signMessage } = useWallet();
   const poly = usePolymarketWallet();
   const { open: openDrawer } = useDrawer();
   const [busy, setBusy] = useState(false);
@@ -98,6 +100,8 @@ export default function PredictProfileScreen() {
   const [usdToInrRate, setUsdToInrRate] = useState(PREDICT_PROFILE_FALLBACK_USD_TO_INR);
   const [currencyFormat, setCurrencyFormat] = useState<PredictProfileCurrency>('INR');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsView, setSettingsView] = useState<PredictSettingsView>('menu');
+  const [predictExportOpen, setPredictExportOpen] = useState(false);
   const [cashOutPosition, setCashOutPosition] = useState<PortfolioPosition | null>(null);
   const [cashOutSubmitting, setCashOutSubmitting] = useState(false);
 
@@ -124,7 +128,13 @@ export default function PredictProfileScreen() {
   const selectCurrencyFormat = useCallback((next: PredictProfileCurrency) => {
     setCurrencyFormat(next);
     setSettingsOpen(false);
+    setSettingsView('menu');
     AsyncStorage.setItem(PREDICT_PROFILE_CURRENCY_KEY, next).catch(() => {});
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsView('menu');
   }, []);
 
   useEffect(() => {
@@ -661,39 +671,138 @@ export default function PredictProfileScreen() {
         formatMoney={formatProfileMoney}
       />
 
-      <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
+      <PredictOwnerKeyExportModal
+        visible={predictExportOpen}
+        onClose={() => setPredictExportOpen(false)}
+        solanaAddress={solanaAddress}
+        polygonAddress={poly.polygonAddress}
+        depositWalletAddress={poly.tradingAddress ?? poly.depositWalletAddress}
+        signMessage={signMessage}
+      />
+
+      <Modal visible={settingsOpen} transparent animationType="fade" onRequestClose={closeSettings}>
         <View style={styles.settingsBackdrop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close Predict profile settings"
             style={StyleSheet.absoluteFill}
-            onPress={() => setSettingsOpen(false)}
+            onPress={closeSettings}
           />
           <View style={styles.settingsCard} accessibilityViewIsModal>
             <Text style={styles.settingsEyebrow}>Predict settings</Text>
-            <Text style={styles.settingsTitle}>Currency display</Text>
-            <Text style={styles.settingsCopy}>Choose how money shows on your Predict profile.</Text>
-            {(['USD', 'INR'] as const).map((currency) => {
-              const selected = currencyFormat === currency;
-              return (
+            {settingsView !== 'menu' && (
+              <Pressable style={styles.settingsBackRow} onPress={() => setSettingsView('menu')} accessibilityRole="button" accessibilityLabel="Back to Predict settings">
+                <MaterialIcons name="chevron-left" size={16} color={semantic.text.dim} />
+                <Text style={styles.settingsBackText}>Back</Text>
+              </Pressable>
+            )}
+
+            {settingsView === 'menu' && (
+              <>
+                <Text style={styles.settingsTitle}>Settings</Text>
+                <Text style={styles.settingsCopy}>Manage display and wallet controls for Predict.</Text>
                 <Pressable
-                  key={currency}
                   accessibilityRole="button"
-                  accessibilityLabel={`Show Predict profile values in ${currency}`}
-                  accessibilityState={{ selected }}
-                  style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
-                  onPress={() => selectCurrencyFormat(currency)}
+                  accessibilityLabel="Open currency display settings"
+                  style={styles.settingsOption}
+                  onPress={() => setSettingsView('currency')}
                 >
-                  <View>
-                    <Text style={styles.currencyOptionTitle}>{currency}</Text>
-                    <Text style={styles.currencyOptionSub}>
-                      {currency === 'USD' ? '$ US dollars' : `₹ Indian rupees · live rate ${usdToInrRate.toFixed(2)}`}
-                    </Text>
+                  <View style={styles.settingsOptionIcon}>
+                    <MaterialIcons name="payments" size={15} color={tokens.colors.primary} />
                   </View>
-                  {selected && <MaterialIcons name="check-circle" size={20} color={tokens.colors.primary} />}
+                  <View style={styles.settingsOptionCopy}>
+                    <Text style={styles.settingsOptionTitle}>Currency display</Text>
+                    <Text style={styles.settingsOptionSub}>{currencyFormat} selected</Text>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={18} color={semantic.text.faint} />
                 </Pressable>
-              );
-            })}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Predict wallet settings"
+                  style={styles.settingsOption}
+                  onPress={() => setSettingsView('wallet')}
+                >
+                  <View style={styles.settingsOptionIcon}>
+                    <MaterialIcons name="vpn-key" size={15} color={tokens.colors.viridian} />
+                  </View>
+                  <View style={styles.settingsOptionCopy}>
+                    <Text style={styles.settingsOptionTitle}>Predict wallet</Text>
+                    <Text style={styles.settingsOptionSub}>{poly.polygonAddress ? truncate(poly.polygonAddress) : 'Not connected'}</Text>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={18} color={semantic.text.faint} />
+                </Pressable>
+              </>
+            )}
+
+            {settingsView === 'currency' && (
+              <>
+                <Text style={styles.settingsTitle}>Currency display</Text>
+                <Text style={styles.settingsCopy}>Choose how money shows on your Predict profile.</Text>
+                {(['USD', 'INR'] as const).map((currency) => {
+                  const selected = currencyFormat === currency;
+                  return (
+                    <Pressable
+                      key={currency}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Show Predict profile values in ${currency}`}
+                      accessibilityState={{ selected }}
+                      style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
+                      onPress={() => selectCurrencyFormat(currency)}
+                    >
+                      <View>
+                        <Text style={styles.currencyOptionTitle}>{currency}</Text>
+                        <Text style={styles.currencyOptionSub}>
+                          {currency === 'USD' ? '$ US dollars' : `₹ Indian rupees · live rate ${usdToInrRate.toFixed(2)}`}
+                        </Text>
+                      </View>
+                      {selected && <MaterialIcons name="check-circle" size={20} color={tokens.colors.primary} />}
+                    </Pressable>
+                  );
+                })}
+              </>
+            )}
+
+            {settingsView === 'wallet' && (
+              <>
+                <Text style={styles.settingsTitle}>Predict wallet</Text>
+                <Text style={styles.settingsCopy}>
+                  Export the Polygon owner key that controls your Predict deposit wallet. Your Solana wallet signs once so the key can be derived locally.
+                </Text>
+                <View style={styles.walletInfoBox}>
+                  <View style={styles.walletInfoRow}>
+                    <Text style={styles.walletInfoLabel}>Solana</Text>
+                    <Text style={styles.walletInfoValue}>{solanaAddress ? truncate(solanaAddress) : '--'}</Text>
+                  </View>
+                  <View style={styles.walletInfoRow}>
+                    <Text style={styles.walletInfoLabel}>Owner EOA</Text>
+                    <Text style={styles.walletInfoValue}>{poly.polygonAddress ? truncate(poly.polygonAddress) : '--'}</Text>
+                  </View>
+                  <View style={styles.walletInfoRow}>
+                    <Text style={styles.walletInfoLabel}>Deposit wallet</Text>
+                    <Text style={styles.walletInfoValue}>{poly.tradingAddress ? truncate(poly.tradingAddress) : '--'}</Text>
+                  </View>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Export Predict owner key"
+                  style={[styles.exportOwnerButton, !isEnabled && styles.exportOwnerButtonDisabled]}
+                  disabled={!isEnabled}
+                  onPress={() => {
+                    setSettingsOpen(false);
+                    setSettingsView('menu');
+                    setPredictExportOpen(true);
+                  }}
+                >
+                  <MaterialIcons name="key" size={16} color={tokens.colors.backgroundDark} />
+                  <Text style={styles.exportOwnerButtonText}>Export Predict owner key</Text>
+                </Pressable>
+                <Text style={styles.settingsFinePrint}>
+                  {source === 'privy'
+                    ? 'Your Privy Solana wallet export lives in the main wallet drawer.'
+                    : 'This does not export your external Solana wallet. Export that from your wallet app.'}
+                </Text>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -743,6 +852,105 @@ const styles = StyleSheet.create({
     color: semantic.text.dim,
     lineHeight: 15,
     marginBottom: 4,
+  },
+  settingsBackRow: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginBottom: -2,
+    paddingVertical: 3,
+  },
+  settingsBackText: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    fontWeight: '800',
+    color: semantic.text.dim,
+  },
+  settingsOption: {
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: semantic.background.surface,
+  },
+  settingsOptionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  settingsOptionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  settingsOptionTitle: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    fontWeight: '800',
+    color: semantic.text.primary,
+  },
+  settingsOptionSub: {
+    marginTop: 3,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: semantic.text.faint,
+  },
+  walletInfoBox: {
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    borderRadius: 12,
+    padding: 12,
+    gap: 9,
+    backgroundColor: semantic.background.surface,
+  },
+  walletInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  walletInfoLabel: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: semantic.text.faint,
+    textTransform: 'uppercase',
+  },
+  walletInfoValue: {
+    flexShrink: 1,
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: semantic.text.primary,
+    textAlign: 'right',
+  },
+  exportOwnerButton: {
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: tokens.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  exportOwnerButtonDisabled: {
+    opacity: 0.45,
+  },
+  exportOwnerButtonText: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    fontWeight: '800',
+    color: tokens.colors.backgroundDark,
+  },
+  settingsFinePrint: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: semantic.text.faint,
+    lineHeight: 14,
   },
   currencyOption: {
     borderWidth: 1,

@@ -3,6 +3,7 @@ import {
   Alert,
   Animated,
   Keyboard,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -24,6 +25,7 @@ import { fetchPhoenixTraderState } from '@/features/perps/phoenix.api';
 import { semantic, tokens } from '@/theme';
 
 const DRAWER_WIDTH = 280;
+const PRIVY_EXPORT_URL = process.env.EXPO_PUBLIC_PRIVY_EXPORT_URL;
 
 type WalletOption = {
   name: string;
@@ -176,6 +178,30 @@ export function WalletDrawer() {
       },
     ]);
   }, [source, poly, privy, walletDisconnect, close]);
+
+  const handleExportSolanaWallet = useCallback(async () => {
+    if (source !== 'privy') {
+      Alert.alert('External wallet', 'This Solana wallet is external. Export it from your wallet app.');
+      return;
+    }
+    if (!PRIVY_EXPORT_URL) {
+      Alert.alert(
+        'Export wallet',
+        'Privy Solana wallet export requires a hosted secure export page. Once configured, this button will open that flow.',
+      );
+      return;
+    }
+    try {
+      const separator = PRIVY_EXPORT_URL.includes('?') ? '&' : '?';
+      const url = address
+        ? `${PRIVY_EXPORT_URL}${separator}address=${encodeURIComponent(address)}`
+        : PRIVY_EXPORT_URL;
+      await Linking.openURL(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not open wallet export.';
+      Alert.alert('Export failed', msg);
+    }
+  }, [address, source]);
 
   const handleSendEmail = useCallback(async () => {
     if (!emailInput.trim() || busy) return;
@@ -370,6 +396,20 @@ export function WalletDrawer() {
             </View>
 
             <View style={styles.footer}>
+              {source === 'privy' && (
+                <TouchableOpacity
+                  onPress={handleExportSolanaWallet}
+                  activeOpacity={0.7}
+                  style={styles.exportWalletRow}
+                >
+                  <MaterialIcons
+                    name="file-download"
+                    size={12}
+                    color={semantic.text.dim}
+                  />
+                  <Text style={styles.exportWalletText}>Export wallet</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={handleDisconnect}
                 activeOpacity={0.6}
@@ -795,6 +835,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 4,
+  },
+  exportWalletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  exportWalletText: {
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: semantic.text.dim,
   },
   disconnectText: {
     fontFamily: 'monospace',

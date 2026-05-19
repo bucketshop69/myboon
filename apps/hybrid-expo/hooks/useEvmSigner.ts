@@ -13,6 +13,7 @@ import { Wallet } from '@ethersproject/wallet';
 import { keccak256 } from '@ethersproject/keccak256';
 
 let activeEvmWallet: Wallet | null = null;
+export const PREDICT_DERIVE_MESSAGE = 'myboon:polymarket:enable';
 
 export function deriveEvmSignerFromSignature(
   solanaSignature: Uint8Array,
