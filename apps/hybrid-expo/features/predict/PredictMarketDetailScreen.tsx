@@ -551,6 +551,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
 
       const result = await placeBet({
         polygonAddress,
+        tradingAddress: poly.tradingAddress,
         tokenID,
         price: quote.limitPrice,
         size: quote.shares,
@@ -615,6 +616,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
       const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
+        tradingAddress: poly.tradingAddress,
         tokenID: position.asset,
         price,
         size,

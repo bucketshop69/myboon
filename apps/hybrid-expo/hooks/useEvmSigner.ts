@@ -4,13 +4,15 @@
  * The EVM private key is derived deterministically: keccak256(solana_signature).
  * This key lives ONLY in memory on the phone — never persisted to disk.
  *
- * The same derivation runs on the server for deposit-wallet relay operations.
- * Both sides get the same key from the same Solana signature.
+ * The derived key is exposed to other client modules through an in-memory module variable
+ * so Predict actions can sign orders and deposit-wallet batches locally.
  */
 
 import { useCallback, useRef, useState } from 'react';
 import { Wallet } from '@ethersproject/wallet';
 import { keccak256 } from '@ethersproject/keccak256';
+
+let activeEvmWallet: Wallet | null = null;
 
 export function deriveEvmSignerFromSignature(
   solanaSignature: Uint8Array,
@@ -18,8 +20,24 @@ export function deriveEvmSignerFromSignature(
   const sigHex = '0x' + Array.from(solanaSignature, (b: number) => b.toString(16).padStart(2, '0')).join('');
   const evmPrivateKey = keccak256(sigHex);
   const wallet = new Wallet(evmPrivateKey);
+  activeEvmWallet = wallet;
   if (__DEV__) console.log('[evm-signer] Derived EOA:', wallet.address);
   return { eoaAddress: wallet.address, wallet };
+}
+
+export function getActiveEvmWallet(): Wallet | null {
+  return activeEvmWallet;
+}
+
+export function requireActiveEvmWallet(): Wallet {
+  if (!activeEvmWallet) {
+    throw new Error('Predict wallet needs a fresh signature. Reconnect Predict and try again.');
+  }
+  return activeEvmWallet;
+}
+
+export function clearActiveEvmWallet() {
+  activeEvmWallet = null;
 }
 
 export function useEvmSigner() {
@@ -28,7 +46,7 @@ export function useEvmSigner() {
   const [eoaAddr, setEoaAddr] = useState<string | null>(null);
 
   /**
-   * Derive EVM wallet from Solana signature (same derivation as server).
+   * Derive EVM wallet from Solana signature.
    * Call this after Solana wallet signs the enable message.
    * Key stays in memory only — never persisted.
    */
@@ -41,6 +59,7 @@ export function useEvmSigner() {
   }, []);
 
   const clear = useCallback(() => {
+    clearActiveEvmWallet();
     walletRef.current = null;
     setReady(false);
     setEoaAddr(null);

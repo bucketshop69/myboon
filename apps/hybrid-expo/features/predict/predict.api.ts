@@ -18,6 +18,11 @@ import type {
   TrendingMarket,
 } from '@/features/predict/predict.types';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
+import {
+  createSignedPredictOrder,
+  signDepositWalletBatch,
+  type DepositWalletSignatureRequest,
+} from './predict.signing';
 
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -49,6 +54,7 @@ export type PredictOperationStatus =
   | 'collecting'
   | 'bridging'
   | 'completed'
+  | 'needs_signature'
   | 'failed'
   | 'session_expired';
 
@@ -81,6 +87,7 @@ function parseOperationMeta(data: Record<string, unknown>): PredictOperationMeta
       || status === 'collecting'
       || status === 'bridging'
       || status === 'completed'
+      || status === 'needs_signature'
       || status === 'failed'
       || status === 'session_expired'
       ? status
@@ -89,6 +96,24 @@ function parseOperationMeta(data: Record<string, unknown>): PredictOperationMeta
     code,
     isSessionExpired: status === 'session_expired' || code === 'PREDICT_SESSION_EXPIRED',
   };
+}
+
+function getSignatureRequest(data: Record<string, unknown>): DepositWalletSignatureRequest | null {
+  const request = data.signatureRequest;
+  if (!request || typeof request !== 'object') return null;
+  const r = request as Record<string, unknown>;
+  if (
+    r.kind !== 'deposit_wallet_batch'
+    || typeof r.ownerAddress !== 'string'
+    || typeof r.depositWalletAddress !== 'string'
+    || typeof r.chainId !== 'number'
+    || typeof r.nonce !== 'string'
+    || typeof r.deadline !== 'string'
+    || !Array.isArray(r.calls)
+  ) {
+    return null;
+  }
+  return r as unknown as DepositWalletSignatureRequest;
 }
 
 function mapGeopoliticsMarket(row: unknown): GeopoliticsMarket | null {
@@ -489,6 +514,7 @@ export async function fetchLivePrices(tokenIds: string[]): Promise<Record<string
 
 export interface PlaceBetParams {
   polygonAddress: string;
+  tradingAddress?: string | null;
   tokenID: string;
   price: number;
   size?: number;
@@ -538,11 +564,12 @@ function friendlyPlaceBetError(detail: string): string {
  */
 export async function placeBet(params: PlaceBetParams): Promise<PlaceBetResult> {
   const baseUrl = resolveApiBaseUrl();
+  const signedOrder = await createSignedPredictOrder(params);
 
   const response = await fetchWithTimeout(`${baseUrl}/clob/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    body: JSON.stringify({ ...params, signedOrder }),
   });
 
   const data = await response.json() as Record<string, unknown>;
@@ -632,10 +659,11 @@ export interface ClobBalance {
     amount: number;
     txHash: string | null;
     error: string | null;
+    signatureRequired?: boolean;
   };
 }
 
-export async function fetchClobBalance(polygonAddress: string): Promise<ClobBalance | null> {
+export async function fetchClobBalance(polygonAddress: string, autoWrap = true): Promise<ClobBalance | null> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetchWithTimeout(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
   if (!response.ok) {
@@ -643,13 +671,46 @@ export async function fetchClobBalance(polygonAddress: string): Promise<ClobBala
     return null;
   }
   const data = await response.json() as Record<string, unknown>;
+  const wrap = data.wrap && typeof data.wrap === 'object'
+    ? data.wrap as ClobBalance['wrap']
+    : undefined;
+  if (autoWrap && wrap?.signatureRequired) {
+    await wrapPolymarketCash(polygonAddress).catch(() => null);
+    return fetchClobBalance(polygonAddress, false);
+  }
   return {
     balance: typeof data.balance === 'number' ? data.balance : 0,
     allowance: typeof data.allowance === 'number' ? data.allowance : 0,
-    wrap: data.wrap && typeof data.wrap === 'object'
-      ? data.wrap as ClobBalance['wrap']
-      : undefined,
+    wrap,
   };
+}
+
+export async function wrapPolymarketCash(polygonAddress: string): Promise<PredictOperationMeta & { ok: boolean; error?: string }> {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetchWithTimeout(`${baseUrl}/clob/wrap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ polygonAddress }),
+  });
+  const data = await response.json() as Record<string, unknown>;
+  const signatureRequest = getSignatureRequest(data);
+  if (signatureRequest) {
+    const batch = await signDepositWalletBatch(signatureRequest);
+    const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/wrap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygonAddress, batch }),
+    });
+    const signedData = await signedResponse.json() as Record<string, unknown>;
+    if (!signedResponse.ok) {
+      return { ok: false, error: typeof signedData.userMessage === 'string' ? signedData.userMessage : 'Wrap failed', ...parseOperationMeta(signedData) };
+    }
+    return { ok: true, ...parseOperationMeta(signedData) };
+  }
+  if (!response.ok) {
+    return { ok: false, error: typeof data.userMessage === 'string' ? data.userMessage : 'Wrap failed', ...parseOperationMeta(data) };
+  }
+  return { ok: true, ...parseOperationMeta(data) };
 }
 
 // --- Deposit Status ---
@@ -825,6 +886,34 @@ export async function withdrawFromPolymarket(params: WithdrawParams): Promise<Wi
 
   const data = await response.json() as Record<string, unknown>;
   const operationMeta = parseOperationMeta(data);
+  const signatureRequest = getSignatureRequest(data);
+  if (signatureRequest) {
+    const batch = await signDepositWalletBatch(signatureRequest);
+    const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/withdraw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...params, batch }),
+    });
+    const signedData = await signedResponse.json() as Record<string, unknown>;
+    const signedMeta = parseOperationMeta(signedData);
+    if (!signedResponse.ok) {
+      return {
+        ok: false,
+        error: typeof signedData.userMessage === 'string'
+          ? signedData.userMessage
+          : typeof signedData.detail === 'string'
+            ? signedData.detail
+            : 'Withdraw failed',
+        ...signedMeta,
+      };
+    }
+    return {
+      ok: true,
+      amount: typeof signedData.amount === 'number' ? signedData.amount : undefined,
+      txHash: typeof signedData.txHash === 'string' ? signedData.txHash : null,
+      ...signedMeta,
+    };
+  }
 
   if (!response.ok) {
     const detail = typeof data.userMessage === 'string'
@@ -885,6 +974,48 @@ export async function redeemPosition(
     } catch {
       data = { error: text };
     }
+  }
+
+  const signatureRequest = getSignatureRequest(data);
+  if (signatureRequest) {
+    const batch = await signDepositWalletBatch(signatureRequest);
+    const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/redeem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        polygonAddress,
+        conditionId: position.conditionId,
+        asset: position.asset,
+        outcomeIndex: position.outcomeIndex,
+        negativeRisk: position.negativeRisk,
+        batch,
+      }),
+    });
+    const signedText = await signedResponse.text();
+    let signedData: Record<string, unknown> = {};
+    if (signedText) {
+      try {
+        signedData = JSON.parse(signedText) as Record<string, unknown>;
+      } catch {
+        signedData = { error: signedText };
+      }
+    }
+    if (!signedResponse.ok) {
+      const detail =
+        typeof signedData.userMessage === 'string'
+          ? signedData.userMessage
+          : typeof signedData.detail === 'string'
+          ? signedData.detail
+          : typeof signedData.error === 'string'
+            ? signedData.error
+            : `Redeem failed (${signedResponse.status})`;
+      return { ok: false, error: detail, ...parseOperationMeta(signedData) };
+    }
+    return {
+      ok: true,
+      txHash: typeof signedData.txHash === 'string' ? signedData.txHash : null,
+      ...parseOperationMeta(signedData),
+    };
   }
 
   if (!response.ok) {

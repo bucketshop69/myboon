@@ -122,6 +122,7 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
 
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
+        tradingAddress: poly.tradingAddress,
         tokenID,
         price: orderPrice,
         size: shares,
