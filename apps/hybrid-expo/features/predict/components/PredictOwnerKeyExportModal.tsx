@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { deriveEvmSignerFromSignature, PREDICT_DERIVE_MESSAGE } from '@/hooks/useEvmSigner';
+import { deriveReadonlyEvmSignerFromSignature, PREDICT_DERIVE_MESSAGE } from '@/hooks/useEvmSigner';
 import { semantic, tokens } from '@/theme';
 
 interface PredictOwnerKeyExportModalProps {
@@ -36,6 +36,7 @@ export function PredictOwnerKeyExportModal({
   const [privateKey, setPrivateKey] = useState<string | null>(null);
   const [derivedAddress, setDerivedAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const exportRequestRef = useRef(0);
 
   const canStart = useMemo(
     () => acknowledged && !!signMessage && !!polygonAddress && !!solanaAddress,
@@ -43,6 +44,7 @@ export function PredictOwnerKeyExportModal({
   );
 
   const reset = useCallback(() => {
+    exportRequestRef.current += 1;
     setState('idle');
     setAcknowledged(false);
     setRevealed(false);
@@ -71,21 +73,25 @@ export function PredictOwnerKeyExportModal({
   const handleExport = useCallback(async () => {
     if (!canStart || !signMessage || !polygonAddress) return;
     setState('signing');
+    const requestId = ++exportRequestRef.current;
     setError(null);
     setPrivateKey(null);
     setDerivedAddress(null);
     setRevealed(false);
     try {
       const signature = await signMessage(new TextEncoder().encode(PREDICT_DERIVE_MESSAGE));
-      const { eoaAddress, wallet } = deriveEvmSignerFromSignature(signature);
+      if (exportRequestRef.current !== requestId) return;
+      const { eoaAddress, wallet } = deriveReadonlyEvmSignerFromSignature(signature);
       if (eoaAddress.toLowerCase() !== polygonAddress.toLowerCase()) {
         throw new Error('This Solana wallet derives a different Predict owner key.');
       }
+      if (exportRequestRef.current !== requestId) return;
       setDerivedAddress(eoaAddress);
       setPrivateKey(wallet.privateKey);
       setState('ready');
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
+      if (exportRequestRef.current !== requestId) return;
       setError(err instanceof Error ? err.message : 'Could not export Predict owner key.');
       setState('error');
     }
