@@ -38,6 +38,30 @@ import { semantic, tokens } from '@/theme';
 type Tab = 'positions' | 'orders' | 'history';
 type TransferAction = 'deposit' | 'withdraw';
 type TransferMessageTone = 'info' | 'success' | 'error';
+type PendingProfileAction =
+  | {
+    id: string;
+    kind: 'close_position';
+    positionId: string;
+    signature: string;
+    createdAt: number;
+  }
+  | {
+    id: string;
+    kind: 'set_tpsl';
+    positionId: string;
+    signature: string;
+    takeProfitPrice?: number;
+    stopLossPrice?: number;
+    createdAt: number;
+  }
+  | {
+    id: string;
+    kind: 'cancel_order';
+    orderId: string;
+    signature: string;
+    createdAt: number;
+  };
 
 type PhoenixTraderRecord = Record<string, unknown>;
 
@@ -127,6 +151,7 @@ export function PhoenixProfileScreen() {
   const [slPrice, setSlPrice] = useState('');
   const [closePosition, setClosePosition] = useState<PhoenixPositionRow | null>(null);
   const [closeAmountText, setCloseAmountText] = useState('');
+  const [pendingActions, setPendingActions] = useState<PendingProfileAction[]>([]);
 
   const traders = useMemo(() => normalizeTraders(state), [state]);
   const positions = useMemo(() => normalizePositions(traders), [traders]);
@@ -149,6 +174,22 @@ export function PhoenixProfileScreen() {
       && transferAmountValid
       && !transferBusy,
   );
+  const pendingPositionActions = useMemo(() => {
+    const rows = new Map<string, PendingProfileAction>();
+    pendingActions.forEach((action) => {
+      if (action.kind === 'close_position' || action.kind === 'set_tpsl') {
+        rows.set(action.positionId, action);
+      }
+    });
+    return rows;
+  }, [pendingActions]);
+  const pendingOrderActions = useMemo(() => {
+    const rows = new Map<string, PendingProfileAction>();
+    pendingActions.forEach((action) => {
+      if (action.kind === 'cancel_order') rows.set(action.orderId, action);
+    });
+    return rows;
+  }, [pendingActions]);
 
   const phoenixSignAndSendTransaction = useMemo<PhoenixSignAndSendTransactionFn | null>(() => {
     if (typeof wallet.signAndSendTransaction !== 'function') return null;
@@ -203,6 +244,17 @@ export function PhoenixProfileScreen() {
     setRefreshing(false);
     setAccountChecked(true);
   }, [wallet.address]);
+
+  useEffect(() => {
+    if (pendingActions.length === 0) return undefined;
+
+    const interval = setInterval(() => {
+      const cutoff = Date.now() - 60_000;
+      setPendingActions((current) => current.filter((action) => action.createdAt >= cutoff));
+    }, 10_000);
+
+    return () => clearInterval(interval);
+  }, [pendingActions.length]);
 
   useEffect(() => {
     if (wallet.connected && wallet.address) {
@@ -357,6 +409,18 @@ export function PhoenixProfileScreen() {
         walletAddress: wallet.address,
         signAndSendTransaction: phoenixSignAndSendTransaction,
       });
+      setPendingActions((current) => [
+        ...current,
+        {
+          id: `tpsl-${tpslPosition.id}-${signature}`,
+          kind: 'set_tpsl',
+          positionId: tpslPosition.id,
+          signature,
+          takeProfitPrice: tpValue === null ? undefined : tpValue,
+          stopLossPrice: slValue === null ? undefined : slValue,
+          createdAt: Date.now(),
+        },
+      ]);
       setActionMessage(`TP/SL submitted: ${shortKey(signature)}`);
       setTpslPosition(null);
       setTpPrice('');
@@ -423,6 +487,16 @@ export function PhoenixProfileScreen() {
         walletAddress: wallet.address,
         signAndSendTransaction: phoenixSignAndSendTransaction,
       });
+      setPendingActions((current) => [
+        ...current,
+        {
+          id: `cancel-${order.id}-${signature}`,
+          kind: 'cancel_order',
+          orderId: order.id,
+          signature,
+          createdAt: Date.now(),
+        },
+      ]);
       setActionMessage(`Cancel submitted: ${shortKey(signature)}`);
       await loadProfile('refresh');
     } catch (err) {
@@ -471,6 +545,16 @@ export function PhoenixProfileScreen() {
         walletAddress: wallet.address,
         signAndSendTransaction: phoenixSignAndSendTransaction,
       });
+      setPendingActions((current) => [
+        ...current,
+        {
+          id: `close-${closePosition.id}-${signature}`,
+          kind: 'close_position',
+          positionId: closePosition.id,
+          signature,
+          createdAt: Date.now(),
+        },
+      ]);
       setActionMessage(`Close submitted: ${shortKey(signature)}`);
       setClosePosition(null);
       setCloseAmountText('');
@@ -630,11 +714,16 @@ export function PhoenixProfileScreen() {
                   {positions.length === 0 ? (
                     <EmptyRows icon="inbox" text="No open Phoenix positions" />
                   ) : positions.map((position) => {
-                    const hasTpsl = !!(position.takeProfitPrice || position.stopLossPrice);
+                    const pendingAction = pendingPositionActions.get(position.id);
+                    const pendingTpsl = pendingAction?.kind === 'set_tpsl' ? pendingAction : null;
+                    const pendingClose = pendingAction?.kind === 'close_position';
+                    const displayTakeProfit = pendingTpsl?.takeProfitPrice ?? position.takeProfitPrice;
+                    const displayStopLoss = pendingTpsl?.stopLossPrice ?? position.stopLossPrice;
+                    const hasTpsl = !!(displayTakeProfit || displayStopLoss);
                     return (
                     <View
                       key={position.id}
-                      style={styles.positionCard}
+                      style={[styles.positionCard, pendingAction && styles.pendingCard]}
                     >
                       <Pressable
                         style={styles.positionRow}
@@ -648,18 +737,23 @@ export function PhoenixProfileScreen() {
                             {position.side.toUpperCase()} - {formatBase(position.size)}
                           </Text>
                           <Text style={styles.positionMeta}>{position.accountLabel}</Text>
+                          {pendingAction && (
+                            <Text style={styles.pendingRowText}>
+                              {pendingAction.kind === 'close_position' ? 'Close pending' : 'TP/SL pending'} {shortKey(pendingAction.signature)}
+                            </Text>
+                          )}
                           {hasTpsl && (
                             <View style={styles.tpslStack}>
-                              {position.takeProfitPrice && (
+                              {displayTakeProfit && (
                                 <View style={styles.tpslRow}>
                                   <Text style={styles.tpslLabelTP}>TP</Text>
-                                  <Text style={styles.tpslValueTP}>{formatPhoenixPrice(position.takeProfitPrice)}</Text>
+                                  <Text style={styles.tpslValueTP}>{formatPhoenixPrice(displayTakeProfit)}</Text>
                                 </View>
                               )}
-                              {position.stopLossPrice && (
+                              {displayStopLoss && (
                                 <View style={styles.tpslRow}>
                                   <Text style={styles.tpslLabelSL}>SL</Text>
-                                  <Text style={styles.tpslValueSL}>{formatPhoenixPrice(position.stopLossPrice)}</Text>
+                                  <Text style={styles.tpslValueSL}>{formatPhoenixPrice(displayStopLoss)}</Text>
                                 </View>
                               )}
                             </View>
@@ -674,17 +768,23 @@ export function PhoenixProfileScreen() {
                         </View>
                       </Pressable>
                       <View style={styles.positionActionRow}>
-                        <Pressable style={styles.positionActionBtn} onPress={() => openTPSLModal(position)}>
+                        <Pressable
+                          style={[styles.positionActionBtn, pendingClose && styles.actionDisabled]}
+                          onPress={() => openTPSLModal(position)}
+                          disabled={pendingClose}
+                        >
                           <MaterialIcons name="flag" size={12} color={tokens.colors.primary} />
-                          <Text style={styles.positionActionText}>{hasTpsl ? 'Edit TP/SL' : 'TP/SL'}</Text>
+                          <Text style={styles.positionActionText}>
+                            {pendingTpsl ? 'TP/SL Pending' : hasTpsl ? 'Edit TP/SL' : 'TP/SL'}
+                          </Text>
                         </Pressable>
                         <Pressable
-                          style={[styles.positionActionBtn, styles.positionActionBtnClose]}
+                          style={[styles.positionActionBtn, styles.positionActionBtnClose, pendingClose && styles.actionDisabled]}
                           onPress={() => openCloseModal(position)}
-                          disabled={actionLoading}
+                          disabled={actionLoading || pendingClose}
                         >
                           <MaterialIcons name="close" size={12} color={tokens.colors.vermillion} />
-                          <Text style={[styles.positionActionText, styles.textNeg]}>Close</Text>
+                          <Text style={[styles.positionActionText, styles.textNeg]}>{pendingClose ? 'Close Pending' : 'Close'}</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -696,8 +796,10 @@ export function PhoenixProfileScreen() {
                 <View style={styles.tabContent}>
                   {orders.length === 0 ? (
                     <EmptyRows icon="receipt-long" text="No open Phoenix orders" />
-                  ) : orders.map((order) => (
-                    <View key={order.id} style={styles.orderCard}>
+                  ) : orders.map((order) => {
+                    const pendingCancel = pendingOrderActions.get(order.id);
+                    return (
+                    <View key={order.id} style={[styles.orderCard, pendingCancel && styles.pendingCard]}>
                       <View style={styles.orderLeft}>
                         <Text style={styles.positionSymbol}>{order.symbol}</Text>
                         <Text style={styles.orderMeta}>
@@ -710,24 +812,27 @@ export function PhoenixProfileScreen() {
                             order.conditional ? 'Conditional' : null,
                           ].filter(Boolean).join(' - ')}
                         </Text>
+                        {pendingCancel && (
+                          <Text style={styles.pendingRowText}>Cancel pending {shortKey(pendingCancel.signature)}</Text>
+                        )}
                       </View>
                       <View style={styles.orderRight}>
                         <Text style={styles.orderPrice}>{formatPhoenixPrice(order.price)}</Text>
                         {order.canCancel && (
                           <Pressable
-                            style={[styles.orderCancelBtn, actionLoading && styles.disabledBtn]}
+                            style={[styles.orderCancelBtn, (actionLoading || pendingCancel) && styles.disabledBtn]}
                             onPress={() => handleCancelOrder(order)}
-                            disabled={actionLoading}
+                            disabled={actionLoading || !!pendingCancel}
                             accessibilityRole="button"
                             accessibilityLabel={`Cancel ${order.symbol} order`}
                           >
                             <MaterialIcons name="close" size={12} color={tokens.colors.vermillion} />
-                            <Text style={styles.orderCancelText}>Cancel</Text>
+                            <Text style={styles.orderCancelText}>{pendingCancel ? 'Canceling' : 'Cancel'}</Text>
                           </Pressable>
                         )}
                       </View>
                     </View>
-                  ))}
+                  ); })}
                 </View>
               )}
 
@@ -1793,6 +1898,10 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.background.surface,
     overflow: 'hidden',
   },
+  pendingCard: {
+    borderColor: 'rgba(199,183,112,0.45)',
+    backgroundColor: 'rgba(199,183,112,0.08)',
+  },
   positionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1825,6 +1934,14 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xxs,
     color: semantic.text.faint,
+  },
+  pendingRowText: {
+    marginTop: 5,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.primary,
+    textTransform: 'uppercase',
   },
   positionPnl: {
     marginTop: 4,

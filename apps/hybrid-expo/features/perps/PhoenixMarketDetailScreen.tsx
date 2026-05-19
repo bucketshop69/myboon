@@ -39,6 +39,41 @@ import { semantic, tokens } from '@/theme';
 type Side = 'long' | 'short';
 type OrderType = 'market' | 'limit';
 type AmountMode = 'usd' | 'base';
+type PendingDetailPositionAction =
+  | {
+    id: string;
+    kind: 'close_position';
+    positionId: string;
+    signature: string;
+    createdAt: number;
+  }
+  | {
+    id: string;
+    kind: 'set_tpsl';
+    positionId: string;
+    signature: string;
+    takeProfitPrice?: number;
+    stopLossPrice?: number;
+    createdAt: number;
+  }
+  | {
+    id: string;
+    kind: 'clear_tpsl';
+    positionId: string;
+    clearKind: 'take_profit' | 'stop_loss';
+    signature: string;
+    createdAt: number;
+  };
+
+interface PendingDetailOrderPlacement {
+  id: string;
+  side: Side;
+  orderType: OrderType;
+  amountBase: number;
+  amountUsdc: number;
+  signature: string;
+  createdAt: number;
+}
 
 interface PhoenixPositionRow {
   id: string;
@@ -97,6 +132,8 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   const [tpslModalSl, setTpslModalSl] = useState('');
   const [tpslModalMessage, setTpslModalMessage] = useState('');
   const [tpslModalBusy, setTpslModalBusy] = useState(false);
+  const [pendingPositionActions, setPendingPositionActions] = useState<PendingDetailPositionAction[]>([]);
+  const [pendingOrderPlacements, setPendingOrderPlacements] = useState<PendingDetailOrderPlacement[]>([]);
 
   const phoenixSignAndSendTransaction = useMemo<NonNullable<PhoenixExecutionContext['signAndSendTransaction']> | null>(() => {
     if (typeof wallet.signAndSendTransaction !== 'function') return null;
@@ -133,6 +170,11 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
   const displayedPrice = scrubPrice ?? latestPrice ?? market?.markPrice ?? null;
   const change24h = market?.change24h ?? null;
   const isUp = (change24h ?? 0) >= 0;
+  const pendingPositionActionById = useMemo(() => {
+    const rows = new Map<string, PendingDetailPositionAction>();
+    pendingPositionActions.forEach((action) => rows.set(action.positionId, action));
+    return rows;
+  }, [pendingPositionActions]);
 
   const loadMarket = useCallback(async () => {
     setLoadingMarket(true);
@@ -176,6 +218,18 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
 
     setPositions([]);
   }, [wallet.connected, wallet.address, loadPositions]);
+
+  useEffect(() => {
+    if (pendingPositionActions.length === 0 && pendingOrderPlacements.length === 0) return undefined;
+
+    const interval = setInterval(() => {
+      const cutoff = Date.now() - 60_000;
+      setPendingPositionActions((current) => current.filter((action) => action.createdAt >= cutoff));
+      setPendingOrderPlacements((current) => current.filter((action) => action.createdAt >= cutoff));
+    }, 10_000);
+
+    return () => clearInterval(interval);
+  }, [pendingPositionActions.length, pendingOrderPlacements.length]);
 
   const amountValue = useMemo(() => {
     const value = Number.parseFloat(amountText);
@@ -226,7 +280,25 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
       }, context);
 
       setTicketMessage(result.error?.message ?? (result.txSignature ? `Submitted: ${shortKey(result.txSignature)}` : 'Phoenix order submitted.'));
-      if (result.status !== 'failed') void loadPositions();
+      if (result.status !== 'failed') {
+        const signature = result.txSignature;
+        if (signature) {
+          setPendingOrderPlacements((current) => [
+            {
+              id: `order-${signature}`,
+              side,
+              orderType,
+              amountBase,
+              amountUsdc,
+              signature,
+              createdAt: Date.now(),
+            },
+            ...current,
+          ].slice(0, 4));
+        }
+        setAmountText('');
+        void loadPositions();
+      }
     } catch (err) {
       setTicketMessage(err instanceof Error ? err.message : 'Phoenix order failed.');
     } finally {
@@ -274,6 +346,16 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
         walletAddress: wallet.address,
         signAndSendTransaction: phoenixSignAndSendTransaction,
       });
+      setPendingPositionActions((current) => [
+        ...current,
+        {
+          id: `close-${position.id}-${signature}`,
+          kind: 'close_position',
+          positionId: position.id,
+          signature,
+          createdAt: Date.now(),
+        },
+      ]);
 
       setPositionActionMessage(`Close submitted: ${shortKey(signature)}`);
       void loadPositions();
@@ -341,6 +423,18 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
         walletAddress: wallet.address,
         signAndSendTransaction: phoenixSignAndSendTransaction,
       });
+      setPendingPositionActions((current) => [
+        ...current,
+        {
+          id: `tpsl-${tpslModalPosition.id}-${signature}`,
+          kind: 'set_tpsl',
+          positionId: tpslModalPosition.id,
+          signature,
+          takeProfitPrice: tpValue === null ? undefined : tpValue,
+          stopLossPrice: slValue === null ? undefined : slValue,
+          createdAt: Date.now(),
+        },
+      ]);
       setPositionActionMessage(`TP/SL submitted: ${shortKey(signature)}`);
       setTpslModalPosition(null);
       setTpslModalTp('');
@@ -405,6 +499,17 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
         walletAddress: wallet.address,
         signAndSendTransaction: phoenixSignAndSendTransaction,
       });
+      setPendingPositionActions((current) => [
+        ...current,
+        {
+          id: `clear-${position.id}-${kind}-${signature}`,
+          kind: 'clear_tpsl',
+          positionId: position.id,
+          clearKind: kind,
+          signature,
+          createdAt: Date.now(),
+        },
+      ]);
       setPositionActionMessage(`TP/SL clear submitted: ${shortKey(signature)}`);
       void loadPositions();
     } catch (err) {
@@ -700,6 +805,13 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
 
             <View style={styles.myPositionsSection}>
               <Text style={styles.myPositionsTitle}>My Positions</Text>
+              {pendingOrderPlacements.map((pendingOrder) => (
+                <PendingOrderPlacementCard
+                  key={pendingOrder.id}
+                  symbol={market.symbol}
+                  pendingOrder={pendingOrder}
+                />
+              ))}
               {positionsLoading ? (
                 <ActivityIndicator size="small" color={semantic.text.accent} style={{ marginTop: 8 }} />
               ) : positions.length === 0 ? (
@@ -711,6 +823,7 @@ export function PhoenixMarketDetailScreen({ symbol }: PhoenixMarketDetailScreenP
                     position={position}
                     isClosing={closingPositionId === position.id}
                     clearingTpslKey={clearingTpslKey}
+                    pendingAction={pendingPositionActionById.get(position.id) ?? null}
                     onPressTpsl={() => openTpslModal(position)}
                     onPressClose={() => void handleClosePosition(position)}
                     onPressClearTpsl={(kind) => void handleClearPositionTpsl(position, kind)}
@@ -795,6 +908,7 @@ function PhoenixPositionCard({
   position,
   isClosing,
   clearingTpslKey,
+  pendingAction,
   onPressTpsl,
   onPressClose,
   onPressClearTpsl,
@@ -802,18 +916,37 @@ function PhoenixPositionCard({
   position: PhoenixPositionRow;
   isClosing: boolean;
   clearingTpslKey: string | null;
+  pendingAction: PendingDetailPositionAction | null;
   onPressTpsl: () => void;
   onPressClose: () => void;
   onPressClearTpsl: (kind: 'take_profit' | 'stop_loss') => void;
 }) {
   const pnl = position.unrealizedPnl ?? 0;
   const pnlPositive = pnl >= 0;
-  const hasTpsl = position.takeProfitPrice !== null || position.stopLossPrice !== null;
+  const displayTakeProfitPrice = pendingAction?.kind === 'clear_tpsl' && pendingAction.clearKind === 'take_profit'
+    ? null
+    : pendingAction?.kind === 'set_tpsl' && pendingAction.takeProfitPrice !== undefined
+      ? pendingAction.takeProfitPrice
+      : position.takeProfitPrice;
+  const displayStopLossPrice = pendingAction?.kind === 'clear_tpsl' && pendingAction.clearKind === 'stop_loss'
+    ? null
+    : pendingAction?.kind === 'set_tpsl' && pendingAction.stopLossPrice !== undefined
+      ? pendingAction.stopLossPrice
+      : position.stopLossPrice;
+  const hasTpsl = displayTakeProfitPrice !== null || displayStopLossPrice !== null;
   const clearingTakeProfit = clearingTpslKey === `${position.id}-take_profit`;
   const clearingStopLoss = clearingTpslKey === `${position.id}-stop_loss`;
+  const pendingClose = pendingAction?.kind === 'close_position';
+  const pendingLabel = pendingAction
+    ? pendingAction.kind === 'close_position'
+      ? 'Close pending'
+      : pendingAction.kind === 'set_tpsl'
+        ? 'TP/SL pending'
+        : 'TP/SL clear pending'
+    : null;
 
   return (
-    <View style={styles.posCard}>
+    <View style={[styles.posCard, pendingAction && styles.pendingPosCard]}>
       <View style={styles.posCardTop}>
         <View style={[styles.posSideBadge, position.side === 'long' ? styles.posSideLong : styles.posSideShort]}>
           <Text style={[styles.posSideText, position.side === 'long' ? styles.textPos : styles.textNeg]}>
@@ -826,41 +959,75 @@ function PhoenixPositionCard({
           {formatPhoenixSignedUsd(position.unrealizedPnl)}
         </Text>
       </View>
+      {pendingAction && (
+        <Text style={styles.pendingPositionText}>{pendingLabel} {shortKey(pendingAction.signature)}</Text>
+      )}
       <View style={styles.posCardMeta}>
         <Text style={styles.posMetaText}>Entry {formatPhoenixPrice(position.entryPrice)}</Text>
         <Text style={styles.posMetaText}>Mark {formatPhoenixPrice(position.markPrice)}</Text>
-        {position.takeProfitPrice !== null && (
+        {displayTakeProfitPrice !== null && (
           <Pressable
             style={styles.posTpslChip}
             onPress={() => onPressClearTpsl('take_profit')}
-            disabled={!position.takeProfitCancel || clearingTakeProfit}
+            disabled={!position.takeProfitCancel || clearingTakeProfit || !!pendingAction}
             accessibilityRole="button"
             accessibilityLabel={`Clear ${position.symbol} take profit`}
           >
-            <Text style={[styles.posMetaText, styles.textPos]}>TP {formatPhoenixPrice(position.takeProfitPrice)}</Text>
+            <Text style={[styles.posMetaText, styles.textPos]}>TP {formatPhoenixPrice(displayTakeProfitPrice)}</Text>
             <MaterialIcons name="close" size={10} color={tokens.colors.vermillion} />
           </Pressable>
         )}
-        {position.stopLossPrice !== null && (
+        {displayStopLossPrice !== null && (
           <Pressable
             style={styles.posTpslChip}
             onPress={() => onPressClearTpsl('stop_loss')}
-            disabled={!position.stopLossCancel || clearingStopLoss}
+            disabled={!position.stopLossCancel || clearingStopLoss || !!pendingAction}
             accessibilityRole="button"
             accessibilityLabel={`Clear ${position.symbol} stop loss`}
           >
-            <Text style={[styles.posMetaText, styles.textNeg]}>SL {formatPhoenixPrice(position.stopLossPrice)}</Text>
+            <Text style={[styles.posMetaText, styles.textNeg]}>SL {formatPhoenixPrice(displayStopLossPrice)}</Text>
             <MaterialIcons name="close" size={10} color={tokens.colors.vermillion} />
           </Pressable>
         )}
       </View>
       <View style={styles.posCardActions}>
-        <Pressable style={styles.posActionBtn} onPress={onPressTpsl}>
-          <Text style={styles.posActionBtnText}>{hasTpsl ? 'Edit TP/SL' : 'TP/SL'}</Text>
+        <Pressable style={[styles.posActionBtn, pendingClose && styles.submitDisabled]} onPress={onPressTpsl} disabled={pendingClose}>
+          <Text style={styles.posActionBtnText}>
+            {pendingAction?.kind === 'set_tpsl' ? 'TP/SL Pending' : hasTpsl ? 'Edit TP/SL' : 'TP/SL'}
+          </Text>
         </Pressable>
-        <Pressable style={[styles.posActionBtn, styles.posActionBtnClose]} onPress={onPressClose} disabled={isClosing}>
-          <Text style={[styles.posActionBtnText, styles.textNeg]}>{isClosing ? 'Closing...' : 'Close'}</Text>
+        <Pressable style={[styles.posActionBtn, styles.posActionBtnClose, pendingClose && styles.submitDisabled]} onPress={onPressClose} disabled={isClosing || pendingClose}>
+          <Text style={[styles.posActionBtnText, styles.textNeg]}>{isClosing ? 'Closing...' : pendingClose ? 'Close Pending' : 'Close'}</Text>
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function PendingOrderPlacementCard({
+  symbol,
+  pendingOrder,
+}: {
+  symbol: string;
+  pendingOrder: PendingDetailOrderPlacement;
+}) {
+  return (
+    <View style={[styles.posCard, styles.pendingPosCard]}>
+      <View style={styles.posCardTop}>
+        <View style={[styles.posSideBadge, pendingOrder.side === 'long' ? styles.posSideLong : styles.posSideShort]}>
+          <Text style={[styles.posSideText, pendingOrder.side === 'long' ? styles.textPos : styles.textNeg]}>
+            {pendingOrder.side.toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.posSymbol}>{symbol}</Text>
+        <Text style={styles.posSize}>{formatBaseQuantity(pendingOrder.amountBase)}</Text>
+      </View>
+      <Text style={styles.pendingPositionText}>
+        {pendingOrder.orderType === 'limit' ? 'Limit order' : 'Market order'} pending {shortKey(pendingOrder.signature)}
+      </Text>
+      <View style={styles.posCardMeta}>
+        <Text style={styles.posMetaText}>Size ${pendingOrder.amountUsdc.toFixed(2)}</Text>
+        <Text style={styles.posMetaText}>Waiting for Phoenix state</Text>
       </View>
     </View>
   );
@@ -1507,6 +1674,10 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: tokens.spacing.sm,
   },
+  pendingPosCard: {
+    borderColor: 'rgba(199,183,112,0.45)',
+    backgroundColor: 'rgba(199,183,112,0.08)',
+  },
   posCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1559,6 +1730,13 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: tokens.fontSize.xxs,
     color: semantic.text.dim,
+  },
+  pendingPositionText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: tokens.colors.primary,
+    textTransform: 'uppercase',
   },
   posTpslChip: {
     minHeight: 18,
