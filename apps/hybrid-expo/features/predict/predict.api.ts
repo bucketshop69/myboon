@@ -695,7 +695,7 @@ export async function wrapPolymarketCash(polygonAddress: string): Promise<Predic
   const data = await response.json() as Record<string, unknown>;
   const signatureRequest = getSignatureRequest(data);
   if (signatureRequest) {
-    const batch = await signDepositWalletBatch(signatureRequest);
+    const batch = await signDepositWalletBatch(signatureRequest, { operation: 'wrap' });
     const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/wrap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -888,7 +888,7 @@ export async function withdrawFromPolymarket(params: WithdrawParams): Promise<Wi
   const operationMeta = parseOperationMeta(data);
   const signatureRequest = getSignatureRequest(data);
   if (signatureRequest) {
-    const batch = await signDepositWalletBatch(signatureRequest);
+    const batch = await signDepositWalletBatch(signatureRequest, { operation: 'withdraw', amount: params.amount });
     const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/withdraw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -978,7 +978,11 @@ export async function redeemPosition(
 
   const signatureRequest = getSignatureRequest(data);
   if (signatureRequest) {
-    const batch = await signDepositWalletBatch(signatureRequest);
+    const batch = await signDepositWalletBatch(signatureRequest, {
+      operation: 'redeem',
+      conditionId: position.conditionId,
+      negativeRisk: position.negativeRisk,
+    });
     const signedResponse = await fetchWithTimeout(`${baseUrl}/clob/redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

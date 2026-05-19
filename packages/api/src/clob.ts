@@ -16,7 +16,7 @@
  */
 
 import { Hono } from 'hono'
-import { providers } from 'ethers'
+import { providers, utils } from 'ethers'
 import { AssetType, ClobClient, OrderType, Side, SignatureTypeV2, Chain } from '@polymarket/clob-client-v2'
 import type { ApiKeyCreds, SignedOrder } from '@polymarket/clob-client-v2'
 import { deriveDepositWallet, RelayClient, TransactionType } from '@polymarket/builder-relayer-client'
@@ -70,6 +70,7 @@ const CONTRACTS = {
 const DEPOSIT_WALLET_FACTORY = '0x00000000000Fb5C9ADea0298D729A0CB3823Cc07'
 const DEPOSIT_WALLET_IMPLEMENTATION = '0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB'
 const DEPOSIT_WALLET_BATCH_DEADLINE_SECONDS = 60 * 60
+const AUTH_PROOF_MAX_AGE_MS = 5 * 60 * 1000
 
 const ERC20_APPROVE_ABI = [{
   name: 'approve', type: 'function',
@@ -200,6 +201,25 @@ interface ClobSession {
   tradingAddress: string
   depositWalletAddress?: string
   createdAt: number
+}
+
+function predictSessionMessage(address: string, timestamp: number): string {
+  return [
+    'myboon:predict:server-session',
+    `address:${address.toLowerCase()}`,
+    `timestamp:${timestamp}`,
+  ].join('\n')
+}
+
+function verifyPredictSessionProof(ownerAddress: string, timestamp: number | undefined, signature: string | undefined): boolean {
+  if (!timestamp || !Number.isFinite(timestamp) || !signature) return false
+  if (Math.abs(Date.now() - timestamp) > AUTH_PROOF_MAX_AGE_MS) return false
+  try {
+    const recovered = utils.verifyMessage(predictSessionMessage(ownerAddress, timestamp), signature)
+    return recovered.toLowerCase() === ownerAddress.toLowerCase()
+  } catch {
+    return false
+  }
 }
 
 const sessions = new Map<string, ClobSession>()
@@ -472,7 +492,13 @@ clobRoutes.post('/operations/reconcile', async (c) => {
  * credentials. It never receives Solana signature material or an EVM private key.
  */
 clobRoutes.post('/auth', async (c) => {
-  let body: { polygonAddress?: string; ownerAddress?: string; creds?: ApiKeyCreds }
+  let body: {
+    polygonAddress?: string
+    ownerAddress?: string
+    creds?: ApiKeyCreds
+    authTimestamp?: number
+    authSignature?: string
+  }
   try {
     body = await c.req.json()
   } catch {
@@ -486,6 +512,9 @@ clobRoutes.post('/auth', async (c) => {
   }
   if (!creds?.key || !creds.secret || !creds.passphrase) {
     return c.json(failedOperation('predict_setup', 'Missing CLOB API credentials', null), 400)
+  }
+  if (!verifyPredictSessionProof(ownerAddress, body.authTimestamp, body.authSignature)) {
+    return c.json(failedOperation('predict_setup', 'Invalid Predict session proof', null), 401)
   }
 
   if (!relayerBuilderConfig) {
@@ -1060,6 +1089,30 @@ clobRoutes.post('/wrap', async (c) => {
 clobRoutes.post('/withdraw', async (c) => {
   let body: { polygonAddress?: string; amount?: number; solanaAddress?: string; batch?: DepositWalletBatchRequest }
   try {
+    body = await c.req.json()
+  } catch {
+    return c.json(failedOperation('withdraw', 'Bad request', null), 400)
+  }
+
+  const { polygonAddress, amount, solanaAddress } = body
+  if (!polygonAddress || !amount || !solanaAddress) {
+    return c.json(failedOperation('withdraw', 'Missing required fields: polygonAddress, amount, solanaAddress', null), 400)
+  }
+
+  if (amount <= 0) {
+    return c.json(failedOperation('withdraw', 'Amount must be positive', null), 400)
+  }
+
+  if (!relayerBuilderConfig) {
+    return c.json(failedOperation('withdraw', 'Builder not configured', null), 500)
+  }
+
+  const session = sessions.get(polygonAddress.toLowerCase())
+  if (!session) {
+    return c.json(sessionExpired('withdraw'), 401)
+  }
+
+  try {
     if (body.batch) {
       const { relayInfo, execResult } = await submitSignedDepositWalletBatch(session, body.batch)
       const txHash = execResult?.transactionHash ?? relayInfo.transactionHash ?? null
@@ -1085,30 +1138,6 @@ clobRoutes.post('/withdraw', async (c) => {
       }))
     }
 
-    body = await c.req.json()
-  } catch {
-    return c.json(failedOperation('withdraw', 'Bad request', null), 400)
-  }
-
-  const { polygonAddress, amount, solanaAddress } = body
-  if (!polygonAddress || !amount || !solanaAddress) {
-    return c.json(failedOperation('withdraw', 'Missing required fields: polygonAddress, amount, solanaAddress', null), 400)
-  }
-
-  if (amount <= 0) {
-    return c.json(failedOperation('withdraw', 'Amount must be positive', null), 400)
-  }
-
-  if (!relayerBuilderConfig) {
-    return c.json(failedOperation('withdraw', 'Builder not configured', null), 500)
-  }
-
-  const session = sessions.get(polygonAddress.toLowerCase())
-  if (!session) {
-    return c.json(sessionExpired('withdraw'), 401)
-  }
-
-  try {
     // 1. Get bridge deposit addresses from Polymarket Bridge API
     const SOLANA_CHAIN_ID = '1151111081099710'
     const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'

@@ -230,13 +230,14 @@ export function usePolymarketWallet(): PolymarketWallet {
       // Step 3: Create/derive CLOB credentials locally, then send only public
       // address + CLOB L2 credentials to the server. The server cannot recreate
       // the EVM private key from this payload.
-      const { createPolymarketApiCreds, signAndSubmitDepositWalletBatch } = await import('@/features/predict/predict.signing');
+      const { createPolymarketApiCreds, createPredictSessionProof, signAndSubmitDepositWalletBatch } = await import('@/features/predict/predict.signing');
       const creds = await createPolymarketApiCreds();
+      const authProof = await createPredictSessionProof(eoaAddress);
 
       const res = await fetchWithTimeout(`${API_BASE}/clob/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ polygonAddress: eoaAddress, creds }),
+        body: JSON.stringify({ polygonAddress: eoaAddress, creds, ...authProof }),
       });
       assertWalletUnchanged();
 
@@ -252,7 +253,7 @@ export function usePolymarketWallet(): PolymarketWallet {
         throw new Error('Deposit wallet setup incomplete - please try again');
       }
       if (data.signatureRequest) {
-        await signAndSubmitDepositWalletBatch(eoaAddress, data.signatureRequest);
+        await signAndSubmitDepositWalletBatch(eoaAddress, data.signatureRequest, { operation: 'predict_setup' });
       }
       if (loadGenerationRef.current !== enableGeneration) {
         throw new Error(WALLET_CHANGED_MESSAGE);

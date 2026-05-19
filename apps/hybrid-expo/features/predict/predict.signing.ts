@@ -7,6 +7,33 @@ import type { PlaceBetParams } from './predict.api';
 const CLOB_HOST = process.env.EXPO_PUBLIC_CLOB_HOST || 'https://clob.polymarket.com';
 const CHAIN_ID = Chain.POLYGON;
 const BUILDER_CODE = '0xda0aa9e10ba50d0077e25e94cf9e4d9ef749821528acf6fc758df962d67b63ed';
+const DEPOSIT_WALLET_FACTORY = '0x00000000000fb5c9adea0298d729a0cb3823cc07';
+const CONTRACTS = {
+  PUSD: '0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb',
+  USDC_E: '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
+  COLLATERAL_ONRAMP: '0x93070a847efef7f70739046a929d47a521f5b8ee',
+  CTF_COLLATERAL_ADAPTER: '0xada100db00ca00073811820692005400218fce1f',
+  NEG_RISK_CTF_COLLATERAL_ADAPTER: '0xada2005600dec949baf300f4c6120000bdb6eaab',
+  CTF_EXCHANGE_V2: '0xe111180000d2663c0091e4f400237545b87b996b',
+  NEG_RISK_CTF_EXCHANGE_V2: '0xe2222d279d744050d28e00520010520000310f59',
+  NEG_RISK_ADAPTER: '0xd91e80cf2e7be2e162c6513ced06f1dd0da35296',
+  CTF: '0x4d97dcd97ec945f40cf65f87097ace5ea0476045',
+} as const;
+const APPROVAL_OPERATORS: Set<string> = new Set([
+  CONTRACTS.CTF_EXCHANGE_V2,
+  CONTRACTS.NEG_RISK_CTF_EXCHANGE_V2,
+  CONTRACTS.NEG_RISK_ADAPTER,
+  CONTRACTS.CTF_COLLATERAL_ADAPTER,
+  CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER,
+]);
+const MAX_UINT256 = 'f'.repeat(64);
+const SELECTORS = {
+  approve: '0x095ea7b3',
+  setApprovalForAll: '0xa22cb465',
+  transfer: '0xa9059cbb',
+  wrap: '0x62355638',
+  redeemPositions: '0x01b7037c',
+} as const;
 
 export interface DepositWalletCallToSign {
   target: string;
@@ -38,6 +65,12 @@ export interface SignedDepositWalletBatch {
   };
 }
 
+export type DepositWalletSigningContext =
+  | { operation: 'predict_setup' }
+  | { operation: 'wrap' }
+  | { operation: 'withdraw'; amount: number }
+  | { operation: 'redeem'; conditionId?: string; negativeRisk?: boolean };
+
 const DEPOSIT_WALLET_TYPES = {
   Call: [
     { name: 'target', type: 'address' },
@@ -52,6 +85,196 @@ const DEPOSIT_WALLET_TYPES = {
   ],
 };
 
+function normalizeAddress(value: string): string {
+  return value.toLowerCase();
+}
+
+function ensureHexWord(data: string, index: number): string {
+  const normalized = data.toLowerCase();
+  const start = 10 + index * 64;
+  const word = normalized.slice(start, start + 64);
+  if (word.length !== 64) throw new Error('Invalid Predict wallet action calldata.');
+  return word;
+}
+
+function wordAddress(word: string): string {
+  return `0x${word.slice(24)}`;
+}
+
+function wordBigInt(word: string): bigint {
+  return BigInt(`0x${word}`);
+}
+
+function assertZeroValue(call: DepositWalletCallToSign) {
+  if (BigInt(call.value || '0') !== 0n) {
+    throw new Error('Predict refused to sign a wallet action with native token value.');
+  }
+}
+
+function assertApprove(call: DepositWalletCallToSign, token: string, spender: string, amount?: bigint) {
+  assertZeroValue(call);
+  const data = call.data.toLowerCase();
+  if (normalizeAddress(call.target) !== normalizeAddress(token) || !data.startsWith(SELECTORS.approve)) {
+    throw new Error('Predict refused to sign an unexpected token approval.');
+  }
+  if (normalizeAddress(wordAddress(ensureHexWord(data, 0))) !== normalizeAddress(spender)) {
+    throw new Error('Predict refused to sign approval for an unexpected spender.');
+  }
+  const approvedAmountWord = ensureHexWord(data, 1);
+  if (amount !== undefined) {
+    if (wordBigInt(approvedAmountWord) !== amount) {
+      throw new Error('Predict refused to sign approval for an unexpected amount.');
+    }
+  } else if (approvedAmountWord !== MAX_UINT256) {
+    throw new Error('Predict refused to sign a non-standard setup approval amount.');
+  }
+}
+
+function assertSetApprovalForAll(call: DepositWalletCallToSign, operator: string) {
+  assertZeroValue(call);
+  const data = call.data.toLowerCase();
+  if (normalizeAddress(call.target) !== CONTRACTS.CTF || !data.startsWith(SELECTORS.setApprovalForAll)) {
+    throw new Error('Predict refused to sign an unexpected CTF approval.');
+  }
+  if (normalizeAddress(wordAddress(ensureHexWord(data, 0))) !== normalizeAddress(operator)) {
+    throw new Error('Predict refused to sign CTF approval for an unexpected operator.');
+  }
+  if (wordBigInt(ensureHexWord(data, 1)) !== 1n) {
+    throw new Error('Predict refused to sign CTF approval removal.');
+  }
+}
+
+function validateSetupCalls(calls: DepositWalletCallToSign[]) {
+  if (calls.length !== APPROVAL_OPERATORS.size * 2) {
+    throw new Error('Predict refused to sign an unexpected setup action count.');
+  }
+  const approvedErc20 = new Set<string>();
+  const approvedCtf = new Set<string>();
+  for (const call of calls) {
+    const data = call.data.toLowerCase();
+    if (data.startsWith(SELECTORS.approve)) {
+      const spender = normalizeAddress(wordAddress(ensureHexWord(data, 0)));
+      if (!APPROVAL_OPERATORS.has(spender)) throw new Error('Predict refused to sign setup approval for an unknown spender.');
+      assertApprove(call, CONTRACTS.PUSD, spender);
+      approvedErc20.add(spender);
+    } else if (data.startsWith(SELECTORS.setApprovalForAll)) {
+      const operator = normalizeAddress(wordAddress(ensureHexWord(data, 0)));
+      if (!APPROVAL_OPERATORS.has(operator)) throw new Error('Predict refused to sign setup CTF approval for an unknown operator.');
+      assertSetApprovalForAll(call, operator);
+      approvedCtf.add(operator);
+    } else {
+      throw new Error('Predict refused to sign an unknown setup action.');
+    }
+  }
+  if (approvedErc20.size !== APPROVAL_OPERATORS.size || approvedCtf.size !== APPROVAL_OPERATORS.size) {
+    throw new Error('Predict refused to sign incomplete setup approvals.');
+  }
+}
+
+function validateWrapCalls(calls: DepositWalletCallToSign[], depositWalletAddress: string) {
+  if (calls.length !== 2) throw new Error('Predict refused to sign an unexpected wrap action count.');
+  const approveAmount = wordBigInt(ensureHexWord(calls[0].data, 1));
+  assertApprove(calls[0], CONTRACTS.USDC_E, CONTRACTS.COLLATERAL_ONRAMP, approveAmount);
+
+  const wrap = calls[1];
+  assertZeroValue(wrap);
+  const data = wrap.data.toLowerCase();
+  if (normalizeAddress(wrap.target) !== CONTRACTS.COLLATERAL_ONRAMP || !data.startsWith(SELECTORS.wrap)) {
+    throw new Error('Predict refused to sign an unexpected wrap action.');
+  }
+  if (normalizeAddress(wordAddress(ensureHexWord(data, 0))) !== CONTRACTS.USDC_E) {
+    throw new Error('Predict refused to sign wrap for an unexpected asset.');
+  }
+  if (normalizeAddress(wordAddress(ensureHexWord(data, 1))) !== normalizeAddress(depositWalletAddress)) {
+    throw new Error('Predict refused to sign wrap to an unexpected wallet.');
+  }
+  if (wordBigInt(ensureHexWord(data, 2)) !== approveAmount || approveAmount <= 0n) {
+    throw new Error('Predict refused to sign wrap for an unexpected amount.');
+  }
+}
+
+function validateWithdrawCalls(calls: DepositWalletCallToSign[], amount: number) {
+  if (calls.length !== 1) throw new Error('Predict refused to sign an unexpected withdraw action count.');
+  const call = calls[0];
+  assertZeroValue(call);
+  const data = call.data.toLowerCase();
+  if (normalizeAddress(call.target) !== CONTRACTS.PUSD || !data.startsWith(SELECTORS.transfer)) {
+    throw new Error('Predict refused to sign an unexpected withdraw transfer.');
+  }
+  const expectedAmount = BigInt(Math.floor(amount * 1_000_000));
+  if (expectedAmount <= 0n || wordBigInt(ensureHexWord(data, 1)) !== expectedAmount) {
+    throw new Error('Predict refused to sign withdraw for an unexpected amount.');
+  }
+}
+
+function validateRedeemCalls(calls: DepositWalletCallToSign[], context: Extract<DepositWalletSigningContext, { operation: 'redeem' }>) {
+  if (calls.length === 0 || calls.length > 3) throw new Error('Predict refused to sign an unexpected collect action count.');
+  for (const call of calls) {
+    const data = call.data.toLowerCase();
+    if (data.startsWith(SELECTORS.setApprovalForAll)) {
+      const operator = normalizeAddress(wordAddress(ensureHexWord(data, 0)));
+      if (operator !== CONTRACTS.CTF_COLLATERAL_ADAPTER && operator !== CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER) {
+        throw new Error('Predict refused to sign collect approval for an unknown operator.');
+      }
+      assertSetApprovalForAll(call, operator);
+      continue;
+    }
+    if (!data.startsWith(SELECTORS.redeemPositions)) {
+      throw new Error('Predict refused to sign an unknown collect action.');
+    }
+    const target = normalizeAddress(call.target);
+    const allowedTarget = target === CONTRACTS.CTF
+      || target === CONTRACTS.CTF_COLLATERAL_ADAPTER
+      || target === CONTRACTS.NEG_RISK_CTF_COLLATERAL_ADAPTER;
+    if (!allowedTarget) throw new Error('Predict refused to sign collect for an unexpected contract.');
+    if (context.conditionId && ensureHexWord(data, 2) !== context.conditionId.toLowerCase().replace(/^0x/, '')) {
+      throw new Error('Predict refused to sign collect for an unexpected market.');
+    }
+    assertZeroValue(call);
+  }
+}
+
+function validateDepositWalletSignatureRequest(
+  request: DepositWalletSignatureRequest,
+  context: DepositWalletSigningContext,
+) {
+  if (request.operation !== context.operation) {
+    throw new Error('Predict refused to sign a mismatched wallet action.');
+  }
+  if (request.chainId !== CHAIN_ID) {
+    throw new Error('Predict refused to sign a wallet action for an unexpected chain.');
+  }
+  switch (context.operation) {
+    case 'predict_setup':
+      validateSetupCalls(request.calls);
+      break;
+    case 'wrap':
+      validateWrapCalls(request.calls, request.depositWalletAddress);
+      break;
+    case 'withdraw':
+      validateWithdrawCalls(request.calls, context.amount);
+      break;
+    case 'redeem':
+      validateRedeemCalls(request.calls, context);
+      break;
+  }
+}
+
+export async function createPredictSessionProof(address: string): Promise<{ authTimestamp: number; authSignature: string }> {
+  const wallet = requireActiveEvmWallet();
+  const signerAddress = (await wallet.getAddress()).toLowerCase();
+  if (signerAddress !== address.toLowerCase()) {
+    throw new Error('Predict signer changed. Reconnect Predict and try again.');
+  }
+  const authTimestamp = Date.now();
+  const authSignature = await wallet.signMessage([
+    'myboon:predict:server-session',
+    `address:${address.toLowerCase()}`,
+    `timestamp:${authTimestamp}`,
+  ].join('\n'));
+  return { authTimestamp, authSignature };
+}
+
 export async function createPolymarketApiCreds(): Promise<ApiKeyCreds> {
   const wallet = requireActiveEvmWallet();
   const client = new ClobClient({
@@ -64,12 +287,14 @@ export async function createPolymarketApiCreds(): Promise<ApiKeyCreds> {
 
 export async function signDepositWalletBatch(
   request: DepositWalletSignatureRequest,
+  context: DepositWalletSigningContext,
 ): Promise<SignedDepositWalletBatch> {
   const wallet = requireActiveEvmWallet();
   const signerAddress = (await wallet.getAddress()).toLowerCase();
   if (signerAddress !== request.ownerAddress.toLowerCase()) {
     throw new Error('Predict signer changed. Reconnect Predict and try again.');
   }
+  validateDepositWalletSignatureRequest(request, context);
 
   const domain = {
     name: 'DepositWallet',
@@ -88,7 +313,7 @@ export async function signDepositWalletBatch(
   return {
     type: 'WALLET',
     from: request.ownerAddress,
-    to: '0x00000000000Fb5C9ADea0298D729A0CB3823Cc07',
+    to: DEPOSIT_WALLET_FACTORY,
     nonce: request.nonce,
     signature,
     depositWalletParams: {
@@ -102,8 +327,9 @@ export async function signDepositWalletBatch(
 export async function signAndSubmitDepositWalletBatch(
   polygonAddress: string,
   request: DepositWalletSignatureRequest,
+  context: DepositWalletSigningContext,
 ): Promise<Record<string, unknown>> {
-  const batch = await signDepositWalletBatch(request);
+  const batch = await signDepositWalletBatch(request, context);
   const baseUrl = resolveApiBaseUrl();
   const response = await fetchWithTimeout(`${baseUrl}/clob/wallet-batch`, {
     method: 'POST',
