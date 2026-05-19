@@ -276,6 +276,16 @@ export function PhoenixProfileScreen() {
     setAccountChecked(false);
   }, [wallet.connected, wallet.address, loadProfile]);
 
+  useEffect(() => {
+    if (!wallet.connected || !wallet.address) return undefined;
+
+    const interval = setInterval(() => {
+      void loadProfile('refresh');
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, [wallet.connected, wallet.address, loadProfile]);
+
   const onRefresh = useCallback(() => {
     void loadProfile('refresh');
   }, [loadProfile]);
