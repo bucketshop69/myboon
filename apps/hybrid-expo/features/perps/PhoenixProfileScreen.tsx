@@ -166,6 +166,10 @@ export function PhoenixProfileScreen() {
   const noPhoenixProfile = accountChecked && !hasPhoenixProfile;
   const walletUnsupported = wallet.connected && typeof wallet.signAndSendTransaction !== 'function';
   const transferAmountValid = useMemo(() => isValidPhoenixTransferAmount(transferAmount), [transferAmount]);
+  const transferAmountNumber = useMemo(() => {
+    const parsed = Number(transferAmount);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [transferAmount]);
   const transferCanSubmit = Boolean(
     transferAction
       && wallet.address
@@ -319,6 +323,11 @@ export function PhoenixProfileScreen() {
       setTransferMessageTone('error');
       return;
     }
+    if (transferAction === 'withdraw' && summary.withdrawable !== null && transferAmountNumber > summary.withdrawable) {
+      setTransferMessage(`Available to withdraw: ${formatUsd(summary.withdrawable)} USDC.`);
+      setTransferMessageTone('error');
+      return;
+    }
     if (!wallet.connection) {
       setTransferMessage('Phoenix transaction send requires a Solana connection.');
       setTransferMessageTone('error');
@@ -355,7 +364,7 @@ export function PhoenixProfileScreen() {
     } finally {
       setTransferBusy(false);
     }
-  }, [transferAction, transferAmount, wallet.address, wallet.connection, phoenixSignAndSendTransaction, loadProfile]);
+  }, [transferAction, transferAmount, transferAmountNumber, summary.withdrawable, wallet.address, wallet.connection, phoenixSignAndSendTransaction, loadProfile]);
 
   const openTPSLModal = useCallback((position: PhoenixPositionRow) => {
     setTpslPosition(position);
@@ -879,6 +888,7 @@ export function PhoenixProfileScreen() {
         canSubmit={transferCanSubmit}
         message={transferMessage}
         messageTone={transferMessageTone}
+        withdrawable={summary.withdrawable}
         onAmountChange={setTransferAmount}
         onClose={closeTransfer}
         onSubmit={handleTransferSubmit}
@@ -1074,6 +1084,7 @@ function PhoenixTransferModal({
   canSubmit,
   message,
   messageTone,
+  withdrawable,
   onAmountChange,
   onClose,
   onSubmit,
@@ -1084,11 +1095,15 @@ function PhoenixTransferModal({
   canSubmit: boolean;
   message: string | null;
   messageTone: TransferMessageTone;
+  withdrawable: number | null;
   onAmountChange: (value: string) => void;
   onClose: () => void;
   onSubmit: () => void;
 }) {
   const title = action === 'withdraw' ? 'Withdraw Phoenix USDC' : 'Deposit Phoenix USDC';
+  const contextText = action === 'withdraw'
+    ? `Available to withdraw: ${formatUsd(withdrawable)} USDC`
+    : 'Enter the USDC amount to deposit.';
   return (
     <Modal visible={action !== null} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
@@ -1099,9 +1114,7 @@ function PhoenixTransferModal({
               <MaterialIcons name="close" size={18} color={semantic.text.dim} />
             </Pressable>
           </View>
-          <Text style={styles.modalDesc}>
-            Phoenix uses Solana USDC through Ember collateral instructions.
-          </Text>
+          <Text style={styles.modalDesc}>{contextText}</Text>
           <TextInput
             style={styles.amountInput}
             value={amount}
@@ -1112,6 +1125,27 @@ function PhoenixTransferModal({
             editable={!busy}
             autoFocus
           />
+          {action === 'withdraw' && (
+            <View style={styles.transferQuickRow}>
+              {([10, 20, 75, 100] as const).map((pct) => {
+                const disabled = busy || withdrawable === null || withdrawable <= 0;
+                return (
+                  <Pressable
+                    key={pct}
+                    style={[styles.transferQuickPill, disabled && styles.actionDisabled]}
+                    disabled={disabled}
+                    onPress={() => {
+                      if (withdrawable !== null) {
+                        onAmountChange(formatUsdcInput((withdrawable * pct) / 100));
+                      }
+                    }}
+                  >
+                    <Text style={styles.transferQuickPillText}>{pct === 100 ? 'All' : `${pct}%`}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
           {message && (
             <Text
               style={[
@@ -1485,6 +1519,11 @@ function formatBase(value: number): string {
 function formatPhoenixQuantity(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0';
   return value.toFixed(8).replace(/\.?0+$/, '');
+}
+
+function formatUsdcInput(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  return value.toFixed(6).replace(/\.?0+$/, '');
 }
 
 function shortKey(value: string | null): string {
@@ -2230,6 +2269,27 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xxs - 1,
     fontWeight: '800',
     color: semantic.text.dim,
+  },
+  transferQuickRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+  },
+  transferQuickPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: semantic.border.muted,
+    backgroundColor: 'rgba(0,212,170,0.05)',
+  },
+  transferQuickPillText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xxs,
+    fontWeight: '800',
+    color: semantic.text.dim,
+    textTransform: 'uppercase',
   },
   actionMsgBar: {
     marginHorizontal: tokens.spacing.lg,
