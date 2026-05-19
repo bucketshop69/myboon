@@ -1807,9 +1807,10 @@ phoenixRoutes.post('/tx/market-order', async (c) => {
   const builder = parseSdkOrderBuilderBody(parsed.body, 'market')
   if ('response' in builder) return builder.response
 
-  const endpoint = 'sdk:ixs.buildPlaceMarketOrder'
+  const useRawClient = builder.orderFlags !== OrderFlags.None
+  const endpoint = useRawClient ? 'sdk:ixs.buildPlaceMarketOrder:raw' : 'sdk:ixs.buildPlaceMarketOrder'
   try {
-    const client = getPhoenixSdkClient()
+    const client = useRawClient ? getPhoenixRawSdkClient() : getPhoenixSdkClient()
     await client.exchange.ready()
     const orderPacket = await client.orderPackets.buildMarketOrderPacket({
       symbol: builder.symbol,
@@ -1841,9 +1842,10 @@ phoenixRoutes.post('/tx/limit-order', async (c) => {
   const builder = parseSdkOrderBuilderBody(parsed.body, 'limit')
   if ('response' in builder) return builder.response
 
-  const endpoint = 'sdk:ixs.buildPlaceLimitOrder'
+  const useRawClient = builder.orderFlags !== OrderFlags.None
+  const endpoint = useRawClient ? 'sdk:ixs.buildPlaceLimitOrder:raw' : 'sdk:ixs.buildPlaceLimitOrder'
   try {
-    const client = getPhoenixSdkClient()
+    const client = useRawClient ? getPhoenixRawSdkClient() : getPhoenixSdkClient()
     await client.exchange.ready()
     const orderPacket = await client.orderPackets.buildLimitOrderPacket({
       symbol: builder.symbol,
