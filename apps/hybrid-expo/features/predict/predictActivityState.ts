@@ -1,6 +1,7 @@
 import type { ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { portfolioPositionCost } from '@/features/predict/formatPredictMoney';
+import { getPositionSellQuote, type PositionSellQuoteMap } from '@/features/predict/positionSellQuotes';
 
 export type PredictActivityStatus =
   | 'syncing'
@@ -32,6 +33,9 @@ export interface PredictActivityItem {
   shares: number | null;
   avgPrice: number | null;
   currentPrice: number | null;
+  quoteExecutable?: boolean;
+  quoteLoading?: boolean;
+  quoteError?: string | null;
   createdAt: number | null;
   source: PredictActivitySource;
   rawPosition?: PortfolioPosition;
@@ -67,6 +71,7 @@ export interface BuildPredictActivityItemsInput {
   redeemablePositions: PortfolioPosition[];
   openOrders: OpenOrder[];
   closedPositions: ClosedPortfolioPosition[];
+  sellQuotes?: PositionSellQuoteMap;
 }
 
 function normalizeTs(value: number | null | undefined): number | null {
@@ -115,10 +120,12 @@ export function buildPredictActivityItems({
   redeemablePositions,
   openOrders,
   closedPositions,
+  sellQuotes,
 }: BuildPredictActivityItemsInput): PredictActivityItem[] {
   const active = positions.map((position, index): PredictActivityItem => {
     const putIn = portfolioPositionCost(position);
-    const currentValue = position.currentValue ?? null;
+    const quote = getPositionSellQuote(sellQuotes, position);
+    const currentValue = quote?.estimatedProceeds ?? null;
     return {
       id: `position-${position.conditionId}-${position.outcomeIndex}-${position.asset}-${index}`,
       status: 'active',
@@ -130,10 +137,13 @@ export function buildPredictActivityItems({
       conditionId: position.conditionId || null,
       putIn,
       currentValue,
-      pnl: currentValue === null ? null : currentValue - putIn,
+      pnl: quote?.cashPnl ?? null,
       shares: position.size,
       avgPrice: position.avgPrice,
-      currentPrice: position.curPrice,
+      currentPrice: quote?.averagePrice ?? quote?.bestBid ?? null,
+      quoteExecutable: quote?.executable ?? false,
+      quoteLoading: quote?.loading ?? false,
+      quoteError: quote?.error ?? null,
       createdAt: null,
       source: 'position',
       rawPosition: position,

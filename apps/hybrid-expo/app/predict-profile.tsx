@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,7 @@ import { PredictOwnerKeyExportModal } from '@/features/predict/components/Predic
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
+import { getPositionSellQuote, usePositionSellQuotes } from '@/features/predict/positionSellQuotes';
 import { useWallet } from '@/hooks/useWallet';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useDrawer } from '@/components/drawer/DrawerProvider';
@@ -41,6 +42,7 @@ const USD_INR_RATE_URL = 'https://open.er-api.com/v6/latest/USD';
 const PREDICT_PROFILE_CURRENCY_KEY = 'predict-profile-currency-format';
 type PredictProfileCurrency = 'USD' | 'INR';
 type PredictSettingsView = 'menu' | 'currency' | 'wallet';
+const EMPTY_PORTFOLIO_POSITIONS: PortfolioPosition[] = [];
 
 function formatProfileCurrency(
   value: number | null | undefined,
@@ -271,7 +273,7 @@ export default function PredictProfileScreen() {
     }
   }, [poly.polygonAddress]);
 
-  const handleConfirmCashOut = useCallback(async (size: number) => {
+  const handleConfirmCashOut = useCallback(async (size: number, limitPrice: number) => {
     const position = cashOutPosition;
     if (!position || cashOutSubmitting) return;
 
@@ -297,12 +299,11 @@ export default function PredictProfileScreen() {
 
     setCashOutSubmitting(true);
     try {
-      const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
         tradingAddress: poly.tradingAddress,
         tokenID: position.asset,
-        price,
+        price: limitPrice,
         size,
         side: 'SELL',
         negRisk: !!position.negativeRisk,
@@ -433,17 +434,32 @@ export default function PredictProfileScreen() {
     setCashOutPosition(position);
   }, []);
 
-  const positions = portfolio?.positions ?? [];
+  const positions = portfolio?.positions ?? EMPTY_PORTFOLIO_POSITIONS;
   const redeemablePositions = portfolio?.redeemablePositions ?? [];
   const closedPositions = portfolio?.closedPositions ?? [];
-  const portfolioValue = portfolio?.portfolioValue ?? null;
-  const cashOutNow = portfolio?.summary.cashOutNow ?? positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+  const {
+    quotes: sellQuotes,
+    booksByAsset: sellQuoteBooks,
+  } = usePositionSellQuotes(positions);
+  const cashOutNow = useMemo(() => {
+    if (positions.length === 0) return 0;
+    let total = 0;
+    for (const position of positions) {
+      const quote = getPositionSellQuote(sellQuotes, position);
+      if (!quote || quote.estimatedProceeds === null) return null;
+      total += quote.estimatedProceeds;
+    }
+    return total;
+  }, [positions, sellQuotes]);
   const readyToCollect = portfolio?.summary.readyToCollect ?? redeemablePositions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
   const waitingPickValue = openOrders.reduce((sum, order) => sum + getOrderCost(order), 0);
   const activePickCount = positions.length + openOrders.length;
   const hasAnyPicks = activePickCount + redeemablePositions.length + closedPositions.length > 0;
   const hasActiveOrReadyPicks = activePickCount + redeemablePositions.length > 0;
-  const activePicksValue = cashOutNow + waitingPickValue;
+  const activePicksValue = cashOutNow === null ? null : cashOutNow + waitingPickValue;
+  const predictValue = cashBalance === null || activePicksValue === null
+    ? null
+    : cashBalance + activePicksValue + readyToCollect;
   const collectedValue = closedPositions.reduce((sum, position) => {
     const realized = Number.isFinite(position.realizedPnl) ? position.realizedPnl : 0;
     return realized > 0 ? sum + realized : sum;
@@ -571,7 +587,7 @@ export default function PredictProfileScreen() {
                 <View style={styles.eqItem}>
                   <Text style={styles.eqLabel}>Predict value</Text>
                   <Text style={styles.eqVal}>
-                    {portfolioValue !== null ? formatProfileMoney(portfolioValue) : '--'}
+                    {formatProfileMoney(predictValue)}
                   </Text>
                 </View>
                 <View style={[styles.eqItem, styles.eqItemCenter]}>
@@ -619,6 +635,7 @@ export default function PredictProfileScreen() {
               polygonAddress={poly.polygonAddress}
               cancellingOrderId={cancellingId}
               freshness={{ ...activityFreshness, loading: portfolioLoading || refreshing }}
+              sellQuotes={sellQuotes}
               onCashOutPress={handleCashOut}
               onMarketPress={handleOpenMarket}
               onCancelOrder={(orderId) => void handleCancel(orderId)}
@@ -666,6 +683,9 @@ export default function PredictProfileScreen() {
         visible={cashOutPosition !== null}
         position={cashOutPosition}
         submitting={cashOutSubmitting}
+        orderbook={cashOutPosition?.asset ? sellQuoteBooks[cashOutPosition.asset]?.book ?? null : null}
+        quoteLoading={cashOutPosition?.asset ? sellQuoteBooks[cashOutPosition.asset]?.loading ?? false : false}
+        quoteError={cashOutPosition?.asset ? sellQuoteBooks[cashOutPosition.asset]?.error ?? null : null}
         onClose={() => setCashOutPosition(null)}
         onConfirm={handleConfirmCashOut}
         formatMoney={formatProfileMoney}

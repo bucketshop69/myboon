@@ -118,15 +118,18 @@ export function PredictActivityDetailModal({
 
             <View style={styles.grid}>
               <Metric label="Put in" value={formatMoney(item.putIn)} />
-              <Metric label="Value now" value={item.currentValue === null ? '--' : formatMoney(item.currentValue)} />
               <Metric
-                label="P/L"
+                label={item.status === 'active' ? 'Cashout quote' : 'Value now'}
+                value={item.currentValue === null ? '--' : formatMoney(item.currentValue)}
+              />
+              <Metric
+                label={item.status === 'active' ? 'Live P/L' : 'P/L'}
                 value={item.pnl === null ? '--' : formatSignedMoney(item.pnl)}
                 tone={pnlPositive ? 'positive' : pnlNegative ? 'negative' : 'flat'}
               />
               <Metric label="Shares" value={formatShares(item.shares)} />
               <Metric label="Entry" value={formatChance(item.avgPrice)} />
-              <Metric label="Current" value={formatChance(item.currentPrice)} />
+              <Metric label={item.status === 'active' ? 'Sell quote' : 'Current'} value={formatChance(item.currentPrice)} />
               <Metric label="Placed" value={formatDate(item.createdAt)} wide />
             </View>
 

@@ -15,6 +15,7 @@ import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/App
 import { fetchMarketPositions, fetchActivity, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
+import { buildPositionSellQuote, getPositionSellQuote, usePositionSellQuotes } from '@/features/predict/positionSellQuotes';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { semantic, tokens } from '@/theme';
@@ -26,7 +27,8 @@ interface PositionDetailScreenProps {
   outcomeIndex: number;
 }
 
-function formatUsd(value: number): string {
+function formatUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--';
   const abs = Math.abs(value);
   const prefix = value < 0 ? '-' : value > 0 ? '+' : '';
   if (abs >= 1000) return `${prefix}$${(abs / 1000).toFixed(1)}K`;
@@ -82,6 +84,13 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
     loadData().finally(() => setLoading(false));
   }, [loadData]);
 
+  const {
+    quotes: sellQuotes,
+    booksByAsset: sellQuoteBooks,
+  } = usePositionSellQuotes(position ? [position] : []);
+  const sellQuote = getPositionSellQuote(sellQuotes, position);
+  const sellBook = position?.asset ? sellQuoteBooks[position.asset] : null;
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
@@ -113,12 +122,15 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
     setSellMessage('');
     setSubmitting(true);
     try {
-      // Market sell: price acts as worst-price limit (slippage protection)
-      // Use current price minus 10% as floor — FOK fills at best available or cancels
-      // Limit sell: use the user's exact specified price
-      const orderPrice = mode === 'market'
-        ? Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100)
-        : price;
+      // Market sell uses the worst live bid reached by the requested size as slippage protection.
+      // Limit sell uses the user's exact specified price.
+      const marketQuote = mode === 'market'
+        ? buildPositionSellQuote(position, sellBook?.book ?? null, shares, sellBook?.loading ?? false, sellBook?.error ?? null)
+        : null;
+      if (mode === 'market' && (!marketQuote?.executable || marketQuote.limitPrice === null)) {
+        throw new Error(marketQuote?.error || 'Not enough live bid liquidity to sell this size');
+      }
+      const orderPrice = mode === 'market' ? marketQuote!.limitPrice! : price;
 
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
@@ -180,9 +192,10 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
     );
   }
 
-  const pnl = position.cashPnl ?? 0;
-  const pctPnl = position.percentPnl ?? 0;
-  const isUp = pnl >= 0;
+  const pnl = sellQuote?.cashPnl ?? null;
+  const pctPnl = sellQuote?.percentPnl ?? null;
+  const isUp = (pnl ?? 0) >= 0;
+  const sellPrice = sellQuote?.averagePrice ?? sellQuote?.bestBid ?? null;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -222,20 +235,20 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
         <View style={styles.statsGrid}>
           <StatCell label="Shares" value={position.size.toFixed(2)} />
           <StatCell label="Avg Price" value={formatOdds(position.avgPrice)} />
-          <StatCell label="Current" value={formatOdds(position.curPrice)} />
+          <StatCell label="Sell Quote" value={sellPrice === null ? '--' : formatOdds(sellPrice)} />
           <StatCell
-            label="P&L"
+            label="Live P&L"
             value={formatUsd(pnl)}
             color={isUp ? tokens.colors.viridian : tokens.colors.vermillion}
           />
           <StatCell
-            label="Return"
-            value={`${pctPnl >= 0 ? '+' : ''}${pctPnl.toFixed(1)}%`}
+            label="Live Return"
+            value={pctPnl === null ? '--' : `${pctPnl >= 0 ? '+' : ''}${pctPnl.toFixed(1)}%`}
             color={isUp ? tokens.colors.viridian : tokens.colors.vermillion}
           />
           <StatCell
-            label="Value"
-            value={`$${(position.currentValue ?? 0).toFixed(2)}`}
+            label="Cashout Quote"
+            value={sellQuote?.estimatedProceeds === null || sellQuote?.estimatedProceeds === undefined ? '--' : `$${sellQuote.estimatedProceeds.toFixed(2)}`}
           />
         </View>
 
@@ -244,7 +257,7 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
           <Text style={styles.sectionTitle}>SELL</Text>
           <SellForm
             maxShares={position.size}
-            currentPrice={position.curPrice}
+            currentPrice={sellPrice ?? 0}
             walletReady={poly.canSignLocally}
             onConfirm={handleSell}
             submitting={submitting}

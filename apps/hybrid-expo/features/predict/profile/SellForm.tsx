@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -31,8 +31,15 @@ export function SellForm({ maxShares, currentPrice, walletReady, onConfirm, subm
   const shares = parseFloat(sharesInput) || 0;
   const priceCents = parseFloat(priceInput) || 0;
   const price = priceCents / 100;
-  const proceeds = shares * price;
-  const isValid = shares > 0 && shares <= maxShares && price > 0 && price < 1;
+  const effectivePrice = mode === 'market' ? currentPrice : price;
+  const proceeds = shares * effectivePrice;
+  const isValid = shares > 0 && shares <= maxShares && effectivePrice > 0 && effectivePrice < 1;
+
+  useEffect(() => {
+    if (currentPrice > 0 && priceInput.trim() === '') {
+      setPriceInput((currentPrice * 100).toFixed(0));
+    }
+  }, [currentPrice, priceInput]);
 
   function setPercent(pct: number) {
     const amount = Math.floor(maxShares * pct * 100) / 100;

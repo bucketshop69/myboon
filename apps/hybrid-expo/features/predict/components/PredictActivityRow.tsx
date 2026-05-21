@@ -34,7 +34,7 @@ function rowMeta(item: PredictActivityItem, showMarketTitle: boolean): string {
   if (item.status === 'collecting') return `${title}${status}`;
   if (item.status === 'ready_to_collect') return `${title}${status}`;
   if (item.status === 'closed_won' || item.status === 'closed_lost') return `${title}${status}`;
-  return `${title}${formatChance(item.avgPrice)} entry -> ${formatChance(item.currentPrice)} now`;
+  return `${title}${formatChance(item.avgPrice)} entry -> ${formatChance(item.currentPrice)} sell quote`;
 }
 
 function cardStyle(item: PredictActivityItem) {
@@ -78,6 +78,12 @@ export function PredictActivityRow({
         onCashOut={onCashOut}
         onBackMore={onBackMore}
         formatMoney={formatMoney}
+        sellQuoteValue={item.currentValue}
+        sellQuotePrice={item.currentPrice}
+        sellQuotePnl={item.pnl}
+        sellQuotePnlPercent={item.putIn > 0 && item.pnl !== null ? (item.pnl / item.putIn) * 100 : null}
+        sellQuoteLoading={item.quoteLoading}
+        sellQuoteExecutable={item.quoteExecutable}
       />
     );
   }

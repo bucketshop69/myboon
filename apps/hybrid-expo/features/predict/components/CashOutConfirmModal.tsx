@@ -1,19 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
-import { makeSignedMoneyFormatter, portfolioPositionCost, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
+import type { Orderbook } from '@/features/predict/predict.types';
+import { makeSignedMoneyFormatter, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
+import { buildPositionSellQuote } from '@/features/predict/positionSellQuotes';
 import { semantic, tokens } from '@/theme';
 
 interface CashOutConfirmModalProps {
   position: PortfolioPosition | null;
   visible: boolean;
   submitting?: boolean;
+  orderbook?: Orderbook | null;
+  quoteLoading?: boolean;
+  quoteError?: string | null;
   onClose: () => void;
-  onConfirm: (size: number) => void;
+  onConfirm: (size: number, limitPrice: number) => void;
   formatMoney?: MoneyFormatter;
 }
 
-export function CashOutConfirmModal({ position, visible, submitting = false, onClose, onConfirm, formatMoney = truncateUsd }: CashOutConfirmModalProps) {
+export function CashOutConfirmModal({
+  position,
+  visible,
+  submitting = false,
+  orderbook = null,
+  quoteLoading = false,
+  quoteError = null,
+  onClose,
+  onConfirm,
+  formatMoney = truncateUsd,
+}: CashOutConfirmModalProps) {
   const [percent, setPercent] = useState(100);
   const [sliderWidth, setSliderWidth] = useState(1);
 
@@ -35,10 +50,21 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
 
   const selectedRatio = percent / 100;
   const selectedSize = position ? position.size * selectedRatio : 0;
-  const cashOutValue = (position?.currentValue ?? 0) * selectedRatio;
-  const pnl = position ? (position.currentValue - portfolioPositionCost(position)) * selectedRatio : 0;
-  const canConfirm = !!position && selectedSize > 0 && !submitting;
+  const quote = position
+    ? buildPositionSellQuote(position, orderbook, selectedSize, quoteLoading, quoteError)
+    : null;
+  const cashOutValue = quote?.estimatedProceeds ?? null;
+  const pnl = quote?.cashPnl ?? null;
+  const avgPrice = quote?.averagePrice ?? quote?.bestBid ?? null;
+  const canConfirm = !!position && selectedSize > 0 && !!quote?.executable && quote.limitPrice !== null && !submitting;
   const formatSignedMoney = makeSignedMoneyFormatter(formatMoney);
+  const quoteMessage = quoteLoading
+    ? 'Refreshing live bid quote...'
+    : quoteError
+      ? 'Could not load a live cashout quote.'
+      : quote && quote.unfilledShares > 0.01
+        ? `Only ${quote.filledShares.toFixed(2)} of ${selectedSize.toFixed(2)} shares can sell at current bids.`
+        : null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -90,14 +116,19 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
           </View>
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>You will get</Text>
-            <Text style={styles.amountValue}>{formatMoney(cashOutValue)}</Text>
+            <Text style={styles.amountValue}>{cashOutValue === null ? '--' : formatMoney(cashOutValue)}</Text>
           </View>
           <View style={styles.amountRow}>
-            <Text style={styles.amountLabel}>P/L</Text>
-            <Text style={[styles.amountValue, pnl > 0 ? styles.pnlPositive : pnl < 0 ? styles.pnlNegative : styles.pnlFlat]}>
-              {formatSignedMoney(pnl)}
+            <Text style={styles.amountLabel}>Avg sell price</Text>
+            <Text style={styles.amountValue}>{avgPrice === null ? '--' : `${Math.round(avgPrice * 100)}%`}</Text>
+          </View>
+          <View style={styles.amountRow}>
+            <Text style={styles.amountLabel}>Live P/L</Text>
+            <Text style={[styles.amountValue, (pnl ?? 0) > 0 ? styles.pnlPositive : (pnl ?? 0) < 0 ? styles.pnlNegative : styles.pnlFlat]}>
+              {pnl === null ? '--' : formatSignedMoney(pnl)}
             </Text>
           </View>
+          {quoteMessage && <Text style={styles.quoteMessage}>{quoteMessage}</Text>}
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
@@ -113,7 +144,9 @@ export function CashOutConfirmModal({ position, visible, submitting = false, onC
               accessibilityLabel={submitting ? 'Cashing out' : 'Cash out'}
               accessibilityState={{ disabled: !canConfirm, busy: submitting }}
               style={[styles.primaryAction, !canConfirm && styles.primaryActionDisabled]}
-              onPress={() => onConfirm(selectedSize)}
+              onPress={() => {
+                if (quote?.limitPrice !== null && quote?.limitPrice !== undefined) onConfirm(selectedSize, quote.limitPrice);
+              }}
               disabled={!canConfirm}>
               <Text style={styles.primaryActionText}>{submitting ? 'Cashing out...' : 'Cash out'}</Text>
             </Pressable>
@@ -235,6 +268,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: semantic.text.primary,
+  },
+  quoteMessage: {
+    marginTop: 10,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    lineHeight: 14,
+    color: semantic.text.faint,
   },
   pnlPositive: {
     color: tokens.colors.viridian,

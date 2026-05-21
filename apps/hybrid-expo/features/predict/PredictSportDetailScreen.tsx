@@ -33,6 +33,7 @@ import { CashOutConfirmModal } from '@/features/predict/components/CashOutConfir
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { buildExecutableBuyQuote, getBestAsk } from '@/features/predict/orderbookQuote';
+import { usePositionSellQuotes } from '@/features/predict/positionSellQuotes';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
 import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
@@ -168,6 +169,18 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     stale: false,
     error: null,
   });
+  const quotePositions = useMemo(() => {
+    const seen = new Set<string>();
+    const merged: PortfolioPosition[] = [];
+    for (const position of [...marketPositions, ...allPositions]) {
+      const key = `${position.conditionId}:${position.outcomeIndex}:${position.asset}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(position);
+    }
+    return merged;
+  }, [marketPositions, allPositions]);
+  const { quotes: sellQuotes, booksByAsset: sellQuoteBooks } = usePositionSellQuotes(quotePositions);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<number | null>(null);
   const [setupSubmitting, setSetupSubmitting] = useState(false);
@@ -633,7 +646,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
     setCashOutPosition(position);
   }
 
-  async function confirmCashOut(size: number) {
+  async function confirmCashOut(size: number, limitPrice: number) {
     const position = cashOutPosition;
     if (!position || submitting || submitInFlightRef.current) return;
     if (!position.asset) {
@@ -651,12 +664,11 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
       }
 
       if (!poly.polygonAddress) throw new Error('Wallet session not ready');
-      const price = Math.max(0.01, Math.round((position.curPrice * 0.9) * 100) / 100);
       const result = await placeBet({
         polygonAddress: poly.polygonAddress,
         tradingAddress: poly.tradingAddress,
         tokenID: position.asset,
-        price,
+        price: limitPrice,
         size,
         side: 'SELL',
         negRisk: !!position.negativeRisk,
@@ -850,6 +862,7 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
                   closedPositions={closedPositions}
                   openOrders={visibleOpenOrders}
                   activityItems={activityItems}
+                  sellQuotes={sellQuotes}
                   cancellingOrderId={cancellingOrderId}
                   polygonAddress={poly.polygonAddress}
                   onScopeChange={setPickScope}
@@ -996,6 +1009,9 @@ export function PredictSportDetailScreen({ sport, slug }: PredictSportDetailScre
         visible={cashOutPosition !== null}
         position={cashOutPosition}
         submitting={submitting}
+        orderbook={cashOutPosition?.asset ? sellQuoteBooks[cashOutPosition.asset]?.book ?? null : null}
+        quoteLoading={cashOutPosition?.asset ? sellQuoteBooks[cashOutPosition.asset]?.loading ?? false : false}
+        quoteError={cashOutPosition?.asset ? sellQuoteBooks[cashOutPosition.asset]?.error ?? null : null}
         onClose={() => setCashOutPosition(null)}
         onConfirm={confirmCashOut}
       />

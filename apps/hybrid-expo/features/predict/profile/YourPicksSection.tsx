@@ -12,6 +12,7 @@ import {
   type PredictDataFreshness,
 } from '@/features/predict/predictActivityState';
 import type { MoneyFormatter } from '@/features/predict/formatPredictMoney';
+import type { PositionSellQuoteMap } from '@/features/predict/positionSellQuotes';
 import { semantic, tokens } from '@/theme';
 
 interface YourPicksSectionProps {
@@ -22,6 +23,7 @@ interface YourPicksSectionProps {
   polygonAddress: string | null;
   cancellingOrderId: string | null;
   freshness: PredictDataFreshness;
+  sellQuotes?: PositionSellQuoteMap;
   onCashOutPress: (position: PortfolioPosition) => void;
   onMarketPress: (slug: string) => void;
   onCancelOrder: (orderId: string) => void;
@@ -37,6 +39,7 @@ export function YourPicksSection({
   polygonAddress,
   cancellingOrderId,
   freshness,
+  sellQuotes,
   onCashOutPress,
   onMarketPress,
   onCancelOrder,
@@ -49,8 +52,8 @@ export function YourPicksSection({
   const [redeemError, setRedeemError] = useState<{ id: string; message: string } | null>(null);
   const [collectingIds, setCollectingIds] = useState<Set<string>>(() => new Set());
   const allPicks = useMemo(
-    () => buildPredictActivityItems({ positions, redeemablePositions, openOrders, closedPositions }),
-    [positions, redeemablePositions, openOrders, closedPositions],
+    () => buildPredictActivityItems({ positions, redeemablePositions, openOrders, closedPositions, sellQuotes }),
+    [positions, redeemablePositions, openOrders, closedPositions, sellQuotes],
   );
   const visiblePicks = useMemo(
     () => allPicks.map((item) => collectingIds.has(item.id) ? { ...item, status: 'collecting' as const } : item),

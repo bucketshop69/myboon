@@ -13,6 +13,7 @@ import {
   type PredictActivityScope,
   type PredictDataFreshness,
 } from '@/features/predict/predictActivityState';
+import type { PositionSellQuoteMap } from '@/features/predict/positionSellQuotes';
 import { semantic, tokens } from '@/theme';
 
 interface DetailPicksPanelProps {
@@ -28,6 +29,7 @@ interface DetailPicksPanelProps {
   closedPositions: ClosedPortfolioPosition[];
   openOrders: OpenOrder[];
   activityItems: ActivityItem[];
+  sellQuotes?: PositionSellQuoteMap;
   cancellingOrderId?: string | null;
   polygonAddress?: string | null;
   onScopeChange: (scope: PredictActivityScope) => void;
@@ -38,11 +40,13 @@ interface DetailPicksPanelProps {
   onRetry?: () => void;
 }
 
-function formatUsd(value: number): string {
+function formatUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--';
   return `$${value.toFixed(2)}`;
 }
 
-function formatSignedUsd(value: number): string {
+function formatSignedUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--';
   if (Math.abs(value) < 0.005) return '$0.00';
   return `${value > 0 ? '+' : '-'}${formatUsd(Math.abs(value))}`;
 }
@@ -72,6 +76,7 @@ export function DetailPicksPanel({
   closedPositions,
   openOrders,
   activityItems,
+  sellQuotes,
   cancellingOrderId,
   polygonAddress,
   onScopeChange,
@@ -91,8 +96,9 @@ export function DetailPicksPanel({
       redeemablePositions,
       openOrders,
       closedPositions,
+      sellQuotes,
     }),
-    [allPositions, marketPositions, redeemablePositions, openOrders, closedPositions],
+    [allPositions, marketPositions, redeemablePositions, openOrders, closedPositions, sellQuotes],
   );
   const rows = useMemo(
     () => filterActivityByScope(allItems, scope, {
@@ -106,16 +112,17 @@ export function DetailPicksPanel({
     () => rows.map((row) => collectingIds.has(row.id) ? { ...row, status: 'collecting' as const } : row),
     [rows, collectingIds],
   );
-  const worthNow = visibleRows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
+  const hasMissingLiveQuote = visibleRows.some((row) => row.source === 'position' && row.currentValue === null);
+  const worthNow = hasMissingLiveQuote ? null : visibleRows.reduce((sum, row) => sum + (row.currentValue ?? 0), 0);
   const putIn = visibleRows.reduce((sum, row) => sum + row.putIn, 0);
-  const totalPnl = visibleRows.reduce((sum, row) => sum + (row.pnl ?? 0), 0);
+  const totalPnl = hasMissingLiveQuote ? null : visibleRows.reduce((sum, row) => sum + (row.pnl ?? 0), 0);
   const rowVolumeFallback = visibleRows.reduce((sum, row) => sum + (row.source === 'order' || row.source === 'pending' ? 0 : row.putIn), 0);
   const tradeVolume = activityItems.reduce((sum, activity) => {
     if (!activityMatchesRows(activity, scope, marketSlug, visibleRows, marketTokenIds, marketConditionIds)) return sum;
     return sum + activityVolume(activity);
   }, 0);
   const userVolume = Math.max(tradeVolume, rowVolumeFallback);
-  const pnlStyle = totalPnl > 0.005 ? styles.summaryPositive : totalPnl < -0.005 ? styles.summaryNegative : styles.summaryFlat;
+  const pnlStyle = (totalPnl ?? 0) > 0.005 ? styles.summaryPositive : (totalPnl ?? 0) < -0.005 ? styles.summaryNegative : styles.summaryFlat;
   const freshnessCopy = formatPredictFreshness(freshness);
 
   async function handleRedeem(item: PredictActivityItem) {
@@ -198,16 +205,16 @@ export function DetailPicksPanel({
           <Text style={styles.summaryValue}>{scope === 'market' ? formatUsd(putIn) : visibleRows.length}</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Current value</Text>
-          <Text style={styles.summaryValue}>{formatUsd(worthNow)}</Text>
+          <Text style={styles.summaryLabel}>Cashout quote</Text>
+          <Text style={styles.summaryValue}>{worthNow === null ? '--' : formatUsd(worthNow)}</Text>
         </View>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Your volume</Text>
           <Text style={styles.summaryValue}>{formatUsd(userVolume)}</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Total PNL</Text>
-          <Text style={[styles.summaryValue, pnlStyle]}>{formatSignedUsd(totalPnl)}</Text>
+          <Text style={styles.summaryLabel}>Live PNL</Text>
+          <Text style={[styles.summaryValue, pnlStyle]}>{totalPnl === null ? '--' : formatSignedUsd(totalPnl)}</Text>
         </View>
       </View>
 
@@ -246,6 +253,7 @@ export function DetailPicksPanel({
           onBackMore={() => backMoreItem(item)}
           onCancelOrder={item.orderId && onCancelOrder ? () => onCancelOrder(item.orderId!) : undefined}
           onRedeem={() => void handleRedeem(item)}
+          formatMoney={formatUsd}
         />
       ))}
 
@@ -263,6 +271,7 @@ export function DetailPicksPanel({
         onRedeem={(item) => void handleRedeem(item)}
         redeeming={selectedItem ? redeemingId === selectedItem.id : false}
         redeemError={selectedItem && redeemError?.id === selectedItem.id ? redeemError.message : undefined}
+        formatMoney={formatUsd}
       />
     </View>
   );

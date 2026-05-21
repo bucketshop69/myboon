@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PortfolioPosition } from '@/features/predict/predict.api';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
-import { makeSignedMoneyFormatter, portfolioPositionCost, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
+import { makeSignedMoneyFormatter, truncateUsd, type MoneyFormatter } from '@/features/predict/formatPredictMoney';
 import { semantic, tokens } from '@/theme';
 
 interface PredictPositionRowProps {
@@ -11,6 +11,12 @@ interface PredictPositionRowProps {
   onCashOut: () => void;
   onBackMore: () => void;
   formatMoney?: MoneyFormatter;
+  sellQuoteValue?: number | null;
+  sellQuotePrice?: number | null;
+  sellQuotePnl?: number | null;
+  sellQuotePnlPercent?: number | null;
+  sellQuoteLoading?: boolean;
+  sellQuoteExecutable?: boolean;
 }
 
 function formatChance(value: number | null | undefined): string {
@@ -43,23 +49,37 @@ export function PredictPositionRow({
   onCashOut,
   onBackMore,
   formatMoney = truncateUsd,
+  sellQuoteValue = null,
+  sellQuotePrice = null,
+  sellQuotePnl = null,
+  sellQuotePnlPercent = null,
+  sellQuoteLoading = false,
+  sellQuoteExecutable = false,
 }: PredictPositionRowProps) {
   const outcome = formatOutcome(position.outcome);
-  const priceLine = `${formatChance(position.avgPrice)} entry -> ${formatChance(position.curPrice)} now`;
-  const cost = portfolioPositionCost(position);
-  const pnl = (position.currentValue ?? 0) - cost;
-  const pnlPercent = cost > 0 ? (pnl / cost) * 100 : null;
+  const priceLine = sellQuoteLoading
+    ? `${formatChance(position.avgPrice)} entry -> loading sell quote`
+    : `${formatChance(position.avgPrice)} entry -> ${formatChance(sellQuotePrice)} sell quote`;
+  const pnl = sellQuotePnl;
   const formatSignedMoney = makeSignedMoneyFormatter(formatMoney);
-  const pnlText = `${formatSignedMoney(pnl)} (${formatSignedPercent(pnlPercent)})`;
-  const pnlState = pnl > 0.005 ? 'positive' : pnl < -0.005 ? 'negative' : 'flat';
+  const pnlText = pnl === null
+    ? sellQuoteLoading ? 'Refreshing quote' : 'No live sell quote'
+    : `${formatSignedMoney(pnl)} (${formatSignedPercent(sellQuotePnlPercent)})`;
+  const pnlState = (pnl ?? 0) > 0.005 ? 'positive' : (pnl ?? 0) < -0.005 ? 'negative' : 'flat';
   const pnlStyle = pnlState === 'positive' ? styles.pnlPositive : pnlState === 'negative' ? styles.pnlNegative : styles.pnlFlat;
   const marketTitle = formatPositionTitle(position);
-  const cashOutValue = formatMoney(position.currentValue ?? 0);
+  const cashOutValue = sellQuoteValue === null ? null : formatMoney(sellQuoteValue);
+  const cashOutLabel = sellQuoteLoading
+    ? 'Quoting cash out'
+    : cashOutValue
+      ? `${cashOutValue} cash out`
+      : 'No cashout quote';
+  const cashOutDisabled = !sellQuoteLoading && sellQuoteValue !== null ? sellQuoteValue <= 0 : !sellQuoteValue;
 
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={`${outcome} pick. ${priceLine}. ${showMarketTitle ? `${marketTitle}. ` : ''}P and L ${pnlText}.`}
+      accessibilityLabel={`${outcome} pick. ${priceLine}. ${showMarketTitle ? `${marketTitle}. ` : ''}${pnl === null ? pnlText : `P and L ${pnlText}`}.`}
       accessibilityHint={onPress ? 'Open pick details' : undefined}
       style={[styles.rowCard, styles.activeCard, styles.activeStrip]}
       onPress={onPress}>
@@ -80,12 +100,15 @@ export function PredictPositionRow({
         <View style={styles.rowActions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Cash out ${cashOutValue}`}
+            accessibilityLabel={cashOutLabel}
             accessibilityHint="Open cash out confirmation"
+            accessibilityState={{ disabled: cashOutDisabled }}
             style={[
               styles.cashAction,
+              cashOutDisabled && styles.cashActionDisabled,
               pnlState === 'positive' ? styles.cashActionPositive : pnlState === 'negative' ? styles.cashActionNegative : styles.cashActionFlat,
             ]}
+            disabled={cashOutDisabled}
             onPress={(event) => {
               event.stopPropagation();
               onCashOut();
@@ -95,7 +118,7 @@ export function PredictPositionRow({
               styles.cashActionText,
               pnlState === 'positive' ? styles.cashActionTextPositive : pnlState === 'negative' ? styles.cashActionTextNegative : styles.cashActionTextFlat,
             ]}>
-              {cashOutValue} cash out now
+              {sellQuoteExecutable ? cashOutLabel : cashOutValue ? `${cashOutValue} limited liquidity` : cashOutLabel}
             </Text>
           </Pressable>
           <Pressable
@@ -204,6 +227,9 @@ const styles = StyleSheet.create({
   cashActionFlat: {
     borderColor: semantic.border.muted,
     backgroundColor: 'rgba(255,255,255,0.035)',
+  },
+  cashActionDisabled: {
+    opacity: 0.55,
   },
   cashActionText: {
     fontFamily: 'monospace',
