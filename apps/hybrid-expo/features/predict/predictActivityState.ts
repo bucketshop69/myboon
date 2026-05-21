@@ -79,6 +79,12 @@ function normalizeTs(value: number | null | undefined): number | null {
   return value < 10_000_000_000 ? value * 1000 : value;
 }
 
+function normalizeDate(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function formatOutcome(label: string | null | undefined): string {
   if (!label) return 'Yes';
   return label.toLowerCase().includes('draw') ? 'Draw' : label;
@@ -168,7 +174,7 @@ export function buildPredictActivityItems({
       shares: position.size,
       avgPrice: position.avgPrice,
       currentPrice: position.curPrice,
-      createdAt: null,
+      createdAt: normalizeDate(position.endDate),
       source: 'redeemable',
       rawPosition: position,
     };
@@ -220,7 +226,7 @@ export function buildPredictActivityItems({
       shares: null,
       avgPrice: position.avgPrice,
       currentPrice: position.curPrice,
-      createdAt: normalizeTs(position.timestamp),
+      createdAt: normalizeTs(position.timestamp) ?? normalizeDate(position.endDate),
       source: 'closed',
       rawClosedPosition: position,
     };
@@ -254,21 +260,37 @@ export function filterActivityByScope(
 }
 
 export function sortPredictActivityItems(items: PredictActivityItem[]): PredictActivityItem[] {
-  const statusRank: Record<PredictActivityStatus, number> = {
-    failed: 0,
-    syncing: 1,
-    waiting_to_match: 2,
-    cancel_requested: 3,
-    active: 4,
-    ready_to_collect: 5,
-    collecting: 6,
-    closed_won: 7,
-    closed_lost: 8,
+  const openRank: Partial<Record<PredictActivityStatus, number>> = {
+    syncing: 0,
+    waiting_to_match: 1,
+    cancel_requested: 2,
+    active: 3,
+    collecting: 4,
+  };
+  const fallbackRank: Record<PredictActivityStatus, number> = {
+    ready_to_collect: 0,
+    closed_won: 1,
+    closed_lost: 2,
+    failed: 3,
+    syncing: 4,
+    waiting_to_match: 5,
+    cancel_requested: 6,
+    active: 7,
+    collecting: 8,
   };
   return [...items].sort((a, b) => {
-    const rankDelta = statusRank[a.status] - statusRank[b.status];
-    if (rankDelta !== 0) return rankDelta;
-    return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+    const aOpenRank = openRank[a.status];
+    const bOpenRank = openRank[b.status];
+    const aOpen = aOpenRank !== undefined;
+    const bOpen = bOpenRank !== undefined;
+
+    if (aOpen !== bOpen) return aOpen ? -1 : 1;
+    if (aOpen && bOpen && aOpenRank !== bOpenRank) return aOpenRank - bOpenRank;
+
+    const dateDelta = (b.createdAt ?? 0) - (a.createdAt ?? 0);
+    if (dateDelta !== 0) return dateDelta;
+
+    return fallbackRank[a.status] - fallbackRank[b.status];
   });
 }
 
