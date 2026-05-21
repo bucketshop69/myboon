@@ -812,6 +812,7 @@ export interface PortfolioData {
     hasActivity?: boolean;
     hasAnyPicks?: boolean;
     totalCollected?: number;
+    totalRealizedPnl?: number;
   };
 }
 

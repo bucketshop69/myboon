@@ -276,6 +276,62 @@ function isPositivePositionValue(position: unknown): boolean {
   return value >= 0.01
 }
 
+function positionIdentityKey(input: unknown): string | null {
+  const record = asRecord(input)
+  if (!record) return null
+  const conditionId = typeof record.conditionId === 'string' ? record.conditionId.toLowerCase() : ''
+  const asset = typeof record.asset === 'string' ? record.asset.toLowerCase() : ''
+  const outcomeIndex = parseNullableNumber(record.outcomeIndex)
+  if (!conditionId || !asset || outcomeIndex === null) return null
+  return `${conditionId}:${outcomeIndex}:${asset}`
+}
+
+function positionCostBasis(position: Record<string, unknown>): number {
+  const size = parseNullableNumber(position.size) ?? 0
+  const avgPrice = parseNullableNumber(position.avgPrice) ?? 0
+  const cashPnl = parseNullableNumber(position.cashPnl)
+  const currentValue = parseNullableNumber(position.currentValue)
+  const derivedFromPnl = cashPnl !== null && currentValue !== null ? currentValue - cashPnl : null
+  const directCost = size * avgPrice
+  const cost = derivedFromPnl !== null && derivedFromPnl > 0 ? derivedFromPnl : directCost
+  return Math.round(Math.max(cost, 0) * 100) / 100
+}
+
+function redeemableLossToClosedPosition(raw: unknown): unknown | null {
+  const position = asRecord(raw)
+  if (!position) return null
+  if (!parseBoolean(position.redeemable)) return null
+  if (isPositivePositionValue(position)) return null
+
+  const cost = positionCostBasis(position)
+  const cashPnl = parseNullableNumber(position.cashPnl)
+  const realizedPnl = cashPnl !== null ? Math.round(cashPnl * 100) / 100 : -cost
+  const timestamp = parseNullableNumber(position.timestamp)
+    ?? (typeof position.endDate === 'string' ? Math.floor(Date.parse(position.endDate) / 1000) : null)
+    ?? 0
+
+  return {
+    proxyWallet: position.proxyWallet,
+    asset: position.asset,
+    conditionId: position.conditionId,
+    avgPrice: position.avgPrice,
+    totalBought: cost,
+    realizedPnl,
+    curPrice: parseNullableNumber(position.curPrice) ?? 0,
+    timestamp,
+    title: position.title,
+    slug: position.slug,
+    icon: position.icon ?? null,
+    eventSlug: position.eventSlug ?? position.slug,
+    outcome: position.outcome,
+    outcomeIndex: position.outcomeIndex,
+    oppositeOutcome: position.oppositeOutcome ?? '',
+    oppositeAsset: position.oppositeAsset ?? '',
+    endDate: position.endDate ?? null,
+    settledSource: 'zero_value_redeemable',
+  }
+}
+
 function asRecord(input: unknown): Record<string, unknown> | null {
   return input && typeof input === 'object' ? input as Record<string, unknown> : null
 }
@@ -1586,11 +1642,12 @@ app.get('/predict/portfolio/:address', async (c) => {
       positions = Array.isArray(body) ? body : []
     }
 
-    // Parse redeemable positions
-    let redeemablePositions: unknown[] = []
+    // Parse redeemable positions. Positive-value redeemables are actionable
+    // collect rows; zero-value redeemables are settled losses and belong in history.
+    let rawRedeemablePositions: unknown[] = []
     if (redeemableRes.status === 'fulfilled' && redeemableRes.value.ok) {
       const body = await redeemableRes.value.json() as unknown
-      redeemablePositions = Array.isArray(body) ? body.filter(isPositivePositionValue) : []
+      rawRedeemablePositions = Array.isArray(body) ? body : []
     }
 
     // Parse closed picks
@@ -1609,7 +1666,24 @@ app.get('/predict/portfolio/:address', async (c) => {
     }
 
     positions = hydrateMissingPositionCostBasis(positions, activity)
-    redeemablePositions = hydrateMissingPositionCostBasis(redeemablePositions, activity)
+    rawRedeemablePositions = hydrateMissingPositionCostBasis(rawRedeemablePositions, activity)
+
+    const redeemablePositions = rawRedeemablePositions.filter(isPositivePositionValue)
+    const existingClosedKeys = new Set(closedPositions.map(positionIdentityKey).filter((key): key is string => !!key))
+    const settledLostPositions = rawRedeemablePositions
+      .filter((position) => !isPositivePositionValue(position))
+      .map(redeemableLossToClosedPosition)
+      .filter((position): position is unknown => {
+        const key = positionIdentityKey(position)
+        if (!key || existingClosedKeys.has(key)) return false
+        existingClosedKeys.add(key)
+        return true
+      })
+    closedPositions = [...closedPositions, ...settledLostPositions].sort((a, b) => {
+      const left = parseNullableNumber(asRecord(a)?.timestamp) ?? 0
+      const right = parseNullableNumber(asRecord(b)?.timestamp) ?? 0
+      return right - left
+    })
 
     // Some deposit-wallet trades appear in data-api /activity before they appear in
     // /positions or /closed-positions. If portfolio state is otherwise empty, expose
@@ -1649,9 +1723,11 @@ app.get('/predict/portfolio/:address', async (c) => {
       readyToCollect += parseNullableNumber((p as Record<string, unknown>).currentValue) ?? 0
     }
     let totalCollected = 0
+    let totalRealizedPnl = 0
     for (const p of closedPositions) {
       const closed = p as Record<string, unknown>
       const realized = parseNullableNumber(closed.realizedPnl) ?? 0
+      totalRealizedPnl += realized
       if (realized > 0) totalCollected += realized
     }
 
@@ -1679,6 +1755,7 @@ app.get('/predict/portfolio/:address', async (c) => {
         hasActivity: activity.length > 0,
         hasAnyPicks: openCount + redeemablePositions.length + closedPositions.length > 0,
         totalCollected: Math.round(totalCollected * 100) / 100,
+        totalRealizedPnl: Math.round(totalRealizedPnl * 100) / 100,
       },
     })
   } catch (err) {

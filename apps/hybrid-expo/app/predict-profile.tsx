@@ -460,9 +460,9 @@ export default function PredictProfileScreen() {
   const predictValue = cashBalance === null || activePicksValue === null
     ? null
     : cashBalance + activePicksValue + readyToCollect;
-  const collectedValue = closedPositions.reduce((sum, position) => {
+  const collectedValue = portfolio?.summary.totalRealizedPnl ?? closedPositions.reduce((sum, position) => {
     const realized = Number.isFinite(position.realizedPnl) ? position.realizedPnl : 0;
-    return realized > 0 ? sum + realized : sum;
+    return sum + realized;
   }, 0);
   const collectedDisplay = hasAnyPicks || (cashBalance ?? 0) > 0 ? formatProfileMoney(collectedValue) : '--';
 
