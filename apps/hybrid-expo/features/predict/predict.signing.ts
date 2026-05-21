@@ -89,6 +89,28 @@ function normalizeAddress(value: string): string {
   return value.toLowerCase();
 }
 
+function isApiKeyCreds(value: unknown): value is ApiKeyCreds {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ApiKeyCreds>;
+  return (
+    typeof candidate.key === 'string' &&
+    candidate.key.length > 0 &&
+    typeof candidate.secret === 'string' &&
+    candidate.secret.length > 0 &&
+    typeof candidate.passphrase === 'string' &&
+    candidate.passphrase.length > 0
+  );
+}
+
+function apiCredsFailureMessage(value: unknown): string | null {
+  if (value instanceof Error) return value.message;
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as { error?: unknown; status?: unknown };
+  if (typeof candidate.error !== 'string') return null;
+  const status = typeof candidate.status === 'number' ? ` (${candidate.status})` : '';
+  return `${candidate.error}${status}`;
+}
+
 function ensureHexWord(data: string, index: number): string {
   const normalized = data.toLowerCase();
   const start = 10 + index * 64;
@@ -285,7 +307,22 @@ export async function createPolymarketApiCreds(): Promise<ApiKeyCreds> {
     chain: CHAIN_ID,
     signer: wallet,
   });
-  return client.createOrDeriveApiKey();
+  let deriveFailure: unknown = null;
+  try {
+    const derived: unknown = await client.deriveApiKey();
+    if (isApiKeyCreds(derived)) return derived;
+    deriveFailure = derived;
+  } catch (error) {
+    deriveFailure = error;
+  }
+
+  const created: unknown = await client.createApiKey();
+  if (isApiKeyCreds(created)) return created;
+
+  const failures = [apiCredsFailureMessage(deriveFailure), apiCredsFailureMessage(created)]
+    .filter(Boolean)
+    .join('; ');
+  throw new Error(`Predict could not create Polymarket API credentials${failures ? `: ${failures}` : '.'}`);
 }
 
 export async function signDepositWalletBatch(
