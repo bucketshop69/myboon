@@ -1,6 +1,6 @@
 import type { ContentType, NarrativeAction, PublishedOutput } from '../../publisher-types.js'
 import type { EditorialDecision, FactValue, PacketFact, ResearchPacket } from './contracts.js'
-import { assertApprovedResearchPacket } from './packet-validator.js'
+import { assertRenderableResearchPacket } from './packet-validator.js'
 
 const contentTypes = ['fomo', 'signal', 'sports', 'macro', 'news', 'crypto'] as const
 const unsupportedCausalityPatterns = [
@@ -96,7 +96,7 @@ function factForWriter(fact: PacketFact): PacketWriterFact {
 }
 
 export function createPacketWriterInput(packet: ResearchPacket, decision: EditorialDecision): PacketWriterInput {
-  assertApprovedResearchPacket(packet, decision)
+  assertRenderableResearchPacket(packet, decision)
   return {
     packetId: packet.id,
     storyKey: packet.storyKey,

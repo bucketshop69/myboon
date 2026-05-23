@@ -38,6 +38,7 @@ export interface PolymarketOddsSnapshotSeed {
 
 export interface WalletRepeatResearchOptions {
   now: string
+  asOfMode?: 'now' | 'latest_trade'
   existingThreadByStoryKey?: Record<string, string>
   coveredThroughByStoryKey?: Record<string, string>
   noisyMarketSlugs?: string[]
@@ -203,11 +204,13 @@ function currentMarketFact(slug: string, latest: PolymarketOddsSnapshotSeed): Pa
 
 function oddsForSlug(
   oddsSnapshots: PolymarketOddsSnapshotSeed[],
-  slug: string
+  slug: string,
+  asOf?: string
 ): PolymarketOddsSnapshotSeed[] {
   return oddsSnapshots
     .filter((snapshot) => snapshot.slug === slug)
-    .sort((a, b) => a.observedAt.localeCompare(b.observedAt))
+    .filter((snapshot) => !asOf || snapshot.observedAt <= asOf)
+    .sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id))
 }
 
 function groupTrades(trades: PolymarketWalletTradeSeed[]): TradeGroup[] {
@@ -261,7 +264,7 @@ function buildPacket(
   const latestTrade = trades[trades.length - 1]
   const totalExposure = trades.reduce((sum, trade) => sum + trade.amountUsd, 0)
   const avgEntry = averageEntry(trades)
-  const odds = oddsForSlug(oddsSnapshots, group.slug)
+  const odds = oddsForSlug(oddsSnapshots, group.slug, now)
   const firstOdds = odds[0]
   const latestOdds = odds[odds.length - 1]
   const oddsDelta = firstOdds && latestOdds ? latestOdds.price - firstOdds.price : null
@@ -362,15 +365,17 @@ export function buildWalletRepeatResearchPackets(
   const noisyMarketSlugs = new Set(options.noisyMarketSlugs ?? [])
   const staleAfterHours = options.staleAfterHours ?? DEFAULT_STALE_AFTER_HOURS
   return groupTrades(trades).map((group) => {
-    const packet = buildPacket(group, oddsSnapshots, options)
     const latestTrade = group.trades[group.trades.length - 1]
+    const packetNow = options.asOfMode === 'latest_trade' ? latestTrade.observedAt : options.now
+    const packetOptions = { ...options, now: packetNow }
+    const packet = buildPacket(group, oddsSnapshots, packetOptions)
     const decision = decideWalletRepeatPacket(packet, {
-      now: options.now,
+      now: packetNow,
       existingThreadId: options.existingThreadByStoryKey?.[group.storyKey],
       materialChangeAfter: options.coveredThroughByStoryKey?.[group.storyKey],
       unresolvedMarket: !group.hasResolvedSlug,
       noisy: noisyMarketSlugs.has(group.slug),
-      stale: hoursBetween(latestTrade.observedAt, options.now) > staleAfterHours,
+      stale: hoursBetween(latestTrade.observedAt, packetNow) > staleAfterHours,
       materialityThresholds: options.materialityThresholds,
     })
     return { packet, decision }

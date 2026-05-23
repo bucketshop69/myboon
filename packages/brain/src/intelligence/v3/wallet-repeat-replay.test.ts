@@ -96,6 +96,59 @@ describe('feed v3 wallet-repeat replay', () => {
     expect(first.summary.hitRate).toBe(1)
   })
 
+  it('builds historical packets as of latest trade instead of run clock', () => {
+    const result = runPolymarketWalletRepeatReplay([
+      whale('trade-1', {
+        created_at: '2026-05-01T08:00:05.000Z',
+        metadata: {
+          amount: 1200,
+          tradePrice: 0.29,
+          activityTimestamp: '2026-05-01T08:00:00.000Z',
+        },
+      }),
+      whale('trade-2', {
+        created_at: '2026-05-01T09:00:05.000Z',
+        metadata: {
+          amount: 1800,
+          tradePrice: 0.31,
+          activityTimestamp: '2026-05-01T09:00:00.000Z',
+        },
+      }),
+    ], [
+      odds('odds-1', { created_at: '2026-05-01T09:00:00.000Z', metadata: { shift_to: 0.31, slug: 'will-x-happen' } }),
+      odds('odds-2', { created_at: '2026-05-01T10:00:00.000Z', metadata: { shift_to: 0.36, slug: 'will-x-happen' } }),
+    ], { now })
+
+    expect(result.packets[0].createdAt).toBe('2026-05-01T09:00:00.000Z')
+    expect(result.decisions[0].decision).toBe('publish')
+    expect(result.decisionCounts.suppress).toBe(0)
+  })
+
+  it('does not leak future odds into packet facts while using them for outcome scoring', () => {
+    const result = runPolymarketWalletRepeatReplay([
+      whale('trade-1'),
+      whale('trade-2', {
+        created_at: '2026-05-23T09:00:05.000Z',
+        metadata: {
+          amount: 1800,
+          tradePrice: 0.31,
+          activityTimestamp: '2026-05-23T09:00:00.000Z',
+        },
+      }),
+    ], [
+      odds('odds-1', { created_at: '2026-05-23T09:00:00.000Z', metadata: { shift_to: 0.31, slug: 'will-x-happen' } }),
+      odds('odds-2', { created_at: '2026-05-23T10:00:00.000Z', metadata: { shift_to: 0.36, slug: 'will-x-happen' } }),
+    ], { now })
+
+    const packetValues = result.packets[0].facts.map((fact) => fact.values)
+
+    expect(packetValues).toContainEqual(expect.objectContaining({ yesPrice: 0.31 }))
+    expect(packetValues).not.toContainEqual(expect.objectContaining({ yesPrice: 0.36 }))
+    expect(packetValues).not.toContainEqual(expect.objectContaining({ toPrice: 0.36 }))
+    expect(result.selected[0].result).toBe('hit')
+    expect(result.selected[0].measuredValues.matchedPrice).toBe(0.36)
+  })
+
   it('reports holds for missing odds context in shadow mode', () => {
     const result = runPolymarketWalletRepeatReplay([
       whale('trade-1'),

@@ -37,12 +37,30 @@ describe('feed v3 packet-backed writer handoff', () => {
     })
   })
 
-  it('rejects non-publish decisions before writer handoff', () => {
+  it('rejects non-renderable decisions before writer handoff', () => {
     expect(() => createPacketWriterInput(validWalletRepeatPacket, {
       ...publishWalletRepeatDecision,
       decision: 'hold',
       surface: 'none',
-    })).toThrow('approved writer handoff requires a publish decision')
+    })).toThrow('renderable writer handoff requires a publish or update decision')
+  })
+
+  it('accepts thread update decisions for writer handoff', () => {
+    const packet = {
+      ...validWalletRepeatPacket,
+      threadId: 'thread-1',
+      status: 'update' as const,
+    }
+    const decision = {
+      ...publishWalletRepeatDecision,
+      decision: 'update' as const,
+      surface: 'thread' as const,
+    }
+
+    const input = createPacketWriterInput(packet, decision)
+
+    expect(input.threadId).toBe('thread-1')
+    expect(input.decision.decision).toBe('update')
   })
 
   it('builds a packet-only writer prompt', () => {

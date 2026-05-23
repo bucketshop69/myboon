@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { publishWalletRepeatDecision, validWalletRepeatPacket } from './fixtures/wallet-repeat.js'
-import { validateApprovedResearchPacket, validateResearchPacket } from './packet-validator.js'
+import { validateApprovedResearchPacket, validateRenderableResearchPacket, validateResearchPacket } from './packet-validator.js'
 
 describe('feed v3 research packet validation', () => {
   it('accepts a valid wallet-repeat packet with publish decision', () => {
@@ -117,6 +117,44 @@ describe('feed v3 research packet validation', () => {
     const result = validateApprovedResearchPacket(validWalletRepeatPacket, decision)
     expect(result.valid).toBe(false)
     expect(result.errors).toContain('approved writer handoff requires a publish decision')
+  })
+
+  it('allows update decisions for renderable writer handoff', () => {
+    const packet = {
+      ...validWalletRepeatPacket,
+      threadId: 'thread-1',
+      status: 'update' as const,
+    }
+    const decision = {
+      ...publishWalletRepeatDecision,
+      decision: 'update' as const,
+      surface: 'thread' as const,
+    }
+    const result = validateRenderableResearchPacket(packet, decision)
+    expect(result).toEqual({ valid: true, errors: [] })
+  })
+
+  it('requires thread surface for update decisions', () => {
+    const packet = {
+      ...validWalletRepeatPacket,
+      threadId: 'thread-1',
+      status: 'update' as const,
+    }
+    const decision = {
+      ...publishWalletRepeatDecision,
+      decision: 'update' as const,
+      surface: 'feed_card' as const,
+    }
+    const result = validateResearchPacket(packet, decision)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContain('update decision must use surface thread')
+  })
+
+  it('rejects hold decisions for renderable writer handoff', () => {
+    const decision = { ...publishWalletRepeatDecision, decision: 'hold' as const, surface: 'none' as const }
+    const result = validateRenderableResearchPacket(validWalletRepeatPacket, decision)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContain('renderable writer handoff requires a publish or update decision')
   })
 
   it('rejects wallet trade facts that do not match packet entities', () => {

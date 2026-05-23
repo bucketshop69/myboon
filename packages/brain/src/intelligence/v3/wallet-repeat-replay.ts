@@ -73,6 +73,7 @@ export interface WalletRepeatReplayArtifact {
 }
 
 interface OddsPoint {
+  id: string
   slug: string
   observedAt: string
   price: number
@@ -131,6 +132,7 @@ function oddsPointsBySlug(oddsSnapshots: PolymarketOddsSnapshotSeed[]): Map<stri
   for (const snapshot of oddsSnapshots) {
     const group = groups.get(snapshot.slug) ?? []
     group.push({
+      id: snapshot.id,
       slug: snapshot.slug,
       observedAt: snapshot.observedAt,
       price: snapshot.price,
@@ -138,7 +140,7 @@ function oddsPointsBySlug(oddsSnapshots: PolymarketOddsSnapshotSeed[]): Map<stri
     groups.set(snapshot.slug, group)
   }
   for (const group of groups.values()) {
-    group.sort((a, b) => a.observedAt.localeCompare(b.observedAt))
+    group.sort((a, b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id))
   }
   return groups
 }
@@ -265,7 +267,10 @@ export function runPolymarketWalletRepeatReplay(
     trades: trades.map((trade) => [trade.id, trade.wallet, trade.slug, trade.marketId, trade.outcome, trade.side, trade.amountUsd, trade.observedAt]),
     odds: oddsSnapshots.map((odds) => [odds.id, odds.slug, odds.price, odds.observedAt]),
   })
-  const packetResults = buildWalletRepeatResearchPackets(trades, oddsSnapshots, options)
+  const packetResults = buildWalletRepeatResearchPackets(trades, oddsSnapshots, {
+    ...options,
+    asOfMode: 'latest_trade',
+  })
   const oddsBySlug = oddsPointsBySlug(oddsSnapshots)
   const candidates: WalletRepeatReplayCandidate[] = packetResults.map(({ packet, decision }) => ({
     packet,

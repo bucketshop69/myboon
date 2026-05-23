@@ -213,6 +213,9 @@ export function validateResearchPacket(packetInput: unknown, decisionInput?: unk
     if (decision.decision === 'update' && !hasText(packet.threadId)) {
       errors.push('update decision requires packet.threadId')
     }
+    if (decision.decision === 'update' && decision.surface !== 'thread') {
+      errors.push('update decision must use surface thread')
+    }
   }
 
   return { valid: errors.length === 0, errors }
@@ -223,6 +226,15 @@ export function validateApprovedResearchPacket(packet: unknown, decision: unknow
   const d = object(decision)
   if (!d || d.decision !== 'publish') {
     errors.push('approved writer handoff requires a publish decision')
+  }
+  return { valid: errors.length === 0, errors }
+}
+
+export function validateRenderableResearchPacket(packet: unknown, decision: unknown): PacketValidationResult {
+  const errors = validateResearchPacket(packet, decision).errors
+  const d = object(decision)
+  if (!d || (d.decision !== 'publish' && d.decision !== 'update')) {
+    errors.push('renderable writer handoff requires a publish or update decision')
   }
   return { valid: errors.length === 0, errors }
 }
@@ -239,6 +251,14 @@ export function assertApprovedResearchPacket(packet: unknown, decision: unknown)
   const result = validateApprovedResearchPacket(packet, decision)
   if (!result.valid) {
     throw new Error(`ResearchPacket approval failed: ${result.errors.join('; ')}`)
+  }
+  return packet as ResearchPacket
+}
+
+export function assertRenderableResearchPacket(packet: unknown, decision: unknown): ResearchPacket {
+  const result = validateRenderableResearchPacket(packet, decision)
+  if (!result.valid) {
+    throw new Error(`ResearchPacket renderability failed: ${result.errors.join('; ')}`)
   }
   return packet as ResearchPacket
 }
