@@ -157,14 +157,49 @@ For repeatable CLI artifacts, set `POLYMARKET_WALLET_REPEAT_REPLAY_NOW`. If it i
 
 Shadow replay is intentionally read-only. It does not call the writer, insert into `published_narratives`, or mutate legacy `signals`.
 
+## Fresh V3 Live Path
+
+The first product pipeline now runs from fresh collector output to the feed:
+
+```bash
+pnpm --filter @myboon/collectors start
+pnpm --filter @myboon/brain intelligence:polymarket:v3-live
+```
+
+Flow:
+
+```txt
+fresh Polymarket collectors
+-> unprocessed POLYMARKET WHALE_BET / ODDS_SHIFT signals
+-> wallet-repeat ResearchPacket
+-> EditorialDecision publish/update/hold/suppress
+-> packet-backed writer
+-> narratives row
+-> published_narratives row
+-> signals marked processed
+```
+
+The live runner is `packages/brain/src/run-polymarket-v3-live.ts`. The testable core is `packages/brain/src/intelligence/v3/polymarket-live-pipeline.ts`.
+
+Important runtime controls:
+
+- `POLYMARKET_V3_LIVE_RUN_ONCE=1` runs a single pass.
+- `POLYMARKET_V3_LIVE_LOOKBACK_HOURS=24` controls the fresh signal window.
+- `POLYMARKET_V3_LIVE_LIMIT=500` caps signals per pass.
+- `POLYMARKET_V3_LIVE_MAX_PUBLICATIONS=3` caps feed writes per pass.
+- `POLYMARKET_V3_LIVE_INCLUDE_PROCESSED=0` restricts context to unprocessed signals only. Default is to include processed recent signals so repeat/update detection can use the prior trades in the lookback window.
+- `POLYMARKET_V3_LIVE_MARK_PROCESSED=0` leaves consumed signals unprocessed for inspection.
+
+V3 feed rows use `published_narratives.packet_id`, `story_key`, `story_candidate_id`, and `evidence_refs` when migration `supabase/migrations/20260523_v3_feed_metadata.sql` has been applied. The runner falls back to legacy `published_narratives` columns if those metadata columns are not present, but duplicate/thread detection is weaker without `story_key`.
+
 ## Current Gaps To Address Later
 
-- collectors still write legacy `signals`
+- collectors still write legacy `signals`, now used as the compatibility intake for V3 live
 - no durable raw fact table
 - in-memory cursors in `user-tracker.ts` and `match-watcher.ts`
 - no liquidity depth snapshots
 - no external research source for catalyst confirmation
-- repeat-action currently runs as the first V3 vertical slice; broader Polymarket trigger families still need their own classifiers and story keys
+- repeat-action is the first V3 live vertical slice; broader Polymarket trigger families still need their own classifiers and story keys
 - wallet-repeat thread rules exist for the first slice; cross-archetype thread policy still needs to be generalized
 
 ## Reusable Source Blueprint

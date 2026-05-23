@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "intelligence:polymarket:backtest": "tsx src/run-polymarket-odds-backtest.ts",
     "intelligence:polymarket:whale-backtest": "tsx src/run-polymarket-whale-backtest.ts",
-    "intelligence:polymarket:wallet-repeat-shadow": "tsx src/run-polymarket-wallet-repeat-shadow.ts"
+    "intelligence:polymarket:wallet-repeat-shadow": "tsx src/run-polymarket-wallet-repeat-shadow.ts",
+    "intelligence:polymarket:v3-live": "tsx src/run-polymarket-v3-live.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.3",

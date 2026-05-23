@@ -527,6 +527,28 @@ V3 can evolve the current system in place.
 7. Store packet ids, thread ids, evidence refs, versions, and success criteria on published output.
 8. Measure outcomes by segment and archetype, not only by source.
 
+## First V3 Product Slice
+
+The first implemented live slice is Polymarket wallet-repeat:
+
+```txt
+collector-created WHALE_BET / ODDS_SHIFT signals
+-> ResearchPacket
+-> EditorialDecision
+-> packet-backed writer output
+-> narratives
+-> published_narratives
+-> feed/API visibility through existing published_narratives readers
+```
+
+The live command is:
+
+```bash
+pnpm --filter @myboon/brain intelligence:polymarket:v3-live
+```
+
+This is different from shadow replay. Shadow replay measures old data. The live command consumes fresh unprocessed Polymarket signals and writes feed artifacts.
+
 ## Source Blueprints
 
 Each new data source should get a source blueprint before implementation. The first completed blueprint is Polymarket:
