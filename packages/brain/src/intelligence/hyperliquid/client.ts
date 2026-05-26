@@ -6,6 +6,18 @@ interface HyperliquidClientOptions {
   infoUrl?: string
 }
 
+export interface HyperliquidFill {
+  coin: string
+  dir: string
+  px: number
+  sz: number
+  time: number
+  closedPnl: number | null
+  hash: string | null
+  oid: number | string | null
+  raw: unknown
+}
+
 function numberOrNull(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
   return Number.isFinite(parsed) ? parsed : null
@@ -93,6 +105,28 @@ function parseMarketSnapshot(meta: unknown, ctx: unknown, index: number, observe
   }
 }
 
+function parseFill(rawFill: unknown): HyperliquidFill | null {
+  if (!rawFill || typeof rawFill !== 'object') return null
+  const raw = rawFill as Record<string, unknown>
+  const coin = typeof raw.coin === 'string' ? raw.coin : null
+  const dir = typeof raw.dir === 'string' ? raw.dir : null
+  const px = positiveNumberOrNull(raw.px)
+  const sz = positiveNumberOrNull(raw.sz)
+  const time = numberOrNull(raw.time)
+  if (!coin || !dir || px == null || sz == null || time == null) return null
+  return {
+    coin,
+    dir,
+    px,
+    sz,
+    time,
+    closedPnl: numberOrNull(raw.closedPnl),
+    hash: typeof raw.hash === 'string' ? raw.hash : null,
+    oid: typeof raw.oid === 'number' || typeof raw.oid === 'string' ? raw.oid : null,
+    raw: rawFill,
+  }
+}
+
 export class HyperliquidInfoClient {
   private readonly infoUrl: string
 
@@ -129,5 +163,41 @@ export class HyperliquidInfoClient {
     return contexts
       .map((ctx, index) => parseMarketSnapshot(meta, ctx, index, observedAt))
       .filter((snapshot): snapshot is HyperliquidMarketSnapshot => snapshot != null)
+  }
+
+  async fetchUserFillsByTime(wallet: string, startTime: number, endTime: number): Promise<HyperliquidFill[]> {
+    const fills: HyperliquidFill[] = []
+    let cursor = startTime
+    const seen = new Set<string>()
+
+    while (cursor <= endTime) {
+      const data = await this.post<unknown[]>({
+        type: 'userFillsByTime',
+        user: wallet,
+        startTime: cursor,
+        endTime,
+        aggregateByTime: true,
+      })
+      const parsed = data
+        .map(parseFill)
+        .filter((fill): fill is HyperliquidFill => fill != null)
+        .sort((a, b) => a.time - b.time)
+
+      if (parsed.length === 0) break
+
+      for (const fill of parsed) {
+        const key = `${fill.time}:${fill.hash ?? ''}:${fill.oid ?? ''}:${fill.coin}:${fill.dir}:${fill.sz}:${fill.px}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        fills.push(fill)
+      }
+
+      const lastTime = parsed[parsed.length - 1]?.time
+      if (!lastTime || parsed.length < 1900) break
+      cursor = lastTime + 1
+      if (fills.length >= 10_000) break
+    }
+
+    return fills.sort((a, b) => a.time - b.time)
   }
 }
