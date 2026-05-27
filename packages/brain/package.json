@@ -23,7 +23,8 @@
     "intelligence:polymarket:wallet-repeat-shadow": "tsx src/run-polymarket-wallet-repeat-shadow.ts",
     "intelligence:polymarket:v3-live": "tsx src/run-polymarket-v3-live.ts",
     "intelligence:hyperliquid:research": "tsx src/run-hyperliquid-research.ts",
-    "intelligence:hyperliquid:monthly-shadow": "tsx src/run-hyperliquid-monthly-shadow.ts"
+    "intelligence:hyperliquid:monthly-shadow": "tsx src/run-hyperliquid-monthly-shadow.ts",
+    "intelligence:hyperliquid:signals-backtest": "tsx src/run-hyperliquid-signal-backtest.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.3",

@@ -18,6 +18,28 @@ export interface HyperliquidFill {
   raw: unknown
 }
 
+export interface HyperliquidCandle {
+  coin: string
+  interval: string
+  startTime: number
+  endTime: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  trades: number | null
+  raw: unknown
+}
+
+export interface HyperliquidFundingPoint {
+  coin: string
+  time: number
+  fundingRate: number
+  premium: number | null
+  raw: unknown
+}
+
 function numberOrNull(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
   return Number.isFinite(parsed) ? parsed : null
@@ -127,6 +149,49 @@ function parseFill(rawFill: unknown): HyperliquidFill | null {
   }
 }
 
+function parseCandle(rawCandle: unknown): HyperliquidCandle | null {
+  if (!rawCandle || typeof rawCandle !== 'object') return null
+  const raw = rawCandle as Record<string, unknown>
+  const coin = typeof raw.s === 'string' ? raw.s : null
+  const interval = typeof raw.i === 'string' ? raw.i : null
+  const startTime = numberOrNull(raw.t)
+  const endTime = numberOrNull(raw.T)
+  const open = positiveNumberOrNull(raw.o)
+  const high = positiveNumberOrNull(raw.h)
+  const low = positiveNumberOrNull(raw.l)
+  const close = positiveNumberOrNull(raw.c)
+  const volume = positiveNumberOrNull(raw.v)
+  if (!coin || !interval || startTime == null || endTime == null || open == null || high == null || low == null || close == null || volume == null) return null
+  return {
+    coin,
+    interval,
+    startTime,
+    endTime,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    trades: numberOrNull(raw.n),
+    raw: rawCandle,
+  }
+}
+
+function parseFundingPoint(coin: string, rawPoint: unknown): HyperliquidFundingPoint | null {
+  if (!rawPoint || typeof rawPoint !== 'object') return null
+  const raw = rawPoint as Record<string, unknown>
+  const time = numberOrNull(raw.time)
+  const fundingRate = numberOrNull(raw.fundingRate)
+  if (time == null || fundingRate == null) return null
+  return {
+    coin,
+    time,
+    fundingRate,
+    premium: numberOrNull(raw.premium),
+    raw: rawPoint,
+  }
+}
+
 export class HyperliquidInfoClient {
   private readonly infoUrl: string
 
@@ -199,5 +264,49 @@ export class HyperliquidInfoClient {
     }
 
     return fills.sort((a, b) => a.time - b.time)
+  }
+
+  async fetchCandleSnapshot(coin: string, interval: string, startTime: number, endTime: number): Promise<HyperliquidCandle[]> {
+    const data = await this.post<unknown[]>({
+      type: 'candleSnapshot',
+      req: { coin, interval, startTime, endTime },
+    })
+    return data
+      .map(parseCandle)
+      .filter((candle): candle is HyperliquidCandle => candle != null)
+      .sort((a, b) => a.startTime - b.startTime)
+  }
+
+  async fetchFundingHistory(coin: string, startTime: number, endTime: number): Promise<HyperliquidFundingPoint[]> {
+    const points: HyperliquidFundingPoint[] = []
+    let cursor = startTime
+    const seen = new Set<number>()
+
+    while (cursor <= endTime) {
+      const data = await this.post<unknown[]>({
+        type: 'fundingHistory',
+        coin,
+        startTime: cursor,
+        endTime,
+      })
+      const parsed = data
+        .map((point) => parseFundingPoint(coin, point))
+        .filter((point): point is HyperliquidFundingPoint => point != null)
+        .sort((a, b) => a.time - b.time)
+
+      if (parsed.length === 0) break
+
+      for (const point of parsed) {
+        if (seen.has(point.time)) continue
+        seen.add(point.time)
+        points.push(point)
+      }
+
+      const lastTime = parsed[parsed.length - 1]?.time
+      if (!lastTime || parsed.length < 500) break
+      cursor = lastTime + 1
+    }
+
+    return points.sort((a, b) => a.time - b.time)
   }
 }
