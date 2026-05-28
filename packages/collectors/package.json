@@ -3,9 +3,49 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./hyperliquid": {
+      "types": "./dist/hyperliquid/index.d.ts",
+      "import": "./dist/hyperliquid/index.js",
+      "default": "./dist/hyperliquid/index.js"
+    },
+    "./hyperliquid/research-leads": {
+      "types": "./dist/hyperliquid/research-leads.d.ts",
+      "import": "./dist/hyperliquid/research-leads.js",
+      "default": "./dist/hyperliquid/research-leads.js"
+    },
+    "./hyperliquid/client": {
+      "types": "./dist/hyperliquid/client.d.ts",
+      "import": "./dist/hyperliquid/client.js",
+      "default": "./dist/hyperliquid/client.js"
+    },
+    "./hyperliquid/research-lead-thresholds": {
+      "types": "./dist/hyperliquid/research-lead-thresholds.d.ts",
+      "import": "./dist/hyperliquid/research-lead-thresholds.js",
+      "default": "./dist/hyperliquid/research-lead-thresholds.js"
+    },
+    "./hyperliquid/wallet-profile": {
+      "types": "./dist/hyperliquid/wallet-profile.d.ts",
+      "import": "./dist/hyperliquid/wallet-profile.js",
+      "default": "./dist/hyperliquid/wallet-profile.js"
+    },
+    "./hyperliquid/types": {
+      "types": "./dist/hyperliquid/types.d.ts",
+      "import": "./dist/hyperliquid/types.js",
+      "default": "./dist/hyperliquid/types.js"
+    }
+  },
   "scripts": {
     "dev": "tsx src/index.ts",
     "start": "tsx src/index.ts",
+    "hyperliquid:research-leads": "tsx src/hyperliquid/run-research-leads.ts",
+    "hyperliquid:wallet-profiles": "tsx src/hyperliquid/run-wallet-profiles.ts",
+    "hyperliquid:wallet-behavior": "tsx src/hyperliquid/run-wallet-behavior.ts",
     "build": "tsc"
   },
   "dependencies": {

@@ -23,11 +23,16 @@
     "intelligence:polymarket:wallet-repeat-shadow": "tsx src/run-polymarket-wallet-repeat-shadow.ts",
     "intelligence:polymarket:v3-live": "tsx src/run-polymarket-v3-live.ts",
     "intelligence:hyperliquid:research": "tsx src/run-hyperliquid-research.ts",
+    "intelligence:hyperliquid:research-leads": "tsx src/run-hyperliquid-research-leads.ts",
+    "intelligence:hyperliquid:wallet-profiles": "tsx src/run-hyperliquid-wallet-profiles.ts",
+    "intelligence:hyperliquid:wallet-behavior": "tsx src/run-hyperliquid-wallet-behavior.ts",
     "intelligence:hyperliquid:monthly-shadow": "tsx src/run-hyperliquid-monthly-shadow.ts",
+    "intelligence:hyperliquid:funding-volume-explore": "tsx src/run-hyperliquid-funding-volume-explore.ts",
     "intelligence:hyperliquid:signals-backtest": "tsx src/run-hyperliquid-signal-backtest.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.2.3",
+    "@myboon/collectors": "workspace:*",
     "@myboon/shared": "workspace:*",
     "@supabase/supabase-js": "^2.46.2",
     "dotenv": "^17.3.1"

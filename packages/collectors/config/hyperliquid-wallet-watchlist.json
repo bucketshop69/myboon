@@ -1,0 +1,54 @@
+{
+  "manual": [
+    {
+      "wallet": "0x92ea19ECeB7a8dE0f50978A1583A5D8b018050e9",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+        {
+      "wallet": "0x0df25979a16d993e55bd58d05b6197c71634ab64",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0x3ed4033676d0bdb3938728ca4ac673d00e74bd06",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0x86523927bffeafe2e532f0218feb1f3c29f6120d",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0x3109eb59201623fe283d1b110b054e52222f6183",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0x56871b0ab45d02dd1a29fbee0e6408ccd6e6fd49",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0xb190a3c22329da0c078679563d85421f47e7b52e",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0x50b309f78e774a756a2230e1769729094cac9f20",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    },
+    {
+      "wallet": "0x4be5f249c4df500ede3fed4171bd37b8563420c0",
+      "label": null,
+      "reason": "manual Hyperliquid wallet watchlist"
+    }
+  ],
+  "deposit": [],
+  "leaderboard": {
+    "enabled": false,
+    "limit": 25
+  }
+}

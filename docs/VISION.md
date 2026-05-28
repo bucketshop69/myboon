@@ -2,230 +2,268 @@
 
 ## What Is myboon?
 
-**myboon** is an intelligent wallet layer for Solana. It learns who you are from your transaction history and acts on your behalf.
+**myboon** is a mobile-first Solana market intelligence app.
 
-Think of it as **"your wallet's second brain"** — it understands your trading patterns, anticipates your needs, and executes on your behalf.
+It helps users understand why markets are moving, what changed, and where the
+relevant action is, without forcing them to piece context together from X,
+Telegram, Discord, YouTube, Instagram, dashboards, news, and trading apps.
 
----
+The product starts with a feed. The feed watches market signals, turns them into
+clear context, and connects that context to action inside the same mobile
+experience.
+
+```text
+Market moves -> myboon explains what changed -> user can act from the app
+```
 
 ## The Problem
 
-**Current crypto UX is transactional, not intelligent.**
+Users do not lack information. They lack useful context at the right time.
 
-When you use a dapp today:
+Most market participants already gather information from many places:
 
-- You click → it executes
-- You ask → it answers
-- No memory between sessions
-- No understanding of who you are
+- X and Telegram for fast reactions
+- Discord groups for community chatter
+- YouTube, Shorts, and Instagram for simplified narratives
+- dashboards for price, volume, funding, and on-chain activity
+- trading apps for execution
 
-**The result:** Thousands of apps, all treating you like a stranger.
+The issue is that this workflow is fragmented.
 
----
+One surface shows that an asset is up 24 percent. Another hints that privacy
+projects are moving. A dashboard shows volume or open interest. Someone on X
+posts a wallet move. By the time a normal user understands why the market is
+moving, the move may already be crowded or the context may be stale.
+
+Execution is also disconnected from understanding. A user may see a narrative,
+but still has to figure out which venue, asset, market, route, wallet, and app
+to use next.
+
+myboon exists to close that gap.
 
 ## The Vision
 
-**Every wallet should have an agent that knows it.**
+The long-term vision is a market intelligence layer for mobile crypto users.
 
-```
-Your Wallet ←→ myboon Agent
-                   │
-                   ├── Learns your patterns
-                   ├── Remembers your preferences
-                   ├── Acts proactively
-                   └── Serves you (and only you)
-```
+myboon should feel like opening one app and immediately knowing:
 
-### What This Enables
+- what moved
+- why people care
+- what evidence supports the story
+- whether it is new, stale, crowded, or still developing
+- where the related action is happening
 
-| Feature | Today (Static) | With myboon (Intelligent) |
-|---------|----------------|------------------------------|
-| Portfolio check | You open 3 apps to see SPL + perps + LP | "Hey, your SOL is up 5%" |
-| Trading | You find the DEX, check prices, execute | "SOL is cheap. Buy 2?" |
-| Alerts | Generic notifications for everyone | "XYZ just pumped — you own 10% of it" |
-| Insights | None | "You're 60% degen, 40% LP. Consider rebalancing." |
+The product should not be a generic crypto news app. It should not be a raw
+dashboard. It should not be another trading terminal squeezed onto a phone.
 
----
+It should be a mobile feed that turns scattered market signals into useful,
+timely, evidence-backed context.
 
-## Two Modes of Operation
+## Starting Point
 
-### 1. Consumer Mode (For End Users)
+The starting point is a market intelligence feed for Solana and crypto-native
+users.
 
-The agent serves humans:
+The feed gathers signals from sources such as:
 
-```
-User says:    "What's my trading style?"
-Agent does:   Parses last 50 txs → Identifies patterns → Responds:
-              "You do 60% degen swaps on Jup, 40% LP on Meteora.
-               You're a swing trader with average hold of 12 days."
-```
+- prediction markets
+- on-chain activity
+- perps data
+- wallet activity
+- liquidity and volume changes
+- social and news context
+- scheduled catalysts and market events
 
-**Capabilities:**
+Those signals are processed into feed items that answer:
 
-- Voice-first interface (Alexa-style)
-- Learns from transaction history
-- Proactive notifications (not just alerts, but *relevant* alerts)
-- Personalized recommendations
+- what happened?
+- why does it matter now?
+- what changed from before?
+- what are the receipts?
+- what should the user watch next?
+- what action surface is relevant, if any?
 
-### 2. Service Mode (For Other Agents)
+The first user is not "everyone." The first user is a mobile-first market
+participant who already follows crypto narratives, but does not want to live
+inside five different apps to understand and act on them.
 
-The agent serves AI agents:
+## Product Shape
 
-```
-Other agent asks:  "What is wallet X's trading profile?"
-myboon checks:  x402 payment received
-Response:          "Wallet X is a degen meme trader.
-                   80% of volume on degen coins.
-                   Average position: $50-$200.
-                   Sells at +50% or -30%."
-```
+myboon is built around three connected surfaces.
 
-**Capabilities:**
+### Feed
 
-- x402 micropayment endpoint
-- Indexed wallet profiles
-- Queryable trading history
-- Notification subscription service
+The feed is the main product surface.
 
----
+It turns raw market movement into short, useful narratives. Each item should
+have a reason to exist: a price move, odds shift, wallet action, funding change,
+news catalyst, on-chain event, or developing story.
 
-## Why Now?
+The feed should be fast, but speed alone is not the promise. The promise is
+earlier context and better signal selection than a user can assemble manually.
 
-### The Timing Is Right
+### Markets And Actions
 
-1. **Solana is processing 50M+ tx/day** — massive data to learn from
-2. **AI agents are maturing** — LLMs can understand transaction patterns
-3. **x402 is emerging** — standardized micropayments for agent services
-4. **Voice interfaces are improving** — natural language with agents
+When a feed item points to something actionable, the user should be able to move
+from context to action without leaving the app.
 
-### The Gap
+Near-term action surfaces include:
 
-- 100+ portfolio apps exist, all static
-- 100+ trading bots exist, all reactive
-- **No one** is building the intelligent layer that learns and adapts
+- prediction markets
+- perps
+- swaps
+- wallet and position views
 
----
+The action layer exists because the feed earns trust. Trading, swaps, and market
+views are not the moat by themselves. The moat is knowing what matters and why.
 
-## Core Architecture
+### Wallet Context
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      myboon                              │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────────┐    ┌──────────────────┐              │
-│  │  tx-parser       │    │   agent-core     │              │
-│  │  (standalone)    │    │  (intelligence)  │              │
-│  │                  │    │                  │              │
-│  │  • Fetch txs     │    │  • User profiles │              │
-│  │  • Parse types   │    │  • Proactive     │              │
-│  │  • Normalize     │    │    alerts        │              │
-│  └──────────────────┘    │  • x402 service  │              │
-│                          └──────────────────┘              │
-│                                  │                          │
-│                          ┌───────▼───────┐                  │
-│                          │  Voice Layer  │                  │
-│                          │  (frontend)   │                  │
-│                          └───────────────┘                  │
-└─────────────────────────────────────────────────────────────┘
-```
+Wallet context is still useful, but it is no longer the whole product.
 
-### packages/tx-parser
+Over time, myboon can become more personalized by understanding what a user
+owns, follows, trades, or cares about. That can make alerts and feed ranking
+more relevant.
 
-**Purpose:** Parse any Solana wallet, identify transaction types, output structured data.
+This should be treated as an expansion of the market intelligence layer, not the
+starting point of the product.
 
-**What it recognizes:**
+## Why Mobile
 
-- DEX swaps (Jup, Raydium, Orca, Meteora)
-- Perpetual positions (Drift, Pacific, Mango)
-- LP provision (Meteora, Raydium, Sanctum)
-- NFT mints/transfers
-- DeFi interactions (Kamino, Solend, etc.)
+Crypto information often starts on social surfaces, but most users live on
+their phones.
 
-**Output:**
+Solana also has a real mobile ecosystem forming around Seeker and mobile wallet
+flows. A consumer-facing Solana product should not assume that users want to sit
+at a web dashboard all day.
 
-```typescript
-interface WalletProfile {
-  wallet: string;
-  summary: {
-    traderType: 'degen' | 'lp' | 'holder' | 'whale' | 'mixed';
-    dexPreference: string[];
-    activityLevel: 'low' | 'medium' | 'high';
-    riskProfile: 'conservative' | 'moderate' | 'aggressive';
-  };
-  transactions: ParsedTransaction[];
-}
+myboon should feel native to a phone:
+
+- quick to open
+- easy to scan
+- simple to act from
+- useful even when the user has only a minute
+
+The goal is not to shrink a desktop terminal. The goal is to design the market
+intelligence workflow around mobile behavior from the start.
+
+## How The System Works
+
+The intelligence layer should be built as a pipeline, not a single prompt.
+
+```text
+raw facts
+  -> normalized signals
+  -> classified events
+  -> story candidates
+  -> research packets
+  -> feed decisions
+  -> published narratives
+  -> outcome review
 ```
 
-### packages/agent-core
+Each layer has a job.
 
-**Purpose:** Intelligence layer that uses tx-parser and adds value.
+- Collectors fetch and preserve facts.
+- Normalization turns source-specific data into shared entities and event types.
+- Scoring decides urgency, novelty, confidence, and materiality.
+- Research packets gather evidence and context before anything is written.
+- Publisher agents decide what should reach the feed.
+- The mobile app renders the final feed and action surfaces.
 
-**Capabilities:**
+This matters because the feed should be grounded in receipts. The app can sound
+simple, but the system underneath should know why a story exists.
 
-- **Profile Learning:** Builds user model from tx history
-- **Proactive Alerts:** Monitors tracked wallets, sends relevant notifications
-- **x402 Service:** Exposes data to other agents for micropayments
-- **Voice Interface:** Natural language interaction
+## Current Build Direction
 
----
+The current build focuses on getting from prototype to public beta.
 
-## The Differentiator
+Near-term priorities:
 
-Every crypto app has:
+- improve feed quality
+- add more data collectors
+- strengthen AI agent and inference workflows
+- make published feed items more evidence-backed
+- improve the mobile experience
+- connect feed items to useful action surfaces
+- prepare for Seeker/mobile distribution
 
-- Transaction execution ✓
-- Portfolio display ✓
-- Charts and analytics ✓
+The initial collectors and product surfaces are already in motion. The work now
+is to make the intelligence layer sharper, reduce noise, and make the app useful
+enough that early users return for the feed.
 
-**myboon adds:**
+## What Makes myboon Different
 
-- **Memory** — remembers who you are
-- **Intelligence** — learns from your behavior
-- **Proactivity** — acts before you ask
-- **Service Layer** — enables other agents
+Most products in this space focus on one layer:
 
-The voice interface is the **interaction model**, not the product. The product is the intelligence layer underneath.
+- news apps explain but do not let users act
+- dashboards show data but leave interpretation to the user
+- trading apps let users execute but do not explain why something is moving
+- social feeds are fast but noisy
+- portfolio apps show what a user owns but not what changed in the market
 
----
+myboon combines the missing loop:
 
-## Long-Term Roadmap
+```text
+signal -> context -> action -> position tracking
+```
 
-### Phase 1 (Now)
+The core bet is that users will value a mobile product that notices important
+market movement, explains it clearly, and connects it to action.
 
-- ✅ tx-parser (standalone)
-- ✅ agent-core (basic profiling)
-- Advanced user modeling
+## Business Model
 
-### Phase 2 (Next)
+The near-term business model follows user activity.
 
-- ⏳ x402 service layer
-- Multi-wallet aggregation
+Potential revenue paths:
 
-### Phase 3 (Future)
+- builder or affiliate revenue from prediction market actions
+- swap routing or partner fees
+- perps venue fee share
+- premium alerts, watchlists, or feed filters
+- paid market intelligence APIs in the future
 
-- Predictive insights ("You're likely to sell within 48h based on history")
-- Portfolio optimization ("Your LP impermanent loss risk is high. Rebalance?")
-- Agent-to-agent coordination
+Ads are possible later, but they should not be the core assumption. The first
+business model should come from helping users act on useful market context.
 
----
+## Future Expansion
+
+Once the feed is useful and users trust it, myboon can expand into:
+
+- personalized feed ranking based on wallet holdings and interests
+- wallet-aware alerts
+- deeper on-chain wallet intelligence
+- multi-wallet views
+- agent-to-agent or x402 intelligence APIs
+- public research feeds for DAOs, teams, and market communities
+
+These are future paths. The immediate priority is simple:
+
+Build the best mobile market intelligence feed for Solana users.
 
 ## Success Metrics
 
-| Metric | How We Measure |
-|--------|----------------|
-| **User understanding** | % of tx types correctly classified |
-| **Proactive value** | User engagement with alerts |
-| **Service revenue** | x402 payments from other agents |
-| **Voice adoption** | % of queries via voice vs manual |
+myboon should be judged by whether the feed is useful.
 
----
+Important metrics:
+
+- feed retention: do users come back?
+- feed quality: do users save, share, open, or act on items?
+- action-through rate: do feed items lead to market views, swaps, trades, or
+  prediction actions?
+- signal accuracy: did the feed item correctly identify what changed?
+- freshness: did the user see context before it became obvious everywhere?
+- noise suppression: did the system avoid publishing weak or stale items?
+- beta feedback: do early users describe the feed as useful without prompting?
+
+The goal is not to publish more. The goal is to publish better.
 
 ## References
 
 - **Repo:** <https://github.com/bucketshop69/myboon>
-- **Colosseum Agent:** myboonagent (ID: 1065)
+- **Website:** <https://www.myboon.tech/>
+- **X:** <https://x.com/myboonapp>
 
 ---
 
-*Last updated: Feb 9, 2026*
+*Last updated: May 27, 2026*

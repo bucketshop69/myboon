@@ -2,6 +2,7 @@
 
 Status: design proposal
 Scope: pseudo-technical architecture for the next feed intelligence iteration
+Related: `docs/v3-market-source-collection-blueprint.md`, `docs/v3-source-blueprint-template.md`
 
 ## Why V3 Exists
 
