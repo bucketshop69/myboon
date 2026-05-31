@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { config as loadEnv } from 'dotenv'
 
 loadEnv({ path: '../../.env' })
@@ -30,6 +30,11 @@ const COLLECTOR = 'hyperliquid.research-leads'
 
 const maxAssets = Number(process.env.HYPERLIQUID_RESEARCH_LEAD_MAX_ASSETS ?? 20)
 const outputPath = process.env.HYPERLIQUID_RESEARCH_LEAD_OUTPUT
+const localHandoffDir = process.env.V3_LOCAL_DATA_DIR
+  ? resolve(process.env.V3_LOCAL_DATA_DIR, 'collection-leads')
+  : process.env.HYPERLIQUID_RESEARCH_LEAD_HANDOFF_DIR
+    ? resolve(process.env.HYPERLIQUID_RESEARCH_LEAD_HANDOFF_DIR)
+    : null
 
 function parseWindows(): number[] {
   const raw = process.env.HYPERLIQUID_RESEARCH_LEAD_WINDOWS
@@ -96,6 +101,27 @@ async function writeArtifact(artifact: HyperliquidResearchLeadArtifact): Promise
   return path
 }
 
+function safeFilePart(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown'
+}
+
+function localHandoffStatus(): string {
+  return localHandoffDir
+    ? `enabled; pending JSON files will be written to ${join(localHandoffDir, 'pending')}`
+    : 'disabled; set V3_LOCAL_DATA_DIR or HYPERLIQUID_RESEARCH_LEAD_HANDOFF_DIR'
+}
+
+async function writeLocalHandoff(artifact: HyperliquidResearchLeadArtifact): Promise<string | null> {
+  if (!localHandoffDir) return null
+  const pendingDir = join(localHandoffDir, 'pending')
+  await mkdir(pendingDir, { recursive: true })
+  const path = join(pendingDir, `hyperliquid-research-leads-${safeFilePart(artifact.generatedAt)}.json`)
+  const tempPath = join(pendingDir, `.${safeFilePart(artifact.generatedAt)}.${process.pid}.${Date.now()}.tmp`)
+  await writeFile(tempPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8')
+  await rename(tempPath, path)
+  return path
+}
+
 function metricsForConsole(lead: HyperliquidResearchLead): Record<string, number | string | boolean | null> {
   if (lead.lane === 'funding_pressure') {
     return {
@@ -146,6 +172,7 @@ async function main(): Promise<void> {
     console.log(`[hyperliquid-research-leads] Assets: ${assets.join(', ')}`)
     console.log(`[hyperliquid-research-leads] Windows: ${windows.join('d, ')}d`)
     console.log(`[hyperliquid-research-leads] Collection lead persistence: ${collectionLeadPersistenceStatus()}`)
+    console.log(`[hyperliquid-research-leads] Local JSON handoff: ${localHandoffStatus()}`)
 
     const run = await startCollectionRun({
       source: SOURCE,
@@ -201,6 +228,7 @@ async function main(): Promise<void> {
     }
 
     const artifactPath = await writeArtifact(artifact)
+    const localHandoffPath = await writeLocalHandoff(artifact)
     const persistedLeads = runId
       ? await persistCollectionLeads({ source: SOURCE, collector: COLLECTOR, runId, leads })
       : 0
@@ -214,6 +242,7 @@ async function main(): Promise<void> {
     const watchLeads = leads.filter((lead) => lead.status === 'watch')
     console.log(JSON.stringify({
       artifactPath,
+      localHandoffPath,
       persistedLeads,
       laneSummaries: artifact.laneSummaries,
       topResearchLeads: researchLeads.slice(0, 10).map((lead) => ({

@@ -46,6 +46,160 @@ The writer should answer:
 
 > How should this approved packet be phrased for the chosen surface?
 
+## Canonical V3 Pipeline
+
+Use this as the default mental model for V3 feed work:
+
+```text
+collector
+  -> collection_leads
+  -> researcher
+  -> research_packets
+  -> editor decision
+  -> writer
+  -> published_narratives
+```
+
+Each stage has one job.
+
+### Collector
+
+The collector observes the market and creates leads.
+
+It fetches data, applies deterministic filters, records pass/fail checks, and writes candidate rows into `collection_leads`. A collector can say that funding is stretched, volume expanded, a wallet changed exposure, or price moved enough to inspect.
+
+The collector should not explain the whole story, make final editorial judgment, or publish to the feed.
+
+### Collection Leads
+
+`collection_leads` is the researcher inbox.
+
+A collection lead should be concrete enough that the researcher knows what to inspect next:
+
+- what changed
+- which asset, market, wallet, or entity is involved
+- what data supported the lead
+- which checks passed or failed
+- what uncertainty remains
+- what questions should be answered before writing
+
+These rows are not feed items. They are assignments.
+
+### Researcher
+
+The researcher turns one or more leads into an evidence-backed packet.
+
+The researcher may add context from internal history, related leads, prior myboon coverage, source receipts, and eventually trusted external/web research. The researcher should answer whether the lead is isolated noise, part of a larger story, already covered, contradicted by other evidence, or worth moving forward.
+
+The researcher should not optimize for catchy feed copy. The researcher optimizes for understanding.
+
+### Entity Research Books
+
+Research should accumulate around entities over time.
+
+An entity can be an asset, protocol, venue, wallet, market, theme, or sector. Examples:
+
+- `HYPE`
+- `NEAR`
+- `BTC`
+- `Hyperliquid`
+- `AI L1 sector`
+- a specific wallet that repeatedly proves useful
+- a prediction market or recurring event
+
+The entity book is the running notebook for that subject. It should remember:
+
+- dated notes
+- prior theses
+- what changed
+- what confirmed a thesis
+- what contradicted a thesis
+- open questions
+- related packets
+- evidence receipts
+- uncertainty
+
+When a new lead arrives, the researcher should not start from zero. It should ask:
+
+```text
+What did we already believe about this entity?
+What changed now?
+Does this confirm, weaken, or complicate the existing thesis?
+What should we add to the entity book?
+What should we watch next?
+```
+
+Example:
+
+```text
+Entity: HYPE
+
+Prior book:
+- HYPE may be tied to protocol usage, trading volume, buyback/burn mechanics, and market structure.
+- Open question: is demand protocol-fundamental or leverage-driven?
+
+New lead:
+- Funding stayed positive for most of the week.
+
+Researcher update:
+- This supports the idea that traders are paying to stay long HYPE.
+- It also raises crowding risk if price stalls while funding remains high.
+- Watch volume, OI, protocol usage, and whether funding overheats.
+```
+
+This is one of the core differences between V2 and V3. V2 mostly turned fresh signals into fresh narratives. V3 should build memory, so future packets can connect dots instead of treating every event as isolated.
+
+### Research Packets
+
+`research_packets` are the structured handoff to editorial and writing.
+
+A packet should contain:
+
+- headline claim
+- thesis
+- why now
+- what changed
+- entities
+- receipt-backed facts
+- supporting evidence
+- counter-evidence
+- materiality
+- freshness
+- confidence
+- uncertainty
+- suggested actions
+- success criteria
+- editorial constraints
+
+The writer should be able to produce the final feed output from the packet without discovering new facts.
+
+### Editor Decision
+
+The editor decides what should happen to a packet.
+
+Possible decisions:
+
+- publish
+- update an existing thread
+- hold
+- merge with another packet
+- suppress
+- escalate for deeper research
+
+The editor is where quality control happens before language. Suppression is a valid outcome.
+
+### Writer
+
+The writer renders an approved packet into the target surface.
+
+The writer should use only the approved packet and editor decision. It should not invent numbers, causality, motives, news, or actions that are not in the packet.
+
+### Published Narratives
+
+`published_narratives` is the final user-facing artifact.
+
+It should only receive content after collection, research, editorial decision, and writing have happened. It should not be used as the place where research or clustering happens.
+
 ## Main Pipeline
 
 ### 1. Raw Fact Intake

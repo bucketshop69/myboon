@@ -2,25 +2,35 @@ import type { OutcomeCriterion } from '../contracts.js'
 
 export const FEED_V3_SCHEMA_VERSION = 1 as const
 
-export type V3Source = 'polymarket'
+export type V3Source = 'polymarket' | 'hyperliquid' | 'internal' | 'the_graph_token_api'
 
-export type EntityType = 'wallet' | 'market' | 'outcome' | 'source'
+export type EntityType = 'wallet' | 'market' | 'outcome' | 'source' | 'asset' | 'protocol' | 'theme' | 'sector'
 
 export type Segment =
   | 'Smart Money'
   | 'Breaking Tape'
   | 'Receipt Check'
   | 'Thread Update'
+  | 'Crowded Trade'
+  | 'Market Structure'
 
 export type Archetype =
   | 'smart_money_position'
   | 'wallet_repeat_action'
+  | 'funding_pressure'
+  | 'volume_expansion'
+  | 'price_momentum'
+  | 'watchlist_wallet_behavior'
+  | 'entity_research_update'
 
 export type EventKind =
   | 'wallet.repeat_action'
   | 'wallet.trade'
   | 'odds.repricing'
   | 'market.snapshot'
+  | 'perps.funding_pressure'
+  | 'perps.volume_expansion'
+  | 'perps.price_momentum'
 
 export type PacketStatus = 'new' | 'update' | 'developing' | 'killed'
 
@@ -119,8 +129,9 @@ export interface PacketFact {
 }
 
 export interface RecommendedAction {
-  type: 'predict'
-  slug: string
+  type: 'predict' | 'perps'
+  slug?: string
+  asset?: string
 }
 
 export interface ResearchPacket {

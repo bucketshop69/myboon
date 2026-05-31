@@ -23,10 +23,15 @@ echo "Building workspace packages..."
 pnpm --filter @myboon/shared build
 pnpm --filter @myboon/entity-memory build
 pnpm --filter @myboon/tx-parser build
+pnpm --filter @myboon/collectors build
 pnpm --filter @myboon/brain build
 
 echo "Restarting services..."
 sudo systemctl restart myboon-api myboon-collectors myboon-analyst myboon-publisher
+sudo systemctl restart myboon-v3-market-leads.timer myboon-v3-local-researcher.timer myboon-v3-wallet-behavior.timer myboon-v3-wallet-profiles.timer || true
 
 echo "Service status:"
 sudo systemctl --no-pager --full status myboon-api myboon-collectors myboon-analyst myboon-publisher | sed -n '1,80p'
+echo
+echo "V3 timer status:"
+sudo systemctl --no-pager --full status myboon-v3-market-leads.timer myboon-v3-local-researcher.timer myboon-v3-wallet-behavior.timer myboon-v3-wallet-profiles.timer | sed -n '1,120p' || true

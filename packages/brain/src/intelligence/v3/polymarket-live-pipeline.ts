@@ -200,8 +200,7 @@ function scoreFromPacket(result: WalletRepeatResearchResult): number {
 
 function packetSlugs(result: WalletRepeatResearchResult): string[] {
   return result.packet.recommendedActions
-    .filter((action) => action.type === 'predict')
-    .map((action) => action.slug)
+    .flatMap((action) => action.type === 'predict' && typeof action.slug === 'string' ? [action.slug] : [])
 }
 
 function buildNarrativeRow(

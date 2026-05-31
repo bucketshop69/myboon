@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { config as loadEnv } from 'dotenv'
 
 loadEnv({ path: '../../.env' })
@@ -78,6 +78,11 @@ const lookbackDays = Number(
     ?? HYPERLIQUID_RESEARCH_LEAD_THRESHOLDS.walletProfile.lookbackDays
 )
 const outputPath = process.env.HYPERLIQUID_WALLET_BEHAVIOR_OUTPUT
+const localHandoffDir = process.env.V3_LOCAL_DATA_DIR
+  ? resolve(process.env.V3_LOCAL_DATA_DIR, 'collection-leads')
+  : process.env.HYPERLIQUID_RESEARCH_LEAD_HANDOFF_DIR
+    ? resolve(process.env.HYPERLIQUID_RESEARCH_LEAD_HANDOFF_DIR)
+    : null
 const configPath = process.env.HYPERLIQUID_WALLET_BEHAVIOR_CONFIG
   ?? process.env.HYPERLIQUID_WALLET_PROFILE_CONFIG
   ?? DEFAULT_CONFIG_PATH
@@ -210,6 +215,27 @@ async function writeArtifact(artifact: WalletBehaviorArtifact): Promise<string> 
   return path
 }
 
+function safeFilePart(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown'
+}
+
+function localHandoffStatus(): string {
+  return localHandoffDir
+    ? `enabled; pending JSON files will be written to ${join(localHandoffDir, 'pending')}`
+    : 'disabled; set V3_LOCAL_DATA_DIR or HYPERLIQUID_RESEARCH_LEAD_HANDOFF_DIR'
+}
+
+async function writeLocalHandoff(artifact: WalletBehaviorArtifact): Promise<string | null> {
+  if (!localHandoffDir) return null
+  const pendingDir = join(localHandoffDir, 'pending')
+  await mkdir(pendingDir, { recursive: true })
+  const path = join(pendingDir, `hyperliquid-wallet-behavior-${safeFilePart(artifact.generatedAt)}.json`)
+  const tempPath = join(pendingDir, `.wallet-behavior-${safeFilePart(artifact.generatedAt)}.${process.pid}.${Date.now()}.tmp`)
+  await writeFile(tempPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8')
+  await rename(tempPath, path)
+  return path
+}
+
 function money(value: number | null): string | null {
   if (value == null) return null
   const abs = Math.abs(value)
@@ -247,6 +273,7 @@ async function main(): Promise<void> {
     console.log(`[hyperliquid-wallet-behavior] Wallets: ${watchlist.length}`)
     console.log(`[hyperliquid-wallet-behavior] Lookback: ${lookbackDays}d`)
     console.log(`[hyperliquid-wallet-behavior] Collection lead persistence: ${collectionLeadPersistenceStatus()}`)
+    console.log(`[hyperliquid-wallet-behavior] Local JSON handoff: ${localHandoffStatus()}`)
 
     const run = await startCollectionRun({
       source: SOURCE,
@@ -316,6 +343,7 @@ async function main(): Promise<void> {
       ],
     }
     const artifactPath = await writeArtifact(artifact)
+    const localHandoffPath = await writeLocalHandoff(artifact)
     const persistedLeads = runId
       ? await persistCollectionLeads({ source: SOURCE, collector: COLLECTOR, runId, leads: rankedLeads })
       : 0
@@ -330,6 +358,7 @@ async function main(): Promise<void> {
 
     console.log(JSON.stringify({
       artifactPath,
+      localHandoffPath,
       persistedLeads,
       laneSummaries: artifact.laneSummaries,
       topResearchLeads: researchLeads.slice(0, 10).map((lead) => ({

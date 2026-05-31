@@ -1,0 +1,12 @@
+[Unit]
+Description=MYBOON V3 Hyperliquid Wallet Behavior Collector
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/myboon/packages/collectors
+ExecStart=/usr/bin/flock -n -E 0 /tmp/myboon-v3-wallet-behavior.lock /usr/bin/env pnpm hyperliquid:wallet-behavior
+Environment=NODE_ENV=production
+Environment=HYPERLIQUID_COLLECTION_LEADS_WRITE=0
+Environment=V3_LOCAL_DATA_DIR=/var/lib/myboon/v3
+Environment=HYPERLIQUID_WALLET_BEHAVIOR_DAYS=7

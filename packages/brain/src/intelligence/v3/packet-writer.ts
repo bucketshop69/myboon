@@ -114,7 +114,9 @@ export function createPacketWriterInput(packet: ResearchPacket, decision: Editor
     uncertainty: packet.uncertainty,
     facts: packet.facts.map(factForWriter),
     counterEvidence: packet.counterEvidence.map(factForWriter),
-    allowedActions: packet.recommendedActions.map((action) => ({ type: action.type, slug: action.slug })),
+    allowedActions: packet.recommendedActions.map((action) => action.type === 'perps'
+      ? { type: action.type, asset: action.asset ?? '' }
+      : { type: action.type, slug: action.slug ?? '' }),
     successCriteria: packet.successCriteria,
     editorialConstraints: packet.editorialConstraints,
     decision,

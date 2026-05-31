@@ -65,7 +65,7 @@ describe('feed v3 research packet validation', () => {
     }
     const result = validateResearchPacket(packet, decision)
     expect(result.valid).toBe(false)
-    expect(result.errors).toContain('segment must be one of Smart Money, Breaking Tape, Receipt Check, Thread Update')
+    expect(result.errors).toContain('segment must be one of Smart Money, Breaking Tape, Receipt Check, Thread Update, Crowded Trade, Market Structure')
     expect(result.errors).toContain('status must be one of new, update, developing, killed')
     expect(result.errors).toContain('decision.decision must be one of publish, update, hold, merge, suppress, escalate')
     expect(result.errors).toContain('decision.surface must be one of feed_card, thread, push_alert, daily_report, market_detail, none')

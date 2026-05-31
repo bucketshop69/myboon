@@ -1,0 +1,13 @@
+[Unit]
+Description=Run MYBOON V3 Hyperliquid Wallet Profile Snapshot every 6 hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+AccuracySec=1min
+Persistent=true
+Unit=myboon-v3-wallet-profiles.service
+
+[Install]
+WantedBy=timers.target
+

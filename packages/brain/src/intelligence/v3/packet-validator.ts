@@ -2,12 +2,20 @@ import type { EditorialDecision, EntityRef, PacketFact, PacketValidationResult, 
 
 const storyKeyPattern = /^[a-z0-9]+:[a-z0-9-]+:.+/i
 
-const segments = ['Smart Money', 'Breaking Tape', 'Receipt Check', 'Thread Update'] as const
-const archetypes = ['smart_money_position', 'wallet_repeat_action'] as const
+const segments = ['Smart Money', 'Breaking Tape', 'Receipt Check', 'Thread Update', 'Crowded Trade', 'Market Structure'] as const
+const archetypes = [
+  'smart_money_position',
+  'wallet_repeat_action',
+  'funding_pressure',
+  'volume_expansion',
+  'price_momentum',
+  'watchlist_wallet_behavior',
+  'entity_research_update',
+] as const
 const statuses = ['new', 'update', 'developing', 'killed'] as const
 const decisions = ['publish', 'update', 'hold', 'merge', 'suppress', 'escalate'] as const
 const surfaces = ['feed_card', 'thread', 'push_alert', 'daily_report', 'market_detail', 'none'] as const
-const sources = ['polymarket'] as const
+const sources = ['polymarket', 'hyperliquid', 'internal', 'the_graph_token_api'] as const
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -141,8 +149,18 @@ export function validateResearchPacket(packetInput: unknown, decisionInput?: unk
 
   const entities = readArray(packet.entities)
   if (!Array.isArray(packet.entities) || entities.length === 0) errors.push('entities must not be empty')
-  if (!hasEntity(entities, 'wallet')) errors.push('wallet.repeat_action packet requires a wallet entity')
-  if (!hasEntity(entities, 'market')) errors.push('wallet.repeat_action packet requires a market entity')
+  if (packet.archetype === 'wallet_repeat_action') {
+    if (!hasEntity(entities, 'wallet')) errors.push('wallet.repeat_action packet requires a wallet entity')
+    if (!hasEntity(entities, 'market')) errors.push('wallet.repeat_action packet requires a market entity')
+  }
+  if (
+    packet.archetype === 'funding_pressure'
+    || packet.archetype === 'volume_expansion'
+    || packet.archetype === 'price_momentum'
+    || packet.archetype === 'watchlist_wallet_behavior'
+  ) {
+    if (!hasEntity(entities, 'asset')) errors.push(`${String(packet.archetype)} packet requires an asset entity`)
+  }
 
   const facts = readArray(packet.facts)
   if (!Array.isArray(packet.facts)) {
@@ -193,7 +211,9 @@ export function validateResearchPacket(packetInput: unknown, decisionInput?: unk
       errors.push('decision.priority must be between 1 and 10')
     }
     if (decision.decision === 'publish') {
-      if (walletTradeFacts.length < 2) errors.push('publishable wallet.repeat_action packet requires at least two wallet.trade facts')
+      if (packet.archetype === 'wallet_repeat_action' && walletTradeFacts.length < 2) {
+        errors.push('publishable wallet.repeat_action packet requires at least two wallet.trade facts')
+      }
       if (!Array.isArray(packet.successCriteria) || packet.successCriteria.length === 0) {
         errors.push('publish decision requires successCriteria')
       }

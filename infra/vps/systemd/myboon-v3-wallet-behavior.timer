@@ -1,0 +1,13 @@
+[Unit]
+Description=Run MYBOON V3 Hyperliquid Wallet Behavior Collector every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=30s
+Persistent=true
+Unit=myboon-v3-wallet-behavior.service
+
+[Install]
+WantedBy=timers.target
+

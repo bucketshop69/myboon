@@ -14,8 +14,10 @@ It is not a Hyperliquid integration guide. It is not a perps trading UI checklis
 source data
   -> observable facts
   -> deterministic lead candidates
-  -> researcher queue
-  -> research packet
+  -> collection_leads
+  -> researcher
+  -> research_packets
+  -> editor decision
   -> writer
   -> published_narratives
 ```
@@ -107,6 +109,10 @@ Collectors should not do:
 - hide weak results just because they are not publishable
 
 The collector's job is to create research inputs, not polished content.
+
+Those research inputs should also identify the entities they touch. A lead about
+HYPE funding, NEAR volume, or a watched BTC wallet should make it easy for the
+researcher to open the relevant entity book and update the running thesis.
 
 ## Required Collection Contract
 
@@ -599,6 +605,32 @@ The researcher can then add:
 - recommended editorial decision
 
 Only after this should the writer produce feed copy.
+
+## Local JSON Handoff
+
+The local-first V3 handoff is:
+
+```text
+collector
+  -> collection-leads/pending/*.json
+  -> researcher
+  -> research-packets/*.json
+  -> entity-books/*.json
+  -> entity-notes/*.jsonl
+```
+
+The collector writes complete JSON files atomically. The researcher reads pending
+lead batches, writes packet/book/note files, then moves the input batch to
+`collection-leads/processed`. Failed batches move to `collection-leads/failed`.
+
+On VPS, point both jobs at the same root:
+
+```bash
+V3_LOCAL_DATA_DIR=/var/lib/myboon/v3
+```
+
+This keeps the collector/researcher boundary visible while the V3 database shape
+is still being designed.
 
 ## When A Source Is Ready For V3
 

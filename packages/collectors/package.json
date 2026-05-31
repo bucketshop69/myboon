@@ -46,6 +46,7 @@
     "hyperliquid:research-leads": "tsx src/hyperliquid/run-research-leads.ts",
     "hyperliquid:wallet-profiles": "tsx src/hyperliquid/run-wallet-profiles.ts",
     "hyperliquid:wallet-behavior": "tsx src/hyperliquid/run-wallet-behavior.ts",
+    "hyperliquid:collection-health": "tsx src/hyperliquid/run-collection-health.ts",
     "build": "tsc"
   },
   "dependencies": {

@@ -41,6 +41,9 @@ coverage/
 # Generated analysis artifacts
 artifacts/
 packages/*/artifacts/
+packages/*/local-research/
+local-research/
+data/v3/
 
 # Cache
 .cache/

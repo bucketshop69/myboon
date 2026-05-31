@@ -27,6 +27,8 @@
     "intelligence:hyperliquid:wallet-profiles": "tsx src/run-hyperliquid-wallet-profiles.ts",
     "intelligence:hyperliquid:wallet-behavior": "tsx src/run-hyperliquid-wallet-behavior.ts",
     "intelligence:hyperliquid:monthly-shadow": "tsx src/run-hyperliquid-monthly-shadow.ts",
+    "intelligence:hyperliquid:entity-research-shadow": "tsx src/run-hyperliquid-entity-research-shadow.ts",
+    "intelligence:hyperliquid:local-researcher": "tsx src/run-hyperliquid-local-researcher.ts",
     "intelligence:hyperliquid:funding-volume-explore": "tsx src/run-hyperliquid-funding-volume-explore.ts",
     "intelligence:hyperliquid:signals-backtest": "tsx src/run-hyperliquid-signal-backtest.ts"
   },

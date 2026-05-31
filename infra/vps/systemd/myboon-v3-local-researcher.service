@@ -1,0 +1,12 @@
+[Unit]
+Description=MYBOON V3 Local Researcher
+After=network.target myboon-v3-market-leads.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/myboon/packages/brain
+ExecStartPre=/usr/bin/install -d -m 0755 /var/lib/myboon/v3
+ExecStart=/usr/bin/flock -n -E 0 /tmp/myboon-v3-local-researcher.lock /usr/bin/env pnpm intelligence:hyperliquid:local-researcher
+Environment=NODE_ENV=production
+Environment=V3_LOCAL_DATA_DIR=/var/lib/myboon/v3
+Environment=V3_RESEARCH_SEARCH_PROVIDER=disabled
