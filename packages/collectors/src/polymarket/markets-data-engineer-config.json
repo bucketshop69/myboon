@@ -1,0 +1,29 @@
+{
+  "tagSlugs": [
+    "crypto",
+    "politics",
+    "geopolitics",
+    "economics",
+    "finance",
+    "business",
+    "technology",
+    "artificial-intelligence",
+    "commodities"
+  ],
+  "sportsTagSlugs": [
+    "sports",
+    "nfl",
+    "nba",
+    "nhl",
+    "mlb",
+    "soccer",
+    "epl",
+    "ucl",
+    "cricket",
+    "ipl",
+    "tennis",
+    "formula-1"
+  ],
+  "topMarketsPerTag": 10,
+  "fetchLimitPerTag": 50
+}
