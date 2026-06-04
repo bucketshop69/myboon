@@ -79,6 +79,16 @@ interface HermesResearchResponse {
   results: HermesResearchResult[]
 }
 
+interface ResearchFailure {
+  candidate: PendingCandidate
+  error: string
+}
+
+interface ResearchAttempt {
+  results: Map<string, HermesResearchResult>
+  failures: ResearchFailure[]
+}
+
 export interface PolymarketResearcherResult {
   observedAt: string
   backend: string
@@ -111,6 +121,11 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function envString(name: string, fallback: string): string {
+  const value = process.env[name]?.trim()
+  return value ? value : fallback
+}
+
 function selectedBackend(partial?: 'hermes_cli'): 'hermes_cli' {
   const envBackend = process.env.POLYMARKET_RESEARCHER_BACKEND
   const backend = partial ?? envBackend ?? 'hermes_cli'
@@ -124,8 +139,8 @@ function selectedOptions(partial: PolymarketResearcherOptions): Required<Polymar
     batchSize: partial.batchSize ?? envNumber('POLYMARKET_RESEARCHER_BATCH_SIZE', 20),
     slugCooldownMinutes: partial.slugCooldownMinutes ?? envNumber('POLYMARKET_RESEARCHER_SLUG_COOLDOWN_MINUTES', 60),
     backend: selectedBackend(partial.backend),
-    hermesCommand: partial.hermesCommand ?? process.env.POLYMARKET_RESEARCHER_HERMES_COMMAND ?? 'hermes',
-    hermesToolsets: partial.hermesToolsets ?? process.env.POLYMARKET_RESEARCHER_HERMES_TOOLSETS ?? '',
+    hermesCommand: partial.hermesCommand ?? envString('POLYMARKET_RESEARCHER_HERMES_COMMAND', 'hermes'),
+    hermesToolsets: partial.hermesToolsets ?? envString('POLYMARKET_RESEARCHER_HERMES_TOOLSETS', 'web'),
     hermesTimeoutMs: partial.hermesTimeoutMs ?? envNumber('POLYMARKET_RESEARCHER_HERMES_TIMEOUT_MS', DEFAULT_HERMES_TIMEOUT_MS),
   }
 }
@@ -347,6 +362,81 @@ function normalizeResearchResult(result: HermesResearchResult): HermesResearchRe
   }
 }
 
+function normalizeResearchResults(response: HermesResearchResponse): Map<string, HermesResearchResult> {
+  return new Map(
+    response.results
+      .map(normalizeResearchResult)
+      .filter((result) => result.candidate_id && result.summary)
+      .map((result) => [result.candidate_id, result])
+  )
+}
+
+async function researchSingleCandidate(
+  candidate: PendingCandidate,
+  priorResearch: Map<string, PriorResearch[]>,
+  options: Required<PolymarketResearcherOptions>,
+  reason: string
+): Promise<{ result?: HermesResearchResult, failure?: ResearchFailure }> {
+  try {
+    const response = await runHermesResearch(buildHermesPrompt([candidate], priorResearch), options)
+    const result = normalizeResearchResults(response).get(candidate.id)
+    if (!result) {
+      return {
+        failure: {
+          candidate,
+          error: `Hermes did not return a valid research result for this candidate after ${reason}.`,
+        },
+      }
+    }
+    return { result }
+  } catch (error) {
+    return {
+      failure: {
+        candidate,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }
+}
+
+async function researchCandidatesWithFallback(
+  candidates: PendingCandidate[],
+  priorResearch: Map<string, PriorResearch[]>,
+  options: Required<PolymarketResearcherOptions>
+): Promise<ResearchAttempt> {
+  try {
+    const response = await runHermesResearch(buildHermesPrompt(candidates, priorResearch), options)
+    const results = normalizeResearchResults(response)
+    const failures: ResearchFailure[] = []
+    const missing = candidates.filter((candidate) => !results.has(candidate.id))
+
+    for (const candidate of missing) {
+      const retry = await researchSingleCandidate(candidate, priorResearch, options, 'missing from batch response')
+      if (retry.result) results.set(candidate.id, retry.result)
+      if (retry.failure) failures.push(retry.failure)
+    }
+
+    return { results, failures }
+  } catch (error) {
+    const batchError = error instanceof Error ? error.message : String(error)
+    const results = new Map<string, HermesResearchResult>()
+    const failures: ResearchFailure[] = []
+
+    for (const candidate of candidates) {
+      const retry = await researchSingleCandidate(candidate, priorResearch, options, 'batch failure')
+      if (retry.result) results.set(candidate.id, retry.result)
+      if (retry.failure) {
+        failures.push({
+          candidate,
+          error: `${retry.failure.error} Batch error was: ${batchError}`,
+        })
+      }
+    }
+
+    return { results, failures }
+  }
+}
+
 async function insertResearchRows(
   db: SupabaseClient,
   candidates: PendingCandidate[],
@@ -425,44 +515,19 @@ export async function runPolymarketResearcher(
 
   await updateCandidateStatus(db, eligible.map((candidate) => candidate.id), 'researching', observedAt)
 
-  let response: HermesResearchResponse
-  try {
-    response = await runHermesResearch(buildHermesPrompt(eligible, priorResearch), options)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    await updateCandidateStatus(db, eligible.map((candidate) => candidate.id), 'research_failed', observedAt, message.slice(0, 2000))
-    return {
-      observedAt,
-      backend: options.backend,
-      pendingFetched: candidates.length,
-      eligibleForResearch: eligible.length,
-      skippedRecentlyResearched: skipped.length,
-      researchRowsWritten: 0,
-      candidatesMarkedResearched: 0,
-      candidatesMarkedFailed: eligible.length,
-      researched: [],
-      skipped: skipped.map((candidate) => ({ candidateId: candidate.id, slug: candidate.slug, reason: 'recently_researched' })),
-      failed: eligible.map((candidate) => ({ candidateId: candidate.id, slug: candidate.slug, error: message })),
-    }
-  }
-
-  const normalizedResults = new Map(
-    response.results
-      .map(normalizeResearchResult)
-      .filter((result) => result.candidate_id && result.summary)
-      .map((result) => [result.candidate_id, result])
-  )
-  const successfulIds = await insertResearchRows(db, eligible, normalizedResults, observedAt)
-  const failed = eligible.filter((candidate) => !successfulIds.includes(candidate.id))
+  const attempt = await researchCandidatesWithFallback(eligible, priorResearch, options)
+  const successfulIds = await insertResearchRows(db, eligible, attempt.results, observedAt)
+  const failed = eligible
+    .filter((candidate) => !successfulIds.includes(candidate.id))
+    .map((candidate) => attempt.failures.find((failure) => failure.candidate.id === candidate.id) ?? {
+      candidate,
+      error: 'Hermes did not return a valid research result for this candidate.',
+    })
 
   await updateCandidateStatus(db, successfulIds, 'researched', observedAt, null)
-  await updateCandidateStatus(
-    db,
-    failed.map((candidate) => candidate.id),
-    'research_failed',
-    observedAt,
-    'Hermes did not return a valid research result for this candidate.'
-  )
+  for (const failure of failed) {
+    await updateCandidateStatus(db, [failure.candidate.id], 'research_failed', observedAt, failure.error.slice(0, 2000))
+  }
 
   return {
     observedAt,
@@ -474,7 +539,7 @@ export async function runPolymarketResearcher(
     candidatesMarkedResearched: successfulIds.length,
     candidatesMarkedFailed: failed.length,
     researched: eligible.flatMap((candidate) => {
-      const result = normalizedResults.get(candidate.id)
+      const result = attempt.results.get(candidate.id)
       if (!result || !successfulIds.includes(candidate.id)) return []
       return [{
         candidateId: candidate.id,
@@ -484,10 +549,10 @@ export async function runPolymarketResearcher(
       }]
     }),
     skipped: skipped.map((candidate) => ({ candidateId: candidate.id, slug: candidate.slug, reason: 'recently_researched' })),
-    failed: failed.map((candidate) => ({
-      candidateId: candidate.id,
-      slug: candidate.slug,
-      error: 'Hermes did not return a valid research result for this candidate.',
+    failed: failed.map((failure) => ({
+      candidateId: failure.candidate.id,
+      slug: failure.candidate.slug,
+      error: failure.error,
     })),
   }
 }
