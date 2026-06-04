@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "polymarket:markets-data-engineer": "tsx src/polymarket/run-markets-data-engineer.ts",
     "polymarket:researcher": "tsx src/polymarket/run-researcher.ts",
+    "polymarket:editor": "tsx src/polymarket/run-editor.ts",
     "build": "tsc"
   },
   "dependencies": {
