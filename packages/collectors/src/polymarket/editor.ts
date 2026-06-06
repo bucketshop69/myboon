@@ -19,7 +19,7 @@ type ResearchStatus =
   | 'published'
 
 type EditorDecisionValue = 'publish' | 'reject' | 'needs_more_research'
-type EditorDecisionStatus = 'pending_publisher' | 'rejected' | 'needs_more_research'
+type EditorDecisionStatus = 'pending_publisher' | 'rejected' | 'needs_more_research' | 'published'
 type EvidenceQuality = 'strong' | 'medium' | 'weak'
 type TopicConfidence = 'high' | 'medium' | 'low'
 

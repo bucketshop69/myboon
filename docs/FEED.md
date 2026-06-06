@@ -1,6 +1,6 @@
 # myboon Feed
 
-Status: foundation note
+Status: foundation note (polymarket V0 pipeline: data-engineer + researcher + editor + publisher implemented)
 Scope: source-agnostic design for the myboon feed
 
 ## What The Feed Is
