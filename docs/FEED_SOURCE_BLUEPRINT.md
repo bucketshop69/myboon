@@ -295,6 +295,12 @@ The first reference implementation is Polymarket markets:
 #193 Publisher
 ```
 
+Source packet:
+
+```text
+docs/sources/polymarket-markets.md
+```
+
 Important lesson from #190:
 
 Do not append raw snapshots forever just because data is available. The Data
