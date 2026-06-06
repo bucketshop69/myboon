@@ -5,9 +5,10 @@
 | Name | Package | Schedule |
 |------|---------|---------|
 | `myboon-api` | `packages/api` | persistent HTTP server (port 3000) |
-| `myboon-collectors` | `packages/collectors` | persistent (internal cron: 2h discovery, 5min whale tracker, WebSocket stream) |
-| `myboon-analyst` | `packages/brain` | persistent (self-schedules every 15min via setInterval) |
-| `myboon-publisher` | `packages/brain` | persistent (self-schedules every 30min via setInterval) |
+| `myboon-polymarket-data-engineer` | `packages/collectors` | Polymarket markets Data Engineer |
+| `myboon-polymarket-researcher` | `packages/collectors` | Polymarket Researcher |
+| `myboon-polymarket-editor` | `packages/collectors` | Polymarket Editor |
+| `myboon-polymarket-publisher` | `packages/collectors` | Polymarket Publisher |
 
 ---
 
@@ -23,7 +24,6 @@ pnpm install
 
 # 3. Create .env files (never committed)
 #    packages/api/.env
-#    packages/brain/.env
 #    packages/collectors/.env
 
 # 4. Start all processes
@@ -48,7 +48,7 @@ pm2 logs
 
 # Watch a specific process
 pm2 logs myboon-api
-pm2 logs myboon-analyst
+pm2 logs myboon-polymarket-researcher
 
 # Process status overview
 pm2 list
@@ -79,19 +79,14 @@ SUPABASE_SERVICE_ROLE_KEY=
 PORT=3000
 ```
 
-### `packages/brain/.env`
-```
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-MINIMAX_API_KEY=
-FIRECRAWL_API_KEY=
-```
-
 ### `packages/collectors/.env`
 ```
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-POLYMARKET_API_KEY=   # if required
+POLYMARKET_MARKETS_RUN_ONCE=0
+POLYMARKET_RESEARCHER_RUN_ONCE=0
+POLYMARKET_EDITOR_RUN_ONCE=0
+POLYMARKET_PUBLISHER_RUN_ONCE=0
 ```
 
 ---

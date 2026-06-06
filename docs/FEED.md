@@ -250,3 +250,6 @@ source filter
 The first goal is not to add every source at once. The first goal is to prove
 that the foundation stays understandable while each new source plugs into the
 same feed design.
+
+For the practical source onboarding checklist, see
+[`FEED_SOURCE_BLUEPRINT.md`](FEED_SOURCE_BLUEPRINT.md).
