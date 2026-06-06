@@ -4,4 +4,9 @@
 -- Run via: psql $DATABASE_URL -f this_file.sql
 -- Or apply via Supabase dashboard SQL editor
 
-ALTER TABLE x_posts ADD COLUMN IF NOT EXISTS slug text;
+DO $$
+BEGIN
+  IF to_regclass('public.x_posts') IS NOT NULL THEN
+    ALTER TABLE public.x_posts ADD COLUMN IF NOT EXISTS slug text;
+  END IF;
+END $$;
