@@ -57,7 +57,10 @@ pm2 list
 pm2 monit
 
 # Restart a single process
-pm2 restart myboon-collectors
+pm2 restart myboon-polymarket-data-engineer
+pm2 restart myboon-polymarket-researcher
+pm2 restart myboon-polymarket-editor
+pm2 restart myboon-polymarket-publisher
 
 # Stop everything
 pm2 stop all

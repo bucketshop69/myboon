@@ -12,14 +12,14 @@
  *   pm2 save
  *   pm2 startup   ← run the printed command as root
  *
- * Env vars are loaded from .env at the monorepo root — never hardcode secrets here.
+ * Env vars are loaded by each package from its own .env file.
+ * Collectors also allow the monorepo root .env as a fallback.
  *
  * NOTE: Uses ./node_modules/.bin/tsx instead of `node --import tsx/esm`
  * because Node 22 has ERR_REQUIRE_CYCLE_MODULE bugs with the ESM loader.
  */
 
 const path = require('path')
-require('dotenv').config({ path: path.join(__dirname, '.env') })
 
 const ROOT = __dirname
 const TSX = `${ROOT}/node_modules/.bin/tsx`
@@ -38,8 +38,8 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
-      name: 'myboon-collectors',
-      script: 'src/index.ts',
+      name: 'myboon-polymarket-data-engineer',
+      script: 'src/polymarket/run-markets-data-engineer.ts',
       interpreter: TSX,
       cwd: `${ROOT}/packages/collectors`,
       watch: false,
@@ -47,30 +47,52 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 5000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        POLYMARKET_MARKETS_RUN_ONCE: '0',
+        POLYMARKET_MARKETS_PREVIEW_ONLY: '0',
+      },
     },
     {
-      name: 'myboon-analyst',
-      // Self-schedules via setInterval every 15min — PM2 just keeps it alive
-      script: 'src/narrative-analyst.ts',
+      name: 'myboon-polymarket-researcher',
+      script: 'src/polymarket/run-researcher.ts',
       interpreter: TSX,
-      cwd: `${ROOT}/packages/brain`,
+      cwd: `${ROOT}/packages/collectors`,
       watch: false,
       autorestart: true,
       max_restarts: 10,
       restart_delay: 5000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        POLYMARKET_RESEARCHER_RUN_ONCE: '0',
+      },
     },
     {
-      name: 'myboon-publisher',
-      // Self-schedules via setInterval every 30min — PM2 just keeps it alive
-      script: 'src/publisher.ts',
+      name: 'myboon-polymarket-editor',
+      script: 'src/polymarket/run-editor.ts',
       interpreter: TSX,
-      cwd: `${ROOT}/packages/brain`,
+      cwd: `${ROOT}/packages/collectors`,
       watch: false,
       autorestart: true,
       max_restarts: 10,
       restart_delay: 5000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        POLYMARKET_EDITOR_RUN_ONCE: '0',
+      },
+    },
+    {
+      name: 'myboon-polymarket-publisher',
+      script: 'src/polymarket/run-publisher.ts',
+      interpreter: TSX,
+      cwd: `${ROOT}/packages/collectors`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        POLYMARKET_PUBLISHER_RUN_ONCE: '0',
+      },
     },
   ],
 }

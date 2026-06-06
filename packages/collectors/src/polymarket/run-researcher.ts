@@ -1,7 +1,7 @@
 import { config as loadEnv } from 'dotenv'
 
-loadEnv({ path: '../../.env' })
 loadEnv({ path: '.env' })
+loadEnv({ path: '../../.env' })
 loadEnv()
 
 import { createClient } from '@supabase/supabase-js'
