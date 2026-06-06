@@ -45,8 +45,7 @@ apps/
 
 packages/
   api/            API server (Hono) — Feed, markets, wallet/action data
-  brain/          AI agents — narrative analyst, publisher, intelligence scoring
-  collectors/     Data ingestion — Polymarket, Pacific
+  collectors/     Feed V3 source pipelines — Data Engineer, Researcher, Editor, Publisher
   shared/         Shared SDK — PolymarketClient, PacificClient, types
   tx-parser/      Solana transaction parsing
   entity-memory/  Entity store (pre-persistence)
@@ -84,13 +83,18 @@ cd apps/hybrid-expo
 pnpm start
 ```
 
-### Run the brain
+### Run the Feed V3 pipeline
 
 ```bash
-cp packages/brain/.env.example packages/brain/.env
-pnpm --filter @myboon/brain narrative:analyst
-pnpm --filter @myboon/brain publisher
+cp packages/collectors/.env.example packages/collectors/.env
+pnpm --dir packages/collectors polymarket:markets-data-engineer
+pnpm --dir packages/collectors polymarket:researcher
+pnpm --dir packages/collectors polymarket:editor
+pnpm --dir packages/collectors polymarket:publisher
 ```
+
+Polymarket markets are the first implemented source connector. The feed design
+is source-agnostic and is meant to support more connectors over time.
 
 ---
 
@@ -106,10 +110,10 @@ pnpm --filter @myboon/brain publisher
 
 - **Runtime:** Node.js / TypeScript (ESM)
 - **Database:** Supabase (Postgres)
-- **LLM:** MiniMax M2.7 (Anthropic-compatible API)
+- **LLM:** configurable CLI-agent runners for feed research/editor/publisher
 - **Mobile:** Expo (React Native)
 - **Monorepo:** pnpm workspaces
-- **VPS:** Collectors + API + Brain on US VPS
+- **VPS:** API + feed collectors on US VPS
 
 ---
 

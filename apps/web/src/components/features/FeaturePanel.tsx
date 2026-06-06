@@ -16,7 +16,7 @@ export const FEATURES: FeatureDef[] = [
     id: 'feed',
     icon: 'sensors',
     headline: 'The feed the market reads first.',
-    body: 'Narrative intelligence synthesized from Polymarket signals, on-chain whale flow, and a multi-agent brain — delivered before the market prices it in.',
+    body: 'Narrative intelligence synthesized through source-specific data engineers, researchers, editors, and publishers — delivered before the market prices it in.',
     accentClass: 'text-primary',
   },
   {
