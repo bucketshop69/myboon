@@ -76,6 +76,16 @@ interface RecentPublished {
   primary_topic: string | null
 }
 
+interface EditorialVoiceProfile {
+  voice: string
+  dialect: string
+  lead_style: string
+  sentence_style: string
+  evidence_posture: string
+  vocabulary: string[]
+  avoid: string[]
+}
+
 interface AgentPublication {
   editor_decision_id?: unknown
   content_small?: unknown
@@ -172,7 +182,7 @@ function normalizeContentType(value: unknown): 'fomo' | 'signal' | 'sports' | 'm
   if (['fomo', 'signal', 'sports', 'macro', 'news', 'crypto'].includes(normalized)) {
     return normalized as any
   }
-  return 'crypto'
+  return 'signal'
 }
 
 function normalizePriority(value: unknown): number {
@@ -204,6 +214,88 @@ function normalizeActions(value: unknown, allowedSlugs: Set<string>): Array<{ ty
     }
   }
   return out
+}
+
+function includesAny(haystack: string, needles: string[]): boolean {
+  return needles.some((needle) => haystack.includes(needle))
+}
+
+function inferEditorialVoiceProfile(
+  decision: PendingPublisherDecision,
+  researches: ResearchRowForPublish[],
+  candidates: CandidateLite[]
+): EditorialVoiceProfile {
+  const topicText = [
+    SOURCE,
+    AREA,
+    decision.primary_topic,
+    ...decision.related_topics,
+    decision.angle,
+    decision.why_this_matters,
+    decision.publisher_notes,
+    ...researches.flatMap((r) => [r.candidate_type, r.research_mode, r.title, r.summary]),
+    ...candidates.flatMap((c) => [c.candidate_type, c.title, c.what_changed, c.why_flagged]),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  let voice = 'market intelligence editor'
+  let dialect = 'cross-market signal brief'
+  let leadStyle = 'Lead with the concrete signal, then name why it matters now.'
+  let sentenceStyle = 'Plain, compressed, and specific; no personality performance.'
+  let vocabulary = ['signal', 'evidence', 'market', 'context']
+
+  if (includesAny(topicText, ['iran', 'geopolitic', 'war', 'peace', 'fed', 'rates', 'oil', 'gold', 'macro', 'election', 'tariff'])) {
+    voice = 'macro desk editor'
+    dialect = 'geopolitical and macro risk brief'
+    leadStyle = 'Lead with the event-risk development and the market reaction.'
+    vocabulary = ['talks', 'risk', 'timeline', 'market reaction', 'uncertainty']
+  } else if (includesAny(topicText, ['btc', 'bitcoin', 'eth', 'ethereum', 'sol', 'solana', 'crypto', 'token', 'perp', 'funding', 'open interest'])) {
+    voice = 'crypto markets editor'
+    dialect = 'crypto trading desk brief'
+    leadStyle = 'Lead with the asset or venue move, then explain the positioning or catalyst.'
+    vocabulary = ['spot', 'perps', 'positioning', 'liquidity', 'catalyst']
+  } else if (includesAny(topicText, ['wallet', 'holder', 'whale', 'onchain', 'transfer', 'deposit', 'withdraw'])) {
+    voice = 'onchain tape editor'
+    dialect = 'wallet and flow brief'
+    leadStyle = 'Lead with the actor or flow change, then state what makes it worth watching.'
+    vocabulary = ['wallet', 'flow', 'accumulation', 'distribution', 'venue']
+  } else if (includesAny(topicText, ['acquir', 'merger', 'm&a', 'earnings', 'company', 'biotech', 'pharma', 'revenue', 'analyst'])) {
+    voice = 'business catalyst editor'
+    dialect = 'company and deal-flow brief'
+    leadStyle = 'Lead with the corporate catalyst and the market-implied change.'
+    vocabulary = ['catalyst', 'deal', 'coverage', 'timeline', 'confirmation']
+  } else if (includesAny(topicText, ['sports', 'fifa', 'world cup', 'nba', 'nfl', 'match', 'team', 'tournament'])) {
+    voice = 'sports markets editor'
+    dialect = 'sports event-market brief'
+    leadStyle = 'Lead with the event state or lineup change and the resulting market signal.'
+    vocabulary = ['match', 'lineup', 'odds', 'schedule', 'market']
+  }
+
+  const avoid = [
+    'Do not add hype, moralizing, or calls to action.',
+    'Do not invent facts beyond the editor decision and linked research.',
+  ]
+  let evidencePosture = 'State evidence directly and preserve caveats.'
+  if (decision.evidence_quality === 'strong') {
+    evidencePosture = 'Write with confidence, but keep uncertainty explicit where research includes it.'
+  } else if (decision.evidence_quality === 'weak') {
+    evidencePosture = 'Use cautious language and frame this as an early or thin signal.'
+    avoid.push('Do not make weak evidence sound confirmed.')
+  } else {
+    evidencePosture = 'Frame as useful but incomplete evidence; avoid overstating causality.'
+  }
+
+  return {
+    voice,
+    dialect,
+    lead_style: leadStyle,
+    sentence_style: sentenceStyle,
+    evidence_posture: evidencePosture,
+    vocabulary,
+    avoid,
+  }
 }
 
 function extractJson<T>(text: string): T | null {
@@ -381,6 +473,7 @@ function buildPublisherPrompt(
         primary_topic: d.primary_topic,
         related_topics: d.related_topics,
         publisher_notes: d.publisher_notes,
+        editorial_voice: inferEditorialVoiceProfile(d, researches, cands),
         created_at: d.created_at,
         linked_research: researches.map((r) => ({
           id: r.id,
