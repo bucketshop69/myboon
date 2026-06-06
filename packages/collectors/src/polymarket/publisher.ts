@@ -674,10 +674,11 @@ async function insertPublishedNarratives(
     return v3
   })
 
-  // Try with V3 columns first
+  // Try with V3 columns first. editor_decision_id is unique, so a retry after
+  // a crash or concurrent publisher run updates the same final feed row.
   let { data, error } = await db
     .from('published_narratives')
-    .insert(rows)
+    .upsert(rows, { onConflict: 'editor_decision_id' })
     .select('id, editor_decision_id')
 
   if (error) {
@@ -699,7 +700,10 @@ async function insertPublishedNarratives(
         .insert(legacyRows)
         .select('id')
       if (fallback.error) throw new Error(`published_narratives legacy insert failed: ${fallback.error.message}`)
-      data = (fallback.data ?? []).map((row: any) => ({ id: row.id, editor_decision_id: null }))
+      data = (fallback.data ?? []).map((row: any, index: number) => ({
+        id: row.id,
+        editor_decision_id: rows[index]?.editor_decision_id ?? null,
+      }))
       error = null
     } else {
       throw new Error(`published_narratives insert failed: ${error.message}`)
