@@ -25,5 +25,11 @@
     "formula-1"
   ],
   "topMarketsPerTag": 10,
-  "fetchLimitPerTag": 50
+  "fetchLimitPerTag": 50,
+  "manualPinMaxSelected": 35,
+  "manualPinMaxRepresentativesPerInput": 1,
+  "manualPinScoreBoost": 8,
+  "candidateRetryFailedHours": 24,
+  "candidateRecentPublishedCooldownHours": 168,
+  "candidateMaterialMoveMultiplier": 2
 }
