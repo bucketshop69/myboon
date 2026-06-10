@@ -62,6 +62,7 @@ const CONTRACTS = {
   // V2 exchanges
   CTF_EXCHANGE_V2: '0xE111180000d2663C0091e4f400237545B87B996B',
   NEG_RISK_CTF_EXCHANGE_V2: '0xe2222d279d744050d28e00520010520000310F59',
+  COMBO_EXCHANGE_V3: '0xe3333700cA9d93003F00f0F71f8515005F6c00Aa',
   // Unchanged
   NEG_RISK_ADAPTER: '0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296',
   CTF: '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045',
@@ -190,6 +191,18 @@ function buildApprovalTxs() {
   }))
 
   return [...pusdApprovals, ...ctfApprovals]
+}
+
+function buildComboApprovalTxs() {
+  return [{
+    to: CONTRACTS.PUSD,
+    data: encodeFunctionData({
+      abi: ERC20_APPROVE_ABI,
+      functionName: 'approve',
+      args: [CONTRACTS.COMBO_EXCHANGE_V3 as `0x${string}`, maxUint256],
+    }),
+    value: '0',
+  }]
 }
 
 // --- In-memory session store ---
@@ -673,6 +686,61 @@ clobRoutes.post('/wallet-batch', async (c) => {
   } catch (err: any) {
     console.error('[clob] Signed wallet batch failed:', err.message || err)
     return c.json(failedOperation('predict_setup', 'Wallet batch failed', err.message), 500)
+  }
+})
+
+/**
+ * POST /clob/combo-approve
+ * Body: { polygonAddress }
+ *
+ * Returns a client-signable deposit-wallet batch for pUSD approval to the
+ * Combo RFQ Exchange V3 contract. The client still signs locally; this route
+ * only prepares typed data with the relayer nonce.
+ */
+clobRoutes.post('/combo-approve', async (c) => {
+  let body: { polygonAddress?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json(failedOperation('combo_approve', 'Bad request', null), 400)
+  }
+
+  const polygonAddress = body.polygonAddress?.toLowerCase()
+  if (!polygonAddress || !/^0x[a-f0-9]{40}$/iu.test(polygonAddress)) {
+    return c.json(failedOperation('combo_approve', 'Missing or invalid polygonAddress', null), 400)
+  }
+
+  if (!relayerBuilderConfig) {
+    return c.json(failedOperation('combo_approve', 'Builder not configured — set POLYMARKET_BUILDER_* env vars', null), 500)
+  }
+
+  const session = sessions.get(polygonAddress)
+  if (!session) {
+    return c.json(sessionExpired('combo_approve'), 401)
+  }
+
+  try {
+    const approval = await prepareTradingWalletCalls(session, buildComboApprovalTxs(), 'combo_approve')
+    return c.json(withOperation({
+      polygonAddress: session.eoaAddress,
+      walletMode: session.walletMode,
+      tradingAddress: session.tradingAddress,
+      depositWalletAddress: session.depositWalletAddress ?? null,
+      spender: CONTRACTS.COMBO_EXCHANGE_V3,
+      signatureRequest: approval.signatureRequest,
+    }, {
+      ok: true,
+      operation: 'combo_approve',
+      status: 'needs_signature',
+      userMessage: 'Combo approval needs your signature.',
+      identifiers: {
+        tradingAddress: session.tradingAddress,
+        depositWalletAddress: session.depositWalletAddress ?? undefined,
+      },
+    }))
+  } catch (err: any) {
+    console.error('[clob] Combo approval prepare failed:', err.message || err)
+    return c.json(failedOperation('combo_approve', 'Combo approval failed', err.message), 500)
   }
 })
 

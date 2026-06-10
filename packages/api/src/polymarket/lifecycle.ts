@@ -7,6 +7,7 @@ export type PredictOperation =
   | 'withdraw'
   | 'deposit'
   | 'wrap'
+  | 'combo_approve'
   | 'predict_session'
 
 export type PredictOperationStatus =
@@ -19,6 +20,7 @@ export type PredictOperationStatus =
   | 'collecting'
   | 'bridging'
   | 'completed'
+  | 'syncing'
   | 'needs_signature'
   | 'failed'
   | 'session_expired'
