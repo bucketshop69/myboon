@@ -1858,6 +1858,26 @@ clobRoutes.get('/markets/:conditionId', async (c) => {
   }
 })
 
+// Polymarket rewards markets proxy (web API, geo-restricted)
+clobRoutes.get('/rewards/markets', async (c) => {
+  try {
+    const incomingUrl = new URL(c.req.url)
+    const upstreamUrl = new URL('https://polymarket.com/api/rewards/markets')
+    upstreamUrl.search = incomingUrl.search
+
+    const res = await fetch(upstreamUrl)
+    const body = await res.text()
+    return new Response(body, {
+      status: res.status,
+      headers: {
+        'Content-Type': res.headers.get('content-type') ?? 'application/json',
+      },
+    })
+  } catch (err: any) {
+    return c.json({ error: 'Polymarket rewards markets proxy failed', detail: err.message }, 502)
+  }
+})
+
 // Gamma API proxy (also geo-restricted)
 clobRoutes.get('/gamma/events/:eventId', async (c) => {
   const eventId = c.req.param('eventId')
