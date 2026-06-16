@@ -9,7 +9,8 @@
     "polymarket:editor": "tsx src/polymarket/run-editor.ts",
     "polymarket:publisher": "tsx src/polymarket/run-publisher.ts",
     "build": "tsc",
-    "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts"
+    "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts",
+    "test:researcher": "tsx --test src/polymarket/researcher.test.ts"
   },
   "dependencies": {
     "@myboon/shared": "workspace:*",

@@ -29,3 +29,6 @@ Output rules:
 - Include one result for every candidate id provided.
 - If research is thin, still return a result with the uncertainty and thin evidence clearly stated.
 - Evidence links must be URLs you actually used or source URLs supplied in the candidate.
+- Set `evidence_quality` to `strong`, `medium`, or `weak` based on the source quality and how directly it supports the candidate.
+- Set `catalyst_found` to true only when you found a concrete current catalyst beyond market mechanics.
+- Set `recommended_editor_action` to `publish_candidate`, `reject_thin`, or `needs_more_research`.

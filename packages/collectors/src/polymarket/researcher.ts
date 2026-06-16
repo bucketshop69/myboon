@@ -10,16 +10,32 @@ const SOURCE = 'polymarket'
 const AREA = 'markets'
 const ONE_HOUR_MS = 60 * 60 * 1000
 const DEFAULT_HERMES_TIMEOUT_MS = 10 * 60 * 1000
+const DEFAULT_RETRY_WINDOW_MINUTES = 4 * 60
+const DEFAULT_MAX_RETRY_COUNT = 2
+const DEFAULT_STRUCTURE_ONLY_SCORE_MAX = 55
+const DEFAULT_THIN_VOLUME_24H_MAX = 1_000
+const DEFAULT_THIN_LIQUIDITY_MAX = 1_000
 
 export interface PolymarketResearcherOptions {
   now?: string
   batchSize?: number
   slugCooldownMinutes?: number
-  backend?: 'hermes_cli'
+  retryWindowMinutes?: number
+  maxRetryCount?: number
+  structureOnlyScoreMax?: number
+  thinVolume24hMax?: number
+  thinLiquidityMax?: number
+  backend?: ResearchBackend
+  researchModel?: string
   hermesCommand?: string
   hermesToolsets?: string
   hermesTimeoutMs?: number
 }
+
+type ResearchBackend = 'hermes_cli'
+type ResearchDepth = 'market_structure_only' | 'reuse_prior' | 'deep_web'
+type EvidenceQuality = 'strong' | 'medium' | 'weak'
+type RecommendedEditorAction = 'publish_candidate' | 'reject_thin' | 'needs_more_research'
 
 type CandidateStatus =
   | 'pending_research'
@@ -48,19 +64,32 @@ interface PendingCandidate {
   metrics: unknown
   evidence_refs: unknown
   status: CandidateStatus
+  research_retry_count: number | string | null
+  research_next_retry_at: string | null
+  research_last_error_kind: string | null
 }
 
 interface PriorResearch {
+  id: string
   candidate_id: string
   slug: string
   research_mode: string
   summary: string
+  notes: string
   key_findings: unknown
   evidence_links: unknown
   related_context: unknown
   uncertainty: string
   editor_notes: string
   researched_at: string
+  research_family_key: string | null
+  research_cluster_key: string | null
+  research_depth: ResearchDepth | null
+  evidence_quality: EvidenceQuality | null
+  catalyst_found: boolean | null
+  recommended_editor_action: RecommendedEditorAction | null
+  research_backend: string | null
+  research_model: string | null
 }
 
 interface HermesResearchResult {
@@ -73,6 +102,9 @@ interface HermesResearchResult {
   related_context: unknown[]
   uncertainty: string
   editor_notes: string
+  evidence_quality?: unknown
+  catalyst_found?: unknown
+  recommended_editor_action?: unknown
 }
 
 interface HermesResearchResponse {
@@ -89,12 +121,54 @@ interface ResearchAttempt {
   failures: ResearchFailure[]
 }
 
+interface TriageDecision {
+  candidate: PendingCandidate
+  depth: ResearchDepth
+  familyKey: string
+  clusterKey: string
+  prior?: PriorResearch
+  reason: string
+}
+
+interface ResearchRowInput {
+  candidate_id: string
+  source: string
+  area: string
+  slug: string
+  title: string
+  candidate_type: string
+  research_mode: string
+  summary: string
+  notes: string
+  key_findings: unknown[]
+  evidence_links: unknown[]
+  related_context: unknown[]
+  uncertainty: string
+  editor_notes: string
+  status: 'pending_editor'
+  researched_at: string
+  updated_at: string
+  research_family_key: string
+  research_cluster_key: string
+  research_depth: ResearchDepth
+  evidence_quality: EvidenceQuality
+  catalyst_found: boolean
+  recommended_editor_action: RecommendedEditorAction
+  duplicate_of_research_id: string | null
+  research_backend: string
+  research_model: string | null
+}
+
 export interface PolymarketResearcherResult {
   observedAt: string
   backend: string
   pendingFetched: number
   eligibleForResearch: number
   skippedRecentlyResearched: number
+  retriedFailedCandidates: number
+  reusedPriorResearch: number
+  marketStructureOnly: number
+  deepWebResearched: number
   researchRowsWritten: number
   candidatesMarkedResearched: number
   candidatesMarkedFailed: number
@@ -126,7 +200,7 @@ function envString(name: string, fallback: string): string {
   return value ? value : fallback
 }
 
-function selectedBackend(partial?: 'hermes_cli'): 'hermes_cli' {
+function selectedBackend(partial?: ResearchBackend): ResearchBackend {
   const envBackend = process.env.POLYMARKET_RESEARCHER_BACKEND
   const backend = partial ?? envBackend ?? 'hermes_cli'
   if (backend !== 'hermes_cli') throw new Error(`Unsupported Polymarket researcher backend: ${backend}`)
@@ -138,7 +212,13 @@ function selectedOptions(partial: PolymarketResearcherOptions): Required<Polymar
     now: partial.now ?? new Date().toISOString(),
     batchSize: partial.batchSize ?? envNumber('POLYMARKET_RESEARCHER_BATCH_SIZE', 20),
     slugCooldownMinutes: partial.slugCooldownMinutes ?? envNumber('POLYMARKET_RESEARCHER_SLUG_COOLDOWN_MINUTES', 60),
+    retryWindowMinutes: partial.retryWindowMinutes ?? envNumber('POLYMARKET_RESEARCHER_RETRY_WINDOW_MINUTES', DEFAULT_RETRY_WINDOW_MINUTES),
+    maxRetryCount: partial.maxRetryCount ?? envNumber('POLYMARKET_RESEARCHER_MAX_RETRY_COUNT', DEFAULT_MAX_RETRY_COUNT),
+    structureOnlyScoreMax: partial.structureOnlyScoreMax ?? envNumber('POLYMARKET_RESEARCHER_STRUCTURE_ONLY_SCORE_MAX', DEFAULT_STRUCTURE_ONLY_SCORE_MAX),
+    thinVolume24hMax: partial.thinVolume24hMax ?? envNumber('POLYMARKET_RESEARCHER_THIN_VOLUME_24H_MAX', DEFAULT_THIN_VOLUME_24H_MAX),
+    thinLiquidityMax: partial.thinLiquidityMax ?? envNumber('POLYMARKET_RESEARCHER_THIN_LIQUIDITY_MAX', DEFAULT_THIN_LIQUIDITY_MAX),
     backend: selectedBackend(partial.backend),
+    researchModel: partial.researchModel ?? envString('POLYMARKET_RESEARCHER_MODEL', 'hermes_cli'),
     hermesCommand: partial.hermesCommand ?? envString('POLYMARKET_RESEARCHER_HERMES_COMMAND', 'hermes'),
     hermesToolsets: partial.hermesToolsets ?? envString('POLYMARKET_RESEARCHER_HERMES_TOOLSETS', 'web'),
     hermesTimeoutMs: partial.hermesTimeoutMs ?? envNumber('POLYMARKET_RESEARCHER_HERMES_TIMEOUT_MS', DEFAULT_HERMES_TIMEOUT_MS),
@@ -151,6 +231,32 @@ function asString(value: unknown, fallback = ''): string {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+function numberOrNull(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function round(value: number, decimals = 4): number {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
+}
+
+function normalizeStringOption<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? value as T : fallback
+}
+
+function normalizeEvidenceQuality(value: unknown): EvidenceQuality {
+  return normalizeStringOption(value, ['strong', 'medium', 'weak'] as const, 'medium')
+}
+
+function normalizeRecommendedEditorAction(value: unknown): RecommendedEditorAction {
+  return normalizeStringOption(value, ['publish_candidate', 'reject_thin', 'needs_more_research'] as const, 'needs_more_research')
 }
 
 function extractJson<T>(text: string): T | null {
@@ -196,47 +302,146 @@ function extractJson<T>(text: string): T | null {
   return null
 }
 
-async function fetchPendingCandidates(db: SupabaseClient, batchSize: number): Promise<PendingCandidate[]> {
-  const { data, error } = await db
+function titleFamilyKey(text: string): string {
+  const stopWords = new Set(['will', 'the', 'and', 'for', 'with', 'before', 'after', 'this', 'that', 'what', 'when', 'who', 'how', 'many'])
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !stopWords.has(word))
+    .slice(0, 8)
+    .join('-')
+}
+
+function candidateFamilyKeys(candidate: Pick<PendingCandidate, 'slug' | 'title'>): string[] {
+  const keys = new Set<string>([`slug:${candidate.slug}`])
+  const titleKey = titleFamilyKey(candidate.title ?? candidate.slug)
+  if (titleKey) keys.add(`title:${titleKey}`)
+  return [...keys]
+}
+
+function primaryFamilyKey(candidate: Pick<PendingCandidate, 'slug' | 'title'>): string {
+  const keys = candidateFamilyKeys(candidate)
+  return keys.find((key) => key.startsWith('title:')) ?? keys[0] ?? `slug:${candidate.slug}`
+}
+
+function clusterKeyForCandidate(candidate: PendingCandidate): string {
+  return `${SOURCE}:${AREA}:${primaryFamilyKey(candidate)}`
+}
+
+const CANDIDATE_SELECT = [
+  'id',
+  'source',
+  'area',
+  'candidate_type',
+  'market_id',
+  'slug',
+  'title',
+  'tag_slug',
+  'tag_label',
+  'observed_at',
+  'what_changed',
+  'why_flagged',
+  'score',
+  'score_breakdown',
+  'metrics',
+  'evidence_refs',
+  'status',
+  'research_retry_count',
+  'research_next_retry_at',
+  'research_last_error_kind',
+].join(', ')
+
+async function fetchResearchCandidates(
+  db: SupabaseClient,
+  options: Required<PolymarketResearcherOptions>
+): Promise<PendingCandidate[]> {
+  const { data: pendingData, error: pendingError } = await db
     .from('polymarket_market_candidates')
-    .select('id, source, area, candidate_type, market_id, slug, title, tag_slug, tag_label, observed_at, what_changed, why_flagged, score, score_breakdown, metrics, evidence_refs, status')
+    .select(CANDIDATE_SELECT)
     .eq('source', SOURCE)
     .eq('area', AREA)
     .eq('status', 'pending_research')
     .order('score', { ascending: false })
     .order('observed_at', { ascending: true })
-    .limit(batchSize)
+    .limit(options.batchSize)
 
-  if (error) throw new Error(`pending candidate fetch failed: ${error.message}`)
-  return (data ?? []) as PendingCandidate[]
+  if (pendingError) throw new Error(`pending candidate fetch failed: ${pendingError.message}`)
+  const pending = (pendingData ?? []) as unknown as PendingCandidate[]
+  const remaining = options.batchSize - pending.length
+  if (remaining <= 0) return pending
+
+  const { data: retryData, error: retryError } = await db
+    .from('polymarket_market_candidates')
+    .select(CANDIDATE_SELECT)
+    .eq('source', SOURCE)
+    .eq('area', AREA)
+    .eq('status', 'research_failed')
+    .lt('research_retry_count', options.maxRetryCount)
+    .or(`research_next_retry_at.is.null,research_next_retry_at.lte.${options.now}`)
+    .order('research_next_retry_at', { ascending: true, nullsFirst: true })
+    .order('score', { ascending: false })
+    .limit(remaining)
+
+  if (retryError) throw new Error(`retry candidate fetch failed: ${retryError.message}`)
+  return [...pending, ...((retryData ?? []) as unknown as PendingCandidate[])]
 }
 
-async function fetchRecentResearch(db: SupabaseClient, slugs: string[]): Promise<Map<string, PriorResearch[]>> {
+async function fetchRecentResearch(db: SupabaseClient, slugs: string[], familyKeys: string[]): Promise<{
+  bySlug: Map<string, PriorResearch[]>
+  byFamilyKey: Map<string, PriorResearch[]>
+}> {
   const bySlug = new Map<string, PriorResearch[]>()
-  if (slugs.length === 0) return bySlug
+  const byFamilyKey = new Map<string, PriorResearch[]>()
+  if (slugs.length === 0 && familyKeys.length === 0) return { bySlug, byFamilyKey }
+  const select = 'id, candidate_id, slug, research_mode, summary, notes, key_findings, evidence_links, related_context, uncertainty, editor_notes, researched_at, research_family_key, research_cluster_key, research_depth, evidence_quality, catalyst_found, recommended_editor_action, research_backend, research_model'
+  const uniqueRows = new Map<string, PriorResearch>()
 
-  const { data, error } = await db
-    .from('polymarket_market_candidate_research')
-    .select('candidate_id, slug, research_mode, summary, key_findings, evidence_links, related_context, uncertainty, editor_notes, researched_at')
-    .in('slug', slugs)
-    .order('researched_at', { ascending: false })
-    .limit(100)
+  if (slugs.length > 0) {
+    const { data, error } = await db
+      .from('polymarket_market_candidate_research')
+      .select(select)
+      .in('slug', slugs)
+      .order('researched_at', { ascending: false })
+      .limit(100)
 
-  if (error) throw new Error(`prior research fetch failed: ${error.message}`)
-  for (const row of data ?? []) {
-    const research = row as PriorResearch
+    if (error) throw new Error(`prior research slug fetch failed: ${error.message}`)
+    for (const row of data ?? []) uniqueRows.set((row as PriorResearch).id, row as PriorResearch)
+  }
+
+  if (familyKeys.length > 0) {
+    const { data, error } = await db
+      .from('polymarket_market_candidate_research')
+      .select(select)
+      .in('research_family_key', familyKeys)
+      .order('researched_at', { ascending: false })
+      .limit(200)
+
+    if (error) throw new Error(`prior research family fetch failed: ${error.message}`)
+    for (const row of data ?? []) uniqueRows.set((row as PriorResearch).id, row as PriorResearch)
+  }
+
+  for (const research of uniqueRows.values()) {
     const rows = bySlug.get(research.slug) ?? []
     rows.push(research)
     bySlug.set(research.slug, rows)
+    if (research.research_family_key) {
+      const familyRows = byFamilyKey.get(research.research_family_key) ?? []
+      familyRows.push(research)
+      byFamilyKey.set(research.research_family_key, familyRows)
+    }
   }
-  return bySlug
+
+  for (const rows of bySlug.values()) rows.sort((a, b) => new Date(b.researched_at).getTime() - new Date(a.researched_at).getTime())
+  for (const rows of byFamilyKey.values()) rows.sort((a, b) => new Date(b.researched_at).getTime() - new Date(a.researched_at).getTime())
+  return { bySlug, byFamilyKey }
 }
 
-function isRecentlyResearched(candidate: PendingCandidate, priorResearch: Map<string, PriorResearch[]>, nowMs: number, cooldownMinutes: number): boolean {
-  const latest = priorResearch.get(candidate.slug)?.[0]
-  if (!latest) return false
+function recentPrior(prior: PriorResearch[] | undefined, nowMs: number, cooldownMinutes: number): PriorResearch | null {
+  const latest = prior?.[0]
+  if (!latest) return null
   const ageMs = nowMs - new Date(latest.researched_at).getTime()
-  return ageMs >= 0 && ageMs < cooldownMinutes * 60 * 1000
+  return ageMs >= 0 && ageMs < cooldownMinutes * 60 * 1000 ? latest : null
 }
 
 async function updateCandidateStatus(
@@ -244,13 +449,15 @@ async function updateCandidateStatus(
   ids: string[],
   status: CandidateStatus,
   observedAt: string,
-  researchError?: string | null
+  researchError?: string | null,
+  extraPayload: Record<string, unknown> = {}
 ): Promise<void> {
   if (ids.length === 0) return
-  const payload: Record<string, string | null> = {
+  const payload: Record<string, unknown> = {
     status,
     updated_at: observedAt,
     research_attempted_at: observedAt,
+    ...extraPayload,
   }
   if (researchError !== undefined) payload.research_error = researchError
 
@@ -262,24 +469,229 @@ async function updateCandidateStatus(
   if (error) throw new Error(`candidate status update failed: ${error.message}`)
 }
 
+function errorKind(error: string): string {
+  const normalized = error.toLowerCase()
+  if (normalized.includes('timeout') || normalized.includes('timed out')) return 'timeout'
+  if (normalized.includes('invalid json') || normalized.includes('valid research result')) return 'invalid_response'
+  if (normalized.includes('enoent') || normalized.includes('not found')) return 'backend_unavailable'
+  return 'backend_error'
+}
+
+function retryCount(candidate: PendingCandidate): number {
+  return numberOrNull(candidate.research_retry_count) ?? 0
+}
+
+async function updateSuccessfulCandidates(
+  db: SupabaseClient,
+  ids: string[],
+  observedAt: string
+): Promise<void> {
+  await updateCandidateStatus(db, ids, 'researched', observedAt, null, {
+    research_next_retry_at: null,
+    research_last_error_kind: null,
+  })
+}
+
+async function updateFailedCandidate(
+  db: SupabaseClient,
+  failure: ResearchFailure,
+  observedAt: string,
+  options: Required<PolymarketResearcherOptions>
+): Promise<void> {
+  const nextRetryAt = new Date(new Date(observedAt).getTime() + options.retryWindowMinutes * 60 * 1000).toISOString()
+  await updateCandidateStatus(db, [failure.candidate.id], 'research_failed', observedAt, failure.error.slice(0, 2000), {
+    research_retry_count: retryCount(failure.candidate) + 1,
+    research_next_retry_at: nextRetryAt,
+    research_last_error_kind: errorKind(failure.error),
+  })
+}
+
 async function loadStablePrompt(): Promise<string> {
   return readFile(join(__dirname, 'researcher-prompt.md'), 'utf8')
 }
 
-function buildHermesPrompt(candidates: PendingCandidate[], priorResearch: Map<string, PriorResearch[]>): string {
+function metricValue(candidate: PendingCandidate, keys: string[]): number | null {
+  if (!candidate.metrics || typeof candidate.metrics !== 'object') return null
+  const metrics = candidate.metrics as Record<string, unknown>
+  for (const key of keys) {
+    const value = numberOrNull(metrics[key])
+    if (value != null) return value
+  }
+  return null
+}
+
+function evidenceUrls(candidate: PendingCandidate): string[] {
+  return asArray(candidate.evidence_refs)
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const record = item as Record<string, unknown>
+      return asString(record.source_url || record.url)
+    })
+    .filter(Boolean)
+}
+
+function hasCurrentContextCue(candidate: PendingCandidate): boolean {
+  return /\b(election|fed|cpi|tariff|war|ceasefire|sec|etf|earnings|court|rate|inflation|crypto|bitcoin|ethereum|oil|gold)\b/i.test([
+    candidate.slug,
+    candidate.title,
+    candidate.tag_slug,
+    candidate.tag_label,
+    candidate.what_changed,
+    candidate.why_flagged,
+  ].filter(Boolean).join(' '))
+}
+
+function classifyResearchDepth(
+  candidate: PendingCandidate,
+  priorResearch: { bySlug: Map<string, PriorResearch[]>, byFamilyKey: Map<string, PriorResearch[]> },
+  nowMs: number,
+  options: Required<PolymarketResearcherOptions>
+): TriageDecision {
+  const familyKey = primaryFamilyKey(candidate)
+  const clusterKey = clusterKeyForCandidate(candidate)
+  const exactPrior = recentPrior(priorResearch.bySlug.get(candidate.slug), nowMs, options.slugCooldownMinutes)
+  if (exactPrior) {
+    return { candidate, depth: 'reuse_prior', familyKey, clusterKey, prior: exactPrior, reason: 'recent_exact_slug_research' }
+  }
+
+  const familyPrior = recentPrior(priorResearch.byFamilyKey.get(familyKey), nowMs, options.slugCooldownMinutes)
+  const score = numberOrNull(candidate.score) ?? 0
+  if (familyPrior && score <= Math.max(70, options.structureOnlyScoreMax)) {
+    return { candidate, depth: 'reuse_prior', familyKey, clusterKey, prior: familyPrior, reason: 'recent_family_research' }
+  }
+
+  const volume24h = metricValue(candidate, ['currentVolume24h', 'volume24h'])
+  const volume = metricValue(candidate, ['currentVolume', 'volume'])
+  const liquidity = metricValue(candidate, ['liquidity'])
+  const thinLiquidity = liquidity == null || liquidity <= options.thinLiquidityMax
+  const thinVolume = (volume24h ?? volume ?? 0) <= options.thinVolume24hMax
+  if (score <= options.structureOnlyScoreMax && thinVolume && thinLiquidity && !hasCurrentContextCue(candidate)) {
+    return { candidate, depth: 'market_structure_only', familyKey, clusterKey, reason: 'low_score_thin_market_structure' }
+  }
+
+  return { candidate, depth: 'deep_web', familyKey, clusterKey, reason: 'needs_current_context' }
+}
+
+function triageCandidates(
+  candidates: PendingCandidate[],
+  priorResearch: { bySlug: Map<string, PriorResearch[]>, byFamilyKey: Map<string, PriorResearch[]> },
+  nowMs: number,
+  options: Required<PolymarketResearcherOptions>
+): TriageDecision[] {
+  return candidates.map((candidate) => classifyResearchDepth(candidate, priorResearch, nowMs, options))
+}
+
+function buildReusePriorRow(decision: TriageDecision, observedAt: string, options: Required<PolymarketResearcherOptions>): ResearchRowInput {
+  const candidate = decision.candidate
+  const prior = decision.prior
+  if (!prior) throw new Error(`reuse_prior triage missing prior research for candidate ${candidate.id}`)
+  return {
+    candidate_id: candidate.id,
+    source: candidate.source,
+    area: candidate.area,
+    slug: candidate.slug,
+    title: candidate.title,
+    candidate_type: candidate.candidate_type,
+    research_mode: prior.research_mode,
+    summary: `Reused recent research from ${prior.slug}: ${prior.summary}`,
+    notes: [
+      `Reuse reason: ${decision.reason}.`,
+      `Current signal: ${candidate.what_changed}`,
+      prior.notes,
+    ].filter(Boolean).join('\n'),
+    key_findings: asArray(prior.key_findings),
+    evidence_links: asArray(prior.evidence_links),
+    related_context: [
+      ...asArray(prior.related_context),
+      { kind: 'reused_prior_research', research_id: prior.id, slug: prior.slug, researched_at: prior.researched_at },
+    ],
+    uncertainty: prior.uncertainty || 'Prior research was reused; verify whether the market moved because of a new catalyst.',
+    editor_notes: `This row reused recent ${decision.reason === 'recent_exact_slug_research' ? 'exact-slug' : 'family'} research. Compare the current candidate metrics before publishing. ${prior.editor_notes}`.trim(),
+    status: 'pending_editor',
+    researched_at: observedAt,
+    updated_at: observedAt,
+    research_family_key: decision.familyKey,
+    research_cluster_key: decision.clusterKey,
+    research_depth: 'reuse_prior',
+    evidence_quality: prior.evidence_quality ?? 'medium',
+    catalyst_found: prior.catalyst_found ?? false,
+    recommended_editor_action: prior.recommended_editor_action ?? 'needs_more_research',
+    duplicate_of_research_id: prior.id,
+    research_backend: options.backend,
+    research_model: options.researchModel,
+  }
+}
+
+function buildMarketStructureRow(decision: TriageDecision, observedAt: string, options: Required<PolymarketResearcherOptions>): ResearchRowInput {
+  const candidate = decision.candidate
+  const score = numberOrNull(candidate.score) ?? 0
+  const urls = evidenceUrls(candidate)
+  const priceDelta = metricValue(candidate, ['oddsDelta'])
+  const volumeDeltaPct = metricValue(candidate, ['volumeDeltaPct', 'activityDeltaPct'])
+  const volume = metricValue(candidate, ['currentVolume', 'currentVolume24h', 'volume'])
+  const keyFindings = [
+    `${candidate.candidate_type} signal scored ${round(score, 1)} and was routed as market-structure-only.`,
+    candidate.what_changed,
+    candidate.why_flagged,
+    priceDelta != null ? `Observed odds delta: ${round(priceDelta * 100, 2)} percentage points.` : '',
+    volumeDeltaPct != null ? `Observed volume/activity delta: ${round(volumeDeltaPct * 100, 1)}%.` : '',
+  ].filter(Boolean)
+
+  const weakEvidence = score < 45 || urls.length === 0
+  return {
+    candidate_id: candidate.id,
+    source: candidate.source,
+    area: candidate.area,
+    slug: candidate.slug,
+    title: candidate.title,
+    candidate_type: candidate.candidate_type,
+    research_mode: 'market_structure',
+    summary: `${candidate.title} was triaged without web search because the signal appears mostly mechanical or thin. ${candidate.what_changed}`,
+    notes: [
+      `Triage reason: ${decision.reason}.`,
+      `Score: ${round(score, 1)}.`,
+      volume != null ? `Reported market volume/activity metric: ${round(volume, 2)}.` : '',
+      `Polymarket evidence refs: ${urls.length > 0 ? urls.join(', ') : 'none supplied'}.`,
+    ].filter(Boolean).join('\n'),
+    key_findings: keyFindings,
+    evidence_links: urls.map((url) => ({ title: 'Polymarket market evidence', url, note: 'Candidate-supplied market reference' })),
+    related_context: [{ kind: 'research_triage', depth: 'market_structure_only', family_key: decision.familyKey, cluster_key: decision.clusterKey }],
+    uncertainty: 'No external web search was run; this only supports a market-structure editorial decision.',
+    editor_notes: weakEvidence
+      ? 'Likely reject unless the Editor sees an obvious timely catalyst in the market title or supplied evidence.'
+      : 'Use this as a market-structure note; request deeper research if current external context matters.',
+    status: 'pending_editor',
+    researched_at: observedAt,
+    updated_at: observedAt,
+    research_family_key: decision.familyKey,
+    research_cluster_key: decision.clusterKey,
+    research_depth: 'market_structure_only',
+    evidence_quality: weakEvidence ? 'weak' : 'medium',
+    catalyst_found: false,
+    recommended_editor_action: weakEvidence ? 'reject_thin' : 'needs_more_research',
+    duplicate_of_research_id: null,
+    research_backend: 'local_triage',
+    research_model: 'deterministic_market_structure',
+  }
+}
+
+function buildHermesPrompt(decisions: TriageDecision[], priorResearch: { bySlug: Map<string, PriorResearch[]> }): string {
   const priorBySlug = Object.fromEntries(
-    candidates.map((candidate) => [
+    decisions.map(({ candidate }) => [
       candidate.slug,
-      (priorResearch.get(candidate.slug) ?? []).slice(0, 3),
+      (priorResearch.bySlug.get(candidate.slug) ?? []).slice(0, 3),
     ])
   )
 
   const payload = {
-    candidates: candidates.map((candidate) => ({
+    candidates: decisions.map(({ candidate, familyKey, clusterKey }) => ({
       id: candidate.id,
       candidate_type: candidate.candidate_type,
       slug: candidate.slug,
       title: candidate.title,
+      research_depth: 'deep_web',
+      research_family_key: familyKey,
+      research_cluster_key: clusterKey,
       tag_slug: candidate.tag_slug,
       tag_label: candidate.tag_label,
       observed_at: candidate.observed_at,
@@ -315,6 +727,9 @@ function buildHermesPrompt(candidates: PendingCandidate[], priorResearch: Map<st
           related_context: ['nearby market, asset, theme, or caveat'],
           uncertainty: 'what is unknown or weak',
           editor_notes: 'what the Editor should inspect or be careful about',
+          evidence_quality: 'strong | medium | weak',
+          catalyst_found: true,
+          recommended_editor_action: 'publish_candidate | reject_thin | needs_more_research',
         },
       ],
     }, null, 2),
@@ -359,6 +774,9 @@ function normalizeResearchResult(result: HermesResearchResult): HermesResearchRe
     related_context: asArray(result.related_context),
     uncertainty: asString(result.uncertainty),
     editor_notes: asString(result.editor_notes),
+    evidence_quality: normalizeEvidenceQuality(result.evidence_quality),
+    catalyst_found: asBoolean(result.catalyst_found),
+    recommended_editor_action: normalizeRecommendedEditorAction(result.recommended_editor_action),
   }
 }
 
@@ -372,18 +790,18 @@ function normalizeResearchResults(response: HermesResearchResponse): Map<string,
 }
 
 async function researchSingleCandidate(
-  candidate: PendingCandidate,
-  priorResearch: Map<string, PriorResearch[]>,
+  decision: TriageDecision,
+  priorResearch: { bySlug: Map<string, PriorResearch[]> },
   options: Required<PolymarketResearcherOptions>,
   reason: string
 ): Promise<{ result?: HermesResearchResult, failure?: ResearchFailure }> {
   try {
-    const response = await runHermesResearch(buildHermesPrompt([candidate], priorResearch), options)
-    const result = normalizeResearchResults(response).get(candidate.id)
+    const response = await runHermesResearch(buildHermesPrompt([decision], priorResearch), options)
+    const result = normalizeResearchResults(response).get(decision.candidate.id)
     if (!result) {
       return {
         failure: {
-          candidate,
+          candidate: decision.candidate,
           error: `Hermes did not return a valid research result for this candidate after ${reason}.`,
         },
       }
@@ -392,7 +810,7 @@ async function researchSingleCandidate(
   } catch (error) {
     return {
       failure: {
-        candidate,
+        candidate: decision.candidate,
         error: error instanceof Error ? error.message : String(error),
       },
     }
@@ -400,19 +818,19 @@ async function researchSingleCandidate(
 }
 
 async function researchCandidatesWithFallback(
-  candidates: PendingCandidate[],
-  priorResearch: Map<string, PriorResearch[]>,
+  decisions: TriageDecision[],
+  priorResearch: { bySlug: Map<string, PriorResearch[]> },
   options: Required<PolymarketResearcherOptions>
 ): Promise<ResearchAttempt> {
   try {
-    const response = await runHermesResearch(buildHermesPrompt(candidates, priorResearch), options)
+    const response = await runHermesResearch(buildHermesPrompt(decisions, priorResearch), options)
     const results = normalizeResearchResults(response)
     const failures: ResearchFailure[] = []
-    const missing = candidates.filter((candidate) => !results.has(candidate.id))
+    const missing = decisions.filter((decision) => !results.has(decision.candidate.id))
 
-    for (const candidate of missing) {
-      const retry = await researchSingleCandidate(candidate, priorResearch, options, 'missing from batch response')
-      if (retry.result) results.set(candidate.id, retry.result)
+    for (const decision of missing) {
+      const retry = await researchSingleCandidate(decision, priorResearch, options, 'missing from batch response')
+      if (retry.result) results.set(decision.candidate.id, retry.result)
       if (retry.failure) failures.push(retry.failure)
     }
 
@@ -422,12 +840,12 @@ async function researchCandidatesWithFallback(
     const results = new Map<string, HermesResearchResult>()
     const failures: ResearchFailure[] = []
 
-    for (const candidate of candidates) {
-      const retry = await researchSingleCandidate(candidate, priorResearch, options, 'batch failure')
-      if (retry.result) results.set(candidate.id, retry.result)
+    for (const decision of decisions) {
+      const retry = await researchSingleCandidate(decision, priorResearch, options, 'batch failure')
+      if (retry.result) results.set(decision.candidate.id, retry.result)
       if (retry.failure) {
         failures.push({
-          candidate,
+          candidate: decision.candidate,
           error: `${retry.failure.error} Batch error was: ${batchError}`,
         })
       }
@@ -439,11 +857,26 @@ async function researchCandidatesWithFallback(
 
 async function insertResearchRows(
   db: SupabaseClient,
-  candidates: PendingCandidate[],
-  results: Map<string, HermesResearchResult>,
-  observedAt: string
+  rows: ResearchRowInput[]
 ): Promise<string[]> {
-  const rows = candidates.flatMap((candidate) => {
+  if (rows.length === 0) return []
+
+  const { error } = await db
+    .from('polymarket_market_candidate_research')
+    .upsert(rows, { onConflict: 'candidate_id' })
+
+  if (error) throw new Error(`research row insert failed: ${error.message}`)
+  return rows.map((row) => row.candidate_id)
+}
+
+function buildHermesResearchRows(
+  decisions: TriageDecision[],
+  results: Map<string, HermesResearchResult>,
+  observedAt: string,
+  options: Required<PolymarketResearcherOptions>
+): ResearchRowInput[] {
+  return decisions.flatMap((decision) => {
+    const candidate = decision.candidate
     const result = results.get(candidate.id)
     if (!result) return []
     return [{
@@ -464,17 +897,62 @@ async function insertResearchRows(
       status: 'pending_editor',
       researched_at: observedAt,
       updated_at: observedAt,
+      research_family_key: decision.familyKey,
+      research_cluster_key: decision.clusterKey,
+      research_depth: 'deep_web',
+      evidence_quality: normalizeEvidenceQuality(result.evidence_quality),
+      catalyst_found: asBoolean(result.catalyst_found),
+      recommended_editor_action: normalizeRecommendedEditorAction(result.recommended_editor_action),
+      duplicate_of_research_id: null,
+      research_backend: options.backend,
+      research_model: options.researchModel,
     }]
   })
+}
 
-  if (rows.length === 0) return []
+async function researchDeepWebCandidates(
+  decisions: TriageDecision[],
+  priorResearch: { bySlug: Map<string, PriorResearch[]> },
+  options: Required<PolymarketResearcherOptions>
+): Promise<ResearchAttempt> {
+  const results = new Map<string, HermesResearchResult>()
+  const failures: ResearchFailure[] = []
+  const byCluster = new Map<string, TriageDecision[]>()
+  for (const decision of decisions) {
+    const cluster = byCluster.get(decision.clusterKey) ?? []
+    cluster.push(decision)
+    byCluster.set(decision.clusterKey, cluster)
+  }
 
-  const { error } = await db
-    .from('polymarket_market_candidate_research')
-    .upsert(rows, { onConflict: 'candidate_id' })
+  const grouped = [...byCluster.values()].sort((a, b) => b.length - a.length)
+  for (const group of grouped) {
+    const attempt = await researchCandidatesWithFallback(group, priorResearch, options)
+    for (const [id, result] of attempt.results) results.set(id, result)
+    failures.push(...attempt.failures)
+  }
+  return { results, failures }
+}
 
-  if (error) throw new Error(`research row insert failed: ${error.message}`)
-  return rows.map((row) => row.candidate_id)
+async function markCandidatesResearching(
+  db: SupabaseClient,
+  decisions: TriageDecision[],
+  observedAt: string
+): Promise<void> {
+  for (const decision of decisions) {
+    const { error } = await db
+      .from('polymarket_market_candidates')
+      .update({
+        status: 'researching',
+        updated_at: observedAt,
+        research_attempted_at: observedAt,
+        research_family_key: decision.familyKey,
+        research_cluster_key: decision.clusterKey,
+        research_depth: decision.depth,
+      })
+      .eq('id', decision.candidate.id)
+
+    if (error) throw new Error(`candidate researching update failed: ${error.message}`)
+  }
 }
 
 export async function runPolymarketResearcher(
@@ -485,74 +963,99 @@ export async function runPolymarketResearcher(
   const observedAt = options.now
   const nowMs = new Date(observedAt).getTime()
 
-  const candidates = await fetchPendingCandidates(db, options.batchSize)
-  const priorResearch = await fetchRecentResearch(db, [...new Set(candidates.map((candidate) => candidate.slug))])
+  const candidates = await fetchResearchCandidates(db, options)
+  const familyKeys = [...new Set(candidates.map(primaryFamilyKey))]
+  const priorResearch = await fetchRecentResearch(db, [...new Set(candidates.map((candidate) => candidate.slug))], familyKeys)
+  const triage = triageCandidates(candidates, priorResearch, nowMs, options)
 
-  const skipped = candidates.filter((candidate) => isRecentlyResearched(candidate, priorResearch, nowMs, options.slugCooldownMinutes))
-  const eligible = candidates.filter((candidate) => !skipped.includes(candidate))
-
-  await updateCandidateStatus(db, skipped.map((candidate) => candidate.id), 'skipped_recently_researched', observedAt)
-
-  if (eligible.length === 0) {
+  if (triage.length === 0) {
     return {
       observedAt,
       backend: options.backend,
       pendingFetched: candidates.length,
       eligibleForResearch: 0,
-      skippedRecentlyResearched: skipped.length,
+      skippedRecentlyResearched: 0,
+      retriedFailedCandidates: 0,
+      reusedPriorResearch: 0,
+      marketStructureOnly: 0,
+      deepWebResearched: 0,
       researchRowsWritten: 0,
       candidatesMarkedResearched: 0,
       candidatesMarkedFailed: 0,
       researched: [],
-      skipped: skipped.map((candidate) => ({
-        candidateId: candidate.id,
-        slug: candidate.slug,
-        reason: 'recently_researched',
-      })),
+      skipped: [],
       failed: [],
     }
   }
 
-  await updateCandidateStatus(db, eligible.map((candidate) => candidate.id), 'researching', observedAt)
+  await markCandidatesResearching(db, triage, observedAt)
 
-  const attempt = await researchCandidatesWithFallback(eligible, priorResearch, options)
-  const successfulIds = await insertResearchRows(db, eligible, attempt.results, observedAt)
-  const failed = eligible
+  const reuseRows = triage
+    .filter((decision) => decision.depth === 'reuse_prior')
+    .map((decision) => buildReusePriorRow(decision, observedAt, options))
+  const structureRows = triage
+    .filter((decision) => decision.depth === 'market_structure_only')
+    .map((decision) => buildMarketStructureRow(decision, observedAt, options))
+  const deepDecisions = triage.filter((decision) => decision.depth === 'deep_web')
+  const attempt = await researchDeepWebCandidates(deepDecisions, priorResearch, options)
+  const hermesRows = buildHermesResearchRows(deepDecisions, attempt.results, observedAt, options)
+  const allRows = [...reuseRows, ...structureRows, ...hermesRows]
+  const successfulIds = await insertResearchRows(db, allRows)
+  const failed = deepDecisions
+    .map((decision) => decision.candidate)
     .filter((candidate) => !successfulIds.includes(candidate.id))
     .map((candidate) => attempt.failures.find((failure) => failure.candidate.id === candidate.id) ?? {
       candidate,
       error: 'Hermes did not return a valid research result for this candidate.',
     })
 
-  await updateCandidateStatus(db, successfulIds, 'researched', observedAt, null)
+  await updateSuccessfulCandidates(db, successfulIds, observedAt)
   for (const failure of failed) {
-    await updateCandidateStatus(db, [failure.candidate.id], 'research_failed', observedAt, failure.error.slice(0, 2000))
+    await updateFailedCandidate(db, failure, observedAt, options)
   }
 
   return {
     observedAt,
     backend: options.backend,
     pendingFetched: candidates.length,
-    eligibleForResearch: eligible.length,
-    skippedRecentlyResearched: skipped.length,
+    eligibleForResearch: triage.length,
+    skippedRecentlyResearched: 0,
+    retriedFailedCandidates: candidates.filter((candidate) => candidate.status === 'research_failed').length,
+    reusedPriorResearch: reuseRows.length,
+    marketStructureOnly: structureRows.length,
+    deepWebResearched: hermesRows.length,
     researchRowsWritten: successfulIds.length,
     candidatesMarkedResearched: successfulIds.length,
     candidatesMarkedFailed: failed.length,
-    researched: eligible.flatMap((candidate) => {
-      const result = attempt.results.get(candidate.id)
-      if (!result || !successfulIds.includes(candidate.id)) return []
+    researched: triage.flatMap((decision) => {
+      const candidate = decision.candidate
+      const row = allRows.find((item) => item.candidate_id === candidate.id)
+      if (!row || !successfulIds.includes(candidate.id)) return []
       return [{
         candidateId: candidate.id,
         slug: candidate.slug,
-        researchMode: result.research_mode,
-        summary: result.summary,
+        researchMode: row.research_mode,
+        summary: row.summary,
       }]
     }),
-    skipped: skipped.map((candidate) => ({ candidateId: candidate.id, slug: candidate.slug, reason: 'recently_researched' })),
+    skipped: [],
     failed: failed.map((failure) => ({
       candidateId: failure.candidate.id,
       slug: failure.candidate.slug,
       error: failure.error,
     })),
   }
+}
+
+export const __testing = {
+  buildMarketStructureRow,
+  buildReusePriorRow,
+  classifyResearchDepth,
+  clusterKeyForCandidate,
+  errorKind,
+  primaryFamilyKey,
+  recentPrior,
+  retryCount,
+  titleFamilyKey,
+  triageCandidates,
 }

@@ -49,6 +49,13 @@ interface PendingResearchRow {
   related_context: unknown
   uncertainty: string
   editor_notes: string
+  research_depth?: string | null
+  evidence_quality?: string | null
+  catalyst_found?: boolean | null
+  recommended_editor_action?: string | null
+  duplicate_of_research_id?: string | null
+  research_backend?: string | null
+  research_model?: string | null
   status: ResearchStatus
   researched_at: string
 }
@@ -251,7 +258,7 @@ function extractJson<T>(text: string): T | null {
 async function fetchPendingResearch(db: SupabaseClient, batchSize: number): Promise<PendingResearchRow[]> {
   const { data, error } = await db
     .from('polymarket_market_candidate_research')
-    .select('id, candidate_id, source, area, slug, title, candidate_type, research_mode, summary, notes, key_findings, evidence_links, related_context, uncertainty, editor_notes, status, researched_at')
+    .select('id, candidate_id, source, area, slug, title, candidate_type, research_mode, summary, notes, key_findings, evidence_links, related_context, uncertainty, editor_notes, research_depth, evidence_quality, catalyst_found, recommended_editor_action, duplicate_of_research_id, research_backend, research_model, status, researched_at')
     .eq('source', SOURCE)
     .eq('area', AREA)
     .eq('status', 'pending_editor')
@@ -310,6 +317,15 @@ function buildEditorPrompt(researchRows: PendingResearchRow[], recentDecisions: 
       related_context: row.related_context,
       uncertainty: row.uncertainty,
       researcher_editor_notes: row.editor_notes,
+      researcher_metadata: {
+        research_depth: row.research_depth,
+        evidence_quality: row.evidence_quality,
+        catalyst_found: row.catalyst_found,
+        recommended_editor_action: row.recommended_editor_action,
+        duplicate_of_research_id: row.duplicate_of_research_id,
+        research_backend: row.research_backend,
+        research_model: row.research_model,
+      },
       researched_at: row.researched_at,
     })),
     recent_editor_decisions: recentDecisions.map((decision) => ({
