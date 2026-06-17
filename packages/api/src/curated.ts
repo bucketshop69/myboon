@@ -22,8 +22,7 @@ export const CURATED_GEOPOLITICS_SLUGS: readonly string[] = [
   'will-wicked-for-good-be-the-top-grossing-movie-of-2026',
 ]
 
-// UCL disabled for now — focusing on EPL for testing
-export const SUPPORTED_SPORTS = ['epl'] as const
+export const SUPPORTED_SPORTS = ['epl', 'ucl', 'ipl', 'fifwc'] as const
 export type SupportedSport = (typeof SUPPORTED_SPORTS)[number]
 
 export const CURATED_SLUGS = {
@@ -38,7 +37,7 @@ export function deriveCategory(tags: string[]): string {
   const t = new Set(tags.map((s) => s.toLowerCase()))
   if (t.has('crypto') || t.has('bitcoin') || t.has('ethereum') || t.has('solana')) return 'crypto'
   if (t.has('politics') || t.has('geopolitics')) return 'politics'
-  if (t.has('sports') || t.has('epl') || t.has('cricket')) return 'sports'
+  if (t.has('sports') || t.has('epl') || t.has('cricket') || t.has('soccer') || t.has('fifa-world-cup')) return 'sports'
   if (t.has('ai') || t.has('tech')) return 'tech'
   if (t.has('economics') || t.has('fed') || t.has('macro')) return 'macro'
   return tags[0]?.toLowerCase() ?? 'other'
@@ -58,7 +57,7 @@ export function deriveCategoryFromText(slug: string, question: string): string {
 
   if (/bitcoin|btc|ethereum|eth\b|solana|sol\b|crypto|token|defi|nft|binance|coinbase|hyperliquid|stablecoin|altcoin|memecoin|meme coin|doge|xrp|cardano|polkadot|avalanche|polygon|matic|aave|uniswap/.test(text)) return 'crypto'
   if (/trump|biden|president|congress|senate|election|vote|democrat|republican|geopolit|iran|china|nato|ukraine|russia|war|ceasefire|regime|invade|invasion|netanyahu|tariff/.test(text)) return 'politics'
-  if (/epl|ipl|cricket|nba|nfl|nhl|mlb|football|soccer|tennis|f1|formula|championship|league|match|premier|ucl|la liga|serie a|bundesliga|sport/.test(text)) return 'sports'
+  if (/epl|ipl|cricket|nba|nfl|nhl|mlb|football|soccer|fifa|world cup|tennis|f1|formula|championship|league|match|premier|ucl|la liga|serie a|bundesliga|sport/.test(text)) return 'sports'
   if (/\bai\b|openai|chatgpt|google|apple|microsoft|meta|nvidia|tech|artificial intelligence/.test(text)) return 'tech'
   if (/fed\b|interest rate|inflation|gdp|recession|unemployment|cpi|fomc|treasury|macro|economic/.test(text)) return 'macro'
   if (/oscar|emmy|grammy|movie|film|box office|grossing|avenger|wicked|entertainment/.test(text)) return 'entertainment'

@@ -121,6 +121,7 @@ async function run() {
 
   let iplItems: any[] = []
   let eplItems: any[] = []
+  let fifwcItems: any[] = []
 
   results.push(await test('?sport=ipl returns only IPL matches', async () => {
     const { status, body } = await fetchJson('/predict/feed?sport=ipl')
@@ -144,13 +145,29 @@ async function run() {
     return null
   }))
 
+  results.push(await test('?sport=fifwc returns only FIFA World Cup matches', async () => {
+    const { status, body } = await fetchJson('/predict/feed?sport=fifwc')
+    if (status !== 200) return `status ${status}`
+    if (!Array.isArray(body?.items)) return 'missing items'
+    const bad = body.items.filter((i: any) => i.sport !== 'fifwc')
+    if (bad.length > 0) return `${bad.length} non-FIFWC items (first: sport=${bad[0].sport}, type=${bad[0].type})`
+    const wrongSlug = body.items.find((i: any) => !String(i.slug ?? '').startsWith('fifwc-'))
+    if (wrongSlug) return `non-game or wrong FIFA World Cup slug returned: ${wrongSlug.slug}`
+    fifwcItems = body.items
+    console.log(`    → ${fifwcItems.length} FIFA World Cup matches`)
+    return null
+  }))
+
   // ═══════════════════════════════════════════════════
   // 4. IPL shape validation
   // ═══════════════════════════════════════════════════
   console.log('\n[4] IPL match shape')
 
   results.push(await test('IPL matches have exactly 2 outcomes (no draw)', async () => {
-    if (iplItems.length === 0) return 'no IPL items to check'
+    if (iplItems.length === 0) {
+      console.log(`    → no IPL items to check — may be off-season`)
+      return null
+    }
     for (const item of iplItems) {
       if (item.type !== 'match') return `item ${item.slug} is type=${item.type}, expected match`
       if (!Array.isArray(item.outcomes)) return `item ${item.slug} missing outcomes`
@@ -160,7 +177,10 @@ async function run() {
   }))
 
   results.push(await test('IPL outcomes have team names (not Yes/No)', async () => {
-    if (iplItems.length === 0) return 'no IPL items to check'
+    if (iplItems.length === 0) {
+      console.log(`    → no IPL items to check — may be off-season`)
+      return null
+    }
     for (const item of iplItems) {
       for (const o of item.outcomes ?? []) {
         if (o.label === 'Yes' || o.label === 'No') return `item ${item.slug} has Yes/No label instead of team name`
@@ -173,7 +193,10 @@ async function run() {
   }))
 
   results.push(await test('IPL titles do not have "Indian Premier League:" prefix', async () => {
-    if (iplItems.length === 0) return 'no IPL items to check'
+    if (iplItems.length === 0) {
+      console.log(`    → no IPL items to check — may be off-season`)
+      return null
+    }
     for (const item of iplItems) {
       if (item.title?.startsWith('Indian Premier League:')) return `item ${item.slug} still has prefix: "${item.title}"`
     }
@@ -181,7 +204,10 @@ async function run() {
   }))
 
   results.push(await test('IPL outcomes have prices', async () => {
-    if (iplItems.length === 0) return 'no IPL items to check'
+    if (iplItems.length === 0) {
+      console.log(`    → no IPL items to check — may be off-season`)
+      return null
+    }
     let withPrices = 0
     for (const item of iplItems) {
       const prices = item.outcomes.map((o: any) => o.price).filter((p: any) => p !== null)
@@ -197,8 +223,23 @@ async function run() {
   console.log('\n[5] EPL match shape')
 
   results.push(await test('EPL matches have 3 outcomes (win/win/draw)', async () => {
-    if (eplItems.length === 0) return 'no EPL items to check — may be off-season'
+    if (eplItems.length === 0) {
+      console.log(`    → no EPL items to check — may be off-season`)
+      return null
+    }
     for (const item of eplItems) {
+      if (item.type !== 'match') return `item ${item.slug} is type=${item.type}, expected match`
+      if (!Array.isArray(item.outcomes)) return `item ${item.slug} missing outcomes`
+      if (item.outcomes.length !== 3) return `item ${item.slug} has ${item.outcomes.length} outcomes, expected 3`
+      const hasD = item.outcomes.some((o: any) => o.label === 'Draw')
+      if (!hasD) return `item ${item.slug} missing Draw outcome`
+    }
+    return null
+  }))
+
+  results.push(await test('FIFA World Cup matches have 3 outcomes (win/win/draw)', async () => {
+    if (fifwcItems.length === 0) return 'no FIFA World Cup items to check — may be between matchdays'
+    for (const item of fifwcItems) {
       if (item.type !== 'match') return `item ${item.slug} is type=${item.type}, expected match`
       if (!Array.isArray(item.outcomes)) return `item ${item.slug} missing outcomes`
       if (item.outcomes.length !== 3) return `item ${item.slug} has ${item.outcomes.length} outcomes, expected 3`
@@ -280,7 +321,7 @@ async function run() {
   }))
 
   // ═══════════════════════════════════════════════════
-  // 9. Live sports schedule — next EPL & IPL games
+  // 9. Live sports schedule — next EPL, IPL & FIFA World Cup games
   // ═══════════════════════════════════════════════════
   console.log('\n[9] Live sports schedule')
 
@@ -348,6 +389,43 @@ async function run() {
     if (live.length === 0 && upcoming.length === 0) {
       console.log(`    → IPL may be off-season`)
     }
+    return null
+  }))
+
+  results.push(await test('next FIFA World Cup games (upcoming + live)', async () => {
+    const { status, body } = await fetchJson('/predict/feed?sport=fifwc')
+    if (status !== 200) return `status ${status}`
+    const now = Date.now()
+
+    const live = (body.items ?? []).filter((i: any) => {
+      if (!i.gameStartTime) return false
+      const start = new Date(i.gameStartTime).getTime()
+      return start <= now && i.status === 'live'
+    })
+
+    const upcoming = (body.items ?? [])
+      .filter((i: any) => i.gameStartTime && new Date(i.gameStartTime).getTime() > now)
+      .sort((a: any, b: any) => new Date(a.gameStartTime).getTime() - new Date(b.gameStartTime).getTime())
+
+    if (live.length > 0) {
+      console.log(`    → ${live.length} live FIFA World Cup game(s):`)
+      for (const g of live.slice(0, 5)) {
+        const prices = g.outcomes?.map((o: any) => `${o.label}: ${o.price ?? '?'}`).join(' | ') ?? ''
+        console.log(`      ${g.title}  [${prices}]`)
+      }
+    }
+
+    if (upcoming.length > 0) {
+      console.log(`    → ${upcoming.length} upcoming FIFA World Cup games:`)
+      for (const g of upcoming.slice(0, 5)) {
+        const dt = new Date(g.gameStartTime)
+        const prices = g.outcomes?.map((o: any) => `${o.label}: ${o.price ?? '?'}`).join(' | ') ?? ''
+        console.log(`      ${dt.toISOString().slice(0, 16)} — ${g.title}  [${prices}]`)
+      }
+    } else if (live.length === 0) {
+      console.log(`    → no upcoming FIFA World Cup games`)
+    }
+
     return null
   }))
 
