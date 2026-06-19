@@ -9,7 +9,15 @@ import { FeedCard } from '@/features/feed/components/FeedCard';
 import { NarrativeSheet, type NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
 import type { FeedItem as NarrativeFeedItem } from '@/features/feed/feed.types';
-import { PACIFICA_MARK_SVG, PHOENIX_MARK_SVG, POLYMARKET_MARK_SVG } from '@/features/home/marketBrandAssets';
+import {
+  KAMINO_MARK_SVG,
+  METEORA_MARK_SVG,
+  ORCA_MARK_SVG,
+  PACIFICA_MARK_SVG,
+  PHOENIX_MARK_SVG,
+  POLYMARKET_MARK_SVG,
+  RAYDIUM_MARK_SVG,
+} from '@/features/home/marketBrandAssets';
 import { semantic, tokens } from '@/theme';
 
 const FEED_PREVIEW_LIMIT = 3;
@@ -25,7 +33,7 @@ type MarketAppIcon = {
 };
 
 type MarketHomeApp = {
-  id: 'polymarket' | 'pacifica' | 'phoenix';
+  id: 'polymarket' | 'pacifica' | 'phoenix' | 'meteora' | 'orca' | 'raydium' | 'kamino';
   name: string;
   icon: MarketAppIcon;
   route?: '/predict' | '/trade' | '/markets/phoenix';
@@ -49,6 +57,26 @@ const MARKET_APPS: MarketHomeApp[] = [
     name: 'Phoenix',
     icon: { xml: PHOENIX_MARK_SVG, width: 46, height: 50 },
     route: '/markets/phoenix',
+  },
+  {
+    id: 'meteora',
+    name: 'Meteora',
+    icon: { xml: METEORA_MARK_SVG, width: 52, height: 52 },
+  },
+  {
+    id: 'orca',
+    name: 'Orca',
+    icon: { xml: ORCA_MARK_SVG, width: 54, height: 54 },
+  },
+  {
+    id: 'raydium',
+    name: 'Raydium',
+    icon: { xml: RAYDIUM_MARK_SVG, width: 46, height: 52 },
+  },
+  {
+    id: 'kamino',
+    name: 'Kamino',
+    icon: { xml: KAMINO_MARK_SVG, width: 56, height: 24 },
   },
 ];
 
@@ -566,10 +594,12 @@ const styles = StyleSheet.create({
   },
   marketAppGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 9,
   },
   marketAppTile: {
-    flex: 1,
+    flexBasis: '31%',
+    flexGrow: 1,
     minWidth: 0,
     minHeight: 128,
     alignItems: 'center',

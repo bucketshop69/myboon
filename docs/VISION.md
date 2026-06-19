@@ -9,8 +9,8 @@ relevant action is, without forcing them to piece context together from X,
 Telegram, Discord, YouTube, Instagram, dashboards, news, and trading apps.
 
 The product starts with a feed. The feed watches market signals, turns them into
-clear context, and connects that context to action inside the same mobile
-experience.
+clear context, builds durable entity memory, and connects timely context to
+action inside the same mobile experience.
 
 ```text
 Market moves -> myboon explains what changed -> user can act from the app
@@ -57,7 +57,9 @@ The product should not be a generic crypto news app. It should not be a raw
 dashboard. It should not be another trading terminal squeezed onto a phone.
 
 It should be a mobile feed that turns scattered market signals into useful,
-timely, evidence-backed context.
+timely, evidence-backed context. Under the surface, the feed should also build a
+curated memory of entities, claims, catalysts, relationships, and open questions
+so future research does not start from zero.
 
 ## Starting Point
 
@@ -74,7 +76,8 @@ The feed gathers signals from sources such as:
 - social and news context
 - scheduled catalysts and market events
 
-Those signals are processed into feed items that answer:
+Those signals are processed into research memory and, when useful now, feed
+items that answer:
 
 - what happened?
 - why does it matter now?
@@ -101,6 +104,9 @@ news catalyst, on-chain event, or developing story.
 
 The feed should be fast, but speed alone is not the promise. The promise is
 earlier context and better signal selection than a user can assemble manually.
+Not every researched signal needs to become a feed item. Unpublished research
+can still strengthen the entity graph that makes later feed items and agent
+answers better.
 
 ### Markets And Actions
 
@@ -157,6 +163,7 @@ raw facts
   -> classified events
   -> story candidates
   -> research packets
+  -> entity / claim / relationship memory
   -> feed decisions
   -> published narratives
   -> outcome review
@@ -167,7 +174,10 @@ Each layer has a job.
 - Collectors fetch and preserve facts.
 - Normalization turns source-specific data into shared entities and event types.
 - Scoring decides urgency, novelty, confidence, and materiality.
-- Research packets gather evidence and context before anything is written.
+- Research packets gather evidence, context, claims, relationships, and open
+  questions before anything is written.
+- Entity memory preserves what the system learned, even when a signal is not
+  publishable yet.
 - Publisher agents decide what should reach the feed.
 - The mobile app renders the final feed and action surfaces.
 
@@ -209,7 +219,10 @@ signal -> context -> action -> position tracking
 ```
 
 The core bet is that users will value a mobile product that notices important
-market movement, explains it clearly, and connects it to action.
+market movement, explains it clearly, and connects it to action. The deeper moat
+is the entity memory created while doing that work: a curated history of what
+myboon learned about assets, protocols, venues, wallets, actors, claims, and
+catalysts over time.
 
 ## Business Model
 
@@ -221,7 +234,7 @@ Potential revenue paths:
 - swap routing or partner fees
 - perps venue fee share
 - premium alerts, watchlists, or feed filters
-- paid market intelligence APIs in the future
+- paid market intelligence APIs in the future, powered by curated entity memory
 
 Ads are possible later, but they should not be the core assumption. The first
 business model should come from helping users act on useful market context.
@@ -235,6 +248,7 @@ Once the feed is useful and users trust it, myboon can expand into:
 - deeper on-chain wallet intelligence
 - multi-wallet views
 - agent-to-agent or x402 intelligence APIs
+- queryable entity memory for assets, protocols, venues, actors, and catalysts
 - public research feeds for DAOs, teams, and market communities
 
 These are future paths. The immediate priority is simple:

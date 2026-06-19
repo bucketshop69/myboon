@@ -10,7 +10,7 @@ import {
   runPolymarketMarketsDataEngineer,
 } from './markets-data-engineer'
 
-const THIRTY_MINUTES_MS = 30 * 60 * 1000
+const DEFAULT_RUN_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 function requiredEnv(name: string): string {
   const value = process.env[name]
@@ -39,11 +39,12 @@ async function main(): Promise<void> {
 
   if (process.env.POLYMARKET_MARKETS_RUN_ONCE === '1') return
 
+  const intervalMs = Number(process.env.POLYMARKET_MARKETS_RUN_INTERVAL_MS) || DEFAULT_RUN_INTERVAL_MS
   setInterval(() => {
     runOnce().catch((err) => {
       console.error('[polymarket-markets-data-engineer] run failed:', err)
     })
-  }, THIRTY_MINUTES_MS)
+  }, intervalMs)
 }
 
 main().catch((err) => {

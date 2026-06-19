@@ -50,6 +50,11 @@ packages/*/artifacts/
 # Misc
 *.local
 packages/brain/reports/narratives.csv
+reports/world-cup/
+apps/video/--props
+apps/video/src/world-cup/
+packages/collectors/src/world-cup/
+docs/specs/world-cup-x-campaign.md
 docs/scripts/
 docs/x_posts_snapshot.json
 

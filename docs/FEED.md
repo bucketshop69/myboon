@@ -5,11 +5,12 @@ Scope: source-agnostic design for the myboon feed
 
 ## What The Feed Is
 
-The myboon feed is a 24-hour market intelligence channel.
+The myboon feed is a 24-hour market intelligence channel and a research memory
+engine.
 
-It watches many sources, connects observations to durable market identities,
-researches what changed, applies an editorial test, and publishes only when
-there is something useful for the user.
+It watches many sources, connects observations to durable entities, researches
+what changed, updates the entity graph, applies an editorial test, and publishes
+only when there is something useful for the user.
 
 The feed is not a raw data stream, a generic news app, or a collection of
 source-specific feeds. It should help a serious market participant notice
@@ -21,8 +22,9 @@ can inspect or act on.
 V3 should scale inputs without scaling noise.
 
 More sources should create more candidate observations. They should not
-automatically create more feed cards. A source can help the feed only when it
-can produce useful evidence for a known identity and pass the editorial test.
+automatically create more feed cards. A source can help the feed when it
+produces useful evidence for an entity, claim, relationship, or future question.
+Only the subset that passes the editorial test becomes a published feed card.
 
 ## Mental Model
 
@@ -30,17 +32,18 @@ Think of the system like a live newsroom:
 
 ```text
 source filters      -> field producers / assignment desk
-identity memory     -> beat files
+entity memory       -> beat files
 research            -> context production
 editor              -> newsroom judgment
 publisher           -> final script
 feed                -> broadcast
 ```
 
-The system is always asking:
+The system is always asking two questions:
 
 ```text
-Is there something worth publishing here?
+What did we learn that should update our entity memory?
+Is there something worth publishing here right now?
 ```
 
 ## Pipeline
@@ -50,12 +53,12 @@ The default feed path is:
 ```text
 source-specific data filter
   -> candidate observation
-  -> known identity match
+  -> entity match or entity creation proposal
   -> research and enrichment
+  -> entity / claim / relationship memory update
   -> editor decision
-  -> publisher
+  -> publisher, only when feed-worthy
   -> published feed item
-  -> memory update
 ```
 
 Each source has its own filtering playbook, but every source emits the same
@@ -72,7 +75,7 @@ Minimum shape:
 source
 observedAt
 candidateType
-identityHints
+entityHints
 whatChanged
 whyFlagged
 evidence / receipts
@@ -84,23 +87,23 @@ uncertainty
 The data filter's job is to say:
 
 ```text
-This changed. It may matter. Here is the proof. Here are the identities it may
+This changed. It may matter. Here is the proof. Here are the entities it may
 belong to.
 ```
 
 It should not write final copy or decide that something is publishable.
 
-## Identity Memory
+## Entity Memory
 
-The durable center of the feed is the identity book.
+The durable center of the feed is the entity graph.
 
-An identity is any subject we may want to ask:
+An entity is any subject we may want to ask:
 
 ```text
 What did we already know, what changed now, and does this change matter?
 ```
 
-Examples of identities:
+Examples of entities:
 
 - BTC
 - Gold
@@ -112,32 +115,72 @@ Examples of identities:
 - a sports event
 - a recurring market theme
 
-Not every candidate becomes an identity. In the normal feed pipeline, if a
-candidate cannot attach to a known identity, it is skipped.
+Entities are connected by claims, relationships, evidence, open questions, and
+timeline events. For example, an X post about JTO may create or update entities
+for JTO, Jito, JTX Trade, Ansem, and Solana infrastructure, plus a claim that
+JTX fees may create JTO buy pressure.
 
-New identity creation is a separate helper workflow, not part of the default
-feed path.
+Not every candidate becomes a feed item. A candidate can be rejected from the
+visible feed and still update entity memory if it teaches the system something
+durable.
 
-## Identity Maturity
+New entity creation is a separate helper workflow. The default pipeline should
+suggest entity creation when research finds a durable subject worth tracking,
+but it should not create noisy entities automatically.
 
-Identity maturity controls research depth and publish threshold.
+## Research Memory Graph
+
+Published narratives are only one output of Feed V3. The deeper asset is the
+curated research memory that accumulates around entities over time.
+
+Research should preserve reusable intelligence, including:
 
 ```text
-canonical identity
+entities mentioned
+claims discovered
+relationships between entities
+evidence links and receipts
+confidence / uncertainty
+timeline events
+open questions
+what was rejected or held, and why
+```
+
+This lets future agents, users, and feed runs ask richer questions than a fresh
+web scrape can answer:
+
+```text
+What is JTX Trade?
+How is it connected to JTO?
+Which claims were made, verified, weakened, or disproven over time?
+Who amplified the story?
+What changed since we last researched it?
+```
+
+The visible feed monetizes timely research. The entity graph monetizes the
+memory of all useful research, including research that was not publishable at
+the time.
+
+## Entity Maturity
+
+Entity maturity controls research depth and publish threshold.
+
+```text
+canonical entity
   -> lower research burden, still needs a fresh material change
 
-watched identity
+watched entity
   -> medium research burden, needs useful delta against memory
 
-emerging identity
+emerging entity
   -> higher research burden, needs proof that it is real and not noise
 
-rejected or noisy identity
+rejected or noisy entity
   -> normally suppressed unless something extraordinary changes
 ```
 
-The more the pipeline runs, the stronger the identity books become. Mature
-identities should support faster and better decisions because the researcher can
+The more the pipeline runs, the stronger the entity graph becomes. Mature
+entities should support faster and better decisions because the researcher can
 compare new evidence against prior memory instead of starting from zero.
 
 ## Research
@@ -145,18 +188,19 @@ compare new evidence against prior memory instead of starting from zero.
 Research means:
 
 ```text
-Given this candidate and identity, what extra context would make the editor
-smarter?
+Given this candidate and entity context, what extra knowledge should we save,
+and what extra context would make the editor smarter?
 ```
 
 Research does not always mean web search.
 
-For a large asset move, research may check recent news, prior identity memory,
+For a large asset move, research may check recent news, prior entity memory,
 market structure, and cross-source context. For a wallet move, research may
 focus on wallet history and prior behavior. For a meme coin, research may focus
 on liquidity, holders, prior cycles, and risk flags.
 
-Research should enrich the candidate. It should not decide final feed quality.
+Research should enrich the candidate and propose memory updates. It should not
+decide final feed quality.
 
 ## Editorial Test
 
@@ -188,7 +232,8 @@ no_clear_feed_value
 ```
 
 Rejected and held decisions are part of the intelligence. They should update
-memory so the system learns what was ignored and why.
+entity memory when they contain durable claims, relationships, evidence, or
+negative signal the system should remember.
 
 ## Publishing
 
@@ -200,7 +245,7 @@ Publishing is not delayed for a daily batch.
 Minimum publish contract:
 
 ```text
-known primary identity
+known primary entity
 concrete change
 strong enough evidence / receipts
 editor approval
@@ -215,7 +260,7 @@ Many capabilities will sit around the pipeline as helper tools.
 
 Examples:
 
-- identity creation
+- entity creation
 - wallet profiling
 - wallet history
 - web search
@@ -239,12 +284,12 @@ For each source, take one complete cycle to publish:
 ```text
 source filter
   -> candidate observation
-  -> identity match
+  -> entity match
   -> research
+  -> entity / claim / relationship memory update
   -> editor decision
   -> publisher
   -> feed item
-  -> memory update
 ```
 
 The first goal is not to add every source at once. The first goal is to prove
