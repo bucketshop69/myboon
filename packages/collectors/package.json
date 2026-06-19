@@ -8,7 +8,9 @@
     "polymarket:researcher": "tsx src/polymarket/run-researcher.ts",
     "polymarket:editor": "tsx src/polymarket/run-editor.ts",
     "polymarket:publisher": "tsx src/polymarket/run-publisher.ts",
+    "world-cup:pre-match": "tsx src/world-cup/run-pre-match.ts",
     "build": "tsc",
+    "test:world-cup": "tsx --test src/world-cup/*.test.ts",
     "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts",
     "test:researcher": "tsx --test src/polymarket/researcher.test.ts"
   },

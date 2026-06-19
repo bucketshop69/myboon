@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "remotion studio",
     "build": "remotion render src/index.ts Main out/video.mp4",
+    "world-cup:still": "remotion still src/index.ts WorldCupMatchCard",
     "upgrade": "remotion upgrade"
   },
   "dependencies": {

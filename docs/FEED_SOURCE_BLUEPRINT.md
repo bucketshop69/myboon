@@ -7,10 +7,17 @@ Scope: how to add a new source to the Feed V3 pipeline
 
 This document is the practical blueprint for adding a new feed source.
 
-The Polymarket markets pipeline proved the first full V3 cycle:
+The Polymarket markets pipeline proved the first full V3 publishing cycle:
 
 ```text
 Data Engineer -> Researcher -> Editor -> Publisher -> published_narratives
+```
+
+Future sources should also support the broader Feed V3 learning cycle:
+
+```text
+Data connector -> candidate -> research -> entity / claim / relationship memory
+                                  -> published narrative only when feed-worthy
 ```
 
 Future sources should follow the same stage ownership, but not copy
@@ -32,7 +39,8 @@ better feed items
 ```
 
 The goal is not to publish more just because the system watches more. The goal
-is to find stronger evidence from more places.
+is to find stronger evidence from more places and preserve durable research in
+the entity graph, even when a candidate is not worth publishing yet.
 
 ## Source Onboarding Flow
 
@@ -41,9 +49,10 @@ Every new source should be built as one complete cycle before expanding it:
 ```text
 1. Data Engineer
 2. Researcher
-3. Editor
-4. Publisher
-5. Final feed/API read path
+3. Entity memory update
+4. Editor
+5. Publisher
+6. Final feed/API read path
 ```
 
 Do not start by building every possible lane. Pick one useful lane, run it to a
@@ -71,6 +80,7 @@ source
 area
 candidate_type
 source_object_id / slug / url / asset / wallet / mint
+entity_hints
 title
 observed_at
 what_changed
@@ -96,7 +106,7 @@ The Data Engineer should not:
 - write final copy
 - decide final publish/reject
 - call the Publisher
-- create durable identities by default
+- create durable entities by default
 
 ## Stage 2: Researcher
 
@@ -109,6 +119,7 @@ Its job is to answer:
 What is this really about?
 What context is missing from the raw source observation?
 What evidence confirms, contradicts, or weakens the signal?
+What entities, claims, and relationships should be remembered?
 What uncertainty should the Editor know?
 ```
 
@@ -135,6 +146,10 @@ notes
 key_findings
 evidence_links
 related_context
+entity_suggestions
+claims
+relationships
+open_questions
 uncertainty
 editor_notes
 status = pending_editor
@@ -146,6 +161,37 @@ The Researcher should not:
 - write final feed copy
 - force every candidate into a narrative
 - repeat recently completed research without a new delta
+
+## Stage 2.5: Entity Memory
+
+Entity memory is the durable learning layer. It preserves useful research even
+when the Editor rejects or holds a candidate from the visible feed.
+
+Its job is to answer:
+
+```text
+Which entities did we learn about?
+Which claims should be tracked over time?
+Which relationships between entities changed?
+What evidence, uncertainty, and open questions should future agents reuse?
+```
+
+Minimum memory update shape:
+
+```text
+entity_suggestions / entity_ids
+claims
+relationships
+timeline_events
+evidence_links
+confidence
+open_questions
+source_research_ids
+```
+
+Entity memory should not auto-create noisy subjects from every mention. New
+entities should be created only when the subject is durable enough to be useful
+in future research or retrieval.
 
 ## Stage 3: Editor
 
@@ -189,12 +235,12 @@ The Editor should not:
 
 - write final feed copy
 - publish directly
-- require a perfect identity before publishing
-- auto-create identities
+- require a perfect entity before publishing
+- auto-create entities
 - force at least one publish per run
 
 Rejected and held decisions matter. They are how the system learns what it
-ignored and why.
+ignored and why, and they may still update entity memory.
 
 ## Stage 4: Publisher
 
@@ -283,6 +329,7 @@ Shared:
 - editor decision values
 - final `published_narratives` output
 - final feed/API read path
+- entity / claim / relationship memory concepts
 
 ## Current Polymarket Reference
 
@@ -322,7 +369,7 @@ lightweight provenance back to the editor and research rows.
 
 ## V0 Gap To Remember
 
-FEED.md describes identity memory as the durable center of the final system.
+FEED.md describes entity memory as the durable center of the final system.
 
 The Polymarket V0 cycle intentionally uses provenance only:
 
@@ -330,8 +377,8 @@ The Polymarket V0 cycle intentionally uses provenance only:
 source + area + editor_decision_id + research_ids + primary_topic
 ```
 
-This is enough to prove the source pipeline. Durable identity memory should be
-added after the first source path is understandable and stable.
+This is enough to prove the source publishing pipeline. Durable entity memory
+should be added after the first source path is understandable and stable.
 
 ## New Source Checklist
 
@@ -343,6 +390,7 @@ What raw objects does it watch?
 What makes an observation candidate-worthy?
 What score explains that decision?
 What does the Researcher need to know?
+What entities, claims, and relationships should the source be able to update?
 What tools does research need?
 What does the Editor receive?
 What counts as publish/reject/needs_more_research?
