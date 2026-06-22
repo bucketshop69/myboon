@@ -83,18 +83,30 @@ cd apps/hybrid-expo
 pnpm start
 ```
 
-### Run the Feed V3 pipeline
+### Run the Polymarket collector + researcher
 
 ```bash
 cp packages/collectors/.env.example packages/collectors/.env
 pnpm --dir packages/collectors polymarket:markets-data-engineer
 pnpm --dir packages/collectors polymarket:researcher
-pnpm --dir packages/collectors polymarket:editor
-pnpm --dir packages/collectors polymarket:publisher
 ```
 
-Polymarket markets are the first implemented source connector. The feed design
-is source-agnostic and is meant to support more connectors over time.
+For VPS process mode, set both `POLYMARKET_MARKETS_RUN_ONCE=0` and
+`POLYMARKET_RESEARCHER_RUN_ONCE=0`, then start:
+
+```bash
+pm2 start ecosystem.config.cjs
+```
+
+This production cut intentionally runs only:
+
+```text
+Polymarket data collector -> polymarket_market_candidates
+Polymarket researcher     -> polymarket_market_candidate_research
+```
+
+Editor, publisher, and entity-memory workers are downstream and are not part of
+this collector/researcher rollout.
 
 ---
 

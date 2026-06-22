@@ -1,20 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { fetchPolymarketNativeContext, type PolymarketNativeContext } from './market-context'
 
 const execFileAsync = promisify(execFile)
 
 const SOURCE = 'polymarket'
 const AREA = 'markets'
 const ONE_HOUR_MS = 60 * 60 * 1000
-const DEFAULT_HERMES_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_RETRY_WINDOW_MINUTES = 4 * 60
 const DEFAULT_MAX_RETRY_COUNT = 2
 const DEFAULT_STRUCTURE_ONLY_SCORE_MAX = 55
 const DEFAULT_THIN_VOLUME_24H_MAX = 1_000
 const DEFAULT_THIN_LIQUIDITY_MAX = 1_000
+const DEFAULT_LAST30DAYS_TIMEOUT_MS = 5 * 60 * 1000
 
 export interface PolymarketResearcherOptions {
   now?: string
@@ -28,8 +30,14 @@ export interface PolymarketResearcherOptions {
   backend?: ResearchBackend
   researchModel?: string
   hermesCommand?: string
-  hermesToolsets?: string
-  hermesTimeoutMs?: number
+  researchPlannerHermesToolsets?: string
+  researchPlannerHermesIgnoreRules?: boolean
+  researchPlannerHermesTimeoutMs?: number
+  last30DaysPython?: string
+  last30DaysScript?: string
+  last30DaysTimeoutMs?: number
+  last30DaysWebBackend?: string
+  last30DaysQuick?: boolean
 }
 
 type ResearchBackend = 'hermes_cli'
@@ -95,6 +103,17 @@ interface PriorResearch {
 interface HermesResearchResult {
   candidate_id: string
   research_mode: string
+  market_about?: unknown
+  resolution_rules?: unknown
+  polymarket_context?: unknown
+  external_research?: unknown
+  verified_facts?: unknown
+  unverified_claims?: unknown
+  entities_mentioned?: unknown
+  claims_found?: unknown
+  relationships_found?: unknown
+  open_questions?: unknown
+  research_completeness?: unknown
   summary: string
   notes: string
   key_findings: unknown[]
@@ -107,10 +126,6 @@ interface HermesResearchResult {
   recommended_editor_action?: unknown
 }
 
-interface HermesResearchResponse {
-  results: HermesResearchResult[]
-}
-
 interface ResearchFailure {
   candidate: PendingCandidate
   error: string
@@ -121,6 +136,55 @@ interface ResearchAttempt {
   failures: ResearchFailure[]
 }
 
+interface Last30DaysSubquery {
+  label: string
+  search_query: string
+  ranking_query: string
+  sources: string[]
+  weight: number
+}
+
+interface Last30DaysPlan {
+  intent: string
+  freshness_mode: string
+  cluster_mode: string
+  subqueries: Last30DaysSubquery[]
+}
+
+interface ResearchReflectionPlan {
+  research_goal: string
+  known_from_polymarket: string[]
+  do_not_research: string[]
+  last30days_topic: string
+  lookback_days: number
+  search_sources: string[]
+  subreddits: string[]
+  polymarket_keywords: string[]
+  last30days_plan: Last30DaysPlan
+  evidence_to_collect: string[]
+  expected_entities: string[]
+  notes: string
+}
+
+interface ResearchBrief {
+  research_goal: string
+  last30days_topic: string
+  lookback_days: number
+  search_sources: string[]
+  subreddits: string[]
+  polymarket_keywords: string[]
+  last30days_plan: Last30DaysPlan
+  evidence_to_collect: string[]
+  expected_entities: string[]
+  notes: string
+}
+
+interface PlannerResult {
+  plan: ResearchReflectionPlan
+  raw: string
+  error: string | null
+}
+
 interface TriageDecision {
   candidate: PendingCandidate
   depth: ResearchDepth
@@ -128,6 +192,11 @@ interface TriageDecision {
   clusterKey: string
   prior?: PriorResearch
   reason: string
+}
+
+interface EnrichedTriageDecision extends TriageDecision {
+  polymarketNativeContext?: PolymarketNativeContext
+  polymarketNativeContextError?: string
 }
 
 interface ResearchRowInput {
@@ -200,6 +269,12 @@ function envString(name: string, fallback: string): string {
   return value ? value : fallback
 }
 
+function envBoolean(name: string, fallback: boolean): boolean {
+  const value = process.env[name]?.trim().toLowerCase()
+  if (!value) return fallback
+  return ['1', 'true', 'yes', 'on'].includes(value)
+}
+
 function selectedBackend(partial?: ResearchBackend): ResearchBackend {
   const envBackend = process.env.POLYMARKET_RESEARCHER_BACKEND
   const backend = partial ?? envBackend ?? 'hermes_cli'
@@ -220,8 +295,14 @@ function selectedOptions(partial: PolymarketResearcherOptions): Required<Polymar
     backend: selectedBackend(partial.backend),
     researchModel: partial.researchModel ?? envString('POLYMARKET_RESEARCHER_MODEL', 'hermes_cli'),
     hermesCommand: partial.hermesCommand ?? envString('POLYMARKET_RESEARCHER_HERMES_COMMAND', 'hermes'),
-    hermesToolsets: partial.hermesToolsets ?? envString('POLYMARKET_RESEARCHER_HERMES_TOOLSETS', 'web'),
-    hermesTimeoutMs: partial.hermesTimeoutMs ?? envNumber('POLYMARKET_RESEARCHER_HERMES_TIMEOUT_MS', DEFAULT_HERMES_TIMEOUT_MS),
+    researchPlannerHermesToolsets: partial.researchPlannerHermesToolsets ?? envString('POLYMARKET_RESEARCH_PLANNER_HERMES_TOOLSETS', ''),
+    researchPlannerHermesIgnoreRules: partial.researchPlannerHermesIgnoreRules ?? envBoolean('POLYMARKET_RESEARCH_PLANNER_HERMES_IGNORE_RULES', true),
+    researchPlannerHermesTimeoutMs: partial.researchPlannerHermesTimeoutMs ?? envNumber('POLYMARKET_RESEARCH_PLANNER_HERMES_TIMEOUT_MS', 60_000),
+    last30DaysPython: partial.last30DaysPython ?? envString('LAST30DAYS_PYTHON', envString('POLYMARKET_LAST30DAYS_PYTHON', 'python3.12')),
+    last30DaysScript: partial.last30DaysScript ?? envString('LAST30DAYS_SCRIPT_PATH', envString('POLYMARKET_LAST30DAYS_SCRIPT_PATH', `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`)),
+    last30DaysTimeoutMs: partial.last30DaysTimeoutMs ?? envNumber('POLYMARKET_LAST30DAYS_TIMEOUT_MS', DEFAULT_LAST30DAYS_TIMEOUT_MS),
+    last30DaysWebBackend: partial.last30DaysWebBackend ?? envString('POLYMARKET_LAST30DAYS_WEB_BACKEND', 'auto'),
+    last30DaysQuick: partial.last30DaysQuick ?? envBoolean('POLYMARKET_LAST30DAYS_QUICK', false),
   }
 }
 
@@ -257,6 +338,31 @@ function normalizeEvidenceQuality(value: unknown): EvidenceQuality {
 
 function normalizeRecommendedEditorAction(value: unknown): RecommendedEditorAction {
   return normalizeStringOption(value, ['publish_candidate', 'reject_thin', 'needs_more_research'] as const, 'needs_more_research')
+}
+
+function compatibilityEvidenceQuality(value: unknown): EvidenceQuality {
+  const normalized = asString(value).toLowerCase().trim()
+  if (normalized === 'complete') return 'strong'
+  if (normalized === 'blocked') return 'weak'
+  if (normalized === 'partial') return 'medium'
+  return normalizeEvidenceQuality(value)
+}
+
+function researchPacketForResult(result: HermesResearchResult): Record<string, unknown> {
+  return {
+    kind: 'research_packet',
+    market_about: result.market_about ?? null,
+    resolution_rules: result.resolution_rules ?? null,
+    polymarket_context: result.polymarket_context ?? null,
+    external_research: result.external_research ?? null,
+    verified_facts: asArray(result.verified_facts),
+    unverified_claims: asArray(result.unverified_claims),
+    entities_mentioned: asArray(result.entities_mentioned),
+    claims_found: asArray(result.claims_found),
+    relationships_found: asArray(result.relationships_found),
+    open_questions: asArray(result.open_questions),
+    research_completeness: asString(result.research_completeness, 'partial'),
+  }
 }
 
 function extractJson<T>(text: string): T | null {
@@ -506,10 +612,6 @@ async function updateFailedCandidate(
   })
 }
 
-async function loadStablePrompt(): Promise<string> {
-  return readFile(join(__dirname, 'researcher-prompt.md'), 'utf8')
-}
-
 function metricValue(candidate: PendingCandidate, keys: string[]): number | null {
   if (!candidate.metrics || typeof candidate.metrics !== 'object') return null
   const metrics = candidate.metrics as Record<string, unknown>
@@ -675,23 +777,75 @@ function buildMarketStructureRow(decision: TriageDecision, observedAt: string, o
   }
 }
 
-function buildHermesPrompt(decisions: TriageDecision[], priorResearch: { bySlug: Map<string, PriorResearch[]> }): string {
-  const priorBySlug = Object.fromEntries(
-    decisions.map(({ candidate }) => [
-      candidate.slug,
-      (priorResearch.bySlug.get(candidate.slug) ?? []).slice(0, 3),
-    ])
-  )
+function sourceNativeFallbackQuestions(candidate: PendingCandidate): string[] {
+  return [
+    `What is the market "${candidate.title}" about in plain terms?`,
+    'What are the exact resolution rules and resolution source from Polymarket?',
+    'Are there deadline/date inconsistencies between title, rule text, end date, and event group?',
+    'What sibling markets exist in the same parent event, and do they form a date ladder or related outcome set?',
+    'What does Polymarket-native structure show: price, liquidity, volume, 24h activity, and freshness?',
+    'Based only on Polymarket-native data, what is known, what is unknown, and what external research is needed?',
+  ]
+}
 
-  const payload = {
-    candidates: decisions.map(({ candidate, familyKey, clusterKey }) => ({
+function compactContext(context: PolymarketNativeContext): Record<string, unknown> {
+  return {
+    source_url: context.source_url,
+    market: context.market,
+    market_structure: context.market_structure,
+    parent_event: context.parent_event,
+    sibling_markets: context.sibling_markets,
+  }
+}
+
+function buildPlannerPrompt(context: PolymarketNativeContext, candidate: PendingCandidate): string {
+  return [
+    'You are the myboon Polymarket Research Planner.',
+    '',
+    'Your job is not to do research. Your job is to create the best focused research brief for the next worker.',
+    '',
+    'You receive source-native Polymarket context and the candidate observation that triggered research.',
+    'Do not ask the next worker to research facts already present in Polymarket-native context.',
+    'Ask only for missing external context that could explain why traders may have repriced this market.',
+    'The next worker will only receive your research brief, not the full Polymarket context.',
+    '',
+    'Return strict JSON only. No markdown.',
+    '',
+    'JSON shape:',
+    JSON.stringify({
+      research_goal: 'What changed in the last 30 days that could explain the market sentiment or price move?',
+      known_from_polymarket: ['facts already known from source-native context'],
+      do_not_research: ['Polymarket rules already supplied', 'current odds already supplied'],
+      last30days_topic: 'short topic string for last30days.py',
+      lookback_days: 30,
+      search_sources: ['reddit', 'grounding', 'polymarket'],
+      subreddits: ['relevant', 'subreddits'],
+      polymarket_keywords: ['keywords'],
+      last30days_plan: {
+        intent: 'prediction | breaking_news | concept',
+        freshness_mode: 'strict_recent | balanced_recent | evergreen_ok',
+        cluster_mode: 'story | market | none',
+        subqueries: [
+          {
+            label: 'short_label',
+            search_query: 'keyword-heavy query, no temporal phrases',
+            ranking_query: 'natural-language question the research should answer',
+            sources: ['reddit', 'grounding', 'polymarket'],
+            weight: 1,
+          },
+        ],
+      },
+      evidence_to_collect: ['specific evidence types to collect'],
+      expected_entities: ['entities likely relevant for Entity Memory'],
+      notes: 'short instruction to the researcher',
+    }, null, 2),
+    '',
+    'Candidate observation:',
+    JSON.stringify({
       id: candidate.id,
       candidate_type: candidate.candidate_type,
       slug: candidate.slug,
       title: candidate.title,
-      research_depth: 'deep_web',
-      research_family_key: familyKey,
-      research_cluster_key: clusterKey,
       tag_slug: candidate.tag_slug,
       tag_label: candidate.tag_label,
       observed_at: candidate.observed_at,
@@ -700,112 +854,563 @@ function buildHermesPrompt(decisions: TriageDecision[], priorResearch: { bySlug:
       score: candidate.score,
       score_breakdown: candidate.score_breakdown,
       metrics: candidate.metrics,
-      evidence_refs: candidate.evidence_refs,
-    })),
-    prior_research_by_slug: priorBySlug,
-  }
-
-  return [
-    '## Stable Instructions',
-    '{{STABLE_PROMPT}}',
-    '',
-    '## Dynamic Research Batch',
-    'Research the following Polymarket market candidates.',
-    '',
-    'Use the batch to understand nearby context, but return one result per candidate.',
-    '',
-    'Return strict JSON in this exact shape:',
-    JSON.stringify({
-      results: [
-        {
-          candidate_id: 'candidate uuid',
-          research_mode: 'geopolitical_risk | macro_crypto | commodity_spillover | business_event | political_churn | market_structure',
-          summary: 'short editor-facing summary of what research found',
-          notes: 'concise research notes; no final feed copy',
-          key_findings: ['finding 1', 'finding 2'],
-          evidence_links: [{ title: 'source title', url: 'https://...', note: 'why it matters' }],
-          related_context: ['nearby market, asset, theme, or caveat'],
-          uncertainty: 'what is unknown or weak',
-          editor_notes: 'what the Editor should inspect or be careful about',
-          evidence_quality: 'strong | medium | weak',
-          catalyst_found: true,
-          recommended_editor_action: 'publish_candidate | reject_thin | needs_more_research',
-        },
-      ],
     }, null, 2),
     '',
-    'Batch payload:',
-    JSON.stringify(payload, null, 2),
+    'Polymarket-native context:',
+    JSON.stringify(compactContext(context), null, 2),
   ].join('\n')
 }
 
-async function runHermesResearch(prompt: string, options: Required<PolymarketResearcherOptions>): Promise<HermesResearchResponse> {
-  const stablePrompt = await loadStablePrompt()
-  const fullPrompt = prompt.replace('{{STABLE_PROMPT}}', stablePrompt)
-  const args = options.hermesToolsets
-    ? ['-t', options.hermesToolsets, '-z', fullPrompt]
-    : ['-z', fullPrompt]
-  const { stdout, stderr } = await execFileAsync(
-    options.hermesCommand,
-    args,
-    {
-      timeout: options.hermesTimeoutMs,
-      maxBuffer: 10 * 1024 * 1024,
-      env: { ...process.env },
-    }
-  )
+function asStringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback
+  const items = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+  return items.length > 0 ? items : fallback
+}
 
-  const parsed = extractJson<HermesResearchResponse>(stdout)
-  if (!parsed || !Array.isArray(parsed.results)) {
-    throw new Error(`Hermes returned invalid JSON. stderr=${stderr.slice(0, 500)} stdout=${stdout.slice(0, 1000)}`)
+function fallbackReflectionPlan(context: PolymarketNativeContext, candidate: PendingCandidate): ResearchReflectionPlan {
+  const title = context.market.title || candidate.title
+  const text = [context.market.slug, title, context.parent_event?.title, candidate.tag_slug, candidate.tag_label].join(' ').toLowerCase()
+  const isFed = /\bfed\b|\bfomc\b|federal reserve|interest rate|rates?|bps|basis point|inflation|cpi|jobs|powell/.test(text)
+  const isPolitics = /\bstarmer\b|\blabou?r\b|\buk\b|\bprime minister\b|\belection\b|\bresign|\bgovernment\b|\bparliament\b/.test(text)
+
+  if (isFed) {
+    return {
+      research_goal: 'Find what changed in the last 30 days that could explain higher Fed hike, cut, or no-change sentiment for this market.',
+      known_from_polymarket: [
+        title,
+        `Current Yes price: ${context.market_structure.yes_price ?? 'unknown'}`,
+        `Parent event: ${context.parent_event?.title ?? 'unknown'}`,
+      ],
+      do_not_research: ['Market title/rules/resolution mechanics', 'Current Polymarket odds already supplied'],
+      last30days_topic: 'Fed rate decision sentiment change',
+      lookback_days: 30,
+      search_sources: ['reddit', 'grounding', 'polymarket'],
+      subreddits: ['FedWatch', 'Economics', 'finance', 'investing', 'wallstreetbets', 'Bogleheads', 'macro', 'stocks'],
+      polymarket_keywords: ['fed', 'fomc', 'hike', 'cut', 'inflation', 'rates'],
+      last30days_plan: {
+        intent: 'prediction',
+        freshness_mode: 'strict_recent',
+        cluster_mode: 'story',
+        subqueries: [
+          {
+            label: 'market_sentiment_change',
+            search_query: 'Fed rate decision odds inflation yields labor market pricing',
+            ranking_query: 'What changed in markets or macro data over the last 30 days that could explain the current Fed decision sentiment?',
+            sources: ['reddit', 'grounding', 'polymarket'],
+            weight: 1,
+          },
+          {
+            label: 'inflation_repricing',
+            search_query: 'inflation expectations Treasury yields Fed funds pricing',
+            ranking_query: 'Did inflation expectations, Treasury yields, or Fed funds pricing shift in a way that explains the market move?',
+            sources: ['reddit', 'grounding'],
+            weight: 0.9,
+          },
+        ],
+      },
+      evidence_to_collect: ['Fed/FOMC communication', 'inflation data', 'Treasury yield or rate-pricing repricing', 'related Polymarket rate markets'],
+      expected_entities: ['Federal Reserve', 'FOMC', 'Fed funds rate', 'US inflation', 'Treasury yields'],
+      notes: 'Research the cause of sentiment change, not whether Polymarket is correct.',
+    }
   }
 
-  return parsed
+  if (isPolitics) {
+    return {
+      research_goal: 'Find what changed in the last 30 days in verified political reporting or official activity that could explain this market sentiment.',
+      known_from_polymarket: [title],
+      do_not_research: ['Market title/rules/resolution mechanics', 'Current Polymarket odds already supplied'],
+      last30days_topic: `${title} political context`,
+      lookback_days: 30,
+      search_sources: ['reddit', 'grounding', 'polymarket'],
+      subreddits: ['ukpolitics', 'worldnews', 'politics', 'unitedkingdom'],
+      polymarket_keywords: title.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).slice(0, 8),
+      last30days_plan: {
+        intent: 'prediction',
+        freshness_mode: 'strict_recent',
+        cluster_mode: 'story',
+        subqueries: [
+          {
+            label: 'political_catalyst',
+            search_query: `${title} resignation leadership challenge polling scandal parliament`,
+            ranking_query: 'What recent verified political events or reporting could explain this market sentiment?',
+            sources: ['reddit', 'grounding', 'polymarket'],
+            weight: 1,
+          },
+        ],
+      },
+      evidence_to_collect: ['official statements', 'credible reporting', 'polling', 'parliamentary or party mechanism evidence', 'related market moves'],
+      expected_entities: [],
+      notes: 'Separate verified political facts from trader speculation.',
+    }
+  }
+
+  return {
+    research_goal: 'Find what changed in the last 30 days that could explain this market sentiment or price move.',
+    known_from_polymarket: [title],
+    do_not_research: ['Market title/rules/resolution mechanics', 'Current Polymarket odds already supplied'],
+    last30days_topic: title,
+    lookback_days: 30,
+    search_sources: ['reddit', 'grounding', 'polymarket'],
+    subreddits: ['Polymarket', 'news', 'worldnews'],
+    polymarket_keywords: title.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).slice(0, 6),
+    last30days_plan: {
+      intent: 'prediction',
+      freshness_mode: 'strict_recent',
+      cluster_mode: 'story',
+      subqueries: [
+        {
+          label: 'sentiment_change',
+          search_query: title,
+          ranking_query: 'What changed in the last 30 days that could explain this market sentiment or price move?',
+          sources: ['reddit', 'grounding', 'polymarket'],
+          weight: 1,
+        },
+      ],
+    },
+    evidence_to_collect: ['current reporting', 'related market moves', 'credible source links'],
+    expected_entities: [],
+    notes: 'Research the external cause of sentiment change.',
+  }
+}
+
+function normalizeReflectionPlan(value: Partial<ResearchReflectionPlan> | null, context: PolymarketNativeContext, candidate: PendingCandidate): ResearchReflectionPlan {
+  const fallback = fallbackReflectionPlan(context, candidate)
+  const rawPlan = value?.last30days_plan
+  const rawSubqueries = Array.isArray(rawPlan?.subqueries) && rawPlan.subqueries.length > 0
+    ? rawPlan.subqueries
+    : fallback.last30days_plan.subqueries
+  const subqueries = rawSubqueries
+    .map((item, index) => ({
+      label: typeof item.label === 'string' && item.label ? item.label : `query_${index + 1}`,
+      search_query: typeof item.search_query === 'string' && item.search_query ? item.search_query : fallback.last30days_topic,
+      ranking_query: typeof item.ranking_query === 'string' && item.ranking_query ? item.ranking_query : fallback.research_goal,
+      sources: asStringArray(item.sources, fallback.search_sources),
+      weight: typeof item.weight === 'number' && Number.isFinite(item.weight) ? item.weight : 1,
+    }))
+    .slice(0, 4)
+
+  return {
+    research_goal: typeof value?.research_goal === 'string' && value.research_goal ? value.research_goal : fallback.research_goal,
+    known_from_polymarket: asStringArray(value?.known_from_polymarket, fallback.known_from_polymarket),
+    do_not_research: asStringArray(value?.do_not_research, fallback.do_not_research),
+    last30days_topic: typeof value?.last30days_topic === 'string' && value.last30days_topic ? value.last30days_topic : fallback.last30days_topic,
+    lookback_days: typeof value?.lookback_days === 'number' && Number.isFinite(value.lookback_days) ? Math.max(1, Math.min(90, Math.round(value.lookback_days))) : fallback.lookback_days,
+    search_sources: asStringArray(value?.search_sources, fallback.search_sources),
+    subreddits: asStringArray(value?.subreddits, fallback.subreddits),
+    polymarket_keywords: asStringArray(value?.polymarket_keywords, fallback.polymarket_keywords),
+    last30days_plan: {
+      intent: typeof rawPlan?.intent === 'string' && rawPlan.intent ? rawPlan.intent : fallback.last30days_plan.intent,
+      freshness_mode: typeof rawPlan?.freshness_mode === 'string' && rawPlan.freshness_mode ? rawPlan.freshness_mode : fallback.last30days_plan.freshness_mode,
+      cluster_mode: typeof rawPlan?.cluster_mode === 'string' && rawPlan.cluster_mode ? rawPlan.cluster_mode : fallback.last30days_plan.cluster_mode,
+      subqueries,
+    },
+    evidence_to_collect: asStringArray(value?.evidence_to_collect, fallback.evidence_to_collect),
+    expected_entities: asStringArray(value?.expected_entities, fallback.expected_entities),
+    notes: typeof value?.notes === 'string' ? value.notes : fallback.notes,
+  }
+}
+
+function buildResearchBrief(plan: ResearchReflectionPlan): ResearchBrief {
+  return {
+    research_goal: plan.research_goal,
+    last30days_topic: plan.last30days_topic,
+    lookback_days: plan.lookback_days,
+    search_sources: plan.search_sources,
+    subreddits: plan.subreddits,
+    polymarket_keywords: plan.polymarket_keywords,
+    last30days_plan: plan.last30days_plan,
+    evidence_to_collect: plan.evidence_to_collect,
+    expected_entities: plan.expected_entities,
+    notes: plan.notes,
+  }
+}
+
+async function runHermesPlanner(
+  context: PolymarketNativeContext,
+  candidate: PendingCandidate,
+  options: Required<PolymarketResearcherOptions>
+): Promise<PlannerResult> {
+  const prompt = buildPlannerPrompt(context, candidate)
+  const args = options.researchPlannerHermesIgnoreRules ? ['--ignore-rules'] : []
+  args.push(...(options.researchPlannerHermesToolsets
+    ? ['-t', options.researchPlannerHermesToolsets, '-z', prompt]
+    : ['-z', prompt]))
+
+  try {
+    const { stdout } = await execFileAsync(options.hermesCommand, args, {
+      timeout: options.researchPlannerHermesTimeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+      env: { ...process.env },
+    })
+    const parsed = extractJson<Partial<ResearchReflectionPlan>>(stdout)
+    return {
+      plan: normalizeReflectionPlan(parsed, context, candidate),
+      raw: stdout.trim(),
+      error: parsed ? null : 'Hermes planner returned non-JSON output; normalized with fallback fields.',
+    }
+  } catch (error) {
+    return {
+      plan: fallbackReflectionPlan(context, candidate),
+      raw: '',
+      error: error instanceof Error ? error.message.replace(/\s+/g, ' ').slice(0, 800) : String(error).slice(0, 800),
+    }
+  }
+}
+
+function last30DaysArgs(brief: ResearchBrief, planPath: string, options: Required<PolymarketResearcherOptions>): string[] {
+  const args = [
+    options.last30DaysScript,
+    brief.last30days_topic,
+    '--emit=json',
+    `--days=${brief.lookback_days}`,
+    `--search=${brief.search_sources.join(',')}`,
+    '--plan',
+    planPath,
+    `--subreddits=${brief.subreddits.join(',')}`,
+    `--web-backend=${options.last30DaysWebBackend}`,
+  ]
+  if (options.last30DaysQuick) args.push('--quick')
+  if (brief.polymarket_keywords.length > 0) args.push(`--polymarket-keywords=${brief.polymarket_keywords.join(',')}`)
+  return args
+}
+
+function last30DaysPlanPayload(brief: ResearchBrief): Record<string, unknown> {
+  const evidenceInstruction = brief.evidence_to_collect.length > 0
+    ? `Prioritize evidence types: ${brief.evidence_to_collect.join('; ')}.`
+    : ''
+  const entityInstruction = brief.expected_entities.length > 0
+    ? `Planner entity hints for retrieval only, not observed mentions: ${brief.expected_entities.join(', ')}.`
+    : ''
+  const notes = [
+    `Research goal: ${brief.research_goal}`,
+    brief.notes,
+    evidenceInstruction,
+    entityInstruction,
+  ].filter(Boolean)
+
+  return {
+    ...brief.last30days_plan,
+    notes,
+    subqueries: brief.last30days_plan.subqueries.map((query) => ({
+      ...query,
+      ranking_query: [
+        query.ranking_query,
+        `Research goal: ${brief.research_goal}`,
+        evidenceInstruction,
+      ].filter(Boolean).join(' '),
+    })),
+  }
+}
+
+async function runLast30Days(brief: ResearchBrief, options: Required<PolymarketResearcherOptions>): Promise<{ report: Record<string, unknown>, stderr: string, args: string[] }> {
+  const dir = await mkdtemp(join(tmpdir(), 'myboon-last30days-'))
+  const planPath = join(dir, 'plan.json')
+  try {
+    await writeFile(planPath, JSON.stringify(last30DaysPlanPayload(brief), null, 2))
+    const args = last30DaysArgs(brief, planPath, options)
+    const { stdout, stderr } = await execFileAsync(options.last30DaysPython, args, {
+      timeout: options.last30DaysTimeoutMs,
+      maxBuffer: 20 * 1024 * 1024,
+      env: {
+        ...process.env,
+        LAST30DAYS_PYTHON: options.last30DaysPython,
+      },
+    })
+    const parsed = extractJson<Record<string, unknown>>(stdout)
+    if (!parsed) throw new Error(`last30days returned invalid JSON. stderr=${stderr.slice(0, 500)} stdout=${stdout.slice(0, 1000)}`)
+    return { report: parsed, stderr: stderr.trim(), args }
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+function researchModeForCandidate(candidate: PendingCandidate): string {
+  const text = [candidate.slug, candidate.title, candidate.tag_slug, candidate.tag_label].filter(Boolean).join(' ').toLowerCase()
+  if (/\bfed\b|\bfomc\b|federal reserve|interest rate|rates?|bps|basis point|inflation|cpi|jobs|powell|bitcoin|ethereum|crypto/.test(text)) return 'macro_crypto'
+  if (/\belection\b|\bresign|\bprime minister\b|\bparliament\b|\bgovernment\b|\bstarmer\b|\blabou?r\b/.test(text)) return 'political_churn'
+  if (/\boil\b|\bgold\b|\benergy\b|\bwar\b|\bceasefire\b|\bgeopolitical\b/.test(text)) return 'geopolitical_risk'
+  if (/\bearnings\b|\bcompany\b|\bceo\b|\bbusiness\b/.test(text)) return 'business_event'
+  return 'other'
+}
+
+function rankedCandidates(report: Record<string, unknown>, limit: number): Record<string, unknown>[] {
+  return asArray(report.ranked_candidates)
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    .slice(0, limit)
+}
+
+function evidenceLinksFromLast30Days(report: Record<string, unknown>): Array<{ title: string, url: string, note: string, source?: string }> {
+  const seen = new Set<string>()
+  return rankedCandidates(report, 12).flatMap((item) => {
+    const title = asString(item.title, 'Research evidence')
+    const url = asString(item.url)
+    if (!url || seen.has(url)) return []
+    seen.add(url)
+    return [{
+      title,
+      url,
+      note: [asString(item.source), asString(item.snippet), asString(item.explanation)].filter(Boolean).join(' - '),
+      source: asString(item.source) || undefined,
+    }]
+  })
+}
+
+function sourceCounts(report: Record<string, unknown>): Record<string, number> {
+  if (!report.items_by_source || typeof report.items_by_source !== 'object') return {}
+  return Object.fromEntries(
+    Object.entries(report.items_by_source as Record<string, unknown>)
+      .map(([source, rows]) => [source, Array.isArray(rows) ? rows.length : 0])
+  )
+}
+
+function boundedMetadata(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null
+  const metadata = value as Record<string, unknown>
+  const allowed = [
+    'author',
+    'comment_count',
+    'comments',
+    'end_date',
+    'num_comments',
+    'outcome_prices',
+    'outcomes_remaining',
+    'published_at',
+    'provenance',
+    'question',
+    'score',
+    'subreddit',
+  ]
+  return Object.fromEntries(
+    allowed
+      .filter((key) => key in metadata)
+      .map((key) => [key, metadata[key]])
+  )
+}
+
+function boundedSourceItems(item: Record<string, unknown>, limit = 3): unknown[] {
+  return asArray(item.source_items)
+    .filter((sourceItem): sourceItem is Record<string, unknown> => Boolean(sourceItem && typeof sourceItem === 'object'))
+    .slice(0, limit)
+    .map((sourceItem) => ({
+      title: sourceItem.title,
+      url: sourceItem.url,
+      source: sourceItem.source,
+      container: sourceItem.container,
+      published_at: sourceItem.published_at,
+      engagement: sourceItem.engagement,
+      snippet: sourceItem.snippet,
+      metadata: boundedMetadata(sourceItem.metadata),
+      why_relevant: sourceItem.why_relevant,
+    }))
+}
+
+function boundedRankedCandidate(item: Record<string, unknown>): Record<string, unknown> {
+  return {
+    title: item.title,
+    url: item.url,
+    source: item.source,
+    snippet: item.snippet,
+    explanation: item.explanation,
+    final_score: item.final_score,
+    freshness: item.freshness,
+    engagement: item.engagement,
+    local_relevance: item.local_relevance,
+    subquery_labels: item.subquery_labels,
+    metadata: item.metadata,
+    source_items: boundedSourceItems(item),
+  }
+}
+
+function boundedClusters(report: Record<string, unknown>, limit = 5): unknown[] {
+  return asArray(report.clusters)
+    .filter((cluster): cluster is Record<string, unknown> => Boolean(cluster && typeof cluster === 'object'))
+    .slice(0, limit)
+    .map((cluster) => ({
+      cluster_id: cluster.cluster_id,
+      title: cluster.title,
+      score: cluster.score,
+      sources: cluster.sources,
+      uncertainty: cluster.uncertainty,
+      candidate_ids: cluster.candidate_ids,
+      representative_ids: cluster.representative_ids,
+    }))
+}
+
+function last30DaysReportExcerpt(report: Record<string, unknown>): Record<string, unknown> {
+  return {
+    topic: report.topic,
+    generated_at: report.generated_at,
+    range_from: report.range_from,
+    range_to: report.range_to,
+    query_plan: report.query_plan,
+    provider_runtime: report.provider_runtime,
+    source_counts: sourceCounts(report),
+    warnings: report.warnings,
+    errors_by_source: report.errors_by_source,
+    artifacts: report.artifacts,
+    clusters: boundedClusters(report),
+    ranked_candidates: rankedCandidates(report, 8).map(boundedRankedCandidate),
+  }
+}
+
+function last30DaysToResearchResult(
+  decision: EnrichedTriageDecision,
+  planner: PlannerResult,
+  brief: ResearchBrief,
+  report: Record<string, unknown>,
+  stderr: string,
+  args: string[]
+): HermesResearchResult {
+  const candidate = decision.candidate
+  const context = decision.polymarketNativeContext
+  const top = rankedCandidates(report, 8)
+  const evidenceLinks = evidenceLinksFromLast30Days(report)
+  const findings = top.map((item, index) => [
+    `${index + 1}. ${asString(item.title, 'Untitled evidence')}`,
+    asString(item.source) ? `source=${asString(item.source)}` : '',
+    asString(item.snippet),
+  ].filter(Boolean).join(' - '))
+  const warnings = asArray(report.warnings).map(String)
+  const errorsBySource = report.errors_by_source && typeof report.errors_by_source === 'object'
+    ? Object.entries(report.errors_by_source as Record<string, unknown>).map(([source, error]) => `${source}: ${String(error)}`)
+    : []
+  const searchFailures = [...warnings, ...errorsBySource].filter(Boolean)
+  const completeness = evidenceLinks.length >= 3 ? 'complete' : evidenceLinks.length > 0 ? 'partial' : 'blocked'
+  const quality: EvidenceQuality = evidenceLinks.length >= 3 ? 'strong' : evidenceLinks.length > 0 ? 'medium' : 'weak'
+
+  return {
+    candidate_id: candidate.id,
+    research_mode: researchModeForCandidate(candidate),
+    market_about: context?.market.title ?? candidate.title,
+    resolution_rules: {
+      condition: context?.market.description ?? null,
+      deadline: context?.market.end_date ?? null,
+      resolution_source: context?.market.resolution_source ?? null,
+      rule_notes: context?.source_native_questions ?? sourceNativeFallbackQuestions(candidate),
+    },
+    polymarket_context: context ? {
+      source_native_context: compactContext(context),
+      market_structure_summary: context.market_structure,
+      parent_event_summary: context.parent_event,
+      source_native_findings: planner.plan.known_from_polymarket,
+      source_native_do_not_research: planner.plan.do_not_research,
+    } : null,
+    external_research: {
+      needed: true,
+      why: brief.research_goal,
+      questions: brief.last30days_plan.subqueries.map((query) => query.ranking_query),
+      sources_checked: evidenceLinks,
+      search_failures: searchFailures,
+      last30days_topic: brief.last30days_topic,
+      last30days_sources: brief.search_sources,
+      source_counts: sourceCounts(report),
+      command_args: args,
+      diagnostics: {
+        stderr: stderr ? stderr.slice(0, 2000) : null,
+      },
+      planner_error: planner.error,
+      planner_expected_entities: brief.expected_entities,
+    },
+    verified_facts: findings,
+    unverified_claims: [],
+    entities_mentioned: [],
+    claims_found: findings,
+    relationships_found: [],
+    open_questions: evidenceLinks.length === 0
+      ? ['last30days did not return usable evidence for the research brief.']
+      : [],
+    research_completeness: completeness,
+    summary: [
+      brief.research_goal,
+      evidenceLinks.length > 0
+        ? `last30days returned ${evidenceLinks.length} evidence link(s). Top signal: ${asString(top[0]?.title, 'unknown')}.`
+        : 'last30days did not return usable evidence links.',
+    ].join(' '),
+    notes: [
+      `Research brief: ${brief.research_goal}`,
+      `Planner notes: ${brief.notes}`,
+      `Evidence to collect: ${brief.evidence_to_collect.join('; ')}`,
+      `Subqueries: ${brief.last30days_plan.subqueries.map((query) => `${query.label}: ${query.search_query}`).join(' | ')}`,
+      planner.error ? `Planner fallback/error: ${planner.error}` : '',
+    ].filter(Boolean).join('\n'),
+    key_findings: findings,
+    evidence_links: evidenceLinks,
+    related_context: [
+      { kind: 'reflection_research_brief', ...brief },
+      { kind: 'polymarket_source_native_context', context: context ? compactContext(context) : null },
+      { kind: 'last30days_report_excerpt', ...last30DaysReportExcerpt(report) },
+    ],
+    uncertainty: searchFailures.length > 0
+      ? `Research had source limitations: ${searchFailures.slice(0, 3).join(' | ')}`
+      : 'Evidence is limited to the configured last30days sources and ranking output.',
+    editor_notes: 'Research packet only. Entity Manager should extract entities/evidence before any feed/editor decision.',
+    evidence_quality: quality,
+    catalyst_found: evidenceLinks.length > 0,
+    recommended_editor_action: 'needs_more_research',
+  }
 }
 
 function normalizeResearchResult(result: HermesResearchResult): HermesResearchResult {
+  const verifiedFacts = asArray(result.verified_facts)
+  const openQuestions = asArray(result.open_questions)
+  const keyFindings = asArray(result.key_findings)
+  const relatedContext = asArray(result.related_context)
+  const packet = researchPacketForResult(result)
   return {
     candidate_id: asString(result.candidate_id),
     research_mode: asString(result.research_mode, 'market_structure'),
+    market_about: result.market_about,
+    resolution_rules: result.resolution_rules,
+    polymarket_context: result.polymarket_context,
+    external_research: result.external_research,
+    verified_facts: verifiedFacts,
+    unverified_claims: asArray(result.unverified_claims),
+    entities_mentioned: asArray(result.entities_mentioned),
+    claims_found: asArray(result.claims_found),
+    relationships_found: asArray(result.relationships_found),
+    open_questions: openQuestions,
+    research_completeness: asString(result.research_completeness, 'partial'),
     summary: asString(result.summary),
     notes: asString(result.notes),
-    key_findings: asArray(result.key_findings),
+    key_findings: keyFindings.length > 0 ? keyFindings : verifiedFacts,
     evidence_links: asArray(result.evidence_links),
-    related_context: asArray(result.related_context),
+    related_context: [packet, ...relatedContext],
     uncertainty: asString(result.uncertainty),
-    editor_notes: asString(result.editor_notes),
-    evidence_quality: normalizeEvidenceQuality(result.evidence_quality),
+    editor_notes: asString(result.editor_notes) || [
+      openQuestions.length > 0 ? `Open questions: ${openQuestions.map(String).join('; ')}` : '',
+      asString(result.uncertainty),
+    ].filter(Boolean).join('\n'),
+    evidence_quality: compatibilityEvidenceQuality(result.research_completeness ?? result.evidence_quality),
     catalyst_found: asBoolean(result.catalyst_found),
     recommended_editor_action: normalizeRecommendedEditorAction(result.recommended_editor_action),
   }
 }
 
-function normalizeResearchResults(response: HermesResearchResponse): Map<string, HermesResearchResult> {
-  return new Map(
-    response.results
-      .map(normalizeResearchResult)
-      .filter((result) => result.candidate_id && result.summary)
-      .map((result) => [result.candidate_id, result])
-  )
-}
-
 async function researchSingleCandidate(
-  decision: TriageDecision,
-  priorResearch: { bySlug: Map<string, PriorResearch[]> },
+  decision: EnrichedTriageDecision,
   options: Required<PolymarketResearcherOptions>,
   reason: string
 ): Promise<{ result?: HermesResearchResult, failure?: ResearchFailure }> {
   try {
-    const response = await runHermesResearch(buildHermesPrompt([decision], priorResearch), options)
-    const result = normalizeResearchResults(response).get(decision.candidate.id)
-    if (!result) {
+    if (!decision.polymarketNativeContext) {
       return {
         failure: {
           candidate: decision.candidate,
-          error: `Hermes did not return a valid research result for this candidate after ${reason}.`,
+          error: `Polymarket native context unavailable before ${reason}: ${decision.polymarketNativeContextError ?? 'unknown error'}`,
         },
       }
     }
+    const planner = await runHermesPlanner(decision.polymarketNativeContext, decision.candidate, options)
+    const brief = buildResearchBrief(planner.plan)
+    const research = await runLast30Days(brief, options)
+    const result = normalizeResearchResult(last30DaysToResearchResult(
+      decision,
+      planner,
+      brief,
+      research.report,
+      research.stderr,
+      research.args
+    ))
     return { result }
   } catch (error) {
     return {
@@ -818,41 +1423,19 @@ async function researchSingleCandidate(
 }
 
 async function researchCandidatesWithFallback(
-  decisions: TriageDecision[],
-  priorResearch: { bySlug: Map<string, PriorResearch[]> },
+  decisions: EnrichedTriageDecision[],
   options: Required<PolymarketResearcherOptions>
 ): Promise<ResearchAttempt> {
-  try {
-    const response = await runHermesResearch(buildHermesPrompt(decisions, priorResearch), options)
-    const results = normalizeResearchResults(response)
-    const failures: ResearchFailure[] = []
-    const missing = decisions.filter((decision) => !results.has(decision.candidate.id))
+  const results = new Map<string, HermesResearchResult>()
+  const failures: ResearchFailure[] = []
 
-    for (const decision of missing) {
-      const retry = await researchSingleCandidate(decision, priorResearch, options, 'missing from batch response')
-      if (retry.result) results.set(decision.candidate.id, retry.result)
-      if (retry.failure) failures.push(retry.failure)
-    }
-
-    return { results, failures }
-  } catch (error) {
-    const batchError = error instanceof Error ? error.message : String(error)
-    const results = new Map<string, HermesResearchResult>()
-    const failures: ResearchFailure[] = []
-
-    for (const decision of decisions) {
-      const retry = await researchSingleCandidate(decision, priorResearch, options, 'batch failure')
-      if (retry.result) results.set(decision.candidate.id, retry.result)
-      if (retry.failure) {
-        failures.push({
-          candidate: decision.candidate,
-          error: `${retry.failure.error} Batch error was: ${batchError}`,
-        })
-      }
-    }
-
-    return { results, failures }
+  for (const decision of decisions) {
+    const attempt = await researchSingleCandidate(decision, options, 'reflection research')
+    if (attempt.result) results.set(decision.candidate.id, attempt.result)
+    if (attempt.failure) failures.push(attempt.failure)
   }
+
+  return { results, failures }
 }
 
 async function insertResearchRows(
@@ -910,15 +1493,32 @@ function buildHermesResearchRows(
   })
 }
 
+async function enrichTriageWithPolymarketContext(decisions: TriageDecision[]): Promise<EnrichedTriageDecision[]> {
+  return Promise.all(decisions.map(async (decision) => {
+    try {
+      return {
+        ...decision,
+        polymarketNativeContext: await fetchPolymarketNativeContext(decision.candidate.slug),
+      }
+    } catch (error) {
+      return {
+        ...decision,
+        polymarketNativeContextError: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }))
+}
+
 async function researchDeepWebCandidates(
   decisions: TriageDecision[],
-  priorResearch: { bySlug: Map<string, PriorResearch[]> },
+  _priorResearch: { bySlug: Map<string, PriorResearch[]> },
   options: Required<PolymarketResearcherOptions>
 ): Promise<ResearchAttempt> {
   const results = new Map<string, HermesResearchResult>()
   const failures: ResearchFailure[] = []
-  const byCluster = new Map<string, TriageDecision[]>()
-  for (const decision of decisions) {
+  const enrichedDecisions = await enrichTriageWithPolymarketContext(decisions)
+  const byCluster = new Map<string, EnrichedTriageDecision[]>()
+  for (const decision of enrichedDecisions) {
     const cluster = byCluster.get(decision.clusterKey) ?? []
     cluster.push(decision)
     byCluster.set(decision.clusterKey, cluster)
@@ -926,7 +1526,7 @@ async function researchDeepWebCandidates(
 
   const grouped = [...byCluster.values()].sort((a, b) => b.length - a.length)
   for (const group of grouped) {
-    const attempt = await researchCandidatesWithFallback(group, priorResearch, options)
+    const attempt = await researchCandidatesWithFallback(group, options)
     for (const [id, result] of attempt.results) results.set(id, result)
     failures.push(...attempt.failures)
   }
@@ -1053,6 +1653,9 @@ export const __testing = {
   classifyResearchDepth,
   clusterKeyForCandidate,
   errorKind,
+  last30DaysPlanPayload,
+  last30DaysToResearchResult,
+  normalizeReflectionPlan,
   primaryFamilyKey,
   recentPrior,
   retryCount,

@@ -6,8 +6,7 @@
   "scripts": {
     "polymarket:markets-data-engineer": "tsx src/polymarket/run-markets-data-engineer.ts",
     "polymarket:researcher": "tsx src/polymarket/run-researcher.ts",
-    "polymarket:editor": "tsx src/polymarket/run-editor.ts",
-    "polymarket:publisher": "tsx src/polymarket/run-publisher.ts",
+    "polymarket:doctor": "tsx src/polymarket/run-doctor.ts",
     "world-cup:pre-match": "tsx src/world-cup/run-pre-match.ts",
     "build": "tsc",
     "test:world-cup": "tsx --test src/world-cup/*.test.ts",

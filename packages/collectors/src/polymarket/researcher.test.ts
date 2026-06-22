@@ -15,8 +15,14 @@ const options: Required<PolymarketResearcherOptions> = {
   backend: 'hermes_cli',
   researchModel: 'hermes_cli',
   hermesCommand: 'hermes',
-  hermesToolsets: 'web',
-  hermesTimeoutMs: 600_000,
+  researchPlannerHermesToolsets: '',
+  researchPlannerHermesIgnoreRules: false,
+  researchPlannerHermesTimeoutMs: 60_000,
+  last30DaysPython: 'python3.12',
+  last30DaysScript: '/tmp/last30days.py',
+  last30DaysTimeoutMs: 300_000,
+  last30DaysWebBackend: 'auto',
+  last30DaysQuick: false,
 }
 
 function candidate(overrides: Record<string, unknown> = {}): any {
@@ -147,4 +153,173 @@ test('buildMarketStructureRow recommends rejecting very weak deterministic rows'
 test('retry helpers classify timeout failures and existing retry counts', () => {
   assert.equal(__testing.errorKind('Hermes timed out after 600000ms'), 'timeout')
   assert.equal(__testing.retryCount(candidate({ research_retry_count: '1' })), 1)
+})
+
+test('last30days plan payload carries the full research brief into retrieval', () => {
+  const brief: any = {
+    research_goal: 'Find why July Fed hike sentiment changed.',
+    last30days_topic: 'Fed July hike odds',
+    lookback_days: 30,
+    search_sources: ['reddit', 'grounding'],
+    subreddits: ['Economics'],
+    polymarket_keywords: ['fed', 'july'],
+    last30days_plan: {
+      intent: 'prediction',
+      freshness_mode: 'strict_recent',
+      cluster_mode: 'story',
+      subqueries: [{
+        label: 'macro',
+        search_query: 'Fed July hike inflation yields',
+        ranking_query: 'What changed in macro pricing?',
+        sources: ['reddit', 'grounding'],
+        weight: 1,
+      }],
+    },
+    evidence_to_collect: ['Fed communication', 'inflation data'],
+    expected_entities: ['Federal Reserve', 'FOMC'],
+    notes: 'Do not restate market rules.',
+  }
+
+  const payload = __testing.last30DaysPlanPayload(brief)
+
+  assert.ok(Array.isArray(payload.notes))
+  assert.match((payload.notes as string[]).join('\n'), /Find why July Fed hike sentiment changed/)
+  assert.match((payload.notes as string[]).join('\n'), /Fed communication/)
+  assert.match((payload.notes as string[]).join('\n'), /retrieval only, not observed mentions/)
+  assert.match(String((payload.subqueries as any[])[0].ranking_query), /Research goal/)
+  assert.match(String((payload.subqueries as any[])[0].ranking_query), /inflation data/)
+})
+
+test('normalizeReflectionPlan falls back when planner returns empty subqueries', () => {
+  const current = candidate({ title: 'Will Fed hike in July?', slug: 'will-fed-hike-in-july' })
+  const context: any = {
+    source_url: 'https://polymarket.com/event/fed/will-fed-hike-in-july',
+    market: {
+      id: 'market-1',
+      condition_id: 'condition-1',
+      slug: current.slug,
+      title: current.title,
+      description: 'Resolves based on the FOMC target range.',
+      resolution_source: 'FOMC statement',
+      end_date: '2026-07-29',
+      updated_at: '2026-06-22T00:00:00Z',
+    },
+    market_structure: { yes_price: 0.2, volume: 1000, volume_24h: 100, liquidity: 200 },
+    parent_event: { id: 'event-1', slug: 'fed', title: 'Fed Decision', description: null, end_date: '2026-07-29', volume: 5000, volume_24h: 300, liquidity: 800 },
+    sibling_markets: [],
+    source_native_questions: [],
+  }
+
+  const normalized = __testing.normalizeReflectionPlan({
+    research_goal: 'Planner goal',
+    last30days_topic: 'Planner topic',
+    last30days_plan: {
+      intent: 'prediction',
+      freshness_mode: 'strict_recent',
+      cluster_mode: 'story',
+      subqueries: [],
+    },
+  }, context, current)
+
+  assert.ok(normalized.last30days_plan.subqueries.length > 0)
+  assert.equal(normalized.last30days_plan.subqueries[0].label, 'market_sentiment_change')
+})
+
+test('last30days result keeps planner entities as hints and preserves bounded evidence context', () => {
+  const current = candidate({ id: 'candidate-fed', title: 'Will Fed hike in July?' })
+  const context: any = {
+    source_url: 'https://polymarket.com/event/fed/will-fed-hike',
+    market: {
+      id: 'market-1',
+      condition_id: 'condition-1',
+      slug: current.slug,
+      title: current.title,
+      description: 'Resolves based on the FOMC target range.',
+      resolution_source: 'FOMC statement',
+      end_date: '2026-07-29',
+      updated_at: '2026-06-22T00:00:00Z',
+    },
+    market_structure: { yes_price: 0.2, volume: 1000, volume_24h: 100, liquidity: 200 },
+    parent_event: { id: 'event-1', slug: 'fed', title: 'Fed Decision', description: null, end_date: '2026-07-29', volume: 5000, volume_24h: 300, liquidity: 800 },
+    sibling_markets: [{ slug: 'no-change', title: 'No change', yes_price: 0.78, end_date: '2026-07-29', volume: 2000, volume_24h: 100, liquidity: 300 }],
+    source_native_questions: ['What is known from Polymarket?'],
+  }
+  const planner: any = {
+    plan: {
+      known_from_polymarket: ['Current Yes price is known.'],
+      do_not_research: ['Current odds already supplied.'],
+    },
+    raw: '{}',
+    error: null,
+  }
+  const brief: any = {
+    research_goal: 'Find what changed in Fed hike sentiment.',
+    last30days_topic: 'Fed hike sentiment',
+    lookback_days: 30,
+    search_sources: ['reddit'],
+    subreddits: ['Economics'],
+    polymarket_keywords: ['fed'],
+    last30days_plan: { intent: 'prediction', freshness_mode: 'strict_recent', cluster_mode: 'story', subqueries: [] },
+    evidence_to_collect: ['Fed communication'],
+    expected_entities: ['Federal Reserve'],
+    notes: 'Research only.',
+  }
+  const report: any = {
+    topic: 'Fed hike sentiment',
+    generated_at: '2026-06-22T00:00:00Z',
+    range_from: '2026-05-23',
+    range_to: '2026-06-22',
+    query_plan: { notes: 'brief notes' },
+    provider_runtime: { planner_model: 'none' },
+    items_by_source: { reddit: [{ id: 'r1' }] },
+    artifacts: { plan_source: 'provided' },
+    clusters: [{ cluster_id: 'cluster-1', title: 'Fed shift', score: 10, sources: ['reddit'], uncertainty: 'medium', candidate_ids: ['r1'], representative_ids: ['r1'] }],
+    ranked_candidates: [{
+      title: 'Fed officials sound hawkish',
+      url: 'https://example.com/fed',
+      source: 'reddit',
+      snippet: 'Traders discussed hawkish Fed comments.',
+      explanation: 'relevant',
+      final_score: 80,
+      freshness: 90,
+      engagement: 12,
+      local_relevance: 0.8,
+      subquery_labels: ['macro'],
+      metadata: { provenance: [{ source: 'reddit' }] },
+      source_items: [{
+        title: 'Fed officials sound hawkish',
+        url: 'https://example.com/fed',
+        source: 'reddit',
+        container: 'Economics',
+        published_at: '2026-06-20',
+        engagement: { score: 10 },
+        snippet: 'source snippet',
+        metadata: { comments: 2, huge_payload: 'x'.repeat(1000) },
+        why_relevant: 'Fed sentiment',
+      }],
+    }],
+    warnings: [],
+    errors_by_source: {},
+  }
+
+  const result = __testing.last30DaysToResearchResult(
+    { candidate: current, familyKey: 'title:fed', clusterKey: 'polymarket:markets:title:fed', depth: 'deep_web', reason: 'test', polymarketNativeContext: context } as any,
+    planner,
+    brief,
+    report,
+    '[last30days] normal progress diagnostics',
+    ['last30days.py']
+  )
+
+  assert.deepEqual(result.entities_mentioned, [])
+  assert.deepEqual((result.external_research as any).planner_expected_entities, ['Federal Reserve'])
+  assert.deepEqual((result.external_research as any).search_failures, [])
+  assert.equal((result.external_research as any).diagnostics.stderr, '[last30days] normal progress diagnostics')
+  assert.doesNotMatch(result.uncertainty, /source limitations/i)
+  assert.equal((result.polymarket_context as any).source_native_context.source_url, context.source_url)
+  assert.equal((result.polymarket_context as any).source_native_context.sibling_markets[0].slug, 'no-change')
+  const excerpt = (result.related_context as any[]).find((item) => item.kind === 'last30days_report_excerpt')
+  assert.equal(excerpt.ranked_candidates[0].source_items[0].published_at, '2026-06-20')
+  assert.deepEqual(excerpt.ranked_candidates[0].source_items[0].metadata, { comments: 2 })
+  assert.equal(excerpt.clusters[0].title, 'Fed shift')
 })
