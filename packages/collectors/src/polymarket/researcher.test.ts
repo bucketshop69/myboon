@@ -22,7 +22,6 @@ const options: Required<PolymarketResearcherOptions> = {
   last30DaysScript: '/tmp/last30days.py',
   last30DaysTimeoutMs: 300_000,
   last30DaysWebBackend: 'auto',
-  last30DaysQuick: false,
   maxResearchRounds: 2,
   maxCandidateAgeHours: 48,
 }

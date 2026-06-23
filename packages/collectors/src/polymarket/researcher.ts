@@ -11,12 +11,19 @@ const execFileAsync = promisify(execFile)
 const SOURCE = 'polymarket'
 const AREA = 'markets'
 const ONE_HOUR_MS = 60 * 60 * 1000
+const DEFAULT_BATCH_SIZE = 20
+const DEFAULT_SLUG_COOLDOWN_MINUTES = 60
 const DEFAULT_RETRY_WINDOW_MINUTES = 4 * 60
 const DEFAULT_MAX_RETRY_COUNT = 2
 const DEFAULT_STRUCTURE_ONLY_SCORE_MAX = 55
 const DEFAULT_THIN_VOLUME_24H_MAX = 1_000
 const DEFAULT_THIN_LIQUIDITY_MAX = 1_000
+const DEFAULT_HERMES_COMMAND = 'hermes'
+const DEFAULT_RESEARCH_MODEL = 'hermes_cli'
+const DEFAULT_HERMES_TIMEOUT_MS = 60_000
+const DEFAULT_LAST30DAYS_PYTHON = 'python3.12'
 const DEFAULT_LAST30DAYS_TIMEOUT_MS = 5 * 60 * 1000
+const DEFAULT_LAST30DAYS_WEB_BACKEND = 'auto'
 const DEFAULT_MAX_RESEARCH_ROUNDS = 2
 const DEFAULT_MAX_CANDIDATE_AGE_HOURS = 48
 
@@ -39,7 +46,6 @@ export interface PolymarketResearcherOptions {
   last30DaysScript?: string
   last30DaysTimeoutMs?: number
   last30DaysWebBackend?: string
-  last30DaysQuick?: boolean
   maxResearchRounds?: number
   maxCandidateAgeHours?: number
 }
@@ -312,25 +318,8 @@ export interface PolymarketResearcherResult {
   }>
 }
 
-function envNumber(name: string, fallback: number): number {
-  const parsed = Number(process.env[name])
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function envString(name: string, fallback: string): string {
-  const value = process.env[name]?.trim()
-  return value ? value : fallback
-}
-
-function envBoolean(name: string, fallback: boolean): boolean {
-  const value = process.env[name]?.trim().toLowerCase()
-  if (!value) return fallback
-  return ['1', 'true', 'yes', 'on'].includes(value)
-}
-
 function selectedBackend(partial?: ResearchBackend): ResearchBackend {
-  const envBackend = process.env.POLYMARKET_RESEARCHER_BACKEND
-  const backend = partial ?? envBackend ?? 'hermes_cli'
+  const backend = partial ?? 'hermes_cli'
   if (backend !== 'hermes_cli') throw new Error(`Unsupported Polymarket researcher backend: ${backend}`)
   return backend
 }
@@ -338,26 +327,25 @@ function selectedBackend(partial?: ResearchBackend): ResearchBackend {
 function selectedOptions(partial: PolymarketResearcherOptions): Required<PolymarketResearcherOptions> {
   return {
     now: partial.now ?? new Date().toISOString(),
-    batchSize: partial.batchSize ?? envNumber('POLYMARKET_RESEARCHER_BATCH_SIZE', 20),
-    slugCooldownMinutes: partial.slugCooldownMinutes ?? envNumber('POLYMARKET_RESEARCHER_SLUG_COOLDOWN_MINUTES', 60),
-    retryWindowMinutes: partial.retryWindowMinutes ?? envNumber('POLYMARKET_RESEARCHER_RETRY_WINDOW_MINUTES', DEFAULT_RETRY_WINDOW_MINUTES),
-    maxRetryCount: partial.maxRetryCount ?? envNumber('POLYMARKET_RESEARCHER_MAX_RETRY_COUNT', DEFAULT_MAX_RETRY_COUNT),
-    structureOnlyScoreMax: partial.structureOnlyScoreMax ?? envNumber('POLYMARKET_RESEARCHER_STRUCTURE_ONLY_SCORE_MAX', DEFAULT_STRUCTURE_ONLY_SCORE_MAX),
-    thinVolume24hMax: partial.thinVolume24hMax ?? envNumber('POLYMARKET_RESEARCHER_THIN_VOLUME_24H_MAX', DEFAULT_THIN_VOLUME_24H_MAX),
-    thinLiquidityMax: partial.thinLiquidityMax ?? envNumber('POLYMARKET_RESEARCHER_THIN_LIQUIDITY_MAX', DEFAULT_THIN_LIQUIDITY_MAX),
+    batchSize: partial.batchSize ?? DEFAULT_BATCH_SIZE,
+    slugCooldownMinutes: partial.slugCooldownMinutes ?? DEFAULT_SLUG_COOLDOWN_MINUTES,
+    retryWindowMinutes: partial.retryWindowMinutes ?? DEFAULT_RETRY_WINDOW_MINUTES,
+    maxRetryCount: partial.maxRetryCount ?? DEFAULT_MAX_RETRY_COUNT,
+    structureOnlyScoreMax: partial.structureOnlyScoreMax ?? DEFAULT_STRUCTURE_ONLY_SCORE_MAX,
+    thinVolume24hMax: partial.thinVolume24hMax ?? DEFAULT_THIN_VOLUME_24H_MAX,
+    thinLiquidityMax: partial.thinLiquidityMax ?? DEFAULT_THIN_LIQUIDITY_MAX,
     backend: selectedBackend(partial.backend),
-    researchModel: partial.researchModel ?? envString('POLYMARKET_RESEARCHER_MODEL', 'hermes_cli'),
-    hermesCommand: partial.hermesCommand ?? envString('POLYMARKET_RESEARCHER_HERMES_COMMAND', 'hermes'),
-    researchPlannerHermesToolsets: partial.researchPlannerHermesToolsets ?? envString('POLYMARKET_RESEARCH_PLANNER_HERMES_TOOLSETS', ''),
-    researchPlannerHermesIgnoreRules: partial.researchPlannerHermesIgnoreRules ?? envBoolean('POLYMARKET_RESEARCH_PLANNER_HERMES_IGNORE_RULES', true),
-    researchPlannerHermesTimeoutMs: partial.researchPlannerHermesTimeoutMs ?? envNumber('POLYMARKET_RESEARCH_PLANNER_HERMES_TIMEOUT_MS', 60_000),
-    last30DaysPython: partial.last30DaysPython ?? envString('LAST30DAYS_PYTHON', envString('POLYMARKET_LAST30DAYS_PYTHON', 'python3.12')),
-    last30DaysScript: partial.last30DaysScript ?? envString('LAST30DAYS_SCRIPT_PATH', envString('POLYMARKET_LAST30DAYS_SCRIPT_PATH', `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`)),
-    last30DaysTimeoutMs: partial.last30DaysTimeoutMs ?? envNumber('POLYMARKET_LAST30DAYS_TIMEOUT_MS', DEFAULT_LAST30DAYS_TIMEOUT_MS),
-    last30DaysWebBackend: partial.last30DaysWebBackend ?? envString('POLYMARKET_LAST30DAYS_WEB_BACKEND', 'auto'),
-    last30DaysQuick: partial.last30DaysQuick ?? envBoolean('POLYMARKET_LAST30DAYS_QUICK', false),
-    maxResearchRounds: partial.maxResearchRounds ?? Math.max(1, Math.min(3, envNumber('POLYMARKET_RESEARCHER_MAX_RESEARCH_ROUNDS', DEFAULT_MAX_RESEARCH_ROUNDS))),
-    maxCandidateAgeHours: partial.maxCandidateAgeHours ?? envNumber('POLYMARKET_RESEARCHER_MAX_CANDIDATE_AGE_HOURS', DEFAULT_MAX_CANDIDATE_AGE_HOURS),
+    researchModel: partial.researchModel ?? DEFAULT_RESEARCH_MODEL,
+    hermesCommand: partial.hermesCommand ?? DEFAULT_HERMES_COMMAND,
+    researchPlannerHermesToolsets: partial.researchPlannerHermesToolsets ?? '',
+    researchPlannerHermesIgnoreRules: partial.researchPlannerHermesIgnoreRules ?? true,
+    researchPlannerHermesTimeoutMs: partial.researchPlannerHermesTimeoutMs ?? DEFAULT_HERMES_TIMEOUT_MS,
+    last30DaysPython: partial.last30DaysPython ?? DEFAULT_LAST30DAYS_PYTHON,
+    last30DaysScript: partial.last30DaysScript ?? `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`,
+    last30DaysTimeoutMs: partial.last30DaysTimeoutMs ?? DEFAULT_LAST30DAYS_TIMEOUT_MS,
+    last30DaysWebBackend: partial.last30DaysWebBackend ?? DEFAULT_LAST30DAYS_WEB_BACKEND,
+    maxResearchRounds: partial.maxResearchRounds ?? DEFAULT_MAX_RESEARCH_ROUNDS,
+    maxCandidateAgeHours: partial.maxCandidateAgeHours ?? DEFAULT_MAX_CANDIDATE_AGE_HOURS,
   }
 }
 
@@ -1144,7 +1132,6 @@ function last30DaysArgs(brief: ResearchBrief, planPath: string, options: Require
     `--subreddits=${brief.subreddits.join(',')}`,
     `--web-backend=${options.last30DaysWebBackend}`,
   ]
-  if (options.last30DaysQuick) args.push('--quick')
   if (brief.polymarket_keywords.length > 0) args.push(`--polymarket-keywords=${brief.polymarket_keywords.join(',')}`)
   return args
 }

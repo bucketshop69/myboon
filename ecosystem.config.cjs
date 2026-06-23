@@ -48,9 +48,6 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 5000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
-      env: {
-        POLYMARKET_RESEARCHER_RUN_ONCE: '0',
-      },
     },
   ],
 }

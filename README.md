@@ -91,8 +91,8 @@ pnpm --dir packages/collectors polymarket:markets-data-engineer
 pnpm --dir packages/collectors polymarket:researcher
 ```
 
-For VPS process mode, set both `POLYMARKET_MARKETS_RUN_ONCE=0` and
-`POLYMARKET_RESEARCHER_RUN_ONCE=0`, then start:
+For VPS process mode, set `POLYMARKET_MARKETS_RUN_ONCE=0` for the collector,
+then start:
 
 ```bash
 pm2 start ecosystem.config.cjs

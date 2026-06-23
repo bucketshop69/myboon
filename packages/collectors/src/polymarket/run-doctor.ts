@@ -23,11 +23,6 @@ function envString(name: string, fallback = ''): string {
   return value || fallback
 }
 
-function envNumber(name: string, fallback: number): number {
-  const parsed = Number(process.env[name])
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
 function requiredEnv(name: string): CheckResult {
   return {
     name: `env:${name}`,
@@ -57,11 +52,10 @@ async function runCheck(name: string, fn: () => Promise<string>): Promise<CheckR
 }
 
 async function main(): Promise<void> {
-  const hermesCommand = envString('POLYMARKET_RESEARCHER_HERMES_COMMAND', 'hermes')
-  const hermesToolsets = envString('POLYMARKET_RESEARCH_PLANNER_HERMES_TOOLSETS', '')
-  const hermesTimeoutMs = envNumber('POLYMARKET_RESEARCH_PLANNER_HERMES_TIMEOUT_MS', 60_000)
-  const last30DaysPython = envString('LAST30DAYS_PYTHON', envString('POLYMARKET_LAST30DAYS_PYTHON', 'python3.12'))
-  const last30DaysScript = envString('LAST30DAYS_SCRIPT_PATH', envString('POLYMARKET_LAST30DAYS_SCRIPT_PATH', `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`))
+  const hermesCommand = 'hermes'
+  const hermesTimeoutMs = 60_000
+  const last30DaysPython = 'python3.12'
+  const last30DaysScript = `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`
   const slug = envString('POLYMARKET_DOCTOR_SLUG', 'will-the-fed-increase-interest-rates-by-25-bps-after-the-july-2026-meeting')
 
   const results: CheckResult[] = [
@@ -101,7 +95,6 @@ async function main(): Promise<void> {
 
   results.push(await runCheck('hermes:planner_json', async () => {
     const args = ['--ignore-rules']
-    if (hermesToolsets) args.push('-t', hermesToolsets)
     args.push('-z', 'Return strict JSON only: {"ok": true}')
 
     const { stdout } = await checkCommand(

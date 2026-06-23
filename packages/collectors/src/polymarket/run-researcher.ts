@@ -7,12 +7,7 @@ loadEnv()
 import { createClient } from '@supabase/supabase-js'
 import { runPolymarketResearcher } from './researcher'
 
-const DEFAULT_INTERVAL_MS = 2 * 60 * 60 * 1000
-
-function envNumber(name: string, fallback: number): number {
-  const parsed = Number(process.env[name])
-  return Number.isFinite(parsed) ? parsed : fallback
-}
+const RESEARCHER_INTERVAL_MS = 5 * 60 * 1000
 
 function requiredEnv(name: string): string {
   const value = process.env[name]
@@ -33,13 +28,11 @@ async function runOnce(): Promise<void> {
 async function main(): Promise<void> {
   await runOnce()
 
-  if (process.env.POLYMARKET_RESEARCHER_RUN_ONCE === '1') return
-
   setInterval(() => {
     runOnce().catch((err) => {
       console.error('[polymarket-researcher] run failed:', err)
     })
-  }, envNumber('POLYMARKET_RESEARCHER_INTERVAL_MS', DEFAULT_INTERVAL_MS))
+  }, RESEARCHER_INTERVAL_MS)
 }
 
 main().catch((err) => {
