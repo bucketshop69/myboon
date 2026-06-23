@@ -161,6 +161,17 @@ test('candidateObservedAfter limits researcher fetches to recent candidates', ()
   assert.equal(__testing.candidateObservedAfter({ ...options, maxCandidateAgeHours: 0 }), null)
 })
 
+test('defaultLast30DaysScriptPath uses VPS root path and local Codex path', () => {
+  assert.equal(
+    __testing.defaultLast30DaysScriptPath('/root'),
+    '/root/.agents/skills/last30days/scripts/last30days.py'
+  )
+  assert.equal(
+    __testing.defaultLast30DaysScriptPath('/Users/bibhu'),
+    '/Users/bibhu/.codex/skills/last30days/scripts/last30days.py'
+  )
+})
+
 test('last30days plan payload carries the full research brief into retrieval', () => {
   const brief: any = {
     research_goal: 'Find why July Fed hike sentiment changed.',

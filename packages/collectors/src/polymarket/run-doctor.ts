@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { execFile } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { promisify } from 'node:util'
+import { defaultLast30DaysScriptPath } from './researcher'
 import { fetchPolymarketNativeContext } from './market-context'
 
 const execFileAsync = promisify(execFile)
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
   const hermesCommand = 'hermes'
   const hermesTimeoutMs = 60_000
   const last30DaysPython = 'python3.12'
-  const last30DaysScript = `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`
+  const last30DaysScript = defaultLast30DaysScriptPath()
   const slug = envString('POLYMARKET_DOCTOR_SLUG', 'will-the-fed-increase-interest-rates-by-25-bps-after-the-july-2026-meeting')
 
   const results: CheckResult[] = [

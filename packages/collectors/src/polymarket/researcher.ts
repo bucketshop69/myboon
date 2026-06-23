@@ -26,6 +26,7 @@ const DEFAULT_LAST30DAYS_TIMEOUT_MS = 5 * 60 * 1000
 const DEFAULT_LAST30DAYS_WEB_BACKEND = 'auto'
 const DEFAULT_MAX_RESEARCH_ROUNDS = 2
 const DEFAULT_MAX_CANDIDATE_AGE_HOURS = 48
+const VPS_LAST30DAYS_SCRIPT = '/root/.agents/skills/last30days/scripts/last30days.py'
 
 export interface PolymarketResearcherOptions {
   now?: string
@@ -324,6 +325,12 @@ function selectedBackend(partial?: ResearchBackend): ResearchBackend {
   return backend
 }
 
+export function defaultLast30DaysScriptPath(home = process.env.HOME ?? ''): string {
+  return home === '/root'
+    ? VPS_LAST30DAYS_SCRIPT
+    : `${home}/.codex/skills/last30days/scripts/last30days.py`
+}
+
 function selectedOptions(partial: PolymarketResearcherOptions): Required<PolymarketResearcherOptions> {
   return {
     now: partial.now ?? new Date().toISOString(),
@@ -341,7 +348,7 @@ function selectedOptions(partial: PolymarketResearcherOptions): Required<Polymar
     researchPlannerHermesIgnoreRules: partial.researchPlannerHermesIgnoreRules ?? true,
     researchPlannerHermesTimeoutMs: partial.researchPlannerHermesTimeoutMs ?? DEFAULT_HERMES_TIMEOUT_MS,
     last30DaysPython: partial.last30DaysPython ?? DEFAULT_LAST30DAYS_PYTHON,
-    last30DaysScript: partial.last30DaysScript ?? `${process.env.HOME ?? ''}/.codex/skills/last30days/scripts/last30days.py`,
+    last30DaysScript: partial.last30DaysScript ?? defaultLast30DaysScriptPath(),
     last30DaysTimeoutMs: partial.last30DaysTimeoutMs ?? DEFAULT_LAST30DAYS_TIMEOUT_MS,
     last30DaysWebBackend: partial.last30DaysWebBackend ?? DEFAULT_LAST30DAYS_WEB_BACKEND,
     maxResearchRounds: partial.maxResearchRounds ?? DEFAULT_MAX_RESEARCH_ROUNDS,
@@ -2083,6 +2090,7 @@ export const __testing = {
   candidateObservedAfter,
   classifyResearchDepth,
   clusterKeyForCandidate,
+  defaultLast30DaysScriptPath,
   errorKind,
   fallbackEvidenceReview,
   finalizeReviewForRound,
