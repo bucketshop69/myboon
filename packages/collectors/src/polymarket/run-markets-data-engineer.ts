@@ -10,7 +10,7 @@ import {
   runPolymarketMarketsDataEngineer,
 } from './markets-data-engineer'
 
-const DEFAULT_RUN_INTERVAL_MS = 4 * 60 * 60 * 1000
+const DEFAULT_RUN_INTERVAL_MS = 2 * 60 * 60 * 1000
 
 function requiredEnv(name: string): string {
   const value = process.env[name]

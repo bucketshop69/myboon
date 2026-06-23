@@ -36,6 +36,7 @@ module.exports = {
       env: {
         POLYMARKET_MARKETS_RUN_ONCE: '0',
         POLYMARKET_MARKETS_PREVIEW_ONLY: '0',
+        POLYMARKET_MARKETS_RUN_INTERVAL_MS: '7200000',
       },
     },
     {
