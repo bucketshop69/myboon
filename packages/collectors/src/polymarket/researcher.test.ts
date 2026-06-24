@@ -22,7 +22,6 @@ const options: Required<PolymarketResearcherOptions> = {
   last30DaysScript: '/tmp/last30days.py',
   last30DaysTimeoutMs: 300_000,
   last30DaysWebBackend: 'auto',
-  maxResearchRounds: 2,
   maxCandidateAgeHours: 48,
 }
 
@@ -130,7 +129,7 @@ test('buildReusePriorRow preserves prior metadata and links duplicate research i
   assert.equal(research.catalyst_found, true)
 })
 
-test('buildMarketStructureRow recommends rejecting very weak deterministic rows', () => {
+test('buildMarketStructureRow writes neutral market-structure packets', () => {
   const current = candidate({
     score: 30,
     metrics: { oddsDelta: 0.04, currentVolume24h: 100, liquidity: 100 },
@@ -147,8 +146,9 @@ test('buildMarketStructureRow recommends rejecting very weak deterministic rows'
   const research = __testing.buildMarketStructureRow(decision, options.now, options)
 
   assert.equal(research.research_depth, 'market_structure_only')
-  assert.equal(research.evidence_quality, 'weak')
-  assert.equal(research.recommended_editor_action, 'reject_thin')
+  assert.equal(research.evidence_quality, 'medium')
+  assert.equal(research.recommended_editor_action, 'needs_more_research')
+  assert.doesNotMatch(research.editor_notes, /reject/i)
 })
 
 test('retry helpers classify timeout failures and existing retry counts', () => {
@@ -242,6 +242,46 @@ test('normalizeReflectionPlan falls back when planner returns empty subqueries',
   assert.equal(normalized.last30days_plan.subqueries[0].label, 'market_sentiment_change')
 })
 
+test('normalizeReflectionPlan drops unsupported last30days sources', () => {
+  const current = candidate({ title: 'Will Fed hike in July?', slug: 'will-fed-hike-in-july' })
+  const context: any = {
+    source_url: 'https://polymarket.com/event/fed/will-fed-hike-in-july',
+    market: {
+      id: 'market-1',
+      condition_id: 'condition-1',
+      slug: current.slug,
+      title: current.title,
+      description: 'Resolves based on the FOMC target range.',
+      resolution_source: 'FOMC statement',
+      end_date: '2026-07-29',
+      updated_at: '2026-06-22T00:00:00Z',
+    },
+    market_structure: { yes_price: 0.2, volume: 1000, volume_24h: 100, liquidity: 200 },
+    parent_event: null,
+    sibling_markets: [],
+    source_native_questions: [],
+  }
+
+  const normalized = __testing.normalizeReflectionPlan({
+    search_sources: ['reddit', 'x_search', 'grounding'],
+    last30days_plan: {
+      intent: 'prediction',
+      freshness_mode: 'strict_recent',
+      cluster_mode: 'story',
+      subqueries: [{
+        label: 'macro',
+        search_query: 'Fed July hike',
+        ranking_query: 'What changed?',
+        sources: ['x_search', 'grounding'],
+        weight: 1,
+      }],
+    },
+  }, context, current)
+
+  assert.deepEqual(normalized.search_sources, ['reddit', 'grounding'])
+  assert.deepEqual(normalized.last30days_plan.subqueries[0].sources, ['grounding'])
+})
+
 test('last30days result keeps planner entities as hints and preserves bounded evidence context', () => {
   const current = candidate({ id: 'candidate-fed', title: 'Will Fed hike in July?' })
   const context: any = {
@@ -330,150 +370,25 @@ test('last30days result keeps planner entities as hints and preserves bounded ev
 
   assert.deepEqual(result.entities_mentioned, [])
   assert.deepEqual((result.external_research as any).planner_expected_entities, ['Federal Reserve'])
-  assert.deepEqual((result.external_research as any).search_failures, [])
+  assert.deepEqual((result.external_research as any).retrieval_diagnostics, [])
   assert.equal((result.external_research as any).diagnostics.stderr, '[last30days] normal progress diagnostics')
   assert.doesNotMatch(result.uncertainty, /source limitations/i)
+  assert.equal(result.evidence_quality, 'medium')
+  assert.equal(result.catalyst_found, false)
+  assert.equal(result.recommended_editor_action, 'needs_more_research')
+  assert.equal((result.evidence_links[0] as any).url, 'https://example.com/fed')
   assert.equal((result.polymarket_context as any).source_native_context.source_url, context.source_url)
   assert.equal((result.polymarket_context as any).source_native_context.sibling_markets[0].slug, 'no-change')
+  assert.equal((result.related_context as any[]).some((item) => item.kind === 'evidence_review'), false)
+  const placeholders = (result.related_context as any[]).find((item) => item.kind === 'schema_compatibility_placeholders')
+  assert.match(placeholders.note, /not researcher judgments/)
   const excerpt = (result.related_context as any[]).find((item) => item.kind === 'last30days_report_excerpt')
   assert.equal(excerpt.ranked_candidates[0].source_items[0].published_at, '2026-06-20')
   assert.deepEqual(excerpt.ranked_candidates[0].source_items[0].metadata, { comments: 2 })
   assert.equal(excerpt.clusters[0].title, 'Fed shift')
 })
 
-test('fallback evidence review rejects Polymarket fallback links as proof', () => {
-  const brief: any = {
-    research_goal: 'Find why WHOOP IPO odds moved.',
-    last30days_topic: 'WHOOP IPO odds',
-    lookback_days: 30,
-    search_sources: ['reddit', 'grounding', 'polymarket'],
-    subreddits: ['investing'],
-    polymarket_keywords: ['WHOOP', 'IPO'],
-    last30days_plan: { intent: 'prediction', freshness_mode: 'strict_recent', cluster_mode: 'story', subqueries: [] },
-    evidence_to_collect: ['IPO filing', 'funding news'],
-    expected_entities: ['WHOOP'],
-    notes: 'Find external catalyst.',
-  }
-  const report: any = {
-    ranked_candidates: [
-      {
-        title: 'What will WTI Crude Oil hit in June 2026?',
-        url: 'https://polymarket.com/event/what-price-will-wti-hit-in-june-2026',
-        source: 'polymarket',
-        snippet: 'down 5.8% this week',
-        explanation: 'fallback-local-score (entity-miss demotion)',
-      },
-      {
-        title: 'WHOOP reportedly delays IPO plans',
-        url: 'https://example.com/whoop-ipo-delay',
-        source: 'reddit',
-        snippet: 'Investors discussed a delay in IPO timing.',
-        explanation: 'directly addresses WHOOP IPO timing',
-      },
-    ],
-  }
-
-  const review = __testing.fallbackEvidenceReview(brief, report, null)
-
-  assert.equal(review.verdict, 'accept')
-  assert.equal(review.evidence_quality, 'medium')
-  assert.equal(review.catalyst_found, true)
-  assert.deepEqual(review.usable_evidence.map((item) => item.title), ['WHOOP reportedly delays IPO plans'])
-  assert.deepEqual(review.rejected_evidence.map((item) => item.title), ['What will WTI Crude Oil hit in June 2026?'])
-})
-
-test('reviewed research result saves only usable evidence and keeps rejected evidence in review context', () => {
-  const current = candidate({ id: 'candidate-whoop', title: 'WHOOP IPO before 2027?', slug: 'whoop-ipo-before-2027' })
-  const context: any = {
-    source_url: 'https://polymarket.com/event/whoop-ipo-before-2027',
-    market: {
-      id: 'market-1',
-      condition_id: 'condition-1',
-      slug: current.slug,
-      title: current.title,
-      description: 'Resolves based on IPO status.',
-      resolution_source: 'Public reporting',
-      end_date: '2026-12-31',
-      updated_at: '2026-06-22T00:00:00Z',
-    },
-    market_structure: { yes_price: 0.2, volume: 1000, volume_24h: 100, liquidity: 200 },
-    parent_event: null,
-    sibling_markets: [],
-    source_native_questions: ['What is known from Polymarket?'],
-  }
-  const planner: any = {
-    plan: {
-      known_from_polymarket: ['WHOOP IPO market odds moved.'],
-      do_not_research: ['Current odds already supplied.'],
-    },
-    raw: '{}',
-    error: null,
-  }
-  const brief: any = {
-    research_goal: 'Find why WHOOP IPO odds moved.',
-    last30days_topic: 'WHOOP IPO odds',
-    lookback_days: 30,
-    search_sources: ['reddit', 'grounding', 'polymarket'],
-    subreddits: ['investing'],
-    polymarket_keywords: ['WHOOP', 'IPO'],
-    last30days_plan: { intent: 'prediction', freshness_mode: 'strict_recent', cluster_mode: 'story', subqueries: [] },
-    evidence_to_collect: ['IPO filing', 'funding news'],
-    expected_entities: ['WHOOP'],
-    notes: 'Find external catalyst.',
-  }
-  const report: any = {
-    ranked_candidates: [{
-      title: 'What will WTI Crude Oil hit in June 2026?',
-      url: 'https://polymarket.com/event/what-price-will-wti-hit-in-june-2026',
-      source: 'polymarket',
-      snippet: 'down 5.8% this week',
-      explanation: 'fallback-local-score (entity-miss demotion)',
-    }],
-    warnings: [],
-    errors_by_source: {},
-  }
-  const review: any = {
-    verdict: 'reject',
-    evidence_quality: 'weak',
-    catalyst_found: false,
-    research_completeness: 'blocked',
-    final_summary: 'No usable external evidence was found for the WHOOP IPO move.',
-    key_findings: [],
-    usable_evidence: [],
-    rejected_evidence: [{
-      title: 'What will WTI Crude Oil hit in June 2026?',
-      url: 'https://polymarket.com/event/what-price-will-wti-hit-in-june-2026',
-      source: 'polymarket',
-      reason: 'Unrelated Polymarket fallback result.',
-    }],
-    missing_evidence: ['No WHOOP IPO filing, funding, or delay source was found.'],
-    follow_up_research: null,
-    notes: 'Reject unrelated fallback result.',
-    raw: '{}',
-    error: null,
-  }
-
-  const result = __testing.last30DaysToResearchResult(
-    { candidate: current, familyKey: 'title:whoop', clusterKey: 'polymarket:markets:title:whoop', depth: 'deep_web', reason: 'test', polymarketNativeContext: context } as any,
-    planner,
-    brief,
-    report,
-    '',
-    ['last30days.py'],
-    review,
-    [{ round: 1, brief, report, stderr: '', args: ['last30days.py'], review }]
-  )
-
-  assert.equal(result.evidence_quality, 'weak')
-  assert.equal(result.catalyst_found, false)
-  assert.deepEqual(result.evidence_links, [])
-  assert.deepEqual(result.open_questions, ['No WHOOP IPO filing, funding, or delay source was found.'])
-  const reviewContext = (result.related_context as any[]).find((item) => item.kind === 'evidence_review')
-  assert.equal(reviewContext.verdict, 'reject')
-  assert.equal(reviewContext.rejected_evidence[0].title, 'What will WTI Crude Oil hit in June 2026?')
-})
-
-test('followUpBrief uses reviewer follow-up searches for the next retrieval round', () => {
+test('briefFromRetrievalReflection applies a transient second-pass search plan', () => {
   const priorBrief: any = {
     research_goal: 'Find why WHOOP IPO odds moved.',
     last30days_topic: 'WHOOP IPO odds',
@@ -491,92 +406,57 @@ test('followUpBrief uses reviewer follow-up searches for the next retrieval roun
     expected_entities: ['WHOOP'],
     notes: 'Initial search.',
   }
-  const review: any = {
-    follow_up_research: {
-      topic: 'WHOOP IPO delay funding valuation 2026',
-      evidence_to_collect: ['S-1 filing', 'funding round', 'valuation change'],
-      search_sources: ['reddit', 'grounding'],
-      subreddits: ['investing', 'stocks'],
-      polymarket_keywords: ['WHOOP IPO delay'],
-      subqueries: [{
-        label: 'whoop_ipo_delay',
-        search_query: 'WHOOP IPO delayed 2026 filing funding valuation',
-        ranking_query: 'Was there direct news that changed WHOOP IPO timing or valuation?',
-        sources: ['reddit', 'grounding'],
-        weight: 1,
-      }],
-      notes: 'Search directly for IPO delay evidence.',
-    },
-  }
+  const reflection = __testing.normalizeRetrievalReflection({
+    search_again: true,
+    next_last30days_topic: 'WHOOP IPO delay funding valuation 2026',
+    next_search_sources: ['reddit', 'x_search', 'grounding'],
+    next_subreddits: ['investing', 'stocks'],
+    next_polymarket_keywords: ['WHOOP IPO delay'],
+    next_subqueries: [{
+      label: 'whoop_ipo_delay',
+      search_query: 'WHOOP IPO delayed 2026 filing funding valuation',
+      ranking_query: 'Collect recent context about WHOOP IPO timing or valuation.',
+      sources: ['x_search', 'grounding'],
+      weight: 1,
+    }],
+    notes: 'Search directly for IPO timing context.',
+  } as any, priorBrief)
 
-  const next = __testing.followUpBrief(priorBrief, review)
+  const next = __testing.briefFromRetrievalReflection(priorBrief, reflection)
 
+  assert.equal(reflection.search_again, true)
   assert.equal(next.last30days_topic, 'WHOOP IPO delay funding valuation 2026')
   assert.deepEqual(next.search_sources, ['reddit', 'grounding'])
+  assert.deepEqual(next.last30days_plan.subqueries[0].sources, ['grounding'])
   assert.equal(next.last30days_plan.subqueries[0].label, 'whoop_ipo_delay')
-  assert.match(next.notes, /Follow-up/)
+  assert.match(next.notes, /Retrieval adjustment/)
 })
 
-test('normalizeEvidenceReview does not accept a review with no usable evidence', () => {
-  const brief: any = {
-    research_goal: 'Find direct evidence.',
+test('normalizeRetrievalReflection does not request another pass without a changed plan', () => {
+  const priorBrief: any = {
+    research_goal: 'Find direct context.',
     last30days_topic: 'topic',
     lookback_days: 30,
     search_sources: ['reddit', 'grounding'],
     subreddits: ['news'],
     polymarket_keywords: [],
-    last30days_plan: { intent: 'prediction', freshness_mode: 'strict_recent', cluster_mode: 'story', subqueries: [] },
+    last30days_plan: {
+      intent: 'prediction',
+      freshness_mode: 'strict_recent',
+      cluster_mode: 'story',
+      subqueries: [{ label: 'initial', search_query: 'topic', ranking_query: 'Collect context.', sources: ['reddit'], weight: 1 }],
+    },
     evidence_to_collect: ['direct source'],
     expected_entities: [],
     notes: 'Research.',
   }
-  const review = __testing.normalizeEvidenceReview({
-    verdict: 'accept',
-    evidence_quality: 'strong',
-    catalyst_found: true,
-    research_completeness: 'complete',
-    final_summary: 'Looks good.',
-    usable_evidence: [],
-    rejected_evidence: [],
-    missing_evidence: ['No direct source.'],
-  } as any, brief, { ranked_candidates: [] }, '{}', null)
 
-  assert.equal(review.verdict, 'reject')
-  assert.equal(review.evidence_quality, 'weak')
-  assert.equal(review.catalyst_found, false)
-  assert.equal(review.research_completeness, 'blocked')
-})
+  const reflection = __testing.normalizeRetrievalReflection({
+    search_again: true,
+    next_search_sources: ['x_search'],
+    next_subqueries: [],
+  } as any, priorBrief)
 
-test('finalizeReviewForRound converts max-round retry into blocked reject', () => {
-  const review: any = {
-    verdict: 'retry',
-    evidence_quality: 'weak',
-    catalyst_found: false,
-    research_completeness: 'blocked',
-    final_summary: 'Need another search.',
-    key_findings: [],
-    usable_evidence: [],
-    rejected_evidence: [],
-    missing_evidence: ['No direct source.'],
-    follow_up_research: {
-      topic: 'better search',
-      evidence_to_collect: [],
-      search_sources: ['grounding'],
-      subreddits: [],
-      polymarket_keywords: [],
-      subqueries: [],
-      notes: 'try again',
-    },
-    notes: 'Retry would help.',
-    raw: '{}',
-    error: null,
-  }
-
-  const finalReview = __testing.finalizeReviewForRound(review, 2, 2)
-
-  assert.equal(finalReview.verdict, 'reject')
-  assert.equal(finalReview.evidence_quality, 'weak')
-  assert.equal(finalReview.catalyst_found, false)
-  assert.equal(finalReview.research_completeness, 'blocked')
-  assert.match(finalReview.notes, /Max research rounds reached/)
+  assert.equal(reflection.search_again, false)
+  assert.deepEqual(reflection.next_search_sources, ['reddit', 'grounding'])
 })

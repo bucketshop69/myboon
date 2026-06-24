@@ -24,9 +24,11 @@ const DEFAULT_HERMES_TIMEOUT_MS = 60_000
 const DEFAULT_LAST30DAYS_PYTHON = 'python3.12'
 const DEFAULT_LAST30DAYS_TIMEOUT_MS = 5 * 60 * 1000
 const DEFAULT_LAST30DAYS_WEB_BACKEND = 'auto'
-const DEFAULT_MAX_RESEARCH_ROUNDS = 2
 const DEFAULT_MAX_CANDIDATE_AGE_HOURS = 48
 const VPS_LAST30DAYS_SCRIPT = '/root/.agents/skills/last30days/scripts/last30days.py'
+const LAST30DAYS_ALLOWED_SOURCES = new Set(['reddit', 'grounding', 'polymarket', 'jobs'])
+const LAST30DAYS_DEFAULT_SOURCES = ['reddit', 'grounding', 'polymarket']
+const MAX_RETRIEVAL_PASSES = 2
 
 export interface PolymarketResearcherOptions {
   now?: string
@@ -47,7 +49,6 @@ export interface PolymarketResearcherOptions {
   last30DaysScript?: string
   last30DaysTimeoutMs?: number
   last30DaysWebBackend?: string
-  maxResearchRounds?: number
   maxCandidateAgeHours?: number
 }
 
@@ -196,53 +197,14 @@ interface PlannerResult {
   error: string | null
 }
 
-interface EvidenceLink {
-  title: string
-  url: string
-  note: string
-  source?: string
-}
-
-interface RejectedEvidence {
-  title: string
-  url?: string
-  source?: string
-  reason: string
-}
-
-interface FollowUpResearch {
-  topic: string
-  evidence_to_collect: string[]
-  search_sources: string[]
-  subreddits: string[]
-  polymarket_keywords: string[]
-  subqueries: Last30DaysSubquery[]
+interface RetrievalReflection {
+  search_again: boolean
+  next_last30days_topic: string
+  next_search_sources: string[]
+  next_subreddits: string[]
+  next_polymarket_keywords: string[]
+  next_subqueries: Last30DaysSubquery[]
   notes: string
-}
-
-interface EvidenceReview {
-  verdict: 'accept' | 'retry' | 'reject'
-  evidence_quality: EvidenceQuality
-  catalyst_found: boolean
-  research_completeness: 'complete' | 'partial' | 'blocked'
-  final_summary: string
-  key_findings: string[]
-  usable_evidence: EvidenceLink[]
-  rejected_evidence: RejectedEvidence[]
-  missing_evidence: string[]
-  follow_up_research: FollowUpResearch | null
-  notes: string
-  raw: string
-  error: string | null
-}
-
-interface ResearchRound {
-  round: number
-  brief: ResearchBrief
-  report: Record<string, unknown>
-  stderr: string
-  args: string[]
-  review: EvidenceReview
 }
 
 interface TriageDecision {
@@ -351,7 +313,6 @@ function selectedOptions(partial: PolymarketResearcherOptions): Required<Polymar
     last30DaysScript: partial.last30DaysScript ?? defaultLast30DaysScriptPath(),
     last30DaysTimeoutMs: partial.last30DaysTimeoutMs ?? DEFAULT_LAST30DAYS_TIMEOUT_MS,
     last30DaysWebBackend: partial.last30DaysWebBackend ?? DEFAULT_LAST30DAYS_WEB_BACKEND,
-    maxResearchRounds: partial.maxResearchRounds ?? DEFAULT_MAX_RESEARCH_ROUNDS,
     maxCandidateAgeHours: partial.maxCandidateAgeHours ?? DEFAULT_MAX_CANDIDATE_AGE_HOURS,
   }
 }
@@ -801,7 +762,6 @@ function buildMarketStructureRow(decision: TriageDecision, observedAt: string, o
     volumeDeltaPct != null ? `Observed volume/activity delta: ${round(volumeDeltaPct * 100, 1)}%.` : '',
   ].filter(Boolean)
 
-  const weakEvidence = score < 45 || urls.length === 0
   return {
     candidate_id: candidate.id,
     source: candidate.source,
@@ -810,7 +770,7 @@ function buildMarketStructureRow(decision: TriageDecision, observedAt: string, o
     title: candidate.title,
     candidate_type: candidate.candidate_type,
     research_mode: 'market_structure',
-    summary: `${candidate.title} was triaged without web search because the signal appears mostly mechanical or thin. ${candidate.what_changed}`,
+    summary: `${candidate.title} was captured as a market-structure-only research packet. ${candidate.what_changed}`,
     notes: [
       `Triage reason: ${decision.reason}.`,
       `Score: ${round(score, 1)}.`,
@@ -820,19 +780,17 @@ function buildMarketStructureRow(decision: TriageDecision, observedAt: string, o
     key_findings: keyFindings,
     evidence_links: urls.map((url) => ({ title: 'Polymarket market evidence', url, note: 'Candidate-supplied market reference' })),
     related_context: [{ kind: 'research_triage', depth: 'market_structure_only', family_key: decision.familyKey, cluster_key: decision.clusterKey }],
-    uncertainty: 'No external web search was run; this only supports a market-structure editorial decision.',
-    editor_notes: weakEvidence
-      ? 'Likely reject unless the Editor sees an obvious timely catalyst in the market title or supplied evidence.'
-      : 'Use this as a market-structure note; request deeper research if current external context matters.',
+    uncertainty: 'Market-structure-only packet. Entity Manager should interpret the supplied market context.',
+    editor_notes: 'Research packet only. Entity Manager should extract entities/evidence before any feed/editor decision.',
     status: 'pending_editor',
     researched_at: observedAt,
     updated_at: observedAt,
     research_family_key: decision.familyKey,
     research_cluster_key: decision.clusterKey,
     research_depth: 'market_structure_only',
-    evidence_quality: weakEvidence ? 'weak' : 'medium',
+    evidence_quality: 'medium',
     catalyst_found: false,
-    recommended_editor_action: weakEvidence ? 'reject_thin' : 'needs_more_research',
+    recommended_editor_action: 'needs_more_research',
     duplicate_of_research_id: null,
     research_backend: 'local_triage',
     research_model: 'deterministic_market_structure',
@@ -927,6 +885,16 @@ function asStringArray(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) return fallback
   const items = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
   return items.length > 0 ? items : fallback
+}
+
+function sanitizeLast30DaysSources(value: unknown, fallback = LAST30DAYS_DEFAULT_SOURCES): string[] {
+  const input = Array.isArray(value) ? value : fallback
+  const sources = input
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => LAST30DAYS_ALLOWED_SOURCES.has(item))
+  const unique = [...new Set(sources)]
+  return unique.length > 0 ? unique : fallback.filter((item) => LAST30DAYS_ALLOWED_SOURCES.has(item))
 }
 
 function fallbackReflectionPlan(context: PolymarketNativeContext, candidate: PendingCandidate): ResearchReflectionPlan {
@@ -1046,7 +1014,7 @@ function normalizeReflectionPlan(value: Partial<ResearchReflectionPlan> | null, 
       label: typeof item.label === 'string' && item.label ? item.label : `query_${index + 1}`,
       search_query: typeof item.search_query === 'string' && item.search_query ? item.search_query : fallback.last30days_topic,
       ranking_query: typeof item.ranking_query === 'string' && item.ranking_query ? item.ranking_query : fallback.research_goal,
-      sources: asStringArray(item.sources, fallback.search_sources),
+      sources: sanitizeLast30DaysSources(item.sources, fallback.search_sources),
       weight: typeof item.weight === 'number' && Number.isFinite(item.weight) ? item.weight : 1,
     }))
     .slice(0, 4)
@@ -1057,7 +1025,7 @@ function normalizeReflectionPlan(value: Partial<ResearchReflectionPlan> | null, 
     do_not_research: asStringArray(value?.do_not_research, fallback.do_not_research),
     last30days_topic: typeof value?.last30days_topic === 'string' && value.last30days_topic ? value.last30days_topic : fallback.last30days_topic,
     lookback_days: typeof value?.lookback_days === 'number' && Number.isFinite(value.lookback_days) ? Math.max(1, Math.min(90, Math.round(value.lookback_days))) : fallback.lookback_days,
-    search_sources: asStringArray(value?.search_sources, fallback.search_sources),
+    search_sources: sanitizeLast30DaysSources(value?.search_sources, fallback.search_sources),
     subreddits: asStringArray(value?.subreddits, fallback.subreddits),
     polymarket_keywords: asStringArray(value?.polymarket_keywords, fallback.polymarket_keywords),
     last30days_plan: {
@@ -1073,14 +1041,21 @@ function normalizeReflectionPlan(value: Partial<ResearchReflectionPlan> | null, 
 }
 
 function buildResearchBrief(plan: ResearchReflectionPlan): ResearchBrief {
+  const searchSources = sanitizeLast30DaysSources(plan.search_sources)
   return {
     research_goal: plan.research_goal,
     last30days_topic: plan.last30days_topic,
     lookback_days: plan.lookback_days,
-    search_sources: plan.search_sources,
+    search_sources: searchSources,
     subreddits: plan.subreddits,
     polymarket_keywords: plan.polymarket_keywords,
-    last30days_plan: plan.last30days_plan,
+    last30days_plan: {
+      ...plan.last30days_plan,
+      subqueries: plan.last30days_plan.subqueries.map((query) => ({
+        ...query,
+        sources: sanitizeLast30DaysSources(query.sources, searchSources),
+      })),
+    },
     evidence_to_collect: plan.evidence_to_collect,
     expected_entities: plan.expected_entities,
     notes: plan.notes,
@@ -1128,12 +1103,13 @@ function hermesArgs(prompt: string, options: Required<PolymarketResearcherOption
 }
 
 function last30DaysArgs(brief: ResearchBrief, planPath: string, options: Required<PolymarketResearcherOptions>): string[] {
+  const searchSources = sanitizeLast30DaysSources(brief.search_sources)
   const args = [
     options.last30DaysScript,
     brief.last30days_topic,
     '--emit=json',
     `--days=${brief.lookback_days}`,
-    `--search=${brief.search_sources.join(',')}`,
+    `--search=${searchSources.join(',')}`,
     '--plan',
     planPath,
     `--subreddits=${brief.subreddits.join(',')}`,
@@ -1162,6 +1138,7 @@ function last30DaysPlanPayload(brief: ResearchBrief): Record<string, unknown> {
     notes,
     subqueries: brief.last30days_plan.subqueries.map((query) => ({
       ...query,
+      sources: sanitizeLast30DaysSources(query.sources, brief.search_sources),
       ranking_query: [
         query.ranking_query,
         `Research goal: ${brief.research_goal}`,
@@ -1169,6 +1146,21 @@ function last30DaysPlanPayload(brief: ResearchBrief): Record<string, unknown> {
       ].filter(Boolean).join(' '),
     })),
   }
+}
+
+function normalizeSubqueries(value: unknown, fallback: Last30DaysSubquery[], fallbackSources = LAST30DAYS_DEFAULT_SOURCES): Last30DaysSubquery[] {
+  const rows = asArray(value)
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    .map((item, index) => ({
+      label: asString(item.label, `search_${index + 1}`),
+      search_query: asString(item.search_query),
+      ranking_query: asString(item.ranking_query),
+      sources: sanitizeLast30DaysSources(item.sources, fallbackSources),
+      weight: typeof item.weight === 'number' && Number.isFinite(item.weight) ? item.weight : 1,
+    }))
+    .filter((item) => item.search_query && item.ranking_query)
+    .slice(0, 4)
+  return rows.length > 0 ? rows : fallback
 }
 
 async function runLast30Days(brief: ResearchBrief, options: Required<PolymarketResearcherOptions>): Promise<{ report: Record<string, unknown>, stderr: string, args: string[] }> {
@@ -1193,235 +1185,57 @@ async function runLast30Days(brief: ResearchBrief, options: Required<PolymarketR
   }
 }
 
-function rawEvidenceCandidates(report: Record<string, unknown>, limit = 12): Record<string, unknown>[] {
-  return rankedCandidates(report, limit).map((item) => ({
-    title: item.title,
-    url: item.url,
-    source: item.source,
-    snippet: item.snippet,
-    explanation: item.explanation,
-    final_score: item.final_score,
-    subquery_labels: item.subquery_labels,
-    source_items: boundedSourceItems(item, 2),
-  }))
-}
-
-function isFallbackEvidence(item: Record<string, unknown>): boolean {
-  const source = asString(item.source).toLowerCase()
-  const explanation = asString(item.explanation).toLowerCase()
-  return source === 'polymarket'
-    || explanation.includes('fallback-local-score')
-    || explanation.includes('entity-miss')
-}
-
-function fallbackEvidenceReview(brief: ResearchBrief, report: Record<string, unknown>, error: string | null): EvidenceReview {
-  const candidates = rawEvidenceCandidates(report)
-  const usable = candidates.flatMap((item): EvidenceLink[] => {
-    const title = asString(item.title, 'Research evidence')
-    const url = asString(item.url)
-    const source = asString(item.source)
-    if (!url || isFallbackEvidence(item)) return []
-    return [{
-      title,
-      url,
-      source: source || undefined,
-      note: [source, asString(item.snippet), asString(item.explanation)].filter(Boolean).join(' - '),
-    }]
-  })
-  const rejected = candidates.flatMap((item): RejectedEvidence[] => {
-    const title = asString(item.title, 'Rejected evidence')
-    const url = asString(item.url)
-    const source = asString(item.source) || undefined
-    if (!url || !isFallbackEvidence(item)) return []
-    return [{
-      title,
-      url,
-      source,
-      reason: source === 'polymarket'
-        ? 'Polymarket result is related market context, not external proof.'
-        : 'Fallback-ranked result was not safe to treat as evidence.',
-    }]
-  })
-  const uniqueSources = new Set(usable.map((item) => item.source).filter(Boolean))
-  const quality: EvidenceQuality = usable.length >= 3 && uniqueSources.size >= 2
-    ? 'strong'
-    : usable.length > 0
-      ? 'medium'
-      : 'weak'
-  const completeness = usable.length >= 3
-    ? 'complete'
-    : usable.length > 0
-      ? 'partial'
-      : 'blocked'
-
-  return {
-    verdict: usable.length > 0 ? 'accept' : 'reject',
-    evidence_quality: quality,
-    catalyst_found: usable.length > 0,
-    research_completeness: completeness,
-    final_summary: usable.length > 0
-      ? `${brief.research_goal} Found ${usable.length} usable external evidence link(s).`
-      : `${brief.research_goal} No usable external evidence was found.`,
-    key_findings: usable.map((item, index) => `${index + 1}. ${item.title}${item.source ? ` - source=${item.source}` : ''}`),
-    usable_evidence: usable,
-    rejected_evidence: rejected,
-    missing_evidence: usable.length > 0 ? [] : ['No direct non-Polymarket evidence answered the research goal.'],
-    follow_up_research: null,
-    notes: error
-      ? `Hermes evidence review failed; deterministic fallback review used. ${error}`
-      : 'Deterministic fallback review used.',
-    raw: '',
-    error,
-  }
-}
-
-function normalizeEvidenceLinks(value: unknown): EvidenceLink[] {
-  return asArray(value)
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    .flatMap((item): EvidenceLink[] => {
-      const title = asString(item.title, 'Research evidence')
-      const url = asString(item.url)
-      if (!url) return []
-      return [{
-        title,
-        url,
-        source: asString(item.source) || undefined,
-        note: asString(item.why_it_matters) || asString(item.note) || asString(item.reason),
-      }]
-    })
-    .slice(0, 12)
-}
-
-function normalizeRejectedEvidence(value: unknown): RejectedEvidence[] {
-  return asArray(value)
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    .map((item) => ({
-      title: asString(item.title, 'Rejected evidence'),
-      url: asString(item.url) || undefined,
-      source: asString(item.source) || undefined,
-      reason: asString(item.reason, 'Reviewer rejected this as insufficient evidence.'),
-    }))
-    .slice(0, 12)
-}
-
-function normalizeSubqueries(value: unknown, fallback: Last30DaysSubquery[]): Last30DaysSubquery[] {
-  const rows = asArray(value)
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    .map((item, index) => ({
-      label: asString(item.label, `follow_up_${index + 1}`),
-      search_query: asString(item.search_query),
-      ranking_query: asString(item.ranking_query),
-      sources: asStringArray(item.sources, ['reddit', 'grounding']),
-      weight: typeof item.weight === 'number' && Number.isFinite(item.weight) ? item.weight : 1,
-    }))
-    .filter((item) => item.search_query && item.ranking_query)
-    .slice(0, 4)
-  return rows.length > 0 ? rows : fallback
-}
-
-function normalizeFollowUpResearch(value: unknown, prior: ResearchBrief): FollowUpResearch | null {
-  if (!value || typeof value !== 'object') return null
-  const row = value as Record<string, unknown>
+function normalizeRetrievalReflection(value: Partial<RetrievalReflection> | null, prior: ResearchBrief): RetrievalReflection {
+  const nextSources = sanitizeLast30DaysSources(value?.next_search_sources, prior.search_sources)
   const fallbackSubqueries = prior.last30days_plan.subqueries
-  const subqueries = normalizeSubqueries(row.subqueries, fallbackSubqueries)
-  const topic = asString(row.topic, prior.last30days_topic)
+  const nextSubqueries = normalizeSubqueries(value?.next_subqueries, fallbackSubqueries, nextSources)
+  const hasNewTopic = typeof value?.next_last30days_topic === 'string' && value.next_last30days_topic.trim().length > 0
+  const searchAgain = asBoolean(value?.search_again)
+    && (hasNewTopic || JSON.stringify(nextSubqueries) !== JSON.stringify(fallbackSubqueries))
   return {
-    topic,
-    evidence_to_collect: asStringArray(row.evidence_to_collect, prior.evidence_to_collect),
-    search_sources: asStringArray(row.search_sources, prior.search_sources),
-    subreddits: asStringArray(row.subreddits, prior.subreddits),
-    polymarket_keywords: asStringArray(row.polymarket_keywords, prior.polymarket_keywords),
-    subqueries,
-    notes: asString(row.notes, 'Follow-up search requested by evidence review.'),
+    search_again: searchAgain,
+    next_last30days_topic: hasNewTopic ? value.next_last30days_topic!.trim() : prior.last30days_topic,
+    next_search_sources: nextSources,
+    next_subreddits: asStringArray(value?.next_subreddits, prior.subreddits),
+    next_polymarket_keywords: asStringArray(value?.next_polymarket_keywords, prior.polymarket_keywords),
+    next_subqueries: nextSubqueries,
+    notes: asString(value?.notes),
   }
 }
 
-function normalizeEvidenceReview(value: Partial<EvidenceReview> | null, brief: ResearchBrief, report: Record<string, unknown>, raw: string, error: string | null): EvidenceReview {
-  if (!value) return fallbackEvidenceReview(brief, report, error ?? 'Hermes evidence review returned non-JSON output.')
-  const usable = normalizeEvidenceLinks(value.usable_evidence)
-  const rejected = normalizeRejectedEvidence(value.rejected_evidence)
-  const fallback = fallbackEvidenceReview(brief, report, error)
-  const requestedVerdict = normalizeStringOption(value.verdict, ['accept', 'retry', 'reject'] as const, usable.length > 0 ? 'accept' : fallback.verdict)
-  const followUp = requestedVerdict === 'retry' ? normalizeFollowUpResearch(value.follow_up_research, brief) : null
-  const verdict = usable.length === 0 && requestedVerdict === 'accept'
-    ? (followUp ? 'retry' : fallback.verdict)
-    : requestedVerdict === 'retry' && !followUp
-      ? fallback.verdict
-      : requestedVerdict
-  const quality = normalizeEvidenceQuality(value.evidence_quality ?? fallback.evidence_quality)
-  const completeness = normalizeStringOption(value.research_completeness, ['complete', 'partial', 'blocked'] as const, fallback.research_completeness)
-  return {
-    verdict,
-    evidence_quality: usable.length > 0 ? quality : 'weak',
-    catalyst_found: usable.length > 0 && asBoolean(value.catalyst_found, fallback.catalyst_found),
-    research_completeness: usable.length > 0 ? completeness : 'blocked',
-    final_summary: asString(value.final_summary, fallback.final_summary),
-    key_findings: asStringArray(value.key_findings, fallback.key_findings),
-    usable_evidence: usable,
-    rejected_evidence: rejected.length > 0 ? rejected : fallback.rejected_evidence,
-    missing_evidence: asStringArray(value.missing_evidence, fallback.missing_evidence),
-    follow_up_research: verdict === 'retry' ? followUp : null,
-    notes: asString(value.notes, fallback.notes),
-    raw,
-    error,
-  }
-}
-
-function buildEvidenceReviewPrompt(
+function buildRetrievalReflectionPrompt(
   context: PolymarketNativeContext,
   candidate: PendingCandidate,
   brief: ResearchBrief,
   report: Record<string, unknown>,
-  stderr: string,
-  round: number
+  stderr: string
 ): string {
   return [
-    'You are the myboon Polymarket Researcher doing evidence quality control.',
+    'You are the myboon Polymarket Researcher controlling one more retrieval pass.',
     '',
-    'You are still inside the researcher. Do not write feed copy. Do not make editor/publisher decisions.',
-    'Review whether retrieval results actually answer the research goal.',
-    '',
-    'Classify links strictly:',
-    '- usable_evidence: direct evidence for the research goal from Reddit, web/news, official sources, filings, docs, or primary source material.',
-    '- rejected_evidence: unrelated results, nearby Polymarket markets, fallback-local-score results, entity-miss results, or generic same-topic links that do not answer the goal.',
-    '- Related Polymarket markets can be useful context but are not proof of an external catalyst.',
-    '',
-    'If evidence is inadequate and one more focused search is likely to help, set verdict="retry" and provide follow_up_research.',
-    'If evidence is inadequate and another search is unlikely to help, set verdict="reject".',
-    'Set verdict="accept" only when usable_evidence directly supports the research goal.',
+    'Your only job is to decide whether the next retrieval query should be changed and run once more.',
+    'Do not judge the evidence. Do not classify quality. Do not decide whether a catalyst exists. Do not accept or reject links.',
+    'If the current retrieval is clearly off-topic, too generic, or missed the specific research goal, set search_again=true and provide a sharper next search plan.',
+    'If another query is unlikely to collect materially different context, set search_again=false.',
     '',
     'Return strict JSON only. No markdown.',
     '',
     'JSON shape:',
     JSON.stringify({
-      verdict: 'accept | retry | reject',
-      evidence_quality: 'strong | medium | weak',
-      catalyst_found: false,
-      research_completeness: 'complete | partial | blocked',
-      final_summary: 'concise research summary based only on usable evidence',
-      key_findings: ['facts learned from usable evidence only'],
-      usable_evidence: [{ title: '...', url: '...', source: '...', why_it_matters: '...' }],
-      rejected_evidence: [{ title: '...', url: '...', source: '...', reason: '...' }],
-      missing_evidence: ['what was not found'],
-      follow_up_research: {
-        topic: 'better last30days topic',
-        evidence_to_collect: ['specific evidence needed'],
-        search_sources: ['reddit', 'grounding'],
-        subreddits: ['relevant_subreddit'],
-        polymarket_keywords: ['keyword'],
-        subqueries: [{
-          label: 'short_label',
-          search_query: 'precise keyword query',
-          ranking_query: 'question the next search must answer',
-          sources: ['reddit', 'grounding'],
-          weight: 1,
-        }],
-        notes: 'why this follow-up search is better',
-      },
-      notes: 'review notes',
+      search_again: false,
+      next_last30days_topic: 'better topic only if search_again is true',
+      next_search_sources: ['reddit', 'grounding', 'polymarket'],
+      next_subreddits: ['relevant_subreddit'],
+      next_polymarket_keywords: ['keyword'],
+      next_subqueries: [{
+        label: 'short_label',
+        search_query: 'precise keyword query',
+        ranking_query: 'what the retrieval should collect',
+        sources: ['reddit', 'grounding'],
+        weight: 1,
+      }],
+      notes: 'why the next query is different, or why no more retrieval is needed',
     }, null, 2),
-    '',
-    `Research round: ${round}`,
     '',
     'Candidate observation:',
     JSON.stringify({
@@ -1437,76 +1251,55 @@ function buildEvidenceReviewPrompt(
     'Polymarket-native context:',
     JSON.stringify(compactContext(context), null, 2),
     '',
-    'Research brief:',
+    'Current research brief:',
     JSON.stringify(brief, null, 2),
     '',
-    'Retrieval report excerpt:',
+    'Current retrieval report excerpt:',
     JSON.stringify({
       ...last30DaysReportExcerpt(report),
-      raw_evidence_candidates: rawEvidenceCandidates(report),
       diagnostics: { stderr: stderr.slice(0, 1200) },
     }, null, 2),
   ].join('\n')
 }
 
-async function runHermesEvidenceReview(
+async function runHermesRetrievalReflection(
   context: PolymarketNativeContext,
   candidate: PendingCandidate,
   brief: ResearchBrief,
   report: Record<string, unknown>,
   stderr: string,
-  options: Required<PolymarketResearcherOptions>,
-  round: number
-): Promise<EvidenceReview> {
-  const prompt = buildEvidenceReviewPrompt(context, candidate, brief, report, stderr, round)
+  options: Required<PolymarketResearcherOptions>
+): Promise<RetrievalReflection> {
+  const prompt = buildRetrievalReflectionPrompt(context, candidate, brief, report, stderr)
   try {
     const { stdout } = await execFileAsync(options.hermesCommand, hermesArgs(prompt, options), {
       timeout: options.researchPlannerHermesTimeoutMs,
       maxBuffer: 10 * 1024 * 1024,
       env: { ...process.env },
     })
-    const parsed = extractJson<Partial<EvidenceReview>>(stdout)
-    return normalizeEvidenceReview(parsed, brief, report, stdout.trim(), parsed ? null : 'Hermes evidence review returned non-JSON output.')
-  } catch (error) {
-    const message = error instanceof Error ? error.message.replace(/\s+/g, ' ').slice(0, 800) : String(error).slice(0, 800)
-    return normalizeEvidenceReview(null, brief, report, '', message)
+    return normalizeRetrievalReflection(extractJson<Partial<RetrievalReflection>>(stdout), brief)
+  } catch {
+    return normalizeRetrievalReflection(null, brief)
   }
 }
 
-function followUpBrief(prior: ResearchBrief, review: EvidenceReview): ResearchBrief {
-  const followUp = review.follow_up_research
-  if (!followUp) return prior
+function briefFromRetrievalReflection(prior: ResearchBrief, reflection: RetrievalReflection): ResearchBrief {
   return {
     research_goal: prior.research_goal,
-    last30days_topic: followUp.topic,
+    last30days_topic: reflection.next_last30days_topic,
     lookback_days: prior.lookback_days,
-    search_sources: followUp.search_sources,
-    subreddits: followUp.subreddits,
-    polymarket_keywords: followUp.polymarket_keywords,
+    search_sources: reflection.next_search_sources,
+    subreddits: reflection.next_subreddits,
+    polymarket_keywords: reflection.next_polymarket_keywords,
     last30days_plan: {
       intent: prior.last30days_plan.intent,
       freshness_mode: prior.last30days_plan.freshness_mode,
       cluster_mode: prior.last30days_plan.cluster_mode,
-      subqueries: followUp.subqueries,
+      subqueries: reflection.next_subqueries,
     },
-    evidence_to_collect: followUp.evidence_to_collect,
+    evidence_to_collect: prior.evidence_to_collect,
     expected_entities: prior.expected_entities,
-    notes: [prior.notes, followUp.notes].filter(Boolean).join(' Follow-up: '),
-  }
-}
-
-function finalizeReviewForRound(review: EvidenceReview, round: number, maxRounds: number): EvidenceReview {
-  if (review.verdict !== 'retry' || round < maxRounds) return review
-  return {
-    ...review,
-    verdict: 'reject',
-    research_completeness: 'blocked',
-    evidence_quality: review.usable_evidence.length > 0 ? review.evidence_quality : 'weak',
-    catalyst_found: review.usable_evidence.length > 0 && review.catalyst_found,
-    notes: [
-      review.notes,
-      `Max research rounds reached (${maxRounds}); finalizing as reject/blocked instead of retry.`,
-    ].filter(Boolean).join(' '),
+    notes: [prior.notes, reflection.notes].filter(Boolean).join(' Retrieval adjustment: '),
   }
 }
 
@@ -1645,37 +1438,23 @@ function last30DaysToResearchResult(
   brief: ResearchBrief,
   report: Record<string, unknown>,
   stderr: string,
-  args: string[],
-  review = fallbackEvidenceReview(brief, report, null),
-  rounds: ResearchRound[] = []
+  args: string[]
 ): HermesResearchResult {
   const candidate = decision.candidate
   const context = decision.polymarketNativeContext
-  const evidenceLinks = review.usable_evidence
-  const findings = review.key_findings
+  const evidenceLinks = evidenceLinksFromLast30Days(report)
+  const ranked = rankedCandidates(report, 12)
+  const findings = ranked.map((item, index) => [
+    `${index + 1}. ${asString(item.title, 'Retrieved item')}`,
+    asString(item.source) ? `source=${asString(item.source)}` : '',
+    asString(item.url) ? `url=${asString(item.url)}` : '',
+    asString(item.snippet) ? `snippet=${asString(item.snippet).slice(0, 240)}` : '',
+  ].filter(Boolean).join(' | '))
   const warnings = asArray(report.warnings).map(String)
   const errorsBySource = report.errors_by_source && typeof report.errors_by_source === 'object'
     ? Object.entries(report.errors_by_source as Record<string, unknown>).map(([source, error]) => `${source}: ${String(error)}`)
     : []
-  const searchFailures = [...warnings, ...errorsBySource].filter(Boolean)
-  const reviewRoundSummary = rounds.map((round) => ({
-    round: round.round,
-    verdict: round.review.verdict,
-    evidence_quality: round.review.evidence_quality,
-    catalyst_found: round.review.catalyst_found,
-    usable_evidence_count: round.review.usable_evidence.length,
-    rejected_evidence_count: round.review.rejected_evidence.length,
-    missing_evidence: round.review.missing_evidence,
-    follow_up_research: round.review.follow_up_research,
-    last30days_topic: round.brief.last30days_topic,
-    source_counts: sourceCounts(round.report),
-    warnings: round.report.warnings,
-    errors_by_source: round.report.errors_by_source,
-    command_args: round.args,
-    diagnostics: {
-      stderr: round.stderr ? round.stderr.slice(0, 1200) : null,
-    },
-  }))
+  const retrievalDiagnostics = [...warnings, ...errorsBySource].filter(Boolean)
 
   return {
     candidate_id: candidate.id,
@@ -1699,43 +1478,31 @@ function last30DaysToResearchResult(
       why: brief.research_goal,
       questions: brief.last30days_plan.subqueries.map((query) => query.ranking_query),
       sources_checked: evidenceLinks,
-      search_failures: searchFailures,
+      retrieval_diagnostics: retrievalDiagnostics,
       last30days_topic: brief.last30days_topic,
       last30days_sources: brief.search_sources,
       source_counts: sourceCounts(report),
+      ranked_candidate_count: ranked.length,
       command_args: args,
       diagnostics: {
         stderr: stderr ? stderr.slice(0, 2000) : null,
       },
       planner_error: planner.error,
       planner_expected_entities: brief.expected_entities,
-      evidence_review: {
-        verdict: review.verdict,
-        evidence_quality: review.evidence_quality,
-        catalyst_found: review.catalyst_found,
-        research_completeness: review.research_completeness,
-        rejected_evidence: review.rejected_evidence,
-        missing_evidence: review.missing_evidence,
-        notes: review.notes,
-        error: review.error,
-      },
-      research_rounds: reviewRoundSummary,
     },
-    verified_facts: findings,
+    verified_facts: [],
     unverified_claims: [],
     entities_mentioned: [],
     claims_found: findings,
     relationships_found: [],
-    open_questions: review.missing_evidence,
-    research_completeness: review.research_completeness,
-    summary: review.final_summary,
+    open_questions: [],
+    research_completeness: 'not_assessed',
+    summary: `Collected ${evidenceLinks.length} link(s) and ${ranked.length} ranked item(s) for: ${brief.research_goal}`,
     notes: [
       `Research brief: ${brief.research_goal}`,
       `Planner notes: ${brief.notes}`,
       `Evidence to collect: ${brief.evidence_to_collect.join('; ')}`,
       `Subqueries: ${brief.last30days_plan.subqueries.map((query) => `${query.label}: ${query.search_query}`).join(' | ')}`,
-      `Evidence review verdict: ${review.verdict}`,
-      `Evidence review notes: ${review.notes}`,
       planner.error ? `Planner fallback/error: ${planner.error}` : '',
     ].filter(Boolean).join('\n'),
     key_findings: findings,
@@ -1743,16 +1510,19 @@ function last30DaysToResearchResult(
     related_context: [
       { kind: 'reflection_research_brief', ...brief },
       { kind: 'polymarket_source_native_context', context: context ? compactContext(context) : null },
-      { kind: 'evidence_review', ...review, raw: review.raw ? review.raw.slice(0, 4000) : '' },
-      { kind: 'research_reflection_rounds', rounds: reviewRoundSummary },
       { kind: 'last30days_report_excerpt', ...last30DaysReportExcerpt(report) },
+      {
+        kind: 'schema_compatibility_placeholders',
+        evidence_quality: 'medium',
+        catalyst_found: false,
+        recommended_editor_action: 'needs_more_research',
+        note: 'These values satisfy the current research table schema and are not researcher judgments.',
+      },
     ],
-    uncertainty: searchFailures.length > 0
-      ? `Research had source limitations: ${searchFailures.slice(0, 3).join(' | ')}`
-      : 'Evidence is limited to the configured last30days sources and ranking output.',
+    uncertainty: 'Retrieval-only packet. Entity Manager should interpret the collected context and links.',
     editor_notes: 'Research packet only. Entity Manager should extract entities/evidence before any feed/editor decision.',
-    evidence_quality: review.evidence_quality,
-    catalyst_found: review.catalyst_found,
+    evidence_quality: 'medium',
+    catalyst_found: false,
     recommended_editor_action: 'needs_more_research',
   }
 }
@@ -1809,33 +1579,20 @@ async function researchSingleCandidate(
     }
     const planner = await runHermesPlanner(decision.polymarketNativeContext, decision.candidate, options)
     let brief = buildResearchBrief(planner.plan)
-    const rounds: ResearchRound[] = []
-    let research: { report: Record<string, unknown>, stderr: string, args: string[] } | null = null
-    let review: EvidenceReview | null = null
+    let research = await runLast30Days(brief, options)
 
-    for (let round = 1; round <= options.maxResearchRounds; round += 1) {
-      research = await runLast30Days(brief, options)
-      review = finalizeReviewForRound(await runHermesEvidenceReview(
+    for (let pass = 1; pass < MAX_RETRIEVAL_PASSES; pass += 1) {
+      const reflection = await runHermesRetrievalReflection(
         decision.polymarketNativeContext,
         decision.candidate,
         brief,
         research.report,
         research.stderr,
-        options,
-        round
-      ), round, options.maxResearchRounds)
-      rounds.push({ round, brief, report: research.report, stderr: research.stderr, args: research.args, review })
-      if (review.verdict !== 'retry' || !review.follow_up_research || round >= options.maxResearchRounds) break
-      brief = followUpBrief(brief, review)
-    }
-
-    if (!research || !review) {
-      return {
-        failure: {
-          candidate: decision.candidate,
-          error: 'Research reflection loop did not produce a result.',
-        },
-      }
+        options
+      )
+      if (!reflection.search_again) break
+      brief = briefFromRetrievalReflection(brief, reflection)
+      research = await runLast30Days(brief, options)
     }
 
     const result = normalizeResearchResult(last30DaysToResearchResult(
@@ -1844,9 +1601,7 @@ async function researchSingleCandidate(
       brief,
       research.report,
       research.stderr,
-      research.args,
-      review,
-      rounds
+      research.args
     ))
     return { result }
   } catch (error) {
@@ -2092,16 +1847,15 @@ export const __testing = {
   clusterKeyForCandidate,
   defaultLast30DaysScriptPath,
   errorKind,
-  fallbackEvidenceReview,
-  finalizeReviewForRound,
-  followUpBrief,
+  briefFromRetrievalReflection,
   last30DaysPlanPayload,
   last30DaysToResearchResult,
-  normalizeEvidenceReview,
   normalizeReflectionPlan,
+  normalizeRetrievalReflection,
   primaryFamilyKey,
   recentPrior,
   retryCount,
+  sanitizeLast30DaysSources,
   titleFamilyKey,
   triageCandidates,
 }
