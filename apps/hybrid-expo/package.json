@@ -26,7 +26,6 @@
     "@ethersproject/wallet": "^5.8.0",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
-    "@lazorkit/wallet": "^2.0.1",
     "@polymarket/clob-client-v2": "1.0.3-canary.0",
     "@privy-io/expo": "^0.65.1",
     "@privy-io/expo-native-extensions": "0.0.10",

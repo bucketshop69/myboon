@@ -1,59 +1,81 @@
-# Tutorial: implementing Passkey Authentication with Lazorkit
+# Tutorial: Current Wallet Onboarding with Privy
 
-This guide explains how we integrated **Lazorkit's Passkey Wallet** into the MYBOON app. This allows users to create a wallet using just their FaceID, TouchID, or device passkey—no seed phrases required.
+This guide documents the current wallet onboarding path used by the MYBOON mobile app. The active app flow uses **Privy** for email OTP and passkey authentication, then hydrates a Privy embedded Solana wallet for the user.
 
-## Prerequisites
+## Current app path
 
-- `@lazorkit/wallet` installed
-- `@solana/web3.js` for blockchain interaction
+- `apps/hybrid-expo/hooks/usePrivyWallet.ts` wraps Privy's embedded Solana wallet APIs.
+- `apps/hybrid-expo/components/drawer/WalletDrawer.tsx` calls the Privy email OTP and passkey handlers from the wallet drawer.
+- `apps/hybrid-expo/hooks/useWallet.ts` remains the Solana Mobile Wallet Adapter path for external wallets.
+- `apps/hybrid-expo/hooks/usePolymarketWallet.ts` consumes the connected wallet interface for Predict/Polymarket signing.
 
-## 1. The `useLazorkitWallet` Hook
+## 1. Privy wallet hook
 
-Lazorkit provides a React hook that manages the entire lifecycle of the passkey wallet.
+`usePrivyWallet` exposes the app-facing wallet state and auth actions:
 
 ```typescript
-import { useWallet as useLazorkitWallet } from "@lazorkit/wallet";
-
-// Inside your component
-const { connect, isConnecting, isConnected } = useLazorkitWallet();
+import { usePrivy, useEmbeddedSolanaWallet, useLoginWithEmail, isConnected } from '@privy-io/expo';
+import { useLoginWithPasskey, useSignupWithPasskey } from '@privy-io/expo/passkey';
 ```
 
-## 2. Creating the Connect UI
+The hook reports:
 
-We created a user-friendly UI in `PasskeySection.tsx` that emphasizes the benefits: passing "No seed phrase" and "Ready in 2 seconds".
+- whether the user is authenticated with Privy
+- whether the embedded Solana wallet is connected or still preparing
+- the embedded wallet address
+- email OTP login helpers
+- passkey login/signup helpers
+- `waitForWallet()` for post-auth hydration
+- `signMessage` for wallet-backed message signing
 
-### Key Implementation Details
+## 2. Email OTP onboarding
 
-1. **Triggering Connection**:
-   We call the `connect()` function when the user clicks the "Connect with Passkey" button. This automatically triggers the browser's native WebAuthn dialog (FaceID/TouchID).
+The wallet drawer sends an email OTP, verifies the code, waits for the embedded wallet, and then closes the drawer once the wallet is ready.
 
-   ```typescript
-   const handleConnect = async () => {
-     try {
-       // Opens native browser passkey prompt
-       await connect(); 
-       // Connection successful!
-       onSuccess();
-     } catch (err) {
-       // Handle errors (e.g. user cancelled)
-     }
-   };
-   ```
+```typescript
+await privy.sendEmailOTP(emailInput.trim());
+await privy.loginWithEmailOTP(otpCode.trim());
+await privy.waitForWallet();
+```
 
-2. **Handling User Cancellations**:
-   It's important to gracefully handle when a user cancels the biometric prompt. We check error messages to avoid showing scary "Failed" alerts for simple cancellations.
+## 3. Passkey onboarding
 
-   ```typescript
-   // Check if it's just a cancellation
-   if (!err.message.includes("cancel") && !err.message.includes("closed")) {
-      setError("Connection failed. Try again.");
-   }
-   ```
+The wallet drawer first attempts passkey login for existing users. If that fails, it falls back to passkey signup, then waits for the embedded Solana wallet to hydrate.
 
-3. **Visual Feedback**:
-   We use icons (Fingerprint, FaceID) to make it clear this is *not* a standard crypto wallet connection.
+```typescript
+try {
+  await privy.loginWithPasskey();
+} catch {
+  await privy.signupWithPasskey();
+}
+await privy.waitForWallet();
+```
 
-## 3. Why This Matters
+## 4. Embedded Solana wallet creation
 
-By using Lazorkit, we bypass the biggest hurdle in crypto onboarding: **Wallet Installation**.
-The user never leaves the page. They don't need a Chrome extension. They just scan their face, and they have a Solana wallet.
+After Privy authentication, `usePrivyWallet` auto-creates an embedded Solana wallet when Privy reports the wallet status as `not-created`.
+
+```typescript
+if (authenticated && solanaWalletStatus === 'not-created' && createSolanaWallet && !creatingRef.current) {
+  creatingRef.current = true;
+  createSolanaWallet();
+}
+```
+
+The wallet is considered ready only when the embedded wallet has an address.
+
+## 5. External wallet path
+
+The app still supports external Solana wallets through Solana Mobile Wallet Adapter. Those wallets are separate from Privy's embedded wallet path and should be described as external-wallet behavior.
+
+## Current behavior summary
+
+| Behavior | Current source of truth |
+| --- | --- |
+| Email OTP login | Privy wallet drawer flow |
+| Passkey login/signup | Privy passkey hooks |
+| Embedded Solana wallet | Privy embedded wallet hook |
+| External Solana wallet | Solana Mobile Wallet Adapter hook |
+| Predict/Polymarket message signing | Current wallet interface consumed by `usePolymarketWallet` |
+
+When planning wallet work, treat Privy as the current app onboarding path unless the product direction explicitly changes.

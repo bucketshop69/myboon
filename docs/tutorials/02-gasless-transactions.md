@@ -1,79 +1,47 @@
-# Tutorial: Triggering a Gasless Transaction on Solana
+# Tutorial: Current Wallet Transaction and Gas Expectations
 
-One of Lazorkit's most powerful features is **Gasless Transactions**. This means your users can interact with the blockchain (e.g., send USDC) without holding any SOL for network fees. The Lazorkit Paymaster covers the cost.
+This note documents what the MYBOON app currently supports around wallet-backed signing and transaction costs.
 
-## Concept: The Paymaster
+## Current source of truth
 
-In a traditional Solana transaction, the user's wallet is the `feePayer`. In a Lazorkit transaction, the `feePayer` is replaced by the **Paymaster**.
+The active mobile wallet path uses Privy embedded Solana wallets and external Solana Mobile Wallet Adapter wallets:
 
-## Implementation Guide
+- `apps/hybrid-expo/hooks/usePrivyWallet.ts` exposes the Privy embedded wallet address and `signMessage` handler.
+- `apps/hybrid-expo/hooks/useWallet.ts` exposes the external Solana wallet path.
+- `apps/hybrid-expo/hooks/usePolymarketWallet.ts` uses the connected wallet interface for Predict/Polymarket signing flows.
+- `apps/hybrid-expo/components/drawer/WalletDrawer.tsx` presents the wallet onboarding and connection UI.
 
-We implemented this in our `TransferForm.tsx`. Here is how to construct a gasless transfer.
+## What is implemented today
 
-### 1. Setup the Transfer Instruction
+### Privy message signing
 
-The actual token transfer instruction is standard SPL Token code. It doesn't change whether you use Lazorkit or a normal wallet.
-
-```typescript
-import { createTransferInstruction } from "@solana/spl-token";
-
-// Standard Solana instruction
-const transferIx = createTransferInstruction(
-  senderAta,      // From
-  recipientAta,   // To
-  walletPubkey,   // Owner/Signer
-  amount          // Amount in smallest unit
-);
-```
-
-### 2. Signing with Lazorkit (Gasless)
-
-Instead of building a `Transaction` object and asking a wallet adapter to sign it, we use the `signAndSendTransaction` method from the Lazorkit SDK.
-
-**Critical Difference:** We pass the *instructions array* directly. The SDK handles the transaction construction and assigning the Paymaster as the fee payer.
+For a Privy embedded Solana wallet, the app gets the provider from the embedded wallet and asks it to sign a message.
 
 ```typescript
-import { useWallet as useLazorkitWallet } from "@lazorkit/wallet";
-
-// Inside component
-const { signAndSendTransaction } = useLazorkitWallet();
-
-const handleTransfer = async () => {
-    // ... create instructions ...
-
-    // ⚡️ MAGIC HAPPENS HERE
-    // The SDK automatically routes this through the Paymaster
-    const signature = await signAndSendTransaction({ 
-        instructions: [transferIx] 
-    });
-
-    console.log("Transaction confirmed:", signature);
-};
+const provider = await wallet.getProvider();
+const { signature } = await provider.request({
+  method: 'signMessage',
+  params: { message: Buffer.from(message).toString('base64') },
+});
 ```
 
-### 3. Handling "OwnerOffCurve"
+This supports wallet-authenticated signing flows such as Predict/Polymarket session setup.
 
-Lazorkit wallets are **PDAs (Program Derived Addresses)**, not standard Keypairs.
-When interacting with SPL tokens (getting ATAs), you **MUST** specify `allowOwnerOffCurve: true`.
+### External wallet signing
 
-```typescript
-// ✅ CORRECT
-const senderAta = await getAssociatedTokenAddress(
-  USDC_MINT, 
-  walletPubkey,
-  true // <--- Critical for Smart Wallets!
-);
+External Solana wallets continue through the Solana Mobile Wallet Adapter path. Transaction fee behavior for those wallets should be treated as normal wallet behavior unless a specific app-level sponsorship or relayer path is implemented and documented.
 
-// ❌ WRONG (Will throw "Invalid owner" error)
-const senderAta = await getAssociatedTokenAddress(USDC_MINT, walletPubkey);
-```
+## What is not implemented today
 
-## Summary of Differences
+The current app path does **not** document an active Solana paymaster, relayer, or fee-sponsorship system for general app transactions.
 
-| Feature | Traditional Wallet | Lazorkit Smart Wallet |
-|BC|---|---|
-| **Fee Payer** | User (SOL required) | Paymaster (0 SOL required) |
-| **Signing** | `adapter.sendTransaction(tx)` | `lazorkit.signAndSendTransaction({ instructions })` |
-| **Account Type** | System Account (Curve) | PDA (Off-Curve) |
+Do not scope product or engineering work assuming that users can submit arbitrary Solana transactions without SOL unless there is current code and product approval for that behavior.
 
-By checking `isLazorkitWallet` in our code, we dynamically switch between these two flows, giving users the best of both worlds.
+## Planning guidance
+
+When writing wallet requirements or acceptance criteria:
+
+- Say **Privy embedded Solana wallet** for the current in-app wallet path.
+- Say **external Solana wallet** for the Solana Mobile Wallet Adapter path.
+- Tie any gas sponsorship, paymaster, relayer, or fee-abstraction claim to real code before treating it as current behavior.
+- If fee sponsorship is desired later, scope it as new wallet infrastructure work with explicit product approval, security review, and transaction-level tests.
