@@ -263,7 +263,7 @@ test('normalizeReflectionPlan drops unsupported last30days sources', () => {
   }
 
   const normalized = __testing.normalizeReflectionPlan({
-    search_sources: ['reddit', 'x_search', 'grounding'],
+    search_sources: ['reddit', 'x_search', 'x', 'twitter_search', 'grounding'],
     last30days_plan: {
       intent: 'prediction',
       freshness_mode: 'strict_recent',
@@ -272,7 +272,7 @@ test('normalizeReflectionPlan drops unsupported last30days sources', () => {
         label: 'macro',
         search_query: 'Fed July hike',
         ranking_query: 'What changed?',
-        sources: ['x_search', 'grounding'],
+        sources: ['x_search', 'x', 'twitter_search', 'grounding'],
         weight: 1,
       }],
     },

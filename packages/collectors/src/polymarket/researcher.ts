@@ -28,6 +28,7 @@ const DEFAULT_MAX_CANDIDATE_AGE_HOURS = 48
 const VPS_LAST30DAYS_SCRIPT = '/root/.agents/skills/last30days/scripts/last30days.py'
 const LAST30DAYS_ALLOWED_SOURCES = new Set(['reddit', 'grounding', 'polymarket', 'jobs'])
 const LAST30DAYS_DEFAULT_SOURCES = ['reddit', 'grounding', 'polymarket']
+const LAST30DAYS_DISABLED_SOURCE_ALIASES = new Set(['x', 'x_search', 'twitter', 'twitter_search'])
 const MAX_RETRIEVAL_PASSES = 2
 
 export interface PolymarketResearcherOptions {
@@ -892,6 +893,7 @@ function sanitizeLast30DaysSources(value: unknown, fallback = LAST30DAYS_DEFAULT
   const sources = input
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim().toLowerCase())
+    .filter((item) => !LAST30DAYS_DISABLED_SOURCE_ALIASES.has(item))
     .filter((item) => LAST30DAYS_ALLOWED_SOURCES.has(item))
   const unique = [...new Set(sources)]
   return unique.length > 0 ? unique : fallback.filter((item) => LAST30DAYS_ALLOWED_SOURCES.has(item))

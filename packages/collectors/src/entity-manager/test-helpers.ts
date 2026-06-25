@@ -1,0 +1,98 @@
+import type {
+  EntityInput,
+  EntityMemoryInput,
+  EntityMemoryRecord,
+  EntityMemoryStore,
+  EntityRecord,
+  MemoryLookupKey,
+} from './types'
+
+export class InMemoryEntityMemoryStore implements EntityMemoryStore {
+  entities: EntityRecord[] = []
+  memories: EntityMemoryRecord[] = []
+  private nextEntityId = 1
+  private nextMemoryId = 1
+
+  async findEntities(slugs: string[], aliases: string[]): Promise<EntityRecord[]> {
+    const slugSet = new Set(slugs)
+    const aliasSet = new Set(aliases.map((alias) => alias.toLowerCase()))
+    return this.entities.filter((entity) => (
+      slugSet.has(entity.slug)
+      || entity.aliases.some((alias) => aliasSet.has(alias.toLowerCase()))
+    ))
+  }
+
+  async createEntities(entities: EntityInput[]): Promise<EntityRecord[]> {
+    const created: EntityRecord[] = []
+    for (const input of entities) {
+      const existing = this.entities.find((entity) => entity.slug === input.slug)
+      if (existing) {
+        created.push(existing)
+        continue
+      }
+      const entity = {
+        id: `entity-${this.nextEntityId++}`,
+        created_at: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString(),
+        ...input,
+      }
+      this.entities.push(entity)
+      created.push(entity)
+    }
+    return created
+  }
+
+  async updateEntity(entity: EntityRecord): Promise<EntityRecord> {
+    const index = this.entities.findIndex((item) => item.id === entity.id)
+    if (index === -1) throw new Error(`missing entity ${entity.id}`)
+    this.entities[index] = entity
+    return entity
+  }
+
+  async findMemories(keys: MemoryLookupKey[]): Promise<EntityMemoryRecord[]> {
+    const wanted = new Set(keys.map((key) => [
+      key.source,
+      key.sourceArea,
+      key.sourceResearchId,
+      key.entityId ?? '',
+      key.memoryType,
+      key.title,
+    ].join('|')))
+    return this.memories.filter((memory) => wanted.has([
+      memory.source,
+      memory.source_area,
+      memory.source_research_id,
+      memory.entity_id ?? '',
+      memory.memory_type,
+      memory.title,
+    ].join('|')))
+  }
+
+  async upsertMemories(memories: EntityMemoryInput[]): Promise<EntityMemoryRecord[]> {
+    const upserted: EntityMemoryRecord[] = []
+    for (const input of memories) {
+      const existing = this.memories.find((memory) => (
+        memory.source === input.source
+        && memory.source_area === input.source_area
+        && memory.source_research_id === input.source_research_id
+        && (memory.entity_id ?? '') === (input.entity_id ?? '')
+        && memory.memory_type === input.memory_type
+        && memory.title === input.title
+      ))
+      if (existing) {
+        Object.assign(existing, input)
+        upserted.push(existing)
+        continue
+      }
+      const memory: EntityMemoryRecord = {
+        id: `memory-${this.nextMemoryId++}`,
+        created_at: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString(),
+        ...input,
+      }
+      this.memories.push(memory)
+      upserted.push(memory)
+    }
+    return upserted
+  }
+}
