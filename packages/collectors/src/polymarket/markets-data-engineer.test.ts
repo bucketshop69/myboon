@@ -157,3 +157,71 @@ test('blocksCandidate respects failed-research retry window', () => {
   assert.equal(__testing.blocksCandidate(candidate(), [recentFailed as any], options.now, options), true)
   assert.equal(__testing.blocksCandidate(candidate(), [staleFailed as any], options.now, options), false)
 })
+
+test('buildThreadUpdatePayload reopens an existing researched family for material movement', () => {
+  const input = candidate({
+    market: { slug: 'whoop-ipo-before-2027', title: 'WHOOP IPO before 2027?' },
+    draft: {
+      candidateType: 'odds_moved',
+      score: 82,
+      metrics: { oddsDelta: 0.12 },
+    },
+  })
+  input.familyKey = __testing.primaryMarketFamilyKey(input.market)
+  input.clusterKey = `polymarket:markets:${input.familyKey}`
+
+  const payload = __testing.buildThreadUpdatePayload({
+    id: 'existing-id',
+    slug: 'whoop-ipo-before-2027',
+    title: 'WHOOP IPO before 2027?',
+    status: 'researched',
+    observed_at: '2026-06-09T00:00:00.000Z',
+    score: 70,
+    metrics: {
+      thread: {
+        firstObservedAt: '2026-06-08T00:00:00.000Z',
+        observationCount: 2,
+        observationHistory: [{ observedAt: '2026-06-09T00:00:00.000Z' }],
+      },
+    },
+    research_family_key: input.familyKey,
+    research_cluster_key: input.clusterKey,
+  }, input, options.now, options)
+
+  assert.equal(payload.status, 'pending_research')
+  assert.equal(payload.observed_at, options.now)
+  assert.equal(payload.research_family_key, 'title:whoop-ipo-2027')
+  assert.equal((payload.metrics as any).thread.observationCount, 3)
+  assert.equal((payload.metrics as any).thread.firstObservedAt, '2026-06-08T00:00:00.000Z')
+  assert.equal((payload.score_breakdown as any).reopenedForResearch, true)
+})
+
+test('buildThreadUpdatePayload keeps researched status for non-material repeated movement', () => {
+  const input = candidate({
+    market: { slug: 'whoop-ipo-before-2027', title: 'WHOOP IPO before 2027?' },
+    draft: {
+      candidateType: 'odds_moved',
+      score: 61,
+      metrics: { oddsDelta: 0.06 },
+    },
+  })
+  input.familyKey = __testing.primaryMarketFamilyKey(input.market)
+  input.clusterKey = `polymarket:markets:${input.familyKey}`
+
+  const payload = __testing.buildThreadUpdatePayload({
+    id: 'existing-id',
+    slug: 'whoop-ipo-before-2027',
+    title: 'WHOOP IPO before 2027?',
+    status: 'researched',
+    observed_at: '2026-06-09T00:00:00.000Z',
+    score: 70,
+    metrics: {},
+    research_family_key: input.familyKey,
+    research_cluster_key: input.clusterKey,
+  }, input, options.now, options)
+
+  assert.equal(payload.status, 'researched')
+  assert.equal(payload.score, 70)
+  assert.equal((payload.metrics as any).thread.observationCount, 1)
+  assert.equal((payload.score_breakdown as any).reopenedForResearch, false)
+})

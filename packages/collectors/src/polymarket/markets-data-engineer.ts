@@ -138,6 +138,8 @@ export interface PolymarketMarketsDataEngineerResult {
   selectedWatchlist: number
   watchlistUpdated: number
   candidatesWritten: number
+  candidateThreadsUpdated: number
+  candidateThreadsReopened: number
   candidatesSkippedAsDuplicates: number
   candidatesSkippedForBacklog: number
   topWatchlist: Array<{
@@ -541,6 +543,15 @@ function marketFamilyKeys(market: Pick<NormalizedMarket, 'eventSlug' | 'eventTit
   return [...keys]
 }
 
+function primaryMarketFamilyKey(market: Pick<NormalizedMarket, 'title' | 'slug'>): string {
+  const titleKey = titleFamilyKey(market.title ?? market.slug)
+  return titleKey ? `title:${titleKey}` : `slug:${market.slug}`
+}
+
+function marketClusterKey(market: Pick<NormalizedMarket, 'title' | 'slug'>): string {
+  return `${SOURCE}:${AREA}:${primaryMarketFamilyKey(market)}`
+}
+
 function rowFamilyKeys(row: { slug: string; title: string | null }): string[] {
   const keys = new Set<string>([`slug:${row.slug}`])
   const titleKey = titleFamilyKey(row.title ?? row.slug)
@@ -610,6 +621,26 @@ interface CandidateInsert {
   market: NormalizedMarket
   draft: CandidateDraft
   dedupeKey: string
+  familyKey: string
+  clusterKey: string
+}
+
+interface ExistingCandidateThread {
+  id: string
+  slug: string
+  title: string | null
+  status: string
+  observed_at: string | null
+  score: number | string | null
+  metrics: unknown
+  research_family_key: string | null
+  research_cluster_key: string | null
+}
+
+interface CandidateThreadUpdate {
+  existing: ExistingCandidateThread
+  candidate: CandidateInsert
+  payload: Record<string, unknown>
 }
 
 async function fetchPreviousWatchlist(db: SupabaseClient, slugs: string[]): Promise<Map<string, PreviousMarketState>> {
@@ -693,7 +724,7 @@ async function deactivateStaleWatchlist(db: SupabaseClient, observedAt: string):
 
 function candidateDedupeKey(market: NormalizedMarket, observedAt: string, cooldownHours: number): string {
   const bucket = Math.floor(new Date(observedAt).getTime() / (cooldownHours * 3_600_000))
-  const familyKey = marketFamilyKeys(market)[0] ?? `slug:${market.slug}`
+  const familyKey = primaryMarketFamilyKey(market)
   return `${SOURCE}:${AREA}:${familyKey}:${bucket}`
 }
 
@@ -918,6 +949,108 @@ function dedupeCandidateInserts(candidates: CandidateInsert[]): CandidateInsert[
   return [...byKey.values()]
 }
 
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function observationHistoryEntry(candidate: CandidateInsert, observedAt: string): Record<string, unknown> {
+  return {
+    observedAt,
+    candidateType: candidate.draft.candidateType,
+    whatChanged: candidate.draft.whatChanged,
+    score: candidate.draft.score,
+    metrics: candidate.draft.metrics,
+  }
+}
+
+function mergedThreadMetrics(
+  existing: ExistingCandidateThread,
+  candidate: CandidateInsert,
+  observedAt: string
+): Record<string, unknown> {
+  const existingMetrics = objectRecord(existing.metrics)
+  const existingThread = objectRecord(existingMetrics.thread)
+  const existingHistory = Array.isArray(existingThread.observationHistory)
+    ? existingThread.observationHistory.filter((item) => item && typeof item === 'object')
+    : []
+  const nextHistory = [
+    ...existingHistory,
+    observationHistoryEntry(candidate, observedAt),
+  ].slice(-20)
+  const firstObservedAt = typeof existingThread.firstObservedAt === 'string'
+    ? existingThread.firstObservedAt
+    : existing.observed_at ?? observedAt
+  const previousObservationCount = numberOrNull(existingThread.observationCount) ?? existingHistory.length
+
+  return {
+    ...candidate.draft.metrics,
+    thread: {
+      firstObservedAt,
+      latestObservedAt: observedAt,
+      observationCount: previousObservationCount + 1,
+      latestCandidateType: candidate.draft.candidateType,
+      latestScore: candidate.draft.score,
+      latestWhatChanged: candidate.draft.whatChanged,
+      latestWhyFlagged: candidate.draft.whyFlagged,
+      previousCandidateId: existing.id,
+      previousStatus: existing.status,
+      previousScore: numberOrNull(existing.score),
+      observationHistory: nextHistory,
+    },
+  }
+}
+
+function statusForThreadUpdate(
+  existing: ExistingCandidateThread,
+  candidate: CandidateInsert,
+  options: Required<PolymarketMarketsDataEngineerOptions>
+): string {
+  if (existing.status === 'pending_research' || existing.status === 'researching') return existing.status
+  return isMaterialCandidate(candidate.draft, options) ? 'pending_research' : existing.status
+}
+
+function buildThreadUpdatePayload(
+  existing: ExistingCandidateThread,
+  candidate: CandidateInsert,
+  observedAt: string,
+  options: Required<PolymarketMarketsDataEngineerOptions>
+): Record<string, unknown> {
+  const status = statusForThreadUpdate(existing, candidate, options)
+  return {
+    candidate_type: candidate.draft.candidateType,
+    market_id: candidate.market.marketId,
+    slug: candidate.market.slug,
+    title: candidate.market.title,
+    tag_slug: candidate.market.tagSlug,
+    tag_label: candidate.market.tagLabel,
+    observed_at: observedAt,
+    what_changed: candidate.draft.whatChanged,
+    why_flagged: candidate.draft.whyFlagged,
+    score: Math.max(candidate.draft.score, numberOrNull(existing.score) ?? 0),
+    score_breakdown: {
+      ...candidate.draft.scoreBreakdown,
+      threadUpdate: true,
+      previousStatus: existing.status,
+      reopenedForResearch: status === 'pending_research' && existing.status !== 'pending_research',
+    },
+    metrics: mergedThreadMetrics(existing, candidate, observedAt),
+    evidence_refs: candidate.draft.evidenceRefs,
+    status,
+    updated_at: observedAt,
+    research_family_key: candidate.familyKey,
+    research_cluster_key: candidate.clusterKey,
+    ...(status === 'pending_research'
+      ? {
+          research_error: null,
+          research_next_retry_at: null,
+          research_last_error_kind: null,
+        }
+      : {}),
+  }
+}
+
 async function fetchResearchRowsByIds(
   db: SupabaseClient,
   ids: string[]
@@ -934,6 +1067,55 @@ async function fetchResearchRowsByIds(
     rows.push(...((data ?? []) as Array<{ id: string; slug: string; title: string | null; status: string; researched_at: string | null }>))
   }
   return rows
+}
+
+async function fetchExistingCandidateThreads(
+  db: SupabaseClient,
+  familyKeys: string[]
+): Promise<Map<string, ExistingCandidateThread>> {
+  const byFamily = new Map<string, ExistingCandidateThread>()
+  const uniqueFamilyKeys = [...new Set(familyKeys)]
+  if (uniqueFamilyKeys.length === 0) return byFamily
+
+  for (const keyChunk of chunks(uniqueFamilyKeys, LOOKUP_CHUNK_SIZE)) {
+    const { data, error } = await db
+      .from('polymarket_market_candidates')
+      .select('id, slug, title, status, observed_at, score, metrics, research_family_key, research_cluster_key')
+      .eq('source', SOURCE)
+      .eq('area', AREA)
+      .in('research_family_key', keyChunk)
+      .order('observed_at', { ascending: false })
+
+    if (error) throw new Error(`candidate thread family fetch failed: ${error.message}`)
+    for (const row of data ?? []) {
+      const thread = row as ExistingCandidateThread
+      if (!thread.research_family_key || byFamily.has(thread.research_family_key)) continue
+      byFamily.set(thread.research_family_key, thread)
+    }
+  }
+
+  const unresolved = uniqueFamilyKeys.filter((key) => !byFamily.has(key))
+  if (unresolved.length === 0) return byFamily
+
+  const { data, error } = await db
+    .from('polymarket_market_candidates')
+    .select('id, slug, title, status, observed_at, score, metrics, research_family_key, research_cluster_key')
+    .eq('source', SOURCE)
+    .eq('area', AREA)
+    .order('observed_at', { ascending: false })
+    .limit(1500)
+
+  if (error) throw new Error(`candidate thread fallback fetch failed: ${error.message}`)
+  const unresolvedSet = new Set(unresolved)
+  for (const row of data ?? []) {
+    const thread = row as ExistingCandidateThread
+    for (const key of rowFamilyKeys(thread)) {
+      if (!unresolvedSet.has(key) || byFamily.has(key)) continue
+      byFamily.set(key, thread)
+    }
+  }
+
+  return byFamily
 }
 
 async function fetchDownstreamBacklog(
@@ -1119,7 +1301,7 @@ async function insertCandidates(
   for (const candidateChunk of chunks(candidates, WRITE_CHUNK_SIZE)) {
     const { error } = await db
       .from('polymarket_market_candidates')
-      .insert(candidateChunk.map(({ market, draft, dedupeKey }) => ({
+      .insert(candidateChunk.map(({ market, draft, dedupeKey, familyKey, clusterKey }) => ({
         source: SOURCE,
         area: AREA,
         candidate_type: draft.candidateType,
@@ -1137,8 +1319,28 @@ async function insertCandidates(
         evidence_refs: draft.evidenceRefs,
         status: 'pending_research',
         dedupe_key: dedupeKey,
+        research_family_key: familyKey,
+        research_cluster_key: clusterKey,
       })))
     if (error) throw new Error(`candidate insert failed: ${error.message}`)
+  }
+}
+
+async function updateCandidateThreads(
+  db: SupabaseClient,
+  updates: CandidateThreadUpdate[]
+): Promise<void> {
+  if (updates.length === 0) return
+
+  for (const updateChunk of chunks(updates, WRITE_CHUNK_SIZE)) {
+    await Promise.all(updateChunk.map(async (update) => {
+      const { error } = await db
+        .from('polymarket_market_candidates')
+        .update(update.payload)
+        .eq('id', update.existing.id)
+
+      if (error) throw new Error(`candidate thread update failed: ${error.message}`)
+    }))
   }
 }
 
@@ -1168,17 +1370,40 @@ export async function runPolymarketMarketsDataEngineer(
     const candidates = buildCandidates(market, previous, observedAt, options)
     for (const candidate of candidates) {
       const dedupeKey = candidateDedupeKey(market, observedAt, options.candidateCooldownHours)
-      candidateInserts.push({ market, draft: candidate, dedupeKey })
+      const familyKey = primaryMarketFamilyKey(market)
+      candidateInserts.push({
+        market,
+        draft: candidate,
+        dedupeKey,
+        familyKey,
+        clusterKey: `${SOURCE}:${AREA}:${familyKey}`,
+      })
     }
   }
 
   const familyDedupedCandidateInserts = dedupeCandidateInserts(candidateInserts)
   const existingCandidateKeys = await fetchExistingCandidateKeys(db, familyDedupedCandidateInserts.map((candidate) => candidate.dedupeKey))
-  const dedupeFilteredCandidateInserts = familyDedupedCandidateInserts.filter((candidate) => !existingCandidateKeys.has(candidate.dedupeKey))
-  const backlog = await fetchDownstreamBacklog(db, dedupeFilteredCandidateInserts.map((candidate) => candidate.market), observedAt, options)
+  const existingThreads = await fetchExistingCandidateThreads(db, familyDedupedCandidateInserts.map((candidate) => candidate.familyKey))
+  const threadUpdates: CandidateThreadUpdate[] = []
+  const insertableCandidateInserts: CandidateInsert[] = []
+  for (const candidate of familyDedupedCandidateInserts) {
+    const existing = existingThreads.get(candidate.familyKey)
+    if (!existing) {
+      if (existingCandidateKeys.has(candidate.dedupeKey)) continue
+      insertableCandidateInserts.push(candidate)
+      continue
+    }
+    threadUpdates.push({
+      existing,
+      candidate,
+      payload: buildThreadUpdatePayload(existing, candidate, observedAt, options),
+    })
+  }
+
+  const backlog = await fetchDownstreamBacklog(db, insertableCandidateInserts.map((candidate) => candidate.market), observedAt, options)
   const newCandidateInserts: CandidateInsert[] = []
   let candidatesSkippedForBacklog = 0
-  for (const candidate of dedupeFilteredCandidateInserts) {
+  for (const candidate of insertableCandidateInserts) {
     const blocks = candidateBacklogBlocks(backlog, candidate.market)
     if (blocksCandidate(candidate, blocks, observedAt, options)) {
       candidatesSkippedForBacklog += 1
@@ -1186,6 +1411,7 @@ export async function runPolymarketMarketsDataEngineer(
     }
     newCandidateInserts.push(blocks.length > 0 ? annotateBacklogOverride(candidate, blocks) : candidate)
   }
+  await updateCandidateThreads(db, threadUpdates)
   await insertCandidates(db, newCandidateInserts, observedAt)
 
   return {
@@ -1195,7 +1421,13 @@ export async function runPolymarketMarketsDataEngineer(
     selectedWatchlist: watchlist.length,
     watchlistUpdated: watchlist.length,
     candidatesWritten: newCandidateInserts.length,
-    candidatesSkippedAsDuplicates: candidateInserts.length - familyDedupedCandidateInserts.length + familyDedupedCandidateInserts.length - dedupeFilteredCandidateInserts.length,
+    candidateThreadsUpdated: threadUpdates.length,
+    candidateThreadsReopened: threadUpdates.filter((update) => (
+      update.payload.status === 'pending_research'
+      && update.existing.status !== 'pending_research'
+      && update.existing.status !== 'researching'
+    )).length,
+    candidatesSkippedAsDuplicates: candidateInserts.length - familyDedupedCandidateInserts.length + familyDedupedCandidateInserts.filter((candidate) => existingCandidateKeys.has(candidate.dedupeKey) && !existingThreads.has(candidate.familyKey)).length,
     candidatesSkippedForBacklog,
     topWatchlist: watchlist.slice(0, 12).map((market) => ({
       slug: market.slug,
@@ -1244,12 +1476,15 @@ export async function previewPolymarketMarketsDataEngineer(
 
 export const __testing = {
   blocksCandidate,
+  buildThreadUpdatePayload,
   candidateBacklogBlocks,
   candidateDedupeKey,
   chooseWatchlist,
   dedupeCandidateInserts,
   fetchDownstreamBacklog,
+  mergedThreadMetrics,
   marketFamilyKeys,
+  primaryMarketFamilyKey,
   selectManualPinRepresentatives,
   titleFamilyKey,
 }

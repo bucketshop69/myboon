@@ -468,6 +468,9 @@ const CANDIDATE_SELECT = [
   'research_retry_count',
   'research_next_retry_at',
   'research_last_error_kind',
+  'research_family_key',
+  'research_cluster_key',
+  'research_depth',
 ].join(', ')
 
 function candidateObservedAfter(options: Required<PolymarketResearcherOptions>): string | null {
