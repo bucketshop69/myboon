@@ -2,18 +2,19 @@
 
 ## What Is myboon?
 
-**myboon** is a mobile-first Solana market intelligence app.
+**myboon** is a mobile-first context-to-action app for crypto markets, built
+around Solana.
 
 It helps users understand why markets are moving, what changed, and where the
 relevant action is, without forcing them to piece context together from X,
 Telegram, Discord, YouTube, Instagram, dashboards, news, and trading apps.
 
-The product starts with a feed. The feed watches market signals, turns them into
-clear context, builds durable entity memory, and connects timely context to
-action inside the same mobile experience.
+The product starts by turning scattered market signals into clear context. That
+context builds durable entity memory and connects timely market understanding to
+integrated action surfaces inside the same mobile experience.
 
 ```text
-Market moves -> myboon explains what changed -> user can act from the app
+Market moves -> myboon explains the context -> user opens the relevant market -> positions track what happens next
 ```
 
 ## The Problem
@@ -43,7 +44,7 @@ myboon exists to close that gap.
 
 ## The Vision
 
-The long-term vision is a market intelligence layer for mobile crypto users.
+The long-term vision is a context-to-action layer for mobile crypto users.
 
 myboon should feel like opening one app and immediately knowing:
 
@@ -56,17 +57,16 @@ myboon should feel like opening one app and immediately knowing:
 The product should not be a generic crypto news app. It should not be a raw
 dashboard. It should not be another trading terminal squeezed onto a phone.
 
-It should be a mobile feed that turns scattered market signals into useful,
-timely, evidence-backed context. Under the surface, the feed should also build a
-curated memory of entities, claims, catalysts, relationships, and open questions
-so future research does not start from zero.
+It should turn scattered market signals into useful, timely, evidence-backed
+context. Under the surface, myboon should also build a curated memory of
+entities, claims, catalysts, relationships, and open questions so future
+research does not start from zero.
 
 ## Starting Point
 
-The starting point is a market intelligence feed for Solana and crypto-native
-users.
+The starting point is a context layer for Solana and crypto-native users.
 
-The feed gathers signals from sources such as:
+The context layer gathers signals from sources such as:
 
 - prediction markets
 - on-chain activity
@@ -76,7 +76,7 @@ The feed gathers signals from sources such as:
 - social and news context
 - scheduled catalysts and market events
 
-Those signals are processed into research memory and, when useful now, feed
+Those signals are processed into research memory and, when useful now, context
 items that answer:
 
 - what happened?
@@ -92,26 +92,27 @@ inside five different apps to understand and act on them.
 
 ## Product Shape
 
-myboon is built around three connected surfaces.
+myboon is built around three connected layers.
 
-### Feed
+### Context
 
-The feed is the main product surface.
+Context is the main product layer.
 
-It turns raw market movement into short, useful narratives. Each item should
-have a reason to exist: a price move, odds shift, wallet action, funding change,
-news catalyst, on-chain event, or developing story.
+It turns raw market movement into short, useful narratives and remembered
+entity-level context. Each item should have a reason to exist: a price move,
+odds shift, wallet action, funding change, news catalyst, on-chain event, or
+developing story.
 
-The feed should be fast, but speed alone is not the promise. The promise is
-earlier context and better signal selection than a user can assemble manually.
-Not every researched signal needs to become a feed item. Unpublished research
-can still strengthen the entity graph that makes later feed items and agent
-answers better.
+The context layer should be fast, but speed alone is not the promise. The
+promise is earlier context and better signal selection than a user can assemble
+manually. Not every researched signal needs to be published. Unpublished
+research can still strengthen the entity graph that makes later context items
+and agent answers better.
 
 ### Markets And Actions
 
-When a feed item points to something actionable, the user should be able to move
-from context to action without leaving the app.
+When a context item points to something actionable, the user should be able to
+move from context to action without leaving the app.
 
 Near-term action surfaces include:
 
@@ -120,18 +121,19 @@ Near-term action surfaces include:
 - swaps
 - wallet and position views
 
-The action layer exists because the feed earns trust. Trading, swaps, and market
+The action layer exists because context earns trust. Trading, swaps, and market
 views are not the moat by themselves. The moat is knowing what matters and why.
 
-### Wallet Context
+### Positions
 
-Wallet context is still useful, but it is no longer the whole product.
+Wallet context is still useful, but it is part of the position and state layer,
+not the whole product.
 
 Over time, myboon can become more personalized by understanding what a user
 owns, follows, trades, or cares about. That can make alerts and feed ranking
 more relevant.
 
-This should be treated as an expansion of the market intelligence layer, not the
+This should be treated as an expansion of the context-to-action layer, not the
 starting point of the product.
 
 ## Why Mobile
@@ -164,7 +166,7 @@ raw facts
   -> story candidates
   -> research packets
   -> entity / claim / relationship memory
-  -> feed decisions
+  -> publication decisions
   -> published narratives
   -> outcome review
 ```
@@ -178,11 +180,11 @@ Each layer has a job.
   questions before anything is written.
 - Entity memory preserves what the system learned, even when a signal is not
   publishable yet.
-- Publisher agents decide what should reach the feed.
-- The mobile app renders the final feed and action surfaces.
+- Publisher agents decide what should reach users.
+- The mobile app renders the final context and action surfaces.
 
-This matters because the feed should be grounded in receipts. The app can sound
-simple, but the system underneath should know why a story exists.
+This matters because the context should be grounded in receipts. The app can
+sound simple, but the system underneath should know why a story exists.
 
 ## Current Build Direction
 
@@ -190,17 +192,17 @@ The current build focuses on getting from prototype to public beta.
 
 Near-term priorities:
 
-- improve feed quality
+- improve context quality
 - add more data collectors
 - strengthen AI agent and inference workflows
-- make published feed items more evidence-backed
+- make published context items more evidence-backed
 - improve the mobile experience
-- connect feed items to useful action surfaces
+- connect context items to useful action surfaces
 - prepare for Seeker/mobile distribution
 
 The initial collectors and product surfaces are already in motion. The work now
-is to make the intelligence layer sharper, reduce noise, and make the app useful
-enough that early users return for the feed.
+is to make the context layer sharper, reduce noise, and make the app useful
+enough that early users return for the context.
 
 ## What Makes myboon Different
 
@@ -215,7 +217,7 @@ Most products in this space focus on one layer:
 myboon combines the missing loop:
 
 ```text
-signal -> context -> action -> position tracking
+signal -> context -> market action -> position tracking
 ```
 
 The core bet is that users will value a mobile product that notices important
@@ -241,9 +243,9 @@ business model should come from helping users act on useful market context.
 
 ## Future Expansion
 
-Once the feed is useful and users trust it, myboon can expand into:
+Once the context is useful and users trust it, myboon can expand into:
 
-- personalized feed ranking based on wallet holdings and interests
+- personalized context ranking based on wallet holdings and interests
 - wallet-aware alerts
 - deeper on-chain wallet intelligence
 - multi-wallet views
@@ -253,22 +255,23 @@ Once the feed is useful and users trust it, myboon can expand into:
 
 These are future paths. The immediate priority is simple:
 
-Build the best mobile market intelligence feed for Solana users.
+Build the best mobile context-to-action experience for Solana users.
 
 ## Success Metrics
 
-myboon should be judged by whether the feed is useful.
+myboon should be judged by whether its context is useful enough to bring users
+back and help them take better next steps.
 
 Important metrics:
 
-- feed retention: do users come back?
-- feed quality: do users save, share, open, or act on items?
-- action-through rate: do feed items lead to market views, swaps, trades, or
+- context retention: do users come back?
+- context quality: do users save, share, open, or act on items?
+- action-through rate: do context items lead to market views, swaps, trades, or
   prediction actions?
-- signal accuracy: did the feed item correctly identify what changed?
+- signal accuracy: did the context item correctly identify what changed?
 - freshness: did the user see context before it became obvious everywhere?
 - noise suppression: did the system avoid publishing weak or stale items?
-- beta feedback: do early users describe the feed as useful without prompting?
+- beta feedback: do early users describe the context as useful without prompting?
 
 The goal is not to publish more. The goal is to publish better.
 

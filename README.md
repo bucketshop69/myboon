@@ -1,32 +1,37 @@
 # myboon
 
-> **A news feed for markets. Take action on everything you read.**
+> **A context-to-action app for crypto markets.**
 
-myboon watches prediction markets, on-chain activity, and perps data around the clock, then turns the movement into a live market feed. Read the signal, open the market, and track the position from one Home canvas.
+myboon turns scattered crypto signals into remembered context, then connects
+that context to integrated market actions. Understand what moved, open the
+relevant market, and track what happens next from one mobile experience.
 
 ---
 
 ## How it works
 
 ```
-Markets move  →  myboon explains the signal  →  you act from Markets  →  Wallet tracks the position
+Markets move -> myboon explains the context -> you open the relevant market -> positions track what happens next
 ```
 
-Whale drops $500K on a Polymarket bet. Funding rate spikes on BTC perps. Odds shift on an EPL match. myboon catches it, writes the story, and puts the market one tap away.
+A whale drops $500K on a Polymarket bet. Funding rate spikes on BTC perps.
+Odds shift on an EPL match. myboon catches the signal, explains the context,
+and brings the relevant market into the app.
 
 ---
 
 ## The app
 
-myboon opens into one scrolling Home canvas, not a row of disconnected tabs.
+myboon is built around one loop, not a row of disconnected crypto tools.
 
-| Chapter | What happens |
-|---------|--------------|
-| **Feed** | Read the live narratives and signals moving markets |
-| **Markets** | Act on the signal through prediction markets, perps, and future swap routes |
-| **Wallet** | Track positions, balances, venues, and outcomes in one place |
+| Layer | What happens |
+|-------|--------------|
+| **Context** | Understand the live narratives, signals, and entities moving markets |
+| **Markets** | Inspect or act through integrated prediction markets, perps, and future swap routes |
+| **Positions** | Track balances, venues, outcomes, and what happened after the action |
 
-Feed tells you what matters. Markets lets you act. Wallet shows what you own.
+Context explains what matters. Markets brings the next step into the app.
+Positions show what you own and what changed.
 
 ---
 
@@ -114,7 +119,7 @@ this collector/researcher rollout.
 
 - **Prediction market actions** — Polymarket builder affiliate %
 - **Perps / swap routes** — fee share
-- **Feed API / intelligence** — x402 micropayments *(post-MVP)*
+- **Context API / intelligence** — x402 micropayments *(post-MVP)*
 
 ---
 
