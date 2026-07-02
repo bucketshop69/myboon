@@ -7,6 +7,7 @@
 | `myboon-api` | `packages/api` | persistent HTTP server (port 3000) |
 | `myboon-polymarket-data-engineer` | `packages/collectors` | Polymarket markets Data Engineer |
 | `myboon-polymarket-researcher` | `packages/collectors` | Polymarket Researcher |
+| `myboon-editor-draft` | `packages/collectors` | Entity Memory to Editor Draft |
 | `myboon-polymarket-editor` | `packages/collectors` | Polymarket Editor |
 | `myboon-polymarket-publisher` | `packages/collectors` | Polymarket Publisher |
 
@@ -59,6 +60,7 @@ pm2 monit
 # Restart a single process
 pm2 restart myboon-polymarket-data-engineer
 pm2 restart myboon-polymarket-researcher
+pm2 restart myboon-editor-draft
 pm2 restart myboon-polymarket-editor
 pm2 restart myboon-polymarket-publisher
 
@@ -90,6 +92,9 @@ POLYMARKET_MARKETS_RUN_ONCE=0
 POLYMARKET_RESEARCHER_RUN_ONCE=0
 POLYMARKET_EDITOR_RUN_ONCE=0
 POLYMARKET_PUBLISHER_RUN_ONCE=0
+EDITOR_DRAFT_RUN_ONCE=0
+EDITOR_DRAFT_INTERVAL_MS=1800000
+EDITOR_DRAFT_BATCH_SIZE=2
 ```
 
 ---
