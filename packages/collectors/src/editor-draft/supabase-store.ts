@@ -283,10 +283,10 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
   async fetchBundles(options: FetchEditorDraftBundlesOptions): Promise<EntityDraftBundle[]> {
     const recentFetchLimit = Math.max(options.batchSize * options.recentMemoryLimit * 10, options.batchSize)
     const recentMemories = await fetchRecentMemories(this.db, recentFetchLimit)
-    const reviewed = await fetchReviewedMemoryIds(this.db, recentMemories.map((memory) => memory.id))
+    const recentReviewed = await fetchReviewedMemoryIds(this.db, recentMemories.map((memory) => memory.id))
     const eligibleEntityIds = unique(
       recentMemories
-        .filter((memory) => memory.entity_id && !reviewed.has(memory.id))
+        .filter((memory) => memory.entity_id && !recentReviewed.has(memory.id))
         .map((memory) => memory.entity_id as string)
     ).slice(0, options.batchSize)
 
@@ -298,6 +298,7 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
       fetchPriorDrafts(this.db, eligibleEntityIds, options.priorDraftLimit),
       fetchPublishedHistory(this.db, eligibleEntityIds, options.publishedHistoryLimit),
     ])
+    const laneReviewed = await fetchReviewedMemoryIds(this.db, laneMemories.map((memory) => memory.id))
 
     return buildEntityDraftBundles(
       entities,
@@ -307,7 +308,7 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
       {
         recentMemoryLimit: options.recentMemoryLimit,
         laneMemoryLimit: options.laneMemoryLimit,
-        reviewedMemoryIds: reviewed,
+        reviewedMemoryIds: laneReviewed,
       }
     ).slice(0, options.batchSize)
   }
