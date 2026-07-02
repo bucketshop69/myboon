@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { buildEntityDraftBundles, reviewedMemoryIds } from './input-builder'
+import { buildEntityDraftBundles } from './input-builder'
 import type { EntityMemoryRecord, EntityRecord } from '../entity-manager/types'
 import type {
   EntityDraftBundle,
@@ -15,6 +15,7 @@ const ENTITY_SELECT = 'id, slug, name, type, aliases, summary, status, metadata,
 const MEMORY_SELECT = 'id, entity_id, source, source_area, source_type, source_ref_id, source_research_id, memory_type, title, summary, body, event_at, observed_at, confidence, evidence, mentions, metrics, context, created_at, updated_at'
 const DRAFT_SELECT = 'id, entity_id, entity_slug, entity_name, entity_type, bundle_key, source_memory_ids, source_memory_hash, source, source_area, action, status, title, angle, summary, body, reasoning, reason_codes, evidence_quality, priority, confidence, merge_target_draft_id, related_draft_ids, follow_up_questions, research_instructions, backend, model, created_at, updated_at'
 const ENTITY_PUBLISHED_HISTORY_TABLE = 'entity_published_history'
+const LOOKUP_CHUNK_SIZE = 25
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -175,16 +176,18 @@ async function fetchMemoriesForEntities(
   entityIds: string[],
   limit: number
 ): Promise<EntityMemoryRecord[]> {
-  if (entityIds.length === 0) return []
-  const { data, error } = await db
-    .from('entity_memories')
-    .select(MEMORY_SELECT)
-    .in('entity_id', entityIds)
-    .neq('memory_type', 'source_marker')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error) throw new Error(`editor draft lane fetch failed: ${error.message}`)
-  return (data ?? []).map(normalizeMemory)
+  const rows = await Promise.all(entityIds.map(async (entityId) => {
+    const { data, error } = await db
+      .from('entity_memories')
+      .select(MEMORY_SELECT)
+      .eq('entity_id', entityId)
+      .neq('memory_type', 'source_marker')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw new Error(`editor draft lane fetch failed: ${error.message}`)
+    return (data ?? []).map(normalizeMemory)
+  }))
+  return rows.flat()
 }
 
 async function fetchPriorDrafts(
@@ -192,15 +195,54 @@ async function fetchPriorDrafts(
   entityIds: string[],
   limit: number
 ): Promise<PriorEditorDraft[]> {
-  if (entityIds.length === 0) return []
-  const { data, error } = await db
-    .from('editor_drafts')
-    .select('id, entity_id, source_memory_ids, source_memory_hash, action, status, title, angle, summary, reasoning, reason_codes, created_at')
-    .in('entity_id', entityIds)
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error) throw new Error(`editor draft prior draft fetch failed: ${error.message}`)
-  return (data ?? []).map(normalizePriorDraft)
+  const rows = await Promise.all(entityIds.map(async (entityId) => {
+    const { data, error } = await db
+      .from('editor_drafts')
+      .select('id, entity_id, source_memory_ids, source_memory_hash, action, status, title, angle, summary, reasoning, reason_codes, created_at')
+      .eq('entity_id', entityId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw new Error(`editor draft prior draft fetch failed: ${error.message}`)
+    return (data ?? []).map(normalizePriorDraft)
+  }))
+  return rows.flat()
+}
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let index = 0; index < items.length; index += size) out.push(items.slice(index, index + size))
+  return out
+}
+
+function sourceMemoryContainsFilter(memoryIds: string[]): string {
+  return memoryIds
+    .map((id) => `source_memory_ids.cs.${JSON.stringify([id])}`)
+    .join(',')
+}
+
+async function fetchReviewedMemoryIds(
+  db: SupabaseClient,
+  memoryIds: string[]
+): Promise<Set<string>> {
+  const reviewed = new Set<string>()
+  const uniqueMemoryIds = unique(memoryIds)
+  if (uniqueMemoryIds.length === 0) return reviewed
+
+  for (const memoryIdChunk of chunks(uniqueMemoryIds, LOOKUP_CHUNK_SIZE)) {
+    const { data, error } = await db
+      .from('editor_drafts')
+      .select('source_memory_ids')
+      .or(sourceMemoryContainsFilter(memoryIdChunk))
+
+    if (error) throw new Error(`editor draft reviewed memory lookup failed: ${error.message}`)
+    for (const row of data ?? []) {
+      for (const id of asStringArray((row as { source_memory_ids?: unknown }).source_memory_ids)) {
+        if (memoryIdChunk.includes(id)) reviewed.add(id)
+      }
+    }
+  }
+
+  return reviewed
 }
 
 async function fetchPublishedHistory(
@@ -210,21 +252,25 @@ async function fetchPublishedHistory(
 ): Promise<PublishedHistoryItem[]> {
   if (entityIds.length === 0 || limit <= 0) return []
 
-  const { data, error } = await db
-    .from(ENTITY_PUBLISHED_HISTORY_TABLE)
-    .select('id, entity_id, title, angle, summary, content, source, source_area, published_at, created_at')
-    .in('entity_id', entityIds)
-    .order('published_at', { ascending: false })
-    .limit(limit)
+  const rows: PublishedHistoryItem[] = []
+  for (const entityId of entityIds) {
+    const { data, error } = await db
+      .from(ENTITY_PUBLISHED_HISTORY_TABLE)
+      .select('id, entity_id, title, angle, summary, content, source, source_area, published_at, created_at')
+      .eq('entity_id', entityId)
+      .order('published_at', { ascending: false })
+      .limit(limit)
 
-  if (error) {
-    // V1 only loads published history from an entity-addressable table. The
-    // current feed table is not entity-addressable, so missing table/column
-    // errors intentionally produce an empty history.
-    if (isMissingPublishedHistoryTable(error)) return []
-    throw new Error(`editor draft published history fetch failed: ${error.message}`)
+    if (error) {
+      // V1 only loads published history from an entity-addressable table. The
+      // current feed table is not entity-addressable, so missing table/column
+      // errors intentionally produce an empty history.
+      if (isMissingPublishedHistoryTable(error)) return []
+      throw new Error(`editor draft published history fetch failed: ${error.message}`)
+    }
+    rows.push(...(data ?? []).map(normalizePublishedHistory))
   }
-  return (data ?? []).map(normalizePublishedHistory)
+  return rows
 }
 
 function unique(values: string[]): string[] {
@@ -237,9 +283,7 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
   async fetchBundles(options: FetchEditorDraftBundlesOptions): Promise<EntityDraftBundle[]> {
     const recentFetchLimit = Math.max(options.batchSize * options.recentMemoryLimit * 10, options.batchSize)
     const recentMemories = await fetchRecentMemories(this.db, recentFetchLimit)
-    const recentEntityIds = unique(recentMemories.flatMap((memory) => memory.entity_id ? [memory.entity_id] : []))
-    const recentPriorDrafts = await fetchPriorDrafts(this.db, recentEntityIds, Math.max(options.priorDraftLimit * recentEntityIds.length, options.priorDraftLimit))
-    const reviewed = reviewedMemoryIds(recentPriorDrafts)
+    const reviewed = await fetchReviewedMemoryIds(this.db, recentMemories.map((memory) => memory.id))
     const eligibleEntityIds = unique(
       recentMemories
         .filter((memory) => memory.entity_id && !reviewed.has(memory.id))
@@ -250,9 +294,9 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
 
     const [entities, laneMemories, priorDrafts, publishedHistory] = await Promise.all([
       fetchEntities(this.db, eligibleEntityIds),
-      fetchMemoriesForEntities(this.db, eligibleEntityIds, Math.max(options.laneMemoryLimit * eligibleEntityIds.length, options.laneMemoryLimit)),
-      fetchPriorDrafts(this.db, eligibleEntityIds, Math.max(options.priorDraftLimit * eligibleEntityIds.length, options.priorDraftLimit)),
-      fetchPublishedHistory(this.db, eligibleEntityIds, Math.max(options.publishedHistoryLimit * eligibleEntityIds.length, options.publishedHistoryLimit)),
+      fetchMemoriesForEntities(this.db, eligibleEntityIds, options.laneMemoryLimit),
+      fetchPriorDrafts(this.db, eligibleEntityIds, options.priorDraftLimit),
+      fetchPublishedHistory(this.db, eligibleEntityIds, options.publishedHistoryLimit),
     ])
 
     return buildEntityDraftBundles(
@@ -269,11 +313,35 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
 
   async upsertDrafts(drafts: EditorDraftInput[]): Promise<EditorDraftRecord[]> {
     if (drafts.length === 0) return []
-    const { data, error } = await this.db
-      .from('editor_drafts')
-      .upsert(drafts, { onConflict: 'bundle_key' })
-      .select(DRAFT_SELECT)
-    if (error) throw new Error(`editor draft upsert failed: ${error.message}`)
-    return (data ?? []).map(normalizeDraftRecord)
+    const records = await Promise.all(drafts.map(async (draft) => {
+      const { data: existing, error: existingError } = await this.db
+        .from('editor_drafts')
+        .select('id')
+        .eq('bundle_key', draft.bundle_key)
+        .maybeSingle()
+
+      if (existingError) throw new Error(`editor draft lookup failed: ${existingError.message}`)
+
+      if (existing) {
+        const { created_at: _createdAt, ...updatePayload } = draft
+        const { data, error } = await this.db
+          .from('editor_drafts')
+          .update(updatePayload)
+          .eq('bundle_key', draft.bundle_key)
+          .select(DRAFT_SELECT)
+          .single()
+        if (error) throw new Error(`editor draft update failed: ${error.message}`)
+        return normalizeDraftRecord(data)
+      }
+
+      const { data, error } = await this.db
+        .from('editor_drafts')
+        .insert(draft)
+        .select(DRAFT_SELECT)
+        .single()
+      if (error) throw new Error(`editor draft insert failed: ${error.message}`)
+      return normalizeDraftRecord(data)
+    }))
+    return records
   }
 }
