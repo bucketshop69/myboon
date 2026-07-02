@@ -62,7 +62,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       env: {
         EDITOR_DRAFT_RUN_ONCE: '0',
-        EDITOR_DRAFT_INTERVAL_MS: '1800000',
+        EDITOR_DRAFT_INTERVAL_MS: '3600000',
         EDITOR_DRAFT_BATCH_SIZE: '2',
         EDITOR_DRAFT_RECENT_MEMORY_LIMIT: '3',
         EDITOR_DRAFT_LANE_MEMORY_LIMIT: '20',
