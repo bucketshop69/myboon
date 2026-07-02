@@ -307,6 +307,7 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
       {
         recentMemoryLimit: options.recentMemoryLimit,
         laneMemoryLimit: options.laneMemoryLimit,
+        reviewedMemoryIds: reviewed,
       }
     ).slice(0, options.batchSize)
   }

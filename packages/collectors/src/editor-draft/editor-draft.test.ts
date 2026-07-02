@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { buildHermesEditorDraftPrompt } from './hermes-editor'
 import { buildEntityDraftBundles } from './input-builder'
 import { normalizeEditorDraftDecision, parseAgentEditorDraftResponse, sourceMemoryHash } from './normalizer'
 import { runEditorDraft } from './runner'
@@ -170,6 +171,62 @@ test('buildEntityDraftBundles orders editor intake by memory created_at before o
 
   assert.deepEqual(bundles[0].newMemories.map((item) => item.id), [oldEventNewWrite.id, newerEventOlderWrite.id])
   assert.deepEqual(bundles[0].memoryLane.map((item) => item.id), [oldEventNewWrite.id, newerEventOlderWrite.id])
+})
+
+test('buildEntityDraftBundles excludes directly reviewed memories even when prior drafts are capped out', () => {
+  const acme = entity('entity-1', 'acme', 'Acme')
+  const reviewed = memoryWrittenAt(
+    'memory-1',
+    acme.id,
+    'Already reviewed lane memory',
+    '2026-06-20T00:00:00.000Z',
+    '2026-07-01T00:00:00.000Z'
+  )
+  const fresh = memoryWrittenAt(
+    'memory-2',
+    acme.id,
+    'Fresh lane memory',
+    '2026-06-30T00:00:00.000Z',
+    '2026-07-02T00:00:00.000Z'
+  )
+
+  const bundles = buildEntityDraftBundles(
+    [acme],
+    [reviewed, fresh],
+    [],
+    [],
+    {
+      recentMemoryLimit: 5,
+      laneMemoryLimit: 10,
+      reviewedMemoryIds: new Set([reviewed.id]),
+    }
+  )
+
+  assert.deepEqual(bundles[0].newMemories.map((item) => item.id), [fresh.id])
+  assert.deepEqual(bundles[0].memoryLane.map((item) => item.id), [fresh.id, reviewed.id])
+})
+
+test('buildHermesEditorDraftPrompt excludes new memories from prior memory lane payload', async () => {
+  const acme = entity('entity-1', 'acme', 'Acme')
+  const prior = memory('memory-1', acme.id, 'Prior memory', '2026-06-20T00:00:00.000Z')
+  const fresh = memory('memory-2', acme.id, 'Fresh memory', '2026-06-30T00:00:00.000Z')
+  const bundle = buildEntityDraftBundles(
+    [acme],
+    [prior, fresh],
+    [],
+    [],
+    { recentMemoryLimit: 1, laneMemoryLimit: 10 }
+  )[0]
+
+  const prompt = await buildHermesEditorDraftPrompt(bundle)
+  const bundleMarker = prompt.indexOf('## Entity Bundle')
+  const payload = JSON.parse(prompt.slice(prompt.indexOf('{', bundleMarker))) as {
+    new_memories: Array<{ id: string }>
+    prior_memory_lane: Array<{ id: string }>
+  }
+
+  assert.deepEqual(payload.new_memories.map((item) => item.id), [fresh.id])
+  assert.deepEqual(payload.prior_memory_lane.map((item) => item.id), [prior.id])
 })
 
 test('parseAgentEditorDraftResponse extracts fenced JSON and normalizes actions', () => {

@@ -4,6 +4,7 @@ import type { EntityDraftBundle, PriorEditorDraft, PublishedHistoryItem } from '
 export interface BuildBundleOptions {
   recentMemoryLimit: number
   laneMemoryLimit: number
+  reviewedMemoryIds?: Set<string>
 }
 
 function memoryIntakeTime(memory: EntityMemoryRecord): number {
@@ -20,9 +21,11 @@ export function reviewedMemoryIds(priorDrafts: PriorEditorDraft[]): Set<string> 
 
 export function unreviewedMemories(
   memories: EntityMemoryRecord[],
-  priorDrafts: PriorEditorDraft[]
+  priorDrafts: PriorEditorDraft[],
+  directlyReviewedMemoryIds: Set<string> = new Set()
 ): EntityMemoryRecord[] {
   const reviewed = reviewedMemoryIds(priorDrafts)
+  for (const id of directlyReviewedMemoryIds) reviewed.add(id)
   return memories
     .filter((memory) => isLaneMemory(memory) && !reviewed.has(memory.id))
     .sort((a, b) => memoryIntakeTime(b) - memoryIntakeTime(a))
@@ -65,7 +68,11 @@ export function buildEntityDraftBundles(
     if (!entity) continue
     const drafts = (draftsByEntity.get(entityId) ?? [])
       .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    const newMemories = unreviewedMemories(entityMemories, drafts).slice(0, options.recentMemoryLimit)
+    const newMemories = unreviewedMemories(
+      entityMemories,
+      drafts,
+      options.reviewedMemoryIds
+    ).slice(0, options.recentMemoryLimit)
     if (newMemories.length === 0) continue
 
     bundles.push({

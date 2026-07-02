@@ -38,6 +38,7 @@ function memoryPayload(memory: EntityDraftBundle['memoryLane'][number]): Record<
 
 export async function buildHermesEditorDraftPrompt(bundle: EntityDraftBundle): Promise<string> {
   const stablePrompt = await readFile(join(__dirname, 'editor-prompt.md'), 'utf8')
+  const newMemoryIds = new Set(bundle.newMemories.map((memory) => memory.id))
   const payload = {
     entity: {
       id: bundle.entity.id,
@@ -49,7 +50,9 @@ export async function buildHermesEditorDraftPrompt(bundle: EntityDraftBundle): P
       metadata: bundle.entity.metadata,
     },
     new_memories: bundle.newMemories.map(memoryPayload),
-    prior_memory_lane: bundle.memoryLane.map(memoryPayload),
+    prior_memory_lane: bundle.memoryLane
+      .filter((memory) => !newMemoryIds.has(memory.id))
+      .map(memoryPayload),
     prior_editor_drafts: bundle.priorDrafts.map((draft) => ({
       id: draft.id,
       source_memory_ids: draft.source_memory_ids,
