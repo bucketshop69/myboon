@@ -667,7 +667,7 @@ app.get('/narratives', async (c) => {
 
   try {
     const res = await supabaseFetch(
-      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,thread_id,created_at&order=created_at.desc,priority.desc&limit=${limit}&offset=${offset}`
+      `published_narratives?select=id,narrative_id,title,content_small,tags,priority,actions,thread_id,entity_id,entity_slug,entity_name,entity_type,entity_category,published_at,created_at&status=eq.published&order=published_at.desc,priority.desc&limit=${limit}&offset=${offset}`
     )
 
     if (!res.ok) {
@@ -693,7 +693,7 @@ app.get('/narratives/:id', async (c) => {
 
   try {
     const res = await supabaseFetch(
-      `published_narratives?id=eq.${encodeURIComponent(id)}&select=*&limit=1`
+      `published_narratives?id=eq.${encodeURIComponent(id)}&status=eq.published&select=id,narrative_id,title,content_small,content_full,tags,priority,actions,thread_id,entity_id,entity_slug,entity_name,entity_type,entity_category,published_at,created_at&limit=1`
     )
 
     if (!res.ok) {

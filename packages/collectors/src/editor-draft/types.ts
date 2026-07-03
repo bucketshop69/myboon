@@ -13,6 +13,7 @@ export type EditorDraftStatus =
   | 'skipped'
   | 'needs_more_research'
   | 'merged'
+  | 'published'
 
 export type EvidenceQuality = 'strong' | 'medium' | 'weak'
 

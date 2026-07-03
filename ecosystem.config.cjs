@@ -70,5 +70,22 @@ module.exports = {
         EDITOR_DRAFT_PUBLISHED_HISTORY_LIMIT: '10',
       },
     },
+    {
+      name: 'myboon-publisher',
+      script: 'src/publisher/run.ts',
+      interpreter: TSX,
+      cwd: `${ROOT}/packages/collectors`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        PUBLISHER_RUN_ONCE: '0',
+        PUBLISHER_INTERVAL_MS: '300000',
+        PUBLISHER_BATCH_SIZE: '10',
+        PUBLISHER_PREVIEW_ONLY: '0',
+      },
+    },
   ],
 }
