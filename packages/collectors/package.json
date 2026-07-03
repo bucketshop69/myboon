@@ -10,13 +10,16 @@
     "entity-manager:polymarket": "tsx src/entity-manager/run-polymarket.ts",
     "editor-draft": "tsx src/editor-draft/run.ts",
     "editor-draft:preview": "tsx src/editor-draft/preview.ts",
+    "publisher": "tsx src/publisher/run.ts",
+    "publisher:preview": "tsx src/publisher/preview.ts",
     "world-cup:pre-match": "tsx src/world-cup/run-pre-match.ts",
     "build": "tsc",
     "test:world-cup": "tsx --test src/world-cup/*.test.ts",
     "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts",
     "test:researcher": "tsx --test src/polymarket/researcher.test.ts",
     "test:entity-manager": "tsx --test src/entity-manager/*.test.ts",
-    "test:editor-draft": "tsx --test src/editor-draft/*.test.ts"
+    "test:editor-draft": "tsx --test src/editor-draft/*.test.ts",
+    "test:publisher": "tsx --test src/publisher/*.test.ts"
   },
   "dependencies": {
     "@myboon/shared": "workspace:*",

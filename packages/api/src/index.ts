@@ -86,6 +86,34 @@ async function supabaseFetch(path: string): Promise<Response> {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: supabaseHeaders() })
 }
 
+function looksLikePublishedNarrativesV1SchemaMiss(status: number, body: string): boolean {
+  if (status !== 400) return false
+  return /published_narratives/i.test(body)
+    && /(status|published_at|title|entity_id|entity_slug|entity_name|entity_type|entity_category)/i.test(body)
+}
+
+async function supabaseFetchWithSchemaFallback(
+  primaryPath: string,
+  fallbackPath: string,
+  context: string
+): Promise<Response> {
+  const primary = await supabaseFetch(primaryPath)
+  if (primary.ok) return primary
+
+  const body = await primary.text()
+  if (!looksLikePublishedNarrativesV1SchemaMiss(primary.status, body)) {
+    console.error(`[api] Supabase error ${primary.status}: ${body}`)
+    return new Response(body, {
+      status: primary.status,
+      statusText: primary.statusText,
+      headers: primary.headers,
+    })
+  }
+
+  console.warn(`[api] ${context} falling back to legacy published_narratives shape; apply publisher V1 migration to remove this fallback.`)
+  return supabaseFetch(fallbackPath)
+}
+
 async function supabaseWrite(path: string, method: 'POST' | 'PATCH', body: unknown, extraHeaders: Record<string, string> = {}): Promise<Response> {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
@@ -666,8 +694,10 @@ app.get('/narratives', async (c) => {
   const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset
 
   try {
-    const res = await supabaseFetch(
-      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,thread_id,created_at&order=created_at.desc,priority.desc&limit=${limit}&offset=${offset}`
+    const res = await supabaseFetchWithSchemaFallback(
+      `published_narratives?select=id,narrative_id,title,content_small,tags,priority,actions,thread_id,entity_id,entity_slug,entity_name,entity_type,entity_category,published_at,created_at&status=eq.published&order=published_at.desc,priority.desc&limit=${limit}&offset=${offset}`,
+      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,thread_id,created_at&order=created_at.desc,priority.desc&limit=${limit}&offset=${offset}`,
+      'GET /narratives'
     )
 
     if (!res.ok) {
@@ -692,8 +722,10 @@ app.get('/narratives/:id', async (c) => {
   }
 
   try {
-    const res = await supabaseFetch(
-      `published_narratives?id=eq.${encodeURIComponent(id)}&select=*&limit=1`
+    const res = await supabaseFetchWithSchemaFallback(
+      `published_narratives?id=eq.${encodeURIComponent(id)}&status=eq.published&select=id,narrative_id,title,content_small,content_full,tags,priority,actions,thread_id,entity_id,entity_slug,entity_name,entity_type,entity_category,published_at,created_at&limit=1`,
+      `published_narratives?id=eq.${encodeURIComponent(id)}&select=id,narrative_id,content_small,content_full,tags,priority,actions,thread_id,created_at&limit=1`,
+      'GET /narratives/:id'
     )
 
     if (!res.ok) {

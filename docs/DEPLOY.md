@@ -9,7 +9,7 @@
 | `myboon-polymarket-researcher` | `packages/collectors` | Polymarket Researcher |
 | `myboon-editor-draft` | `packages/collectors` | Entity Memory to Editor Draft |
 | `myboon-polymarket-editor` | `packages/collectors` | Polymarket Editor |
-| `myboon-polymarket-publisher` | `packages/collectors` | Polymarket Publisher |
+| `myboon-publisher` | `packages/collectors` | Generic Editor Draft Publisher |
 
 ---
 
@@ -62,7 +62,7 @@ pm2 restart myboon-polymarket-data-engineer
 pm2 restart myboon-polymarket-researcher
 pm2 restart myboon-editor-draft
 pm2 restart myboon-polymarket-editor
-pm2 restart myboon-polymarket-publisher
+pm2 restart myboon-publisher
 
 # Stop everything
 pm2 stop all
@@ -91,10 +91,13 @@ SUPABASE_SERVICE_ROLE_KEY=
 POLYMARKET_MARKETS_RUN_ONCE=0
 POLYMARKET_RESEARCHER_RUN_ONCE=0
 POLYMARKET_EDITOR_RUN_ONCE=0
-POLYMARKET_PUBLISHER_RUN_ONCE=0
 EDITOR_DRAFT_RUN_ONCE=0
 EDITOR_DRAFT_INTERVAL_MS=3600000
 EDITOR_DRAFT_BATCH_SIZE=2
+PUBLISHER_RUN_ONCE=0
+PUBLISHER_INTERVAL_MS=300000
+PUBLISHER_BATCH_SIZE=10
+PUBLISHER_PREVIEW_ONLY=0
 ```
 
 ---

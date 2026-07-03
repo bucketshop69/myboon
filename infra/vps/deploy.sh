@@ -23,6 +23,7 @@ echo "Building workspace packages..."
 pnpm --filter @myboon/shared build
 pnpm --filter @myboon/entity-memory build
 pnpm --filter @myboon/tx-parser build
+pnpm --filter @myboon/collectors build
 pnpm --filter @myboon/brain build
 
 echo "Restarting services..."

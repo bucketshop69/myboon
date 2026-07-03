@@ -4,10 +4,13 @@ import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 interface PublishedNarrativeListItem {
   id: string;
   narrative_id: string;
+  title?: string | null;
   content_small: string;
   tags: string[];
   priority: number;
   actions: unknown;
+  entity_category?: string | null;
+  published_at?: string | null;
   created_at: string;
 }
 
@@ -80,12 +83,13 @@ function extractHeadline(content: string): { headline: string; body: string } {
 function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number): FeedItem {
   const raw = item.content_small?.trim() ?? '';
   const { headline, body } = extractHeadline(raw);
+  const title = item.title?.trim();
   return {
     id: item.id,
-    category: item.tags?.[0] ?? 'macro',
-    createdAt: item.created_at,
-    headline,
-    description: body,
+    category: item.entity_category?.trim() || item.tags?.[0] || 'macro',
+    createdAt: item.published_at ?? item.created_at,
+    headline: title || headline,
+    description: title ? raw : body,
     isTop: index === 0,
     actions: parseActions(item.actions),
   };
@@ -112,11 +116,18 @@ export async function fetchFeedItems(limit = 20, offset = 0): Promise<FeedItem[]
 
 export interface NarrativeDetail {
   id: string;
+  title?: string | null;
   content_full: string;
   content_small: string;
   tags: string[];
   priority: number;
   actions: unknown;
+  entity_id?: string | null;
+  entity_slug?: string | null;
+  entity_name?: string | null;
+  entity_type?: string | null;
+  entity_category?: string | null;
+  published_at?: string | null;
   created_at: string;
 }
 
