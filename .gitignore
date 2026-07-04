@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
 .pnpm-store/
-
+reports
 # Build outputs
 dist/
 build/
@@ -52,7 +52,6 @@ packages/*/artifacts/
 packages/brain/reports/narratives.csv
 reports/world-cup/
 apps/video/--props
-apps/video/src/world-cup/
 packages/collectors/src/world-cup/
 docs/specs/world-cup-x-campaign.md
 docs/scripts/
@@ -63,6 +62,7 @@ package-lock.json
 packages/*/package-lock.json
 .claude/skills/
 .gstack/
+.hermes/
 
 # POC packages (not for main)
 packages/polymarket-poc/
