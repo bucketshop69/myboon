@@ -1,66 +1,65 @@
 # Feed Source Blueprint
 
-Status: V0 blueprint from the Polymarket markets implementation
-Scope: how to add a new source to the Feed V3 pipeline
+Status: current source onboarding blueprint
+Scope: how to add a new source connector to the myboon intelligence pipeline
 
 ## Purpose
 
-This document is the practical blueprint for adding a new feed source.
+This document is the practical handoff for any agent or developer adding a new
+source connector.
 
-The Polymarket markets pipeline proved the first full V3 publishing cycle:
-
-```text
-Data Engineer -> Researcher -> Editor -> Publisher -> published_narratives
-```
-
-Future sources should also support the broader Feed V3 learning cycle:
+The product shape is entity-first:
 
 ```text
-Data connector -> candidate -> research -> entity / claim / relationship memory
-                                  -> published narrative only when feed-worthy
+source connector
+  -> candidate observations
+  -> source-aware researcher
+  -> entity manager / entity memories
+  -> editor draft
+  -> publisher
+  -> published_narratives / API
 ```
 
-Future sources should follow the same stage ownership, but not copy
-Polymarket-specific details word for word. A new source may have different
-APIs, metrics, helper tools, and evidence types. The common part is the
-handoff discipline between stages.
+A connector should not become its own mini feed. It only finds useful signals
+and passes them into the shared memory and publishing pipeline.
 
-## V2 To V3 Change
+## Core Rule
 
-V2 worked because it reduced noise, but it depended too much on manually
-chosen inputs like pinned wallets and watched slugs.
-
-V3 should keep the same editorial focus while making source onboarding
-repeatable:
+Every source has different raw data, but every source must obey the same stage
+ownership:
 
 ```text
-more sources -> more candidate observations -> same editorial test -> fewer,
-better feed items
+Collector: what changed, where did it come from, why flag it?
+Researcher: what context and evidence did we gather?
+Entity manager: which durable entity memory should this update?
+Editor draft: is there a useful narrative from recent memory?
+Publisher: expose approved drafts as public narrative rows.
 ```
 
-The goal is not to publish more just because the system watches more. The goal
-is to find stronger evidence from more places and preserve durable research in
-the entity graph, even when a candidate is not worth publishing yet.
+More connectors should create more candidate observations and stronger entity
+memory. They should not automatically create more feed cards.
 
 ## Source Onboarding Flow
 
-Every new source should be built as one complete cycle before expanding it:
+Build one complete lane before expanding the source:
 
 ```text
-1. Data Engineer
-2. Researcher
-3. Entity memory update
-4. Editor
-5. Publisher
-6. Final feed/API read path
+1. Pick the first useful signal lane.
+2. Write candidate observations.
+3. Run source-aware research.
+4. Verify entity memory updates.
+5. Verify editor drafts can be generated from those memories.
+6. Verify publisher writes `published_narratives`.
+7. Inspect the public API/read path.
+8. Only then add more lanes, more sources, or PM2 automation.
 ```
 
-Do not start by building every possible lane. Pick one useful lane, run it to a
-published feed item, inspect the result, then expand.
+Do not start by modeling every possible object from a source. Start with the
+smallest lane that can produce a real memory and, eventually, a real narrative.
 
-## Stage 1: Data Engineer
+## Stage 1: Source Connector
 
-The Data Engineer is the source filter.
+The connector is the source filter.
 
 Its job is to answer:
 
@@ -68,335 +67,339 @@ Its job is to answer:
 What changed?
 Why might it matter?
 What proof do we have?
-Should the Researcher look at it?
+Which entity might this belong to?
+Should the researcher look at it?
 ```
 
-It should emit candidate observations, not feed items.
+It emits candidate observations, not feed posts.
 
 Minimum candidate shape:
 
 ```text
 source
-area
+source_area
 candidate_type
-source_object_id / slug / url / asset / wallet / mint
-entity_hints
-title
+source_object_id / slug / url / asset / address / mint
 observed_at
+title
+entity_hints
 what_changed
 why_flagged
 score
 score_breakdown
 metrics
 evidence_refs
+raw_payload / source_context
 status = pending_research
 ```
 
-Source-specific examples:
+Examples:
 
-- Polymarket: market slug, odds movement, volume movement, activity spike.
-- Hyperliquid: asset, funding, open interest, liquidation, volume, candle move.
-- Articles: URL, author/source, claims, links, publication time.
-- Solana tokens: mint, pool, liquidity, holders, volume, price movement.
-- Wallets: address, asset, transfer, venue, historical behavior.
+```text
+Polymarket -> market slug, odds move, volume move, liquidity/activity change
+Hyperliquid -> asset, candle move, funding change, cross-venue context
+News/site -> URL, headline, source, published time, visible text, entities
+X/social -> post URL, account, text, engagement, linked entities
+Wallet -> address, transfer, asset, venue, historical behavior
+Token -> mint, price move, liquidity, holders, pool context
+```
 
-The Data Engineer should not:
+The connector should not:
 
-- run deep research
 - write final copy
-- decide final publish/reject
-- call the Publisher
-- create durable entities by default
+- decide final publish quality
+- call the publisher
+- create durable entities directly
+- run broad research unless that is part of source extraction
 
 ## Stage 2: Researcher
 
-The Researcher enriches candidate observations so the Editor can make a better
-decision.
+The researcher enriches candidate observations.
 
 Its job is to answer:
 
 ```text
-What is this really about?
-What context is missing from the raw source observation?
-What evidence confirms, contradicts, or weakens the signal?
-What entities, claims, and relationships should be remembered?
-What uncertainty should the Editor know?
+What is this candidate really about?
+What context is missing from the raw observation?
+What evidence or receipts did we find?
+What should the entity manager be able to remember?
 ```
 
-Research does not always mean web search. The right tools depend on the
-candidate:
+Research does not always mean web search. The right research depends on the
+source:
 
-- market/event candidates may need web/news/search context
-- wallet candidates may need wallet history
-- token candidates may need liquidity, holder, and pool context
-- perp candidates may need funding/OI/venue comparison
-- article candidates may need claim extraction and source reliability checks
+```text
+Polymarket -> market rules, parent event, sibling markets, source context, web context when useful
+Perps -> price/funding move, venue comparison, recent catalyst search when useful
+News/site -> article extraction, claim extraction, source URL, related links
+X/social -> post context, author/account context, links, related discourse
+Wallet -> wallet history, counterparties, prior behavior
+```
 
-Minimum research shape:
+Minimum research output shape:
 
 ```text
 candidate_id
 source
-area
-source_object_id / slug / url / asset / wallet / mint
+source_area
+source_object_id
 title
-research_mode
-summary
-notes
-key_findings
+research_summary
+research_notes
 evidence_links
+source_context
 related_context
-entity_suggestions
-claims
-relationships
-open_questions
-uncertainty
-editor_notes
-status = pending_editor
+observed_entities
+entity_hints
+memory_candidates
+raw_research_payload
+status = pending_entity
 ```
 
-The Researcher should not:
+The researcher should not:
 
-- decide whether the feed should publish
+- judge whether something deserves the feed
 - write final feed copy
-- force every candidate into a narrative
-- repeat recently completed research without a new delta
+- create a narrative angle
+- reject useful evidence because it is not publishable
+- force every candidate into an entity if it is just noise
 
-## Stage 2.5: Entity Memory
+The researcher can run reflection loops to improve retrieval, but the stored
+output should be research evidence and context, not verdicts.
 
-Entity memory is the durable learning layer. It preserves useful research even
-when the Editor rejects or holds a candidate from the visible feed.
+## Stage 3: Entity Manager
 
-Its job is to answer:
-
-```text
-Which entities did we learn about?
-Which claims should be tracked over time?
-Which relationships between entities changed?
-What evidence, uncertainty, and open questions should future agents reuse?
-```
-
-Minimum memory update shape:
-
-```text
-entity_suggestions / entity_ids
-claims
-relationships
-timeline_events
-evidence_links
-confidence
-open_questions
-source_research_ids
-```
-
-Entity memory should not auto-create noisy subjects from every mention. New
-entities should be created only when the subject is durable enough to be useful
-in future research or retrieval.
-
-## Stage 3: Editor
-
-The Editor is the judgment layer.
+The entity manager is the durable memory layer.
 
 Its job is to answer:
 
 ```text
-Should the user see this?
-Is there a useful angle?
-Is the evidence strong enough?
-Is this new compared with recent decisions?
-Does it need more research?
+Which primary entity does this research belong to?
+Does this update an existing entity or require a new durable entity?
+What memory/timeline item should be attached to that entity?
+What evidence supports this memory?
 ```
 
-The Editor may group multiple research rows into one decision when they are
-really about the same topic, event, asset, actor, or narrative.
-
-Minimum editor decision shape:
+Entity manager output should be shaped around:
 
 ```text
-source
-area
-research_ids
-decision = publish | reject | needs_more_research
-status = pending_publisher | rejected | needs_more_research
+entity
+entity_memory
+source evidence
+timeline context
+source/research provenance
+```
+
+The important product rule:
+
+```text
+The source is not the entity.
+```
+
+For example, a Polymarket market about Ethereum hitting $3,000 should usually
+update the `ethereum` entity, not create a separate entity for that market. A
+news article about Circle's Arc blockchain should update `arc` or `circle`
+depending on the actual subject, not create a source-specific article entity.
+
+The entity manager should not:
+
+- create entities for every mention
+- treat planner guesses as observed facts
+- create Polymarket/news/source-specific entities when a primary entity exists
+- write public feed output
+
+## Stage 4: Editor Draft
+
+The editor draft stage works from entity memory, not directly from source rows.
+
+Its job is to answer:
+
+```text
+Given recent memory for this entity, is there a useful draftable narrative?
+What changed compared with previous memory and previous published narratives?
+What title, angle, summary, and body would be useful to a market-aware reader?
+Should this become a draft, watch item, or need more research?
+```
+
+Minimum editor draft shape:
+
+```text
+entity_id
+entity_slug
+action = draft_post | watch | needs_more_research
+status = drafted | watch | needs_more_research
+title
 angle
-why_this_matters
-reasoning
-reason_codes
-evidence_quality = strong | medium | weak
-primary_topic
-related_topics
-topic_confidence
-publisher_notes
-follow_up_questions
-research_instructions
+summary
+body
+source_memory_ids
+evidence
+reasoning / notes
 ```
 
-The Editor should not:
+The editor draft should write readable draft content. It should avoid internal
+pipeline language in the user-facing body.
 
-- write final feed copy
+The editor draft should not:
+
 - publish directly
-- require a perfect entity before publishing
-- auto-create entities
-- force at least one publish per run
+- invent facts that are not in memory/evidence
+- expose raw research rows as the public object
+- require every entity update to become a draft
 
-Rejected and held decisions matter. They are how the system learns what it
-ignored and why, and they may still update entity memory.
+## Stage 5: Publisher
 
-## Stage 4: Publisher
+The publisher is deterministic and lightweight.
 
-The Publisher is the final copy layer.
-
-Its job is to turn approved editor decisions into feed-native output:
+Its job is to turn eligible editor drafts into public narrative rows:
 
 ```text
+editor_drafts(status = drafted, action = draft_post)
+  -> published_narratives
+  -> entity_published_history
+  -> editor_drafts(status = published)
+```
+
+The publisher should not call an LLM, run new research, or re-decide the story.
+It should preserve the approved draft fields and provenance.
+
+Minimum published narrative shape:
+
+```text
+title
 content_small
 content_full
-reasoning
-tags
-priority
-actions
-content_type
-```
-
-All sources should eventually write to the same final table:
-
-```text
-published_narratives
-```
-
-The Publisher should write only from approved Editor decisions and linked
-research. It should not run new research or re-decide whether a story deserves
-coverage.
-
-Minimum final provenance:
-
-```text
+entity_id
+entity_slug
 source
-area
-editor_decision_id
-research_ids
-primary_topic
+source_area
+actions
+status = published
+published_at
 ```
 
-Actions are source-specific but must point to inspectable objects:
+Actions are optional and source-specific, but should point to inspectable
+objects:
 
 ```text
 Polymarket -> { type: "predict", slug }
-Perps      -> { type: "perps", asset }
+Perps      -> { type: "perps", asset, venue }
 Article    -> { type: "link", url }
 Token      -> { type: "token", mint }
 Wallet     -> { type: "wallet", address }
 ```
 
-The Publisher should pick up the Editor's voice and dialect from the editor
-brief. For V0, this can be inferred from source, area, topic, evidence quality,
-angle, and publisher notes. Later, it can become an explicit shared field.
-
 ## Shared Rules
 
-Each stage should have a clear inbox and outbox.
+Each stage should have:
 
-Each stage should be runnable independently.
+```text
+clear inbox
+clear outbox
+status transitions
+retry safety
+source/research provenance
+bounded payloads
+preview/no-write mode when useful
+tests for the handoff contract
+```
 
-Each stage should preserve reasoning, not just output.
-
-Each stage should be safe to retry.
-
-Each stage should update status so the next stage knows what to pick up.
-
-Each stage should keep source-specific complexity inside that stage's adapter
-instead of leaking it into the whole pipeline.
+Keep source-specific complexity inside the connector or source researcher.
+The entity manager, editor draft, publisher, and API should stay source-aware
+but not source-owned.
 
 ## Source-Specific Versus Shared
 
 Source-specific:
 
-- API clients
-- raw fetch logic
-- scoring math
+- API clients and scraping logic
+- raw fetch/extraction method
+- signal scoring
 - metrics
-- evidence refs
-- helper tools
 - source object identifiers
-- source-specific action shape
+- evidence refs
+- source-specific researcher prompts/tools
+- source-specific actions
 
 Shared:
 
-- stage ownership
-- candidate/research/editor/publisher handoff concepts
-- statuses
-- reasoning discipline
-- editor decision values
+- candidate observation concept
+- research packet concept
+- entity memory concept
+- editor draft concept
+- published narrative concept
+- status transitions
+- provenance discipline
 - final `published_narratives` output
-- final feed/API read path
-- entity / claim / relationship memory concepts
+- feed/API read path
 
-## Current Polymarket Reference
+## News / Website Connector Notes
 
-The first reference implementation is Polymarket markets:
-
-```text
-#190 Data Engineer
-#191 Researcher
-#192 Editor
-#193 Publisher
-```
-
-Source packet:
+For a news or website source, prefer structured extraction first:
 
 ```text
-docs/sources/polymarket-markets.md
+RSS / Atom / API / sitemap / page metadata
 ```
 
-Important lesson from #190:
+Use Playwright when the page is dynamic, gated by client rendering, or only
+usable visually. Screenshot analysis can be useful for discovery, but the
+connector should still preserve inspectable URLs and extracted text wherever
+possible.
 
-Do not append raw snapshots forever just because data is available. The Data
-Engineer should maintain useful latest state and emit meaningful candidates.
-
-Important lesson from #191:
-
-Research should enrich candidates without becoming the Editor.
-
-Important lesson from #192:
-
-The Editor can group related rows and reject aggressively. This is how more
-inputs avoid becoming more noise.
-
-Important lesson from #193:
-
-The final output should go into the shared `published_narratives` table, with
-lightweight provenance back to the editor and research rows.
-
-## V0 Gap To Remember
-
-FEED.md describes entity memory as the durable center of the final system.
-
-The Polymarket V0 cycle intentionally uses provenance only:
+First candidate lane:
 
 ```text
-source + area + editor_decision_id + research_ids + primary_topic
+Input: curated source URL list
+Observation: new headline/article/card
+Evidence: source URL, screenshot path if used, visible text, source name, timestamp
+Entity hints: headline entities, tickers, protocols, venues, people, countries
+Candidate trigger: new item from trusted source or repeated topic across sources
 ```
 
-This is enough to prove the source publishing pipeline. Durable entity memory
-should be added after the first source path is understandable and stable.
+The news connector should not immediately become a generic crawler. Start with
+a small curated list of sources and prove one complete pipeline path.
 
-## New Source Checklist
+## Done Criteria For A New Connector
 
-Before implementing a new source, answer:
+A connector is not done when it fetches data. It is done when one real item has
+passed through the shared pipeline:
 
 ```text
-What is the first source lane?
-What raw objects does it watch?
-What makes an observation candidate-worthy?
-What score explains that decision?
-What does the Researcher need to know?
-What entities, claims, and relationships should the source be able to update?
-What tools does research need?
-What does the Editor receive?
-What counts as publish/reject/needs_more_research?
-What action should the final feed item expose?
-How does the source write into published_narratives?
-What should be measured after an overnight run?
+1. Candidate row exists.
+2. Research row exists.
+3. Entity memory row exists.
+4. Editor draft row exists, or a clear watch/needs_more_research row exists.
+5. Published narrative row exists when the draft is publishable.
+6. Public API can read the published narrative.
+7. Logs show the process can run repeatedly without duplicating obvious work.
 ```
 
-Then build only one complete path to a published feed item.
+For overnight checks, inspect:
+
+```text
+candidate count
+research success/failure count
+entity memory count and entity quality
+editor draft action distribution
+published narrative count
+duplicate or repeated entity issues
+payload size / prompt size growth
+```
+
+## Agent Handoff Checklist
+
+Before assigning an agent to a new source, give it:
+
+```text
+1. This blueprint.
+2. The source-specific issue link.
+3. The exact first lane to build.
+4. The source URLs/API docs.
+5. Existing reference connector folders.
+6. Required no-write preview command.
+7. Required DB smoke test.
+8. Instruction not to commit or push unless explicitly asked.
+```
+
+The agent should come back with questions before implementation if the first
+lane, candidate trigger, or target handoff table is unclear.
