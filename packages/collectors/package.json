@@ -7,6 +7,9 @@
     "polymarket:markets-data-engineer": "tsx src/polymarket/run-markets-data-engineer.ts",
     "polymarket:researcher": "tsx src/polymarket/run-researcher.ts",
     "polymarket:doctor": "tsx src/polymarket/run-doctor.ts",
+    "hyperliquid:collector": "tsx src/hyperliquid/run-collector.ts",
+    "hyperliquid:collector:sqlite": "HYPERLIQUID_STORAGE=sqlite tsx src/hyperliquid/run-collector.ts",
+    "hyperliquid:sqlite:inspect": "tsx src/hyperliquid/inspect-sqlite.ts",
     "entity-manager:polymarket": "tsx src/entity-manager/run-polymarket.ts",
     "editor-draft": "tsx src/editor-draft/run.ts",
     "editor-draft:preview": "tsx src/editor-draft/preview.ts",
@@ -17,6 +20,7 @@
     "test:world-cup": "tsx --test src/world-cup/*.test.ts",
     "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts",
     "test:researcher": "tsx --test src/polymarket/researcher.test.ts",
+    "test:hyperliquid": "tsx --test src/hyperliquid/*.test.ts",
     "test:entity-manager": "tsx --test src/entity-manager/*.test.ts",
     "test:editor-draft": "tsx --test src/editor-draft/*.test.ts",
     "test:publisher": "tsx --test src/publisher/*.test.ts"
