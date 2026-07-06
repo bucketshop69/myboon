@@ -30,3 +30,5 @@ CREATE INDEX IF NOT EXISTS pipeline_runs_created_idx
   ON public.pipeline_runs (created_at DESC);
 
 ALTER TABLE public.pipeline_runs ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.pipeline_runs TO service_role;
