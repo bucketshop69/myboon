@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@supabase/supabase-js'
 import { config as loadEnv } from 'dotenv'
+import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import { HermesEntityExtractionProvider } from './extractor'
 import { polymarketResearchToPacket, type PolymarketCandidateContext, type PolymarketResearchRow } from './polymarket-adapter'
 import { writeExtraction, markExtractionFailed } from './resolver'
@@ -181,10 +182,21 @@ function requiredEnv(name: string): string {
 }
 
 async function runAndLog(db: SupabaseClient, config: PolymarketEntityManagerCliConfig): Promise<void> {
-  const result = await runPolymarketEntityManager(db, {
-    batchSize: config.batchSize,
-    extractionProvider: new HermesEntityExtractionProvider({ timeoutMs: config.hermesTimeoutMs }),
-  })
+  const result = await withPipelineRun(
+    new SupabasePipelineLedgerStore(db),
+    {
+      source: 'polymarket',
+      sourceArea: 'markets',
+      stage: 'polymarket.entity_manager',
+      metadata: {
+        batchSize: config.batchSize,
+      },
+    },
+    () => runPolymarketEntityManager(db, {
+      batchSize: config.batchSize,
+      extractionProvider: new HermesEntityExtractionProvider({ timeoutMs: config.hermesTimeoutMs }),
+    })
+  )
   console.log(JSON.stringify(result, null, 2))
 }
 

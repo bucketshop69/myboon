@@ -5,6 +5,7 @@ loadEnv({ path: '../../.env' })
 loadEnv()
 
 import { createClient } from '@supabase/supabase-js'
+import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import { HermesEditorDraftProvider } from './hermes-editor'
 import { editorDraftCliConfig, runEditorDraft } from './runner'
 
@@ -20,14 +21,25 @@ async function runOnce(): Promise<void> {
     requiredEnv('SUPABASE_URL'),
     requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   )
-  const result = await runEditorDraft(supabase, {
-    batchSize: config.batchSize,
-    recentMemoryLimit: config.recentMemoryLimit,
-    laneMemoryLimit: config.laneMemoryLimit,
-    priorDraftLimit: config.priorDraftLimit,
-    publishedHistoryLimit: config.publishedHistoryLimit,
-    provider: new HermesEditorDraftProvider({ timeoutMs: config.hermesTimeoutMs }),
-  })
+  const result = await withPipelineRun(
+    new SupabasePipelineLedgerStore(supabase),
+    {
+      source: 'feed',
+      sourceArea: 'entity_memory',
+      stage: 'editor_draft',
+      metadata: {
+        batchSize: config.batchSize,
+      },
+    },
+    () => runEditorDraft(supabase, {
+      batchSize: config.batchSize,
+      recentMemoryLimit: config.recentMemoryLimit,
+      laneMemoryLimit: config.laneMemoryLimit,
+      priorDraftLimit: config.priorDraftLimit,
+      publishedHistoryLimit: config.publishedHistoryLimit,
+      provider: new HermesEditorDraftProvider({ timeoutMs: config.hermesTimeoutMs }),
+    })
+  )
   console.log(JSON.stringify(result, null, 2))
 }
 

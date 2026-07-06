@@ -20,6 +20,7 @@
     "news:run": "tsx src/news/run-news.ts",
     "news:scout:preview": "tsx src/news/run-scout-preview.ts",
     "build": "tsc",
+    "test:pipeline-ledger": "tsx --test src/pipeline-ledger.test.ts",
     "test:news": "tsx --test src/news/tests/*.test.ts",
     "test:world-cup": "tsx --test src/world-cup/*.test.ts",
     "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts",

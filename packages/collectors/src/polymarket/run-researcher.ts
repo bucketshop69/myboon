@@ -5,6 +5,7 @@ loadEnv({ path: '../../.env' })
 loadEnv()
 
 import { createClient } from '@supabase/supabase-js'
+import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import { runPolymarketResearcher } from './researcher'
 
 const RESEARCHER_INTERVAL_MS = 5 * 60 * 1000
@@ -21,7 +22,15 @@ async function runOnce(): Promise<void> {
     requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   )
 
-  const result = await runPolymarketResearcher(supabase)
+  const result = await withPipelineRun(
+    new SupabasePipelineLedgerStore(supabase),
+    {
+      source: 'polymarket',
+      sourceArea: 'markets',
+      stage: 'polymarket.researcher',
+    },
+    () => runPolymarketResearcher(supabase)
+  )
   console.log(JSON.stringify(result, null, 2))
 }
 
