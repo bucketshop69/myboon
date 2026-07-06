@@ -46,7 +46,6 @@ interface PendingResearchRow {
   notes: string
   key_findings: unknown
   evidence_links: unknown
-  related_context: unknown
   uncertainty: string
   editor_notes: string
   research_depth?: string | null
@@ -119,6 +118,32 @@ interface InsertedEditorDecision {
   status: EditorDecisionStatus
   angle: string | null
 }
+
+export const POLYMARKET_EDITOR_PENDING_RESEARCH_SELECT = [
+  'id',
+  'candidate_id',
+  'source',
+  'area',
+  'slug',
+  'title',
+  'candidate_type',
+  'research_mode',
+  'summary',
+  'notes',
+  'key_findings',
+  'evidence_links',
+  'uncertainty',
+  'editor_notes',
+  'research_depth',
+  'evidence_quality',
+  'catalyst_found',
+  'recommended_editor_action',
+  'duplicate_of_research_id',
+  'research_backend',
+  'research_model',
+  'status',
+  'researched_at',
+].join(', ')
 
 export interface PolymarketEditorResult {
   observedAt: string
@@ -258,7 +283,7 @@ function extractJson<T>(text: string): T | null {
 async function fetchPendingResearch(db: SupabaseClient, batchSize: number): Promise<PendingResearchRow[]> {
   const { data, error } = await db
     .from('polymarket_market_candidate_research')
-    .select('id, candidate_id, source, area, slug, title, candidate_type, research_mode, summary, notes, key_findings, evidence_links, related_context, uncertainty, editor_notes, research_depth, evidence_quality, catalyst_found, recommended_editor_action, duplicate_of_research_id, research_backend, research_model, status, researched_at')
+    .select(POLYMARKET_EDITOR_PENDING_RESEARCH_SELECT)
     .eq('source', SOURCE)
     .eq('area', AREA)
     .eq('status', 'pending_editor')
@@ -266,7 +291,7 @@ async function fetchPendingResearch(db: SupabaseClient, batchSize: number): Prom
     .limit(batchSize)
 
   if (error) throw new Error(`pending editor research fetch failed: ${error.message}`)
-  return (data ?? []) as PendingResearchRow[]
+  return (data ?? []) as unknown as PendingResearchRow[]
 }
 
 async function fetchRecentDecisions(db: SupabaseClient, limit: number): Promise<RecentEditorDecision[]> {
@@ -314,7 +339,6 @@ function buildEditorPrompt(researchRows: PendingResearchRow[], recentDecisions: 
       notes: row.notes,
       key_findings: row.key_findings,
       evidence_links: row.evidence_links,
-      related_context: row.related_context,
       uncertainty: row.uncertainty,
       researcher_editor_notes: row.editor_notes,
       researcher_metadata: {

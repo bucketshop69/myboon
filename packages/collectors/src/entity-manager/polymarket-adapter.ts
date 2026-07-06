@@ -14,7 +14,6 @@ export interface PolymarketResearchRow {
   notes: string
   key_findings: unknown
   evidence_links: unknown
-  related_context: unknown
   uncertainty: string
   editor_notes: string
   researched_at: string

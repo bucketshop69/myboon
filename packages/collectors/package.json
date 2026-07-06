@@ -23,7 +23,7 @@
     "test:news": "tsx --test src/news/tests/*.test.ts",
     "test:world-cup": "tsx --test src/world-cup/*.test.ts",
     "test:markets-data-engineer": "tsx --test src/polymarket/markets-data-engineer.test.ts",
-    "test:researcher": "tsx --test src/polymarket/researcher.test.ts",
+    "test:researcher": "tsx --test src/polymarket/researcher.test.ts src/polymarket/egress-guards.test.ts",
     "test:hyperliquid": "tsx --test src/hyperliquid/*.test.ts",
     "test:entity-manager": "tsx --test src/entity-manager/*.test.ts",
     "test:editor-draft": "tsx --test src/editor-draft/*.test.ts",

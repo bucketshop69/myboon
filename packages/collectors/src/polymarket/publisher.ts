@@ -51,7 +51,6 @@ interface ResearchRowForPublish {
   notes: string
   key_findings: unknown
   evidence_links: unknown
-  related_context: unknown
   uncertainty: string
 }
 
@@ -116,6 +115,20 @@ interface InsertedPublication {
   id: string
   editor_decision_id: string | null
 }
+
+export const POLYMARKET_PUBLISHER_RESEARCH_SELECT = [
+  'id',
+  'candidate_id',
+  'slug',
+  'title',
+  'candidate_type',
+  'research_mode',
+  'summary',
+  'notes',
+  'key_findings',
+  'evidence_links',
+  'uncertainty',
+].join(', ')
 
 export interface PolymarketPublisherResult {
   observedAt: string
@@ -375,11 +388,11 @@ async function fetchResearchRows(db: SupabaseClient, researchIds: string[]): Pro
   if (researchIds.length === 0) return []
   const { data, error } = await db
     .from('polymarket_market_candidate_research')
-    .select('id, candidate_id, slug, title, candidate_type, research_mode, summary, notes, key_findings, evidence_links, related_context, uncertainty')
+    .select(POLYMARKET_PUBLISHER_RESEARCH_SELECT)
     .in('id', researchIds)
 
   if (error) throw new Error(`research rows fetch failed: ${error.message}`)
-  return (data ?? []) as ResearchRowForPublish[]
+  return (data ?? []) as unknown as ResearchRowForPublish[]
 }
 
 async function fetchCandidates(db: SupabaseClient, candidateIds: string[]): Promise<CandidateLite[]> {
@@ -485,7 +498,6 @@ function buildPublisherPrompt(
           notes: r.notes,
           key_findings: r.key_findings,
           evidence_links: r.evidence_links,
-          related_context: r.related_context,
           uncertainty: r.uncertainty,
         })),
         linked_candidates: cands.map((c) => ({

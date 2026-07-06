@@ -1,5 +1,5 @@
 /**
- * PM2 ecosystem — myboon Polymarket collector/researcher services
+ * PM2 ecosystem — myboon API and feed pipeline services
  *
  * Start:   pm2 start ecosystem.config.cjs
  * Reload:  pm2 reload ecosystem.config.cjs
@@ -23,6 +23,20 @@ const TSX = `${ROOT}/node_modules/.bin/tsx`
 
 module.exports = {
   apps: [
+    {
+      name: 'myboon-api',
+      script: 'src/index.ts',
+      interpreter: TSX,
+      cwd: `${ROOT}/packages/api`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        PORT: '3000',
+      },
+    },
     {
       name: 'myboon-polymarket-data-engineer',
       script: 'src/polymarket/run-markets-data-engineer.ts',
@@ -49,6 +63,22 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 5000,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+    {
+      name: 'myboon-polymarket-entity-manager',
+      script: 'src/entity-manager/run-polymarket.ts',
+      interpreter: TSX,
+      cwd: `${ROOT}/packages/collectors`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        ENTITY_MANAGER_POLYMARKET_RUN_ONCE: '0',
+        ENTITY_MANAGER_POLYMARKET_INTERVAL_MS: '300000',
+        ENTITY_MANAGER_POLYMARKET_BATCH_SIZE: '20',
+      },
     },
     {
       name: 'myboon-editor-draft',

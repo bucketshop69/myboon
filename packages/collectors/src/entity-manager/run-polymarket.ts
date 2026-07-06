@@ -30,7 +30,7 @@ export interface PolymarketEntityManagerResult {
   failures: Array<{ sourceResearchId: string, error: string }>
 }
 
-const RESEARCH_SELECT = [
+export const POLYMARKET_ENTITY_MANAGER_RESEARCH_SELECT = [
   'id',
   'candidate_id',
   'source',
@@ -43,7 +43,6 @@ const RESEARCH_SELECT = [
   'notes',
   'key_findings',
   'evidence_links',
-  'related_context',
   'uncertainty',
   'editor_notes',
   'researched_at',
@@ -90,7 +89,7 @@ async function fetchProcessedResearchIds(db: SupabaseClient, researchIds: string
 async function fetchResearchRows(db: SupabaseClient, limit: number): Promise<PolymarketResearchRow[]> {
   const { data, error } = await db
     .from('polymarket_market_candidate_research')
-    .select(RESEARCH_SELECT)
+    .select(POLYMARKET_ENTITY_MANAGER_RESEARCH_SELECT)
     .eq('source', 'polymarket')
     .eq('area', 'markets')
     .eq('status', 'pending_editor')

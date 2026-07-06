@@ -7,9 +7,11 @@
 | `myboon-api` | `packages/api` | persistent HTTP server (port 3000) |
 | `myboon-polymarket-data-engineer` | `packages/collectors` | Polymarket markets Data Engineer |
 | `myboon-polymarket-researcher` | `packages/collectors` | Polymarket Researcher |
+| `myboon-polymarket-entity-manager` | `packages/collectors` | Polymarket ResearchPacket to Entity Memory |
 | `myboon-editor-draft` | `packages/collectors` | Entity Memory to Editor Draft |
-| `myboon-polymarket-editor` | `packages/collectors` | Polymarket Editor |
 | `myboon-publisher` | `packages/collectors` | Generic Editor Draft Publisher |
+
+PM2 is the source of truth for VPS runtime. `infra/vps/systemd/*` is deprecated and should not be installed for the current Feed pipeline.
 
 ---
 
@@ -41,8 +43,16 @@ pm2 startup   # run the printed command as root/sudo
 
 ```bash
 # Pull latest and reload (zero-downtime for API)
-git pull && pnpm install
-pm2 reload ecosystem.config.cjs
+infra/vps/deploy.sh
+
+# Or manually:
+git pull --ff-only && pnpm install --frozen-lockfile
+pnpm --filter @myboon/shared build
+pnpm --filter @myboon/entity-memory build
+pnpm --filter @myboon/tx-parser build
+pnpm --filter @myboon/collectors build
+pm2 startOrReload ecosystem.config.cjs --update-env
+pm2 save
 
 # Watch all logs
 pm2 logs
@@ -60,8 +70,8 @@ pm2 monit
 # Restart a single process
 pm2 restart myboon-polymarket-data-engineer
 pm2 restart myboon-polymarket-researcher
+pm2 restart myboon-polymarket-entity-manager
 pm2 restart myboon-editor-draft
-pm2 restart myboon-polymarket-editor
 pm2 restart myboon-publisher
 
 # Stop everything
@@ -90,7 +100,9 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 POLYMARKET_MARKETS_RUN_ONCE=0
 POLYMARKET_RESEARCHER_RUN_ONCE=0
-POLYMARKET_EDITOR_RUN_ONCE=0
+ENTITY_MANAGER_POLYMARKET_RUN_ONCE=0
+ENTITY_MANAGER_POLYMARKET_INTERVAL_MS=300000
+ENTITY_MANAGER_POLYMARKET_BATCH_SIZE=20
 EDITOR_DRAFT_RUN_ONCE=0
 EDITOR_DRAFT_INTERVAL_MS=3600000
 EDITOR_DRAFT_BATCH_SIZE=2

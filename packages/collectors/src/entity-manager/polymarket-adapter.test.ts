@@ -16,7 +16,6 @@ test('polymarketResearchToPacket converts research row and candidate context int
     notes: 'Evidence quality is weak and needs more research.',
     key_findings: ['CPI cooled'],
     evidence_links: [{ url: 'https://example.com/cpi', title: 'CPI' }],
-    related_context: [{ kind: 'macro' }],
     uncertainty: 'Research had source limitations.',
     editor_notes: 'Do not publish directly.',
     researched_at: '2026-06-22T00:00:00.000Z',
