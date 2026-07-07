@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@supabase/supabase-js'
 import { config as loadEnv } from 'dotenv'
+import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import { HermesEntityExtractionProvider } from './extractor'
 import { polymarketResearchToPacket, type PolymarketCandidateContext, type PolymarketResearchRow } from './polymarket-adapter'
 import { writeExtraction, markExtractionFailed } from './resolver'
@@ -30,7 +31,7 @@ export interface PolymarketEntityManagerResult {
   failures: Array<{ sourceResearchId: string, error: string }>
 }
 
-const RESEARCH_SELECT = [
+export const POLYMARKET_ENTITY_MANAGER_RESEARCH_SELECT = [
   'id',
   'candidate_id',
   'source',
@@ -43,7 +44,6 @@ const RESEARCH_SELECT = [
   'notes',
   'key_findings',
   'evidence_links',
-  'related_context',
   'uncertainty',
   'editor_notes',
   'researched_at',
@@ -90,7 +90,7 @@ async function fetchProcessedResearchIds(db: SupabaseClient, researchIds: string
 async function fetchResearchRows(db: SupabaseClient, limit: number): Promise<PolymarketResearchRow[]> {
   const { data, error } = await db
     .from('polymarket_market_candidate_research')
-    .select(RESEARCH_SELECT)
+    .select(POLYMARKET_ENTITY_MANAGER_RESEARCH_SELECT)
     .eq('source', 'polymarket')
     .eq('area', 'markets')
     .eq('status', 'pending_editor')
@@ -182,10 +182,21 @@ function requiredEnv(name: string): string {
 }
 
 async function runAndLog(db: SupabaseClient, config: PolymarketEntityManagerCliConfig): Promise<void> {
-  const result = await runPolymarketEntityManager(db, {
-    batchSize: config.batchSize,
-    extractionProvider: new HermesEntityExtractionProvider({ timeoutMs: config.hermesTimeoutMs }),
-  })
+  const result = await withPipelineRun(
+    new SupabasePipelineLedgerStore(db),
+    {
+      source: 'polymarket',
+      sourceArea: 'markets',
+      stage: 'polymarket.entity_manager',
+      metadata: {
+        batchSize: config.batchSize,
+      },
+    },
+    () => runPolymarketEntityManager(db, {
+      batchSize: config.batchSize,
+      extractionProvider: new HermesEntityExtractionProvider({ timeoutMs: config.hermesTimeoutMs }),
+    })
+  )
   console.log(JSON.stringify(result, null, 2))
 }
 

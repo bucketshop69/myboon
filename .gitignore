@@ -41,7 +41,9 @@ coverage/
 # Generated analysis artifacts
 artifacts/
 packages/*/artifacts/
+.data/
 packages/collectors/.data/
+packages/collectors/logs/
 
 # Cache
 .cache/

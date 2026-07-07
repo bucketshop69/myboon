@@ -5,6 +5,7 @@ loadEnv({ path: '../../.env' })
 loadEnv()
 
 import { createClient } from '@supabase/supabase-js'
+import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import {
   previewPolymarketMarketsDataEngineer,
   runPolymarketMarketsDataEngineer,
@@ -30,7 +31,15 @@ async function runOnce(): Promise<void> {
     requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   )
 
-  const result = await runPolymarketMarketsDataEngineer(supabase)
+  const result = await withPipelineRun(
+    new SupabasePipelineLedgerStore(supabase),
+    {
+      source: 'polymarket',
+      sourceArea: 'markets',
+      stage: 'polymarket.data_engineer',
+    },
+    () => runPolymarketMarketsDataEngineer(supabase)
+  )
   console.log(JSON.stringify(result, null, 2))
 }
 

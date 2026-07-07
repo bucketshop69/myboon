@@ -21,13 +21,17 @@ pnpm install --frozen-lockfile
 
 echo "Building workspace packages..."
 pnpm --filter @myboon/shared build
-pnpm --filter @myboon/entity-memory build
 pnpm --filter @myboon/tx-parser build
 pnpm --filter @myboon/collectors build
-pnpm --filter @myboon/brain build
 
-echo "Restarting services..."
-sudo systemctl restart myboon-api myboon-collectors myboon-analyst myboon-publisher
+echo "Before reloading PM2, make sure required Supabase migrations are applied:"
+echo "  - supabase/migrations/20260706_pipeline_runs.sql"
+echo "  - supabase/migrations/20260706_news_source_state.sql"
+echo "This repo does not include a Supabase CLI config, so migrations are applied outside this script."
 
-echo "Service status:"
-sudo systemctl --no-pager --full status myboon-api myboon-collectors myboon-analyst myboon-publisher | sed -n '1,80p'
+echo "Reloading PM2 processes..."
+pm2 startOrReload ecosystem.config.cjs --update-env
+pm2 save
+
+echo "Process status:"
+pm2 list

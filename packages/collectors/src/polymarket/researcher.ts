@@ -31,6 +31,28 @@ const LAST30DAYS_DEFAULT_SOURCES = ['reddit', 'grounding', 'polymarket']
 const LAST30DAYS_DISABLED_SOURCE_ALIASES = new Set(['x', 'x_search', 'twitter', 'twitter_search'])
 const MAX_RETRIEVAL_PASSES = 2
 
+export const POLYMARKET_RESEARCHER_PRIOR_RESEARCH_SELECT = [
+  'id',
+  'candidate_id',
+  'slug',
+  'research_mode',
+  'summary',
+  'notes',
+  'key_findings',
+  'evidence_links',
+  'uncertainty',
+  'editor_notes',
+  'researched_at',
+  'research_family_key',
+  'research_cluster_key',
+  'research_depth',
+  'evidence_quality',
+  'catalyst_found',
+  'recommended_editor_action',
+  'research_backend',
+  'research_model',
+].join(', ')
+
 export interface PolymarketResearcherOptions {
   now?: string
   batchSize?: number
@@ -99,7 +121,6 @@ interface PriorResearch {
   notes: string
   key_findings: unknown
   evidence_links: unknown
-  related_context: unknown
   uncertainty: string
   editor_notes: string
   researched_at: string
@@ -527,31 +548,36 @@ async function fetchRecentResearch(db: SupabaseClient, slugs: string[], familyKe
   const bySlug = new Map<string, PriorResearch[]>()
   const byFamilyKey = new Map<string, PriorResearch[]>()
   if (slugs.length === 0 && familyKeys.length === 0) return { bySlug, byFamilyKey }
-  const select = 'id, candidate_id, slug, research_mode, summary, notes, key_findings, evidence_links, related_context, uncertainty, editor_notes, researched_at, research_family_key, research_cluster_key, research_depth, evidence_quality, catalyst_found, recommended_editor_action, research_backend, research_model'
   const uniqueRows = new Map<string, PriorResearch>()
 
   if (slugs.length > 0) {
     const { data, error } = await db
       .from('polymarket_market_candidate_research')
-      .select(select)
+      .select(POLYMARKET_RESEARCHER_PRIOR_RESEARCH_SELECT)
       .in('slug', slugs)
       .order('researched_at', { ascending: false })
       .limit(100)
 
     if (error) throw new Error(`prior research slug fetch failed: ${error.message}`)
-    for (const row of data ?? []) uniqueRows.set((row as PriorResearch).id, row as PriorResearch)
+    for (const row of data ?? []) {
+      const research = row as unknown as PriorResearch
+      uniqueRows.set(research.id, research)
+    }
   }
 
   if (familyKeys.length > 0) {
     const { data, error } = await db
       .from('polymarket_market_candidate_research')
-      .select(select)
+      .select(POLYMARKET_RESEARCHER_PRIOR_RESEARCH_SELECT)
       .in('research_family_key', familyKeys)
       .order('researched_at', { ascending: false })
       .limit(200)
 
     if (error) throw new Error(`prior research family fetch failed: ${error.message}`)
-    for (const row of data ?? []) uniqueRows.set((row as PriorResearch).id, row as PriorResearch)
+    for (const row of data ?? []) {
+      const research = row as unknown as PriorResearch
+      uniqueRows.set(research.id, research)
+    }
   }
 
   for (const research of uniqueRows.values()) {
@@ -730,10 +756,7 @@ function buildReusePriorRow(decision: TriageDecision, observedAt: string, option
     ].filter(Boolean).join('\n'),
     key_findings: asArray(prior.key_findings),
     evidence_links: asArray(prior.evidence_links),
-    related_context: [
-      ...asArray(prior.related_context),
-      { kind: 'reused_prior_research', research_id: prior.id, slug: prior.slug, researched_at: prior.researched_at },
-    ],
+    related_context: [{ kind: 'reused_prior_research', research_id: prior.id, slug: prior.slug, researched_at: prior.researched_at }],
     uncertainty: prior.uncertainty || 'Prior research was reused; verify whether the market moved because of a new catalyst.',
     editor_notes: `This row reused recent ${decision.reason === 'recent_exact_slug_research' ? 'exact-slug' : 'family'} research. Compare the current candidate metrics before publishing. ${prior.editor_notes}`.trim(),
     status: 'pending_editor',

@@ -109,8 +109,12 @@ test('classifyResearchDepth routes low-score thin markets to market-structure-on
   assert.equal(decision.depth, 'market_structure_only')
 })
 
-test('buildReusePriorRow preserves prior metadata and links duplicate research id', () => {
-  const row = prior()
+test('buildReusePriorRow preserves prior metadata without copying prior related context', () => {
+  const row = prior({
+    related_context: [
+      { kind: 'large_prior_context', payload: 'x'.repeat(10_000) },
+    ],
+  })
   const current = candidate()
   const decision = {
     candidate: current,
@@ -127,6 +131,12 @@ test('buildReusePriorRow preserves prior metadata and links duplicate research i
   assert.equal(research.duplicate_of_research_id, row.id)
   assert.equal(research.evidence_quality, 'strong')
   assert.equal(research.catalyst_found, true)
+  assert.deepEqual(research.related_context, [{
+    kind: 'reused_prior_research',
+    research_id: row.id,
+    slug: row.slug,
+    researched_at: row.researched_at,
+  }])
 })
 
 test('buildMarketStructureRow writes neutral market-structure packets', () => {

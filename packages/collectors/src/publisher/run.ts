@@ -5,6 +5,7 @@ loadEnv({ path: '../../.env' })
 loadEnv()
 
 import { createClient } from '@supabase/supabase-js'
+import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import { publisherCliConfig, runPublisher } from './runner'
 import { SupabasePublisherStore } from './supabase-store'
 
@@ -24,11 +25,23 @@ async function runOnce(): Promise<void> {
     requiredEnv('SUPABASE_URL'),
     requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   )
-  const result = await runPublisher({
-    store: new SupabasePublisherStore(supabase),
-    batchSize: config.batchSize,
-    dryRun: previewOnly(process.env),
-  })
+  const result = await withPipelineRun(
+    new SupabasePipelineLedgerStore(supabase),
+    {
+      source: 'feed',
+      sourceArea: 'published_narratives',
+      stage: 'publisher',
+      metadata: {
+        batchSize: config.batchSize,
+        dryRun: previewOnly(process.env),
+      },
+    },
+    () => runPublisher({
+      store: new SupabasePublisherStore(supabase),
+      batchSize: config.batchSize,
+      dryRun: previewOnly(process.env),
+    })
+  )
   console.log(JSON.stringify(result, null, 2))
 }
 
