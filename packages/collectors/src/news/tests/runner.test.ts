@@ -262,6 +262,36 @@ test('pending research candidates are processed into research results and marked
   })
 })
 
+test('non-ready research responses are stored but not queued for entity handoff', async () => {
+  await withStore(async (store) => {
+    const [storedCandidate] = await store.insertCandidateObservations([observationInput(candidate())])
+    const hermes = new FakeHermes()
+    hermes.researchHandler = (request) => JSON.stringify({
+      ...researchResponse(request),
+      status: 'needs_followup',
+      research_summary: {
+        one_liner: 'Checked article context but needs followup.',
+        what_was_checked: ['Article page'],
+        requires_followup: true,
+        followup_reason: 'Original filing not yet available.',
+      },
+      open_questions: ['Need original filing.'],
+    })
+
+    const result = await runPendingNewsResearch({
+      store,
+      hermes,
+      options: { now, batchSize: 10 },
+    })
+
+    assert.equal(result.researchCandidatesFetched, 1)
+    assert.equal(result.researchSucceeded, 1)
+    assert.equal(result.researchResultsInserted, 1)
+    assert.deepEqual(await store.fetchPendingResearchResults(10), [])
+    assert.equal((await store.fetchCandidateObservation(storedCandidate.id))?.status, 'researched')
+  })
+})
+
 test('research parse failure does not insert a research result', async () => {
   await withStore(async (store) => {
     const [storedCandidate] = await store.insertCandidateObservations([observationInput(candidate())])

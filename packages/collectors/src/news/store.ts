@@ -32,8 +32,17 @@ export type NewsCandidateObservationStatus =
 export type PersistedNewsDedupeOutcome = 'new_candidate' | 'known_materially_changed'
 export type NewsResearchResultStatus =
   | 'pending_entity_memory'
+  | 'not_ready_for_entity_memory'
   | 'handed_to_entity_memory'
   | 'failed_entity_memory'
+
+export function initialNewsResearchResultStatus(
+  responseStatus: NewsResearchResponse['status']
+): NewsResearchResultStatus {
+  return responseStatus === 'ready_for_entity_memory'
+    ? 'pending_entity_memory'
+    : 'not_ready_for_entity_memory'
+}
 
 export interface NewsSourceRunCounters {
   candidatesFound: number

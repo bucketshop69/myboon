@@ -1,22 +1,23 @@
 import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PriorNewsObservation } from './types'
-import type {
-  CreateNewsSourceRunInput,
-  MarkNewsSourceRunInput,
-  NewsCandidateObservationInput,
-  NewsCandidateObservationRow,
-  NewsCandidateObservationStatus,
-  NewsResearchResultInput,
-  NewsResearchResultRow,
-  NewsResearchResultStatus,
-  NewsSourceRunRow,
-  NewsStore,
-  PendingNewsResearchResult,
-  PersistedNewsDedupeOutcome,
-  RecordNewsResearchFailureInput,
-  RecoverStaleNewsWorkInput,
-  RecoverStaleNewsWorkResult,
+import {
+  initialNewsResearchResultStatus,
+  type CreateNewsSourceRunInput,
+  type MarkNewsSourceRunInput,
+  type NewsCandidateObservationInput,
+  type NewsCandidateObservationRow,
+  type NewsCandidateObservationStatus,
+  type NewsResearchResultInput,
+  type NewsResearchResultRow,
+  type NewsResearchResultStatus,
+  type NewsSourceRunRow,
+  type NewsStore,
+  type PendingNewsResearchResult,
+  type PersistedNewsDedupeOutcome,
+  type RecordNewsResearchFailureInput,
+  type RecoverStaleNewsWorkInput,
+  type RecoverStaleNewsWorkResult,
 } from './store'
 
 const SOURCE_RUN_SELECT = [
@@ -480,7 +481,7 @@ export class SupabaseNewsStore implements NewsStore {
       article_identity_key: input.candidate.articleIdentityKey,
       observation_dedupe_key: input.candidate.observationDedupeKey,
       research_job_id: input.response.job_id,
-      status: input.status ?? 'pending_entity_memory',
+      status: input.status ?? initialNewsResearchResultStatus(input.response.status),
       response_status: input.response.status,
       source_signal: input.response.source_signal,
       research_summary: input.response.research_summary,
@@ -523,10 +524,22 @@ export class SupabaseNewsStore implements NewsStore {
   }
 
   async fetchPendingResearchResults(limit: number): Promise<PendingNewsResearchResult[]> {
+    const { error: reconcileError } = await this.db
+      .from('news_research_results')
+      .update({
+        status: 'not_ready_for_entity_memory',
+        updated_at: nowIso(),
+      })
+      .eq('status', 'pending_entity_memory')
+      .neq('response_status', 'ready_for_entity_memory')
+
+    if (reconcileError) throw new Error(`news_research_results pending reconcile failed: ${reconcileError.message}`)
+
     const { data, error } = await this.db
       .from('news_research_results')
       .select(RESEARCH_RESULT_PENDING_SELECT)
       .eq('status', 'pending_entity_memory')
+      .eq('response_status', 'ready_for_entity_memory')
       .order('researched_at', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(Math.max(0, limit))
@@ -542,15 +555,29 @@ export class SupabaseNewsStore implements NewsStore {
   }
 
   async markResearchResultStatus(id: string, status: NewsResearchResultStatus): Promise<void> {
-    const { error } = await this.db
+    const { data, error } = await this.db
       .from('news_research_results')
       .update({
         status,
         updated_at: nowIso(),
       })
       .eq('id', id)
+      .select('candidate_observation_id')
+      .maybeSingle()
 
     if (error) throw new Error(`news_research_results status update failed: ${error.message}`)
+    if (status !== 'handed_to_entity_memory' || !data) return
+
+    const candidateId = String((data as Record<string, unknown>).candidate_observation_id)
+    const { error: candidateError } = await this.db
+      .from('news_candidate_observations')
+      .update({
+        status: 'handed_to_entity_memory',
+        updated_at: nowIso(),
+      })
+      .eq('id', candidateId)
+
+    if (candidateError) throw new Error(`news_research_results status update failed: ${candidateError.message}`)
   }
 
   private async candidateRowsByDedupeKeys(keys: string[]): Promise<NewsCandidateObservationRow[]> {

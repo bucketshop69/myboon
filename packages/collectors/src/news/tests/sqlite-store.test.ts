@@ -157,6 +157,79 @@ test('insertResearchResult persists a validated response and marks candidate res
   })
 })
 
+test('insertResearchResult stores non-ready responses without pending entity handoff', async () => {
+  await withStore(async (store) => {
+    const needsFollowupInput = observationInput({
+      candidate: candidate({ article_url: 'https://www.coindesk.com/needs-followup' }),
+    })
+    const failedInput = observationInput({
+      candidate: candidate({ article_url: 'https://www.coindesk.com/failed-research' }),
+    })
+    const [needsFollowupCandidate, failedCandidate] = await store.insertCandidateObservations([
+      needsFollowupInput,
+      failedInput,
+    ])
+
+    const needsFollowup = await store.insertResearchResult({
+      candidate: needsFollowupCandidate,
+      response: researchResponse(needsFollowupCandidate, {
+        status: 'needs_followup',
+        research_summary: {
+          one_liner: 'Research needs followup.',
+          what_was_checked: ['Article'],
+          requires_followup: true,
+        },
+        open_questions: ['Need original filing.'],
+      }),
+      researchedAt: '2026-07-04T13:00:00.000Z',
+    })
+    const failed = await store.insertResearchResult({
+      candidate: failedCandidate,
+      response: researchResponse(failedCandidate, {
+        status: 'failed',
+        research_summary: {
+          one_liner: 'Research failed cleanly.',
+          what_was_checked: ['Article'],
+          requires_followup: true,
+        },
+        errors: ['Article unavailable.'],
+      }),
+      researchedAt: '2026-07-04T13:05:00.000Z',
+    })
+
+    assert.equal(needsFollowup.status, 'not_ready_for_entity_memory')
+    assert.equal(failed.status, 'not_ready_for_entity_memory')
+    assert.equal((await store.fetchResearchResult(needsFollowup.id))?.responseStatus, 'needs_followup')
+    assert.equal((await store.fetchResearchResult(failed.id))?.responseStatus, 'failed')
+    assert.deepEqual(await store.fetchPendingResearchResults(10), [])
+  })
+})
+
+test('fetchPendingResearchResults reconciles legacy pending non-ready rows', async () => {
+  await withStore(async (store) => {
+    const [storedCandidate] = await store.insertCandidateObservations([
+      observationInput({ candidate: candidate({ article_url: 'https://www.coindesk.com/legacy-needs-followup' }) }),
+    ])
+    const row = await store.insertResearchResult({
+      candidate: storedCandidate,
+      response: researchResponse(storedCandidate, {
+        status: 'needs_followup',
+        research_summary: {
+          one_liner: 'Legacy pending row needs followup.',
+          what_was_checked: ['Article'],
+          requires_followup: true,
+        },
+      }),
+      researchedAt: '2026-07-04T13:00:00.000Z',
+      status: 'pending_entity_memory',
+    })
+
+    assert.equal(row.status, 'pending_entity_memory')
+    assert.deepEqual(await store.fetchPendingResearchResults(10), [])
+    assert.equal((await store.fetchResearchResult(row.id))?.status, 'not_ready_for_entity_memory')
+  })
+})
+
 test('duplicate research result inserts are idempotent by candidate and research job', async () => {
   await withStore(async (store) => {
     const [storedCandidate] = await store.insertCandidateObservations([observationInput()])
@@ -294,6 +367,7 @@ test('fetchResearchResult and markResearchResultStatus work for pending entity m
     await store.markResearchResultStatus(row.id, 'handed_to_entity_memory')
     const handedOff = await store.fetchResearchResult(row.id)
     assert.equal(handedOff?.status, 'handed_to_entity_memory')
+    assert.equal((await store.fetchCandidateObservation(storedCandidate.id))?.status, 'handed_to_entity_memory')
 
     await store.markResearchResultStatus(row.id, 'failed_entity_memory')
     const failed = await store.fetchResearchResult(row.id)

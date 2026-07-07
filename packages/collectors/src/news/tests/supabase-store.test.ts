@@ -29,7 +29,7 @@ interface FakeSupabaseResult {
 
 interface FakeFilter {
   column: string
-  op: 'eq' | 'in' | 'lt'
+  op: 'eq' | 'neq' | 'in' | 'lt'
   value: unknown
 }
 
@@ -92,6 +92,11 @@ class FakeQueryBuilder {
 
   eq(column: string, value: unknown): this {
     this.filters.push({ column, op: 'eq', value })
+    return this
+  }
+
+  neq(column: string, value: unknown): this {
+    this.filters.push({ column, op: 'neq', value })
     return this
   }
 
@@ -208,6 +213,7 @@ class FakeQueryBuilder {
     return this.filters.every((filter) => {
       const value = row[filter.column]
       if (filter.op === 'eq') return value === filter.value
+      if (filter.op === 'neq') return value !== filter.value
       if (filter.op === 'in') return Array.isArray(filter.value) && filter.value.includes(value)
       return String(value) < String(filter.value)
     })
@@ -350,7 +356,10 @@ function observationInput(
   }
 }
 
-function researchResponse(storedCandidate: NewsCandidateObservationRow): NewsResearchResponse {
+function researchResponse(
+  storedCandidate: NewsCandidateObservationRow,
+  overrides: Partial<NewsResearchResponse> = {}
+): NewsResearchResponse {
   return {
     schema_version: 'myboon.hermes.research_response.v1',
     job_id: `research-${storedCandidate.id}`,
@@ -385,6 +394,7 @@ function researchResponse(storedCandidate: NewsCandidateObservationRow): NewsRes
     open_questions: [],
     limitations: [],
     errors: [],
+    ...overrides,
   }
 }
 
@@ -476,7 +486,73 @@ test('SupabaseNewsStore supports source runs, candidate dedupe, research, and ha
 
   await store.markResearchResultStatus(result.id, 'handed_to_entity_memory')
   assert.equal((await store.fetchResearchResult(result.id))?.status, 'handed_to_entity_memory')
+  assert.equal((await store.fetchCandidateObservation(first[0].id))?.status, 'handed_to_entity_memory')
   assert.deepEqual(await store.fetchPendingResearchResults(10), [])
+})
+
+test('SupabaseNewsStore stores non-ready research without pending entity handoff', async () => {
+  const { store } = fakeStore()
+  const [needsFollowupCandidate, failedCandidate] = await store.insertCandidateObservations([
+    observationInput({ inputCandidate: candidate({ article_url: 'https://www.coindesk.com/needs-followup' }) }),
+    observationInput({ inputCandidate: candidate({ article_url: 'https://www.coindesk.com/failed-research' }) }),
+  ])
+
+  const needsFollowup = await store.insertResearchResult({
+    candidate: needsFollowupCandidate,
+    response: researchResponse(needsFollowupCandidate, {
+      status: 'needs_followup',
+      research_summary: {
+        one_liner: 'Research needs followup.',
+        what_was_checked: ['Article'],
+        requires_followup: true,
+      },
+      open_questions: ['Need original filing.'],
+    }),
+    researchedAt: '2026-07-04T13:00:00.000Z',
+  })
+  const failed = await store.insertResearchResult({
+    candidate: failedCandidate,
+    response: researchResponse(failedCandidate, {
+      status: 'failed',
+      research_summary: {
+        one_liner: 'Research failed cleanly.',
+        what_was_checked: ['Article'],
+        requires_followup: true,
+      },
+      errors: ['Article unavailable.'],
+    }),
+    researchedAt: '2026-07-04T13:05:00.000Z',
+  })
+
+  assert.equal(needsFollowup.status, 'not_ready_for_entity_memory')
+  assert.equal(failed.status, 'not_ready_for_entity_memory')
+  assert.equal((await store.fetchResearchResult(needsFollowup.id))?.responseStatus, 'needs_followup')
+  assert.equal((await store.fetchResearchResult(failed.id))?.responseStatus, 'failed')
+  assert.deepEqual(await store.fetchPendingResearchResults(10), [])
+})
+
+test('SupabaseNewsStore reconciles legacy pending non-ready research rows', async () => {
+  const { store } = fakeStore()
+  const [storedCandidate] = await store.insertCandidateObservations([
+    observationInput({ inputCandidate: candidate({ article_url: 'https://www.coindesk.com/legacy-needs-followup' }) }),
+  ])
+  const row = await store.insertResearchResult({
+    candidate: storedCandidate,
+    response: researchResponse(storedCandidate, {
+      status: 'needs_followup',
+      research_summary: {
+        one_liner: 'Legacy pending row needs followup.',
+        what_was_checked: ['Article'],
+        requires_followup: true,
+      },
+    }),
+    researchedAt: '2026-07-04T13:00:00.000Z',
+    status: 'pending_entity_memory',
+  })
+
+  assert.equal(row.status, 'pending_entity_memory')
+  assert.deepEqual(await store.fetchPendingResearchResults(10), [])
+  assert.equal((await store.fetchResearchResult(row.id))?.status, 'not_ready_for_entity_memory')
 })
 
 test('SupabaseNewsStore records research failure metadata with bounded debug fields', async () => {
@@ -573,6 +649,7 @@ test('Supabase-backed News Entity Manager intake uses the shared resolver handof
   assert.equal(provider.packets[0].source, 'news')
   assert.equal(provider.packets[0].sourceResearchId, resultRow.id)
   assert.equal((await store.fetchResearchResult(resultRow.id))?.status, 'handed_to_entity_memory')
+  assert.equal((await store.fetchCandidateObservation(storedCandidate.id))?.status, 'handed_to_entity_memory')
 
   const memory = entityStore.memories.find((item) => item.title === 'Bitcoin treasury article observed')
   assert.equal(memory?.memory_type, 'news_event')

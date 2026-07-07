@@ -111,9 +111,10 @@ CREATE TABLE IF NOT EXISTS public.news_research_results (
   article_identity_key text NOT NULL,
   observation_dedupe_key text NOT NULL,
   research_job_id text NOT NULL UNIQUE,
-  status text NOT NULL DEFAULT 'pending_entity_memory' CHECK (
+  status text NOT NULL CHECK (
     status IN (
       'pending_entity_memory',
+      'not_ready_for_entity_memory',
       'handed_to_entity_memory',
       'failed_entity_memory'
     )

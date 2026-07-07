@@ -8,6 +8,7 @@ import { SqliteNewsStore } from '../news/sqlite-store'
 import type {
   NewsCandidateObservationRow,
   NewsResearchResultRow,
+  NewsResearchResultStatus,
   NewsStore,
 } from '../news/store'
 import type {
@@ -35,6 +36,7 @@ export interface NewsEntityManagerResult {
   results: WriteExtractionResult[]
   failures: Array<{
     sourceResearchId: string
+    stage: 'entity_extraction' | 'news_status_update'
     error: string
   }>
 }
@@ -69,26 +71,48 @@ export async function runNewsEntityManager(input: RunNewsEntityManagerInput): Pr
   const results: WriteExtractionResult[] = []
   const failures: NewsEntityManagerResult['failures'] = []
   let memoriesWritten = 0
+  let extractionFailures = 0
 
   for (const item of fetched.packets) {
+    let extractionResult: WriteExtractionResult
     try {
-      const result = await writeExtraction(input.entityStore, item.packet, input.extractionProvider)
-      results.push(result)
-      memoriesWritten += result.memoriesWritten
-      await input.newsStore.markResearchResultStatus(item.result.id, 'handed_to_entity_memory')
+      extractionResult = await writeExtraction(input.entityStore, item.packet, input.extractionProvider)
     } catch (error) {
       const message = errorMessage(error)
       const failureResult = await markExtractionFailed(input.entityStore, item.packet, message)
       memoriesWritten += failureResult.memoriesWritten
-      failures.push({ sourceResearchId: item.result.id, error: message })
-      await input.newsStore.markResearchResultStatus(item.result.id, 'failed_entity_memory')
+      failures.push({ sourceResearchId: item.result.id, stage: 'entity_extraction', error: message })
+      extractionFailures += 1
+      try {
+        await input.newsStore.markResearchResultStatus(item.result.id, 'failed_entity_memory')
+      } catch (statusError) {
+        failures.push({
+          sourceResearchId: item.result.id,
+          stage: 'news_status_update',
+          error: errorMessage(statusError),
+        })
+      }
+      continue
+    }
+
+    results.push(extractionResult)
+    memoriesWritten += extractionResult.memoriesWritten
+
+    try {
+      await input.newsStore.markResearchResultStatus(item.result.id, 'handed_to_entity_memory')
+    } catch (error) {
+      failures.push({
+        sourceResearchId: item.result.id,
+        stage: 'news_status_update',
+        error: errorMessage(error),
+      })
     }
   }
 
   return {
     fetched: fetched.fetched,
     processed: results.length,
-    failed: failures.length,
+    failed: extractionFailures,
     skippedAlreadyMarked: fetched.skippedAlreadyMarked,
     memoriesWritten,
     results,
@@ -107,7 +131,8 @@ async function fetchNewsPackets(input: {
     ...item,
     packet: newsResearchToPacket(item.result, item.candidate),
   }))
-  const marked = await fetchMarkedNewsResearchIds(input.entityStore, packets)
+  const marked = await fetchMarkedNewsResearchStatuses(input.entityStore, packets)
+  await reconcileMarkedNewsResearchResults(input.newsStore, packets, marked)
   const skippedAlreadyMarked = packets.filter((item) => marked.has(item.result.id)).length
   const unprocessed = packets
     .filter((item) => !marked.has(item.result.id))
@@ -120,22 +145,38 @@ async function fetchNewsPackets(input: {
   }
 }
 
-async function fetchMarkedNewsResearchIds(
+async function fetchMarkedNewsResearchStatuses(
   entityStore: EntityMemoryStore,
   packets: PendingNewsPacket[]
-): Promise<Set<string>> {
+): Promise<Map<string, NewsResearchResultStatus>> {
   const keys = packets.flatMap((item): MemoryLookupKey[] => ([
     processedMarkerKey(item.packet),
     failedMarkerKey(item.packet),
   ]))
   const memories = await entityStore.findMemories(keys)
-  return new Set(memories
-    .filter((memory) => (
-      memory.source === 'news'
-      && memory.memory_type === 'source_marker'
-      && (memory.title === 'entity_manager:processed' || memory.title === 'entity_manager:failed')
-    ))
-    .map((memory) => memory.source_research_id))
+  const statuses = new Map<string, NewsResearchResultStatus>()
+  for (const memory of memories) {
+    if (memory.source !== 'news' || memory.memory_type !== 'source_marker') continue
+    if (memory.title === 'entity_manager:failed' && !statuses.has(memory.source_research_id)) {
+      statuses.set(memory.source_research_id, 'failed_entity_memory')
+    }
+    if (memory.title === 'entity_manager:processed') {
+      statuses.set(memory.source_research_id, 'handed_to_entity_memory')
+    }
+  }
+  return statuses
+}
+
+async function reconcileMarkedNewsResearchResults(
+  newsStore: NewsStore,
+  packets: PendingNewsPacket[],
+  marked: Map<string, NewsResearchResultStatus>
+): Promise<void> {
+  for (const item of packets) {
+    const status = marked.get(item.result.id)
+    if (!status) continue
+    await newsStore.markResearchResultStatus(item.result.id, status)
+  }
 }
 
 function processedMarkerKey(packet: ResearchPacket): MemoryLookupKey {

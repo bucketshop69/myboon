@@ -25,6 +25,15 @@ class CapturingExtractionProvider implements ExtractionProvider {
   }
 }
 
+class StatusUpdateFailingNewsStore extends SqliteNewsStore {
+  async markResearchResultStatus(id: string, status: Parameters<SqliteNewsStore['markResearchResultStatus']>[1]): Promise<void> {
+    if (status === 'handed_to_entity_memory') {
+      throw new Error('local status update failed')
+    }
+    return super.markResearchResultStatus(id, status)
+  }
+}
+
 function withNewsStore(fn: (store: SqliteNewsStore) => Promise<void> | void): Promise<void> {
   const store = new SqliteNewsStore(':memory:')
   return Promise.resolve()
@@ -45,7 +54,8 @@ function candidate(overrides: Partial<NewsScoutCandidate> = {}): NewsScoutCandid
 
 async function insertResearchResult(
   store: SqliteNewsStore,
-  inputCandidate = candidate()
+  inputCandidate = candidate(),
+  responseOverrides: Partial<NewsResearchResponse> = {}
 ): Promise<Awaited<ReturnType<SqliteNewsStore['insertResearchResult']>>> {
   const [storedCandidate] = await store.insertCandidateObservations([{
     source,
@@ -57,12 +67,15 @@ async function insertResearchResult(
   }])
   return store.insertResearchResult({
     candidate: storedCandidate,
-    response: researchResponse(storedCandidate),
+    response: researchResponse(storedCandidate, responseOverrides),
     researchedAt: '2026-07-04T13:00:00.000Z',
   })
 }
 
-function researchResponse(storedCandidate: NewsCandidateObservationRow): NewsResearchResponse {
+function researchResponse(
+  storedCandidate: NewsCandidateObservationRow,
+  overrides: Partial<NewsResearchResponse> = {}
+): NewsResearchResponse {
   return {
     schema_version: 'myboon.hermes.research_response.v1',
     job_id: `research-${storedCandidate.id}`,
@@ -93,6 +106,7 @@ function researchResponse(storedCandidate: NewsCandidateObservationRow): NewsRes
     open_questions: [],
     limitations: [],
     errors: [],
+    ...overrides,
   }
 }
 
@@ -142,6 +156,34 @@ test('fetchUnprocessedNewsPackets adapts pending local news research into Resear
   })
 })
 
+test('fetchUnprocessedNewsPackets ignores non-ready research results', async () => {
+  await withNewsStore(async (newsStore) => {
+    const entityStore = new InMemoryEntityMemoryStore()
+    const result = await insertResearchResult(
+      newsStore,
+      candidate({ article_url: 'https://www.coindesk.com/needs-followup' }),
+      {
+        status: 'needs_followup',
+        research_summary: {
+          one_liner: 'Research needs followup.',
+          what_was_checked: ['Article'],
+          requires_followup: true,
+        },
+        open_questions: ['Need original source.'],
+      }
+    )
+
+    const packets = await fetchUnprocessedNewsPackets({
+      newsStore,
+      entityStore,
+      batchSize: 10,
+    })
+
+    assert.deepEqual(packets, [])
+    assert.equal((await newsStore.fetchResearchResult(result.id))?.status, 'not_ready_for_entity_memory')
+  })
+})
+
 test('runNewsEntityManager writes entity memory, processed marker, and local handed-off status', async () => {
   await withNewsStore(async (newsStore) => {
     const entityStore = new InMemoryEntityMemoryStore()
@@ -165,6 +207,7 @@ test('runNewsEntityManager writes entity memory, processed marker, and local han
 
     const stored = await newsStore.fetchResearchResult(resultRow.id)
     assert.equal(stored?.status, 'handed_to_entity_memory')
+    assert.equal((await newsStore.fetchCandidateObservation(resultRow.candidateObservationId))?.status, 'handed_to_entity_memory')
 
     const normalMemory = entityStore.memories.find((memory) => memory.title === 'Ethereum treasury article observed')
     assert.equal(normalMemory?.memory_type, 'news_event')
@@ -206,6 +249,38 @@ test('runNewsEntityManager writes failed marker and local failed status when ext
   })
 })
 
+test('runNewsEntityManager does not write failed marker when local handed-off status update fails', async () => {
+  const newsStore = new StatusUpdateFailingNewsStore(':memory:')
+  try {
+    const entityStore = new InMemoryEntityMemoryStore()
+    const provider = new CapturingExtractionProvider(extraction())
+    const resultRow = await insertResearchResult(newsStore)
+
+    const result = await runNewsEntityManager({
+      newsStore,
+      entityStore,
+      extractionProvider: provider,
+      batchSize: 10,
+    })
+
+    assert.equal(result.fetched, 1)
+    assert.equal(result.processed, 1)
+    assert.equal(result.failed, 0)
+    assert.equal(result.failures.length, 1)
+    assert.equal(result.failures[0].sourceResearchId, resultRow.id)
+    assert.equal(result.failures[0].stage, 'news_status_update')
+    assert.match(result.failures[0].error, /local status update failed/)
+    assert.equal((await newsStore.fetchResearchResult(resultRow.id))?.status, 'pending_entity_memory')
+
+    const processedMarker = entityStore.memories.find((memory) => memory.title === 'entity_manager:processed')
+    assert.equal(processedMarker?.source_research_id, resultRow.id)
+    const failedMarker = entityStore.memories.find((memory) => memory.title === 'entity_manager:failed')
+    assert.equal(failedMarker, undefined)
+  } finally {
+    newsStore.close()
+  }
+})
+
 test('runNewsEntityManager skips already processed or failed source markers', async () => {
   await withNewsStore(async (newsStore) => {
     const entityStore = new InMemoryEntityMemoryStore()
@@ -229,8 +304,10 @@ test('runNewsEntityManager skips already processed or failed source markers', as
     assert.equal(result.processed, 0)
     assert.equal(result.failed, 0)
     assert.equal(provider.packets.length, 0)
-    assert.equal((await newsStore.fetchResearchResult(processed.id))?.status, 'pending_entity_memory')
-    assert.equal((await newsStore.fetchResearchResult(failed.id))?.status, 'pending_entity_memory')
+    assert.equal((await newsStore.fetchResearchResult(processed.id))?.status, 'handed_to_entity_memory')
+    assert.equal((await newsStore.fetchResearchResult(failed.id))?.status, 'failed_entity_memory')
+    assert.equal((await newsStore.fetchCandidateObservation(processed.candidateObservationId))?.status, 'handed_to_entity_memory')
+    assert.deepEqual(await newsStore.fetchPendingResearchResults(10), [])
   })
 })
 

@@ -3,22 +3,23 @@ import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import type { PriorNewsObservation } from './types'
-import type {
-  CreateNewsSourceRunInput,
-  MarkNewsSourceRunInput,
-  NewsCandidateObservationInput,
-  NewsCandidateObservationRow,
-  NewsCandidateObservationStatus,
-  RecordNewsResearchFailureInput,
-  RecoverStaleNewsWorkInput,
-  RecoverStaleNewsWorkResult,
-  NewsResearchResultInput,
-  NewsResearchResultRow,
-  NewsResearchResultStatus,
-  NewsSourceRunRow,
-  NewsStore,
-  PendingNewsResearchResult,
-  PersistedNewsDedupeOutcome,
+import {
+  initialNewsResearchResultStatus,
+  type CreateNewsSourceRunInput,
+  type MarkNewsSourceRunInput,
+  type NewsCandidateObservationInput,
+  type NewsCandidateObservationRow,
+  type NewsCandidateObservationStatus,
+  type RecordNewsResearchFailureInput,
+  type RecoverStaleNewsWorkInput,
+  type RecoverStaleNewsWorkResult,
+  type NewsResearchResultInput,
+  type NewsResearchResultRow,
+  type NewsResearchResultStatus,
+  type NewsSourceRunRow,
+  type NewsStore,
+  type PendingNewsResearchResult,
+  type PersistedNewsDedupeOutcome,
 } from './store'
 
 const nodeRequire = createRequire(__filename)
@@ -195,9 +196,10 @@ function ensureNewsSqliteSchema(db: SqliteDatabase): void {
       article_identity_key TEXT NOT NULL,
       observation_dedupe_key TEXT NOT NULL,
       research_job_id TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'pending_entity_memory' CHECK (
+      status TEXT NOT NULL CHECK (
         status IN (
           'pending_entity_memory',
+          'not_ready_for_entity_memory',
           'handed_to_entity_memory',
           'failed_entity_memory'
         )
@@ -612,7 +614,7 @@ export class SqliteNewsStore implements NewsStore {
           input.candidate.articleIdentityKey,
           input.candidate.observationDedupeKey,
           input.response.job_id,
-          input.status ?? 'pending_entity_memory',
+          input.status ?? initialNewsResearchResultStatus(input.response.status),
           input.response.status,
           json(input.response.source_signal),
           json(input.response.research_summary),
@@ -667,10 +669,19 @@ export class SqliteNewsStore implements NewsStore {
 
   async fetchPendingResearchResults(limit: number): Promise<PendingNewsResearchResult[]> {
     try {
+      this.db.prepare(`
+        UPDATE news_research_results
+        SET status = 'not_ready_for_entity_memory',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE status = 'pending_entity_memory'
+          AND response_status != 'ready_for_entity_memory'
+      `).run()
+
       const rows = this.db.prepare(`
         SELECT id, candidate_observation_id
         FROM news_research_results
         WHERE status = 'pending_entity_memory'
+          AND response_status = 'ready_for_entity_memory'
         ORDER BY researched_at ASC, created_at ASC
         LIMIT ?
       `).all(Math.max(0, limit)) as Array<Record<string, unknown>>
@@ -687,13 +698,32 @@ export class SqliteNewsStore implements NewsStore {
 
   async markResearchResultStatus(id: string, status: NewsResearchResultStatus): Promise<void> {
     try {
+      this.db.exec('BEGIN')
       this.db.prepare(`
         UPDATE news_research_results
         SET status = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(status, id)
+      if (status === 'handed_to_entity_memory') {
+        this.db.prepare(`
+          UPDATE news_candidate_observations
+          SET status = 'handed_to_entity_memory',
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = (
+            SELECT candidate_observation_id
+            FROM news_research_results
+            WHERE id = ?
+          )
+        `).run(id)
+      }
+      this.db.exec('COMMIT')
     } catch (error) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        // Ignore rollback errors so the original failure is preserved.
+      }
       throw new Error(`news_research_results status update failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
