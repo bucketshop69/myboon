@@ -21,9 +21,13 @@ pnpm install --frozen-lockfile
 
 echo "Building workspace packages..."
 pnpm --filter @myboon/shared build
-pnpm --filter @myboon/entity-memory build
 pnpm --filter @myboon/tx-parser build
 pnpm --filter @myboon/collectors build
+
+echo "Before reloading PM2, make sure required Supabase migrations are applied:"
+echo "  - supabase/migrations/20260706_pipeline_runs.sql"
+echo "  - supabase/migrations/20260706_news_source_state.sql"
+echo "This repo does not include a Supabase CLI config, so migrations are applied outside this script."
 
 echo "Reloading PM2 processes..."
 pm2 startOrReload ecosystem.config.cjs --update-env

@@ -43,12 +43,15 @@ pm2 startup   # run the printed command as root/sudo
 
 ```bash
 # Pull latest and reload (zero-downtime for API)
+# Apply pending Supabase migrations first when new migrations exist.
+# For this PR, apply:
+# - supabase/migrations/20260706_pipeline_runs.sql
+# - supabase/migrations/20260706_news_source_state.sql
 infra/vps/deploy.sh
 
 # Or manually:
 git pull --ff-only && pnpm install --frozen-lockfile
 pnpm --filter @myboon/shared build
-pnpm --filter @myboon/entity-memory build
 pnpm --filter @myboon/tx-parser build
 pnpm --filter @myboon/collectors build
 pm2 startOrReload ecosystem.config.cjs --update-env
