@@ -47,6 +47,7 @@ pm2 startup   # run the printed command as root/sudo
 # For this PR, apply:
 # - supabase/migrations/20260706_pipeline_runs.sql
 # - supabase/migrations/20260706_news_source_state.sql
+# - supabase/migrations/20260710041040_internal_entity_browser_security.sql
 infra/vps/deploy.sh
 
 # Or manually:
@@ -94,7 +95,38 @@ Each package loads its own `.env` via `dotenv/config`. PM2 sets `cwd` to the pac
 ```
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+INTERNAL_DASHBOARD_TOKEN=
 PORT=3000
+```
+
+### Internal entity browser web environment
+
+The public web deployment may host `/internal/entities`, but this route is not
+public data. Configure these values in the deployment provider's private
+environment-variable store only. Do not add secret values to source files,
+GitHub issues, CI logs, or browser-accessible `NEXT_PUBLIC_*` variables.
+
+```text
+INTERNAL_DASHBOARD_TOKEN=
+INTERNAL_DASHBOARD_SESSION_SECRET=
+INTERNAL_API_BASE_URL=https://internal-api.example.com
+```
+
+Use the same `INTERNAL_DASHBOARD_TOKEN` for the API and web deployments. Generate
+both secrets independently with at least 32 random bytes, for example:
+
+```bash
+openssl rand -base64 48
+```
+
+`INTERNAL_API_BASE_URL` is server-to-server only. Keep the API on a private
+network or allow it only from the web deployment where the platform supports
+network allowlists. The browser must never call the API host directly.
+
+Before deploying the API that calls the aggregate RPC, apply the migration:
+
+```bash
+pnpm dlx supabase db push
 ```
 
 ### `packages/collectors/.env`

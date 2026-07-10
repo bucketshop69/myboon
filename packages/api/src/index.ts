@@ -10,6 +10,7 @@ import { serve } from '@hono/node-server'
 import { clobRoutes } from './clob.js'
 import { pacificaRoutes } from './pacifica.js'
 import { phoenixRoutes } from './phoenix.js'
+import { createInternalEntityRoutes } from './internal/entities.js'
 import { CURATED_GEOPOLITICS_SLUGS, deriveCategoryFromText } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
@@ -46,6 +47,7 @@ try {
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const INTERNAL_DASHBOARD_TOKEN = process.env.INTERNAL_DASHBOARD_TOKEN
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
 const AI_EXPLANATION_PROVIDER = process.env.AI_EXPLANATION_PROVIDER
@@ -669,8 +671,23 @@ async function withDomeFallback<T>(
 
 const app = new Hono()
 
-app.use('*', cors())
+const publicCors = cors()
+app.use('*', async (c, next) => {
+  if (c.req.path === '/internal' || c.req.path.startsWith('/internal/')) return next()
+  return publicCors(c, next)
+})
 app.use('*', logger())
+
+if (!INTERNAL_DASHBOARD_TOKEN || Buffer.byteLength(INTERNAL_DASHBOARD_TOKEN, 'utf8') < 32) {
+  console.warn('[api] INTERNAL_DASHBOARD_TOKEN must be at least 32 bytes; /internal routes will return 503.')
+}
+
+// --- Internal read-only tools ---
+app.route('/internal', createInternalEntityRoutes({
+  supabaseUrl: SUPABASE_URL!,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY!,
+  internalToken: INTERNAL_DASHBOARD_TOKEN,
+}))
 
 // --- CLOB routes (Polymarket Builder) ---
 app.route('/clob', clobRoutes)
