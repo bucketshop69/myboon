@@ -87,7 +87,7 @@ async function fetchProcessedResearchIds(db: SupabaseClient, researchIds: string
   return new Set((data ?? []).map((row) => String((row as { source_research_id: unknown }).source_research_id)))
 }
 
-async function fetchResearchRows(db: SupabaseClient, limit: number): Promise<PolymarketResearchRow[]> {
+async function fetchResearchRows(db: SupabaseClient, limit: number, offset = 0): Promise<PolymarketResearchRow[]> {
   const { data, error } = await db
     .from('polymarket_market_candidate_research')
     .select(POLYMARKET_ENTITY_MANAGER_RESEARCH_SELECT)
@@ -95,7 +95,7 @@ async function fetchResearchRows(db: SupabaseClient, limit: number): Promise<Pol
     .eq('area', 'markets')
     .eq('status', 'pending_editor')
     .order('researched_at', { ascending: true })
-    .limit(limit)
+    .range(offset, offset + limit - 1)
   if (error) throw new Error(`polymarket research fetch failed: ${error.message}`)
   return (data ?? []) as unknown as PolymarketResearchRow[]
 }
@@ -119,11 +119,24 @@ export async function fetchUnprocessedPolymarketPackets(
   db: SupabaseClient,
   batchSize: number
 ): Promise<ResearchPacket[]> {
-  const rows = await fetchResearchRows(db, Math.max(batchSize * 10, 100))
-  const processed = await fetchProcessedResearchIds(db, rows.map((row) => row.id))
-  const unprocessed = rows.filter((row) => !processed.has(row.id)).slice(0, batchSize)
-  const candidates = await fetchCandidateContext(db, [...new Set(unprocessed.map((row) => row.candidate_id))])
-  return unprocessed.map((row) => polymarketResearchToPacket(row, candidates.get(row.candidate_id) ?? null))
+  const pageSize = Math.max(batchSize * 10, 100)
+  const maxPages = 50
+  const unprocessed: PolymarketResearchRow[] = []
+
+  for (let page = 0; page < maxPages && unprocessed.length < batchSize; page += 1) {
+    const offset = page * pageSize
+    const rows = await fetchResearchRows(db, pageSize, offset)
+    if (rows.length === 0) break
+
+    const processed = await fetchProcessedResearchIds(db, rows.map((row) => row.id))
+    unprocessed.push(...rows.filter((row) => !processed.has(row.id)))
+
+    if (rows.length < pageSize) break
+  }
+
+  const selected = unprocessed.slice(0, batchSize)
+  const candidates = await fetchCandidateContext(db, [...new Set(selected.map((row) => row.candidate_id))])
+  return selected.map((row) => polymarketResearchToPacket(row, candidates.get(row.candidate_id) ?? null))
 }
 
 export async function runPolymarketEntityManager(
