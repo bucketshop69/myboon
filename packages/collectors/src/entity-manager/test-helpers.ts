@@ -34,6 +34,7 @@ export class InMemoryEntityMemoryStore implements EntityMemoryStore {
         id: `entity-${this.nextEntityId++}`,
         created_at: new Date(0).toISOString(),
         updated_at: new Date(0).toISOString(),
+        show_in_carousel: false,
         ...input,
       }
       this.entities.push(entity)

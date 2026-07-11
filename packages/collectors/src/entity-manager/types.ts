@@ -70,6 +70,7 @@ export interface EntityRecord {
   aliases: string[]
   summary: string | null
   status: string
+  show_in_carousel: boolean
   metadata: Record<string, unknown>
   created_at?: string
   updated_at?: string
@@ -83,6 +84,11 @@ export interface EntityInput {
   summary: string | null
   status: string
   metadata: Record<string, unknown>
+}
+
+export interface EntityTimelineItem {
+  summary: string
+  event_at: string
 }
 
 export interface EntityMemoryRecord {

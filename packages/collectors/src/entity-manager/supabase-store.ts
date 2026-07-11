@@ -8,6 +8,9 @@ import type {
   MemoryLookupKey,
 } from './types'
 
+const ENTITY_SELECT = 'id, slug, name, type, aliases, summary, status, show_in_carousel, metadata, created_at, updated_at'
+const MEMORY_SELECT = 'id, entity_id, source, source_area, source_type, source_ref_id, source_research_id, memory_type, title, summary, body, event_at, observed_at, confidence, evidence, mentions, metrics, context, created_at, updated_at'
+
 function normalizeEntity(row: unknown): EntityRecord {
   const record = row as Record<string, unknown>
   return {
@@ -18,6 +21,7 @@ function normalizeEntity(row: unknown): EntityRecord {
     aliases: Array.isArray(record.aliases) ? record.aliases.filter((item): item is string => typeof item === 'string') : [],
     summary: typeof record.summary === 'string' ? record.summary : null,
     status: typeof record.status === 'string' ? record.status : 'active',
+    show_in_carousel: typeof record.show_in_carousel === 'boolean' ? record.show_in_carousel : false,
     metadata: record.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata)
       ? record.metadata as Record<string, unknown>
       : {},
@@ -67,7 +71,7 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
     if (uniqueSlugs.length > 0) {
       const { data, error } = await this.db
         .from('entities')
-        .select('id, slug, name, type, aliases, summary, status, metadata, created_at, updated_at')
+        .select(ENTITY_SELECT)
         .in('slug', uniqueSlugs)
       if (error) throw new Error(`entity slug lookup failed: ${error.message}`)
       for (const row of data ?? []) {
@@ -79,7 +83,7 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
     for (const alias of [...new Set(aliases)]) {
       const { data, error } = await this.db
         .from('entities')
-        .select('id, slug, name, type, aliases, summary, status, metadata, created_at, updated_at')
+        .select(ENTITY_SELECT)
         .contains('aliases', JSON.stringify([alias]))
         .limit(20)
       if (error) throw new Error(`entity alias lookup failed: ${error.message}`)
@@ -96,8 +100,8 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
     if (entities.length === 0) return []
     const { data, error } = await this.db
       .from('entities')
-      .upsert(entities, { onConflict: 'slug' })
-      .select('id, slug, name, type, aliases, summary, status, metadata, created_at, updated_at')
+      .upsert(entities, { onConflict: 'slug', defaultToNull: false })
+      .select(ENTITY_SELECT)
     if (error) throw new Error(`entity upsert failed: ${error.message}`)
     return (data ?? []).map(normalizeEntity)
   }
@@ -109,11 +113,12 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
         aliases: entity.aliases,
         summary: entity.summary,
         status: entity.status,
+        show_in_carousel: entity.show_in_carousel,
         metadata: entity.metadata,
         updated_at: new Date().toISOString(),
       })
       .eq('id', entity.id)
-      .select('id, slug, name, type, aliases, summary, status, metadata, created_at, updated_at')
+      .select(ENTITY_SELECT)
       .single()
     if (error) throw new Error(`entity update failed: ${error.message}`)
     return normalizeEntity(data)
@@ -135,7 +140,7 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
     if (sourceResearchIds.length === 0) return []
     const { data, error } = await this.db
       .from('entity_memories')
-      .select('id, entity_id, source, source_area, source_type, source_ref_id, source_research_id, memory_type, title, summary, body, event_at, observed_at, confidence, evidence, mentions, metrics, context, created_at, updated_at')
+      .select(MEMORY_SELECT)
       .in('source_research_id', sourceResearchIds)
     if (error) throw new Error(`entity memory lookup failed: ${error.message}`)
     const wanted = new Set(byKey.keys())
@@ -158,8 +163,13 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
       .upsert(memories, {
         onConflict: 'source,source_area,source_research_id,entity_id,memory_type,title',
       })
-      .select('id, entity_id, source, source_area, source_type, source_ref_id, source_research_id, memory_type, title, summary, body, event_at, observed_at, confidence, evidence, mentions, metrics, context, created_at, updated_at')
+      .select(MEMORY_SELECT)
     if (error) throw new Error(`entity memory upsert failed: ${error.message}`)
     return (data ?? []).map(normalizeMemory)
   }
+}
+
+export const __testing = {
+  ENTITY_SELECT,
+  normalizeEntity,
 }

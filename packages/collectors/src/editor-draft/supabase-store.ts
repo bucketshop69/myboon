@@ -11,7 +11,7 @@ import type {
   PublishedHistoryItem,
 } from './types'
 
-const ENTITY_SELECT = 'id, slug, name, type, aliases, summary, status, metadata, created_at, updated_at'
+const ENTITY_SELECT = 'id, slug, name, type, aliases, summary, status, show_in_carousel, metadata, created_at, updated_at'
 const MEMORY_SELECT = 'id, entity_id, source, source_area, source_type, source_ref_id, source_research_id, memory_type, title, summary, body, event_at, observed_at, confidence, evidence, mentions, metrics, context, created_at, updated_at'
 const DRAFT_SELECT = 'id, entity_id, entity_slug, entity_name, entity_type, bundle_key, source_memory_ids, source_memory_hash, source, source_area, action, status, title, angle, summary, body, reasoning, reason_codes, evidence_quality, priority, confidence, merge_target_draft_id, related_draft_ids, follow_up_questions, research_instructions, backend, model, created_at, updated_at'
 const ENTITY_PUBLISHED_HISTORY_TABLE = 'entity_published_history'
@@ -36,6 +36,7 @@ function normalizeEntity(row: unknown): EntityRecord {
     aliases: asStringArray(record.aliases),
     summary: typeof record.summary === 'string' ? record.summary : null,
     status: typeof record.status === 'string' ? record.status : 'active',
+    show_in_carousel: typeof record.show_in_carousel === 'boolean' ? record.show_in_carousel : false,
     metadata: asRecord(record.metadata),
     created_at: typeof record.created_at === 'string' ? record.created_at : undefined,
     updated_at: typeof record.updated_at === 'string' ? record.updated_at : undefined,
@@ -346,4 +347,9 @@ export class SupabaseEditorDraftStore implements EditorDraftStore {
     }))
     return records
   }
+}
+
+export const __testing = {
+  ENTITY_SELECT,
+  normalizeEntity,
 }

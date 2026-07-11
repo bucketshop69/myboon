@@ -52,6 +52,7 @@ test('writeExtraction creates entities, writes memory items, and adds a processe
   assert.equal(result.entitiesCreated, 1)
   assert.equal(result.memoriesWritten, 2)
   assert.equal(store.entities.some((entity) => entity.slug === 'federal-reserve'), true)
+  assert.equal(store.entities[0].show_in_carousel, false)
   assert.equal(store.memories.some((memory) => memory.title === 'entity_manager:processed' && memory.entity_id === null), true)
 })
 
@@ -113,6 +114,39 @@ test('writeExtraction reuses entities by alias and merges aliases', async () => 
   const entity = store.entities.find((item) => item.slug === 'federal-reserve')
   assert.ok(entity)
   assert.deepEqual(entity.aliases, ['Federal Reserve', 'Fed', 'FOMC'])
+})
+
+test('writeExtraction preserves carousel selection while reusing and enriching an entity', async () => {
+  const store = new InMemoryEntityMemoryStore()
+  const [selected] = await store.createEntities([{
+    slug: 'bitcoin',
+    name: 'Bitcoin',
+    type: 'asset',
+    aliases: ['Bitcoin'],
+    summary: null,
+    status: 'active',
+    metadata: {},
+  }])
+  await store.updateEntity({ ...selected, show_in_carousel: true })
+
+  await writeExtraction(store, packet, provider({
+    primaryEntities: [{
+      name: 'Bitcoin',
+      type: 'asset',
+      slug: 'bitcoin',
+      aliases: ['BTC'],
+      summary: 'A decentralized cryptocurrency.',
+    }],
+    memories: [{
+      entitySlug: 'bitcoin',
+      memoryType: 'market_signal',
+      title: 'Bitcoin market moved',
+      summary: 'Bitcoin market odds moved.',
+    }],
+  }))
+
+  assert.equal(store.entities[0].show_in_carousel, true)
+  assert.deepEqual(store.entities[0].aliases, ['Bitcoin', 'BTC'])
 })
 
 test('writeExtraction stores a market signal under the durable entity instead of the market', async () => {

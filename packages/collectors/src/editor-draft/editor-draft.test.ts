@@ -24,6 +24,7 @@ function entity(id: string, slug: string, name: string): EntityRecord {
     aliases: [name],
     summary: null,
     status: 'active',
+    show_in_carousel: false,
     metadata: {},
     created_at: '2026-06-01T00:00:00.000Z',
     updated_at: '2026-06-01T00:00:00.000Z',
