@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { normalizeExtraction } from './normalization'
 import { newsResearchToPacket } from './news-adapter'
+import { newsSources } from '../news/config'
 import type { NewsCandidateObservationRow, NewsResearchResultRow } from '../news/store'
 
 const FORBIDDEN_KEYS = new Set([
@@ -202,4 +203,55 @@ test('normalizeExtraction defaults article packet memories to news_event', () =>
 
   assert.equal(extraction.memories.length, 1)
   assert.equal(extraction.memories[0].memoryType, 'news_event')
+})
+
+test('configured source identity survives the research-to-Entity-Manager packet mapping', () => {
+  for (const source of newsSources()) {
+    const sourceUrl = source.urls[0]
+    const articleUrl = `${sourceUrl.url.replace(/\/$/, '')}/test-article`
+    const sourceCandidate: NewsCandidateObservationRow = {
+      ...candidate,
+      id: `candidate-${source.sourceId}`,
+      sourceId: source.sourceId,
+      sourceName: source.sourceName,
+      urlId: sourceUrl.urlId,
+      urlLabel: sourceUrl.label,
+      sourceUrl: sourceUrl.url,
+      canonicalArticleUrl: articleUrl,
+      articleIdentityKey: `${source.sourceId}:article:${articleUrl}`,
+      observationDedupeKey: `${source.sourceId}:${sourceUrl.urlId}:${articleUrl}:headline:summary`,
+      rawCandidate: {
+        ...candidate.rawCandidate,
+        article_url: articleUrl,
+      },
+    }
+    const sourceRow: NewsResearchResultRow = {
+      ...row,
+      id: `research-${source.sourceId}`,
+      candidateObservationId: sourceCandidate.id,
+      sourceId: source.sourceId,
+      sourceName: source.sourceName,
+      urlId: sourceUrl.urlId,
+      urlLabel: sourceUrl.label,
+      sourceUrl: sourceUrl.url,
+      canonicalArticleUrl: articleUrl,
+      articleIdentityKey: sourceCandidate.articleIdentityKey,
+      observationDedupeKey: sourceCandidate.observationDedupeKey,
+      sourceSignal: {
+        ...row.sourceSignal,
+        source_name: source.sourceName,
+        source_url: sourceUrl.url,
+        article_url: articleUrl,
+        canonical_article_url: articleUrl,
+      },
+    }
+
+    const packet = newsResearchToPacket(sourceRow, sourceCandidate)
+
+    assert.equal(packet.id, `news:${source.sourceId}:research-${source.sourceId}`)
+    assert.equal(packet.sourceArea, source.sourceId)
+    assert.equal(packet.context.source_id, source.sourceId)
+    assert.equal(packet.context.url_id, sourceUrl.urlId)
+    assert.equal(packet.context.source_url, sourceUrl.url)
+  }
 })

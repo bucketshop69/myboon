@@ -2,6 +2,10 @@ import { activeNewsSourceUrls, activeNewsSources, newsSources } from './config'
 import { classifyNewsCandidate } from './dedupe'
 import { canonicalArticleUrl, fingerprintScoutCandidate } from './fingerprint'
 import { buildResearchPrompt, buildResearchRequest, parseResearchResponse } from './research-contract'
+import {
+  DEFAULT_NEWS_RESEARCH_BATCH_SIZE,
+  DEFAULT_NEWS_SCOUT_TIMEOUT_MS,
+} from './runtime-config'
 import { buildScoutPrompt, buildScoutRequest, parseScoutResponse } from './scout-contract'
 import type { NewsCandidateObservationInput, NewsStore, RecoverStaleNewsWorkResult } from './store'
 import type {
@@ -83,9 +87,9 @@ type HermesRunner = {
 }
 
 const DEFAULT_NEWS_RUNNER_OPTIONS: NewsRunnerOptions = {
-  scoutTimeoutMs: 5 * 60_000,
+  scoutTimeoutMs: DEFAULT_NEWS_SCOUT_TIMEOUT_MS,
   researchTimeoutMs: 10 * 60_000,
-  batchSize: 1,
+  batchSize: DEFAULT_NEWS_RESEARCH_BATCH_SIZE,
   maxResearchAttempts: 2,
   staleWorkCutoffMs: 30 * 60_000,
 }
@@ -168,6 +172,27 @@ export async function runNewsScoutForSourceUrl(input: {
       status: 'result_validated',
       validatedPayload: response,
     })
+
+    if (response.status === 'failed') {
+      const message = response.errors.length
+        ? `Scout reported failed: ${response.errors.join('; ')}`
+        : 'Scout reported failed without an error message'
+      await input.store.markSourceRun({
+        id: sourceRun.id,
+        status: 'failed_transient',
+        finishedAt: new Date().toISOString(),
+        error: message,
+      })
+      return {
+        ...baseResult,
+        failures: [{
+          stage: 'scout',
+          sourceId: input.source.sourceId,
+          urlId: input.sourceUrl.urlId,
+          error: message,
+        }],
+      }
+    }
 
     const classifications = await classifyCandidates(
       input.store,

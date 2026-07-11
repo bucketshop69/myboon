@@ -1,5 +1,6 @@
 import { activeNewsSourceUrls, activeNewsSources, newsSources } from './config'
 import { HermesWorkerClient } from './hermes-client'
+import { DEFAULT_NEWS_SCOUT_TIMEOUT_MS } from './runtime-config'
 import {
   buildScoutPrompt,
   buildScoutRequest,
@@ -11,8 +12,6 @@ import type {
   NewsSourceConfig,
   NewsSourceUrlConfig,
 } from './types'
-
-const DEFAULT_SCOUT_TIMEOUT_MS = 120_000
 
 export interface NewsScoutPreviewOptions {
   sourceId?: string
@@ -49,7 +48,7 @@ export async function runNewsScoutPreview(
     jobId: request.job_id,
     taskType: 'source_scout',
     prompt,
-    timeoutMs: options.timeoutMs ?? DEFAULT_SCOUT_TIMEOUT_MS,
+    timeoutMs: options.timeoutMs ?? DEFAULT_NEWS_SCOUT_TIMEOUT_MS,
   })
 
   if (workerResult.status !== 'succeeded') {

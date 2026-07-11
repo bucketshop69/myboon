@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_NEWS_SOURCES } from '../config'
+import { DEFAULT_NEWS_SOURCES, findNewsSource, newsSources } from '../config'
 import {
   buildScoutPrompt,
   buildScoutRequest,
@@ -59,13 +59,38 @@ test('buildScoutPrompt includes JSON-only rules and the full request JSON', () =
 
   assert.match(prompt, /Return JSON only/)
   assert.match(prompt, /Do not publish/)
-  assert.match(prompt, /Do not score, rank, judge, or filter candidates/)
+  assert.match(prompt, /Do not score, rank, judge, or editorially filter candidates within the requested discovery scope/)
+  assert.match(prompt, /ignore ads, navigation, newsletters, and external promotions/)
+  assert.match(prompt, /Only if direct access is blocked and source_url\.reader_fallback_url is present/)
+  assert.match(prompt, /Never construct a reader fallback when none is configured/)
+  assert.match(prompt, /return status "failed", candidates \[\], and errors as an array of strings/)
+  assert.match(prompt, /when source_url\.url is HTTPS, return HTTPS article URLs/)
+  assert.match(prompt, /hrefs containing literal "\.\.\." or "…"/)
   assert.match(prompt, /Request JSON:/)
   assert.match(prompt, /Return schema:/)
   assert.match(prompt, /"schema_version": "myboon\.hermes\.scout_request\.v1"/)
   assert.match(prompt, /"source_id": "coindesk"/)
   assert.match(prompt, /"url_id": "latest_crypto_news"/)
   assert.doesNotMatch(prompt, /relevance_score|max_candidates|min_relevance_score|"score"/)
+})
+
+test('buildScoutRequest includes guidance only for its configured source URL', () => {
+  const decrypt = findNewsSource(newsSources(), 'decrypt')!
+  const decryptRequest = buildScoutRequest(decrypt, decrypt.urls[0], now)
+  const decryptPrompt = buildScoutPrompt(decryptRequest)
+
+  assert.deepEqual(
+    decryptRequest.source_url.discovery_instructions,
+    decrypt.urls[0].discoveryInstructions
+  )
+  assert.equal(
+    decryptRequest.source_url.reader_fallback_url,
+    'https://r.jina.ai/https://decrypt.co/news/editors-picks'
+  )
+  assert.match(decryptPrompt, /Inspect only the article list under the Editors' Picks heading/)
+  assert.match(decryptPrompt, /follow any discovery_instructions/i)
+  assert.equal(request.source_url.discovery_instructions, undefined)
+  assert.equal(request.source_url.reader_fallback_url, undefined)
 })
 
 test('parseScoutResponse returns a valid response', () => {
@@ -195,5 +220,24 @@ test('parseScoutResponse rejects non-string evidence arrays', () => {
       }],
     }), expected),
     /evidence/
+  )
+})
+
+test('parseScoutResponse accepts the strict failed-access response shape', () => {
+  const parsed = parseScoutResponse(JSON.stringify(validResponse({
+    status: 'failed',
+    candidates: [],
+    errors: ['Cloudflare blocked every allowed access method.'],
+  })), expected)
+
+  assert.equal(parsed.status, 'failed')
+  assert.deepEqual(parsed.candidates, [])
+  assert.deepEqual(parsed.errors, ['Cloudflare blocked every allowed access method.'])
+})
+
+test('parseScoutResponse rejects failed responses containing candidates', () => {
+  assert.throws(
+    () => parseScoutResponse(JSON.stringify(validResponse({ status: 'failed' })), expected),
+    /failed status must not contain candidates/
   )
 })

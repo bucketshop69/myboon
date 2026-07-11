@@ -27,6 +27,14 @@ export function classifyNewsCandidate(
       reason: 'candidate missing article_url',
     }
   }
+  if (candidate.article_url.includes('...') || candidate.article_url.includes('…')) {
+    return {
+      outcome: 'ignored_invalid_candidate',
+      candidate,
+      fingerprint: null,
+      reason: 'candidate article_url is truncated',
+    }
+  }
 
   let fingerprint
   try {

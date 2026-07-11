@@ -38,6 +38,12 @@ export function buildScoutRequest(
       label: sourceUrl.label,
       url: sourceUrl.url,
       status: sourceUrl.status,
+      ...(sourceUrl.readerFallbackUrl
+        ? { reader_fallback_url: sourceUrl.readerFallbackUrl }
+        : {}),
+      ...(sourceUrl.discoveryInstructions?.length
+        ? { discovery_instructions: [...sourceUrl.discoveryInstructions] }
+        : {}),
     },
     requested_at: requestedAt,
     response_rules: {
@@ -61,10 +67,19 @@ export function buildScoutPrompt(request: NewsScoutRequest): string {
     '- Avoid prose outside JSON whenever possible.',
     '- Do not publish.',
     '- Do not give trade recommendations.',
-    '- Do not score, rank, judge, or filter candidates.',
+    '- Do not score, rank, judge, or editorially filter candidates within the requested discovery scope.',
     '- Do not invent URLs, timestamps, summaries, or entities.',
+    '- Inspect source_url.url directly with browser-backed tools and ordinary web access first.',
+    '- Only if direct access is blocked and source_url.reader_fallback_url is present, use that exact reader URL as the last-resort view of the configured listing page.',
+    '- Never construct a reader fallback when none is configured, and never substitute a search result or another listing page.',
+    "- Return only article cards from this source's own editorial list; ignore ads, navigation, newsletters, and external promotions.",
+    '- Candidate article links must appear on the exact configured listing page or its configured reader view.',
+    '- Omit article hrefs containing literal "..." or "…" because they are truncated, not valid URLs.',
+    '- Resolve relative article hrefs against source_url.url; when source_url.url is HTTPS, return HTTPS article URLs and never downgrade them to HTTP.',
     '- Prefer structured page text, links, metadata, and visible article cards.',
     '- Use screenshots only as fallback context, never as the only evidence when URL/text exists.',
+    '- Follow any discovery_instructions in source_url exactly; they apply only to this URL.',
+    '- If every allowed access method fails, return status "failed", candidates [], and errors as an array of strings. Never invent another status or return error objects.',
     '',
     'Request JSON:',
     JSON.stringify(request, null, 2),
@@ -92,6 +107,9 @@ export function parseScoutResponse(
   validateSourceObserved(parsed.source_observed, expected)
   if (!Array.isArray(parsed.candidates)) throw new Error('Scout response candidates must be an array')
   parsed.candidates.forEach(validateCandidate)
+  if (parsed.status === 'failed' && parsed.candidates.length > 0) {
+    throw new Error('Scout response with failed status must not contain candidates')
+  }
   if (!Array.isArray(parsed.errors) || !parsed.errors.every((error) => typeof error === 'string')) {
     throw new Error('Scout response errors must be a string array')
   }

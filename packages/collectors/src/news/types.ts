@@ -6,6 +6,8 @@ export interface NewsSourceUrlConfig {
   label: string
   url: string
   status: NewsSourceStatus
+  readerFallbackUrl?: string
+  discoveryInstructions?: string[]
 }
 
 export interface NewsSourceConfig {
@@ -61,6 +63,8 @@ export interface NewsScoutRequest {
     label: string
     url: string
     status: NewsSourceStatus
+    reader_fallback_url?: string
+    discovery_instructions?: string[]
   }
   requested_at: string
   response_rules: {

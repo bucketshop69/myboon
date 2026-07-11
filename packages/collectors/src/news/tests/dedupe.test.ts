@@ -101,6 +101,21 @@ test('malformed article URL is ignored_invalid_candidate', () => {
   assert.equal(decision.fingerprint, null)
 })
 
+test('truncated article URLs are ignored per candidate', () => {
+  for (const articleUrl of [
+    'https://www.theblock.co/post/12345/bitcoin-mar...',
+    'https://www.theblock.co/post/12345/bitcoin-mar…',
+  ]) {
+    const decision = classifyNewsCandidate(sourceId, urlId, candidate({
+      article_url: articleUrl,
+    }), [])
+
+    assert.equal(decision.outcome, 'ignored_invalid_candidate')
+    assert.equal(decision.fingerprint, null)
+    assert.equal(decision.reason, 'candidate article_url is truncated')
+  }
+})
+
 test('missing article URL is ignored_invalid_candidate', () => {
   const decision = classifyNewsCandidate(sourceId, urlId, candidate({
     article_url: '',

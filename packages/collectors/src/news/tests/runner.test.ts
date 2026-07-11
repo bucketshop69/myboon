@@ -241,6 +241,64 @@ test('scout parse failure marks run failed and appears in result', async () => {
   })
 })
 
+test('valid failed Scout responses are recorded and counted as failed runs', async () => {
+  await withStore(async (store) => {
+    const statuses: Array<{ status?: string; error?: string | null }> = []
+    const markSourceRun = store.markSourceRun.bind(store)
+    store.markSourceRun = async (input) => {
+      statuses.push({ status: input.status, error: input.error })
+      await markSourceRun(input)
+    }
+    const hermes = new FakeHermes()
+    hermes.scoutHandler = (request) => JSON.stringify(scoutResponse(request, []))
+    const priorHandler = hermes.scoutHandler
+    hermes.scoutHandler = (request) => JSON.stringify({
+      ...JSON.parse(priorHandler(request)),
+      status: 'failed',
+      errors: ['Cloudflare blocked every allowed access method.'],
+    })
+
+    const result = await runNewsScoutForSourceUrl({
+      store,
+      hermes,
+      source,
+      sourceUrl,
+      options: { now },
+    })
+
+    assert.equal(result.status, 'failed')
+    assert.equal(result.jsonValidationFailures, 0)
+    assert.equal(result.candidateObservationsInserted, 0)
+    assert.equal(result.failures.length, 1)
+    assert.match(result.failures[0].error, /Cloudflare blocked/)
+    assert.equal(statuses.at(-1)?.status, 'failed_transient')
+    assert.match(statuses.at(-1)?.error ?? '', /Cloudflare blocked/)
+  })
+})
+
+test('partial Scout responses process the candidates they contain', async () => {
+  await withStore(async (store) => {
+    const hermes = new FakeHermes()
+    hermes.scoutHandler = (request) => JSON.stringify({
+      ...scoutResponse(request, [candidate()]),
+      status: 'partial',
+      errors: ['One page section was unavailable.'],
+    })
+
+    const result = await runNewsScoutForSourceUrl({
+      store,
+      hermes,
+      source,
+      sourceUrl,
+      options: { now },
+    })
+
+    assert.equal(result.status, 'succeeded')
+    assert.equal(result.candidatesFound, 1)
+    assert.equal(result.candidateObservationsInserted, 1)
+  })
+})
+
 test('pending research candidates are processed into research results and marked researched', async () => {
   await withStore(async (store) => {
     const [storedCandidate] = await store.insertCandidateObservations([observationInput(candidate())])
@@ -352,7 +410,7 @@ test('top-level runner returns aggregate counters and stops before downstream st
     const result = await runNewsPipelineOnce({
       store,
       hermes,
-      sources: DEFAULT_NEWS_SOURCES,
+      sources: [source],
       options: { now, batchSize: 10 },
     })
 
@@ -371,5 +429,70 @@ test('top-level runner returns aggregate counters and stops before downstream st
       'source_aware_research',
       'source_aware_research',
     ])
+  })
+})
+
+test('top-level runner scouts every active configured URL once in configuration order', async () => {
+  await withStore(async (store) => {
+    const hermes = new FakeHermes()
+    hermes.scoutHandler = (request) => JSON.stringify(scoutResponse(request, [candidate({
+      headline: `${request.source.name} article`,
+      article_url: `${request.source_url.url.replace(/\/$/, '')}/test-article`,
+    })]))
+
+    const result = await runNewsPipelineOnce({
+      store,
+      hermes,
+      options: { now, batchSize: 5 },
+    })
+    const scoutRequests = hermes.calls
+      .filter((call) => call.taskType === 'source_scout')
+      .map((call) => extractRequest(call.prompt) as NewsScoutRequest)
+
+    assert.equal(result.sourcesChecked, 5)
+    assert.equal(result.sourceUrlsChecked, 5)
+    assert.equal(result.scoutRuns, 5)
+    assert.equal(result.scoutSucceeded, 5)
+    assert.deepEqual(scoutRequests.map((item) => [
+      item.source.source_id,
+      item.source_url.url_id,
+    ]), [
+      ['coindesk', 'latest_crypto_news'],
+      ['theblock', 'news'],
+      ['decrypt', 'editors_picks'],
+      ['unchained', 'news'],
+      ['thedefiant', 'homepage'],
+    ])
+    assert.deepEqual(hermes.calls.map((call) => call.taskType), [
+      'source_scout',
+      'source_scout',
+      'source_scout',
+      'source_scout',
+      'source_scout',
+      'source_aware_research',
+      'source_aware_research',
+      'source_aware_research',
+      'source_aware_research',
+      'source_aware_research',
+    ])
+  })
+})
+
+test('pending research uses the default five-item batch when options are omitted', async () => {
+  await withStore(async (store) => {
+    await store.insertCandidateObservations(Array.from({ length: 6 }, (_, index) => (
+      observationInput(candidate({
+        headline: `Article ${index + 1}`,
+        article_url: `https://www.coindesk.com/article-${index + 1}`,
+      }))
+    )))
+    const hermes = new FakeHermes()
+
+    const result = await runPendingNewsResearch({ store, hermes })
+
+    assert.equal(result.researchCandidatesFetched, 5)
+    assert.equal(result.researchProcessed, 5)
+    assert.equal(result.researchSucceeded, 5)
+    assert.equal((await store.fetchPendingCandidateObservations(10)).length, 1)
   })
 })
