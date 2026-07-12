@@ -27,9 +27,9 @@ export class HermesWorkerClient {
   private readonly spawnProcess: SpawnHermesProcess
 
   constructor(options: HermesWorkerClientConstructorOptions = {}) {
-    this.command = options.command ?? DEFAULT_HERMES_COMMAND
-    this.profile = options.profile ?? DEFAULT_HERMES_PROFILE
-    this.toolsets = options.toolsets ?? DEFAULT_HERMES_TOOLSETS
+    this.command = options.command ?? process.env.NEWS_HERMES_COMMAND ?? DEFAULT_HERMES_COMMAND
+    this.profile = options.profile ?? process.env.NEWS_HERMES_PROFILE ?? DEFAULT_HERMES_PROFILE
+    this.toolsets = options.toolsets ?? toolsetsFromEnv(process.env.NEWS_HERMES_TOOLSETS) ?? DEFAULT_HERMES_TOOLSETS
     this.spawnProcess = options.spawnProcess ?? spawn
   }
 
@@ -102,4 +102,9 @@ export class HermesWorkerClient {
     args.push('--quiet', '--query', prompt)
     return args
   }
+}
+
+function toolsetsFromEnv(value: string | undefined): string[] | undefined {
+  if (value == null) return undefined
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
 }

@@ -20,6 +20,7 @@
  */
 const ROOT = __dirname
 const TSX = `${ROOT}/node_modules/.bin/tsx`
+const TSX_CLI = `${ROOT}/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/cli.mjs`
 
 module.exports = {
   apps: [
@@ -65,9 +66,42 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
-      name: 'myboon-polymarket-entity-manager',
-      script: 'src/entity-manager/run-polymarket.ts',
+      name: 'myboon-news-runner',
+      script: 'src/news/run-news-supabase.ts',
       interpreter: TSX,
+      cwd: `${ROOT}/packages/collectors`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        NEWS_RUNNER_RUN_ONCE: '0',
+        NEWS_RUNNER_INTERVAL_MS: '3600000',
+        NEWS_RUNNER_BATCH_SIZE: '1',
+      },
+    },
+    {
+      name: 'myboon-news-entity-manager',
+      script: 'src/entity-manager/run-news-supabase.ts',
+      interpreter: TSX,
+      cwd: `${ROOT}/packages/collectors`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: {
+        ENTITY_MANAGER_NEWS_RUN_ONCE: '0',
+        ENTITY_MANAGER_NEWS_INTERVAL_MS: '300000',
+        ENTITY_MANAGER_NEWS_BATCH_SIZE: '20',
+      },
+    },
+    {
+      name: 'myboon-polymarket-entity-manager',
+      script: TSX_CLI,
+      args: 'src/entity-manager/run-polymarket.ts',
+      interpreter: 'node',
       cwd: `${ROOT}/packages/collectors`,
       watch: false,
       autorestart: true,

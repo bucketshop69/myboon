@@ -10,21 +10,35 @@ import {
 } from './runtime-config'
 import { SupabaseNewsStore } from './supabase-store'
 
+const DEFAULT_INTERVAL_MS = 60 * 60 * 1000
+
 function requiredEnv(name: string): string {
   const value = process.env[name]
   if (!value) throw new Error(`Missing required env var: ${name}`)
   return value
 }
 
-async function main(): Promise<void> {
+function envFlag(value: string | undefined): boolean {
+  return value === '1' || value?.toLowerCase() === 'true'
+}
+
+function loadRuntimeEnv(): void {
   loadEnv({ path: '.env' })
   loadEnv({ path: '../../.env' })
   loadEnv()
+}
 
+function createSupabase() {
+  loadRuntimeEnv()
   const supabase = createClient(
     requiredEnv('SUPABASE_URL'),
     requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   )
+  return supabase
+}
+
+async function runOnce(): Promise<void> {
+  const supabase = createSupabase()
   const batchSize = newsResearchBatchSize()
   const scoutTimeoutMs = positiveInteger(process.env.NEWS_SCOUT_TIMEOUT_MS, DEFAULT_NEWS_SCOUT_TIMEOUT_MS)
   const researchTimeoutMs = positiveInteger(process.env.NEWS_RESEARCH_TIMEOUT_MS, 10 * 60_000)
@@ -54,6 +68,19 @@ async function main(): Promise<void> {
   )
 
   console.log(JSON.stringify(result, null, 2))
+}
+
+async function main(): Promise<void> {
+  await runOnce()
+
+  if (envFlag(process.env.NEWS_RUNNER_RUN_ONCE)) return
+
+  const intervalMs = positiveInteger(process.env.NEWS_RUNNER_INTERVAL_MS, DEFAULT_INTERVAL_MS)
+  setInterval(() => {
+    runOnce().catch((error) => {
+      console.error('[news-runner] run failed:', error)
+    })
+  }, intervalMs)
 }
 
 if (require.main === module) {

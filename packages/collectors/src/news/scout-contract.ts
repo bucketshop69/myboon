@@ -110,9 +110,8 @@ export function parseScoutResponse(
   if (parsed.status === 'failed' && parsed.candidates.length > 0) {
     throw new Error('Scout response with failed status must not contain candidates')
   }
-  if (!Array.isArray(parsed.errors) || !parsed.errors.every((error) => typeof error === 'string')) {
-    throw new Error('Scout response errors must be a string array')
-  }
+  normalizeErrors(parsed)
+  validateStringArrayField(parsed, 'errors')
 
   return parsed as unknown as NewsScoutResponse
 }
@@ -174,6 +173,37 @@ function validateCandidate(candidate: unknown, index: number): void {
   )) {
     throw new Error(`Scout response candidate ${index} evidence must be a string array when present`)
   }
+}
+
+function validateStringArrayField(record: Record<string, unknown>, key: string): void {
+  const value = record[key]
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new Error(`Scout response ${key} must be a string array`)
+  }
+}
+
+function normalizeErrors(record: Record<string, unknown>): void {
+  const value = record.errors
+  if (value == null) {
+    record.errors = []
+    return
+  }
+  if (!Array.isArray(value)) return
+
+  record.errors = value.map((item) => {
+    if (typeof item === 'string') return item
+    if (!isRecord(item)) return item
+
+    const source = typeof item.source === 'string' && item.source.trim()
+      ? item.source.trim()
+      : typeof item.code === 'string' && item.code.trim()
+        ? item.code.trim()
+        : null
+    const message = typeof item.message === 'string' && item.message.trim()
+      ? item.message.trim()
+      : JSON.stringify(item)
+    return source ? `${source}: ${message}` : message
+  })
 }
 
 function extractJsonObject(stdout: string): unknown {

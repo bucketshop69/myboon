@@ -102,6 +102,26 @@ test('parseScoutResponse returns a valid response', () => {
   assert.equal(parsed.candidates[0].headline, 'CoinDesk headline')
 })
 
+test('parseScoutResponse normalizes structured error entries', () => {
+  const parsed = parseScoutResponse(JSON.stringify(validResponse({
+    errors: [{
+      code: 'snapshot_truncated',
+      message: 'Only visible cards were included.',
+    }] as unknown as string[],
+  })), expected)
+
+  assert.deepEqual(parsed.errors, ['snapshot_truncated: Only visible cards were included.'])
+})
+
+test('parseScoutResponse defaults missing errors to empty array', () => {
+  const response = validResponse() as unknown as Record<string, unknown>
+  delete response.errors
+
+  const parsed = parseScoutResponse(JSON.stringify(response), expected)
+
+  assert.deepEqual(parsed.errors, [])
+})
+
 test('parseScoutResponse extracts a valid JSON response from wrapped stdout', () => {
   const parsed = parseScoutResponse([
     'I inspected the page and found the following response:',

@@ -8,6 +8,8 @@
 | `myboon-polymarket-data-engineer` | `packages/collectors` | Polymarket markets Data Engineer |
 | `myboon-polymarket-researcher` | `packages/collectors` | Polymarket Researcher |
 | `myboon-polymarket-entity-manager` | `packages/collectors` | Polymarket ResearchPacket to Entity Memory |
+| `myboon-news-runner` | `packages/collectors` | Curated news source scout/research loop |
+| `myboon-news-entity-manager` | `packages/collectors` | News ResearchPacket to Entity Memory |
 | `myboon-editor-draft` | `packages/collectors` | Entity Memory to Editor Draft |
 | `myboon-publisher` | `packages/collectors` | Generic Editor Draft Publisher |
 
@@ -138,6 +140,12 @@ POLYMARKET_RESEARCHER_RUN_ONCE=0
 ENTITY_MANAGER_POLYMARKET_RUN_ONCE=0
 ENTITY_MANAGER_POLYMARKET_INTERVAL_MS=300000
 ENTITY_MANAGER_POLYMARKET_BATCH_SIZE=20
+NEWS_RUNNER_RUN_ONCE=0
+NEWS_RUNNER_INTERVAL_MS=3600000
+NEWS_RUNNER_BATCH_SIZE=1
+ENTITY_MANAGER_NEWS_RUN_ONCE=0
+ENTITY_MANAGER_NEWS_INTERVAL_MS=300000
+ENTITY_MANAGER_NEWS_BATCH_SIZE=20
 EDITOR_DRAFT_RUN_ONCE=0
 EDITOR_DRAFT_INTERVAL_MS=3600000
 EDITOR_DRAFT_BATCH_SIZE=2

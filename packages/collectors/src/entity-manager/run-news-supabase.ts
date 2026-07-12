@@ -7,6 +7,7 @@ import { runNewsEntityManager } from './run-news'
 import { SupabaseEntityMemoryStore } from './supabase-store'
 
 const DEFAULT_BATCH_SIZE = 20
+const DEFAULT_INTERVAL_MS = 5 * 60 * 1000
 
 function requiredEnv(name: string): string {
   const value = process.env[name]
@@ -20,15 +21,27 @@ function positiveInteger(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-async function main(): Promise<void> {
+function envFlag(value: string | undefined): boolean {
+  return value === '1' || value?.toLowerCase() === 'true'
+}
+
+function loadRuntimeEnv(): void {
   loadEnv({ path: '.env' })
   loadEnv({ path: '../../.env' })
   loadEnv()
+}
 
+function createSupabase() {
+  loadRuntimeEnv()
   const supabase = createClient(
     requiredEnv('SUPABASE_URL'),
     requiredEnv('SUPABASE_SERVICE_ROLE_KEY')
   )
+  return supabase
+}
+
+async function runOnce(): Promise<void> {
+  const supabase = createSupabase()
   const batchSize = positiveInteger(process.env.ENTITY_MANAGER_NEWS_BATCH_SIZE, DEFAULT_BATCH_SIZE)
   const hermesTimeoutMs = positiveInteger(process.env.ENTITY_MANAGER_HERMES_TIMEOUT_MS, 60_000)
 
@@ -52,6 +65,19 @@ async function main(): Promise<void> {
   )
 
   console.log(JSON.stringify(result, null, 2))
+}
+
+async function main(): Promise<void> {
+  await runOnce()
+
+  if (envFlag(process.env.ENTITY_MANAGER_NEWS_RUN_ONCE)) return
+
+  const intervalMs = positiveInteger(process.env.ENTITY_MANAGER_NEWS_INTERVAL_MS, DEFAULT_INTERVAL_MS)
+  setInterval(() => {
+    runOnce().catch((error) => {
+      console.error('[entity-manager:news] run failed:', error)
+    })
+  }, intervalMs)
 }
 
 if (require.main === module) {
