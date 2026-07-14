@@ -9,6 +9,7 @@ import type {
   InternalEntityTimelineResponse,
 } from './types'
 import styles from './styles.module.css'
+import { CreateEntityPanel } from './CreateEntityPanel'
 
 type SortMode = 'updated_desc' | 'memory_count_desc' | 'name_asc'
 
@@ -35,6 +36,7 @@ export function EntityMemoryBrowser() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [isLoadingMoreMemories, setIsLoadingMoreMemories] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
   const entityListRequest = useRef(0)
   const entityDetailRequest = useRef(0)
 
@@ -154,6 +156,12 @@ export function EntityMemoryBrowser() {
     window.location.reload()
   }
 
+  async function handleEntityApplied(entityId: string) {
+    await loadEntities()
+    setSelectedId(entityId)
+    setIsCreateOpen(false)
+  }
+
   function toggleMemory(memoryId: string) {
     setExpandedMemoryIds((current) => {
       const next = new Set(current)
@@ -231,7 +239,7 @@ export function EntityMemoryBrowser() {
               <span className={styles.folderText}>
                 <span className={styles.folderName}>{entity.name}</span>
                 <span className={styles.folderMeta}>
-                  {entity.type} / {entity.status} / {relativeTime(entity.latestMemoryAt ?? entity.updatedAt)}
+                  {entity.type} / {entity.status}{entity.showInCarousel ? ' / carousel' : ''} / {relativeTime(entity.latestMemoryAt ?? entity.updatedAt)}
                 </span>
               </span>
               <span className={styles.folderCount}>
@@ -264,11 +272,15 @@ export function EntityMemoryBrowser() {
               <p className={styles.kicker}>Selected entity</p>
               <h1>{selectedEntity?.name ?? selectedListItem?.name ?? 'No entity selected'}</h1>
               <div className={styles.entitySubline}>
-                {selectedEntity ? `${selectedEntity.type} / ${selectedEntity.status} / ${selectedEntity.slug}` : 'Choose a folder to inspect memory.'}
+                {selectedEntity ? `${selectedEntity.type} / ${selectedEntity.status} / ${selectedEntity.slug}${selectedEntity.showInCarousel ? ' / carousel' : ''}` : 'Choose a folder to inspect memory.'}
               </div>
             </div>
           </div>
           <div className={styles.topActions}>
+            <button className={styles.textButton} type="button" onClick={() => setIsCreateOpen(true)}>
+              <span className="material-symbols-outlined" aria-hidden="true">add</span>
+              Create entity
+            </button>
             <button className={styles.iconButton} type="button" title="Reload" onClick={() => selectedId && loadSelectedEntity(selectedId)}>
               <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
             </button>
@@ -376,6 +388,9 @@ export function EntityMemoryBrowser() {
           </aside>
         </section>
       </section>
+      {isCreateOpen ? (
+        <CreateEntityPanel onClose={() => setIsCreateOpen(false)} onApplied={handleEntityApplied} />
+      ) : null}
     </main>
   )
 }

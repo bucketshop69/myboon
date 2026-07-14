@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { config as loadEnv } from 'dotenv'
 import { newsResearchToPacket } from './news-adapter'
-import { writeExtraction, markExtractionFailed } from './resolver'
+import { EntityService } from './entity-service'
 import { HermesEntityExtractionProvider } from './extractor'
 import { SupabaseEntityMemoryStore } from './supabase-store'
 import { SqliteNewsStore } from '../news/sqlite-store'
@@ -72,14 +72,15 @@ export async function runNewsEntityManager(input: RunNewsEntityManagerInput): Pr
   const failures: NewsEntityManagerResult['failures'] = []
   let memoriesWritten = 0
   let extractionFailures = 0
+  const entityService = new EntityService(input.entityStore)
 
   for (const item of fetched.packets) {
     let extractionResult: WriteExtractionResult
     try {
-      extractionResult = await writeExtraction(input.entityStore, item.packet, input.extractionProvider)
+      extractionResult = await entityService.writeExtraction(item.packet, input.extractionProvider)
     } catch (error) {
       const message = errorMessage(error)
-      const failureResult = await markExtractionFailed(input.entityStore, item.packet, message)
+      const failureResult = await entityService.markExtractionFailed(item.packet, message)
       memoriesWritten += failureResult.memoriesWritten
       failures.push({ sourceResearchId: item.result.id, stage: 'entity_extraction', error: message })
       extractionFailures += 1

@@ -6,6 +6,7 @@ export const INTERNAL_ENTITY_SESSION_COOKIE = 'myboon_internal_entity_session'
 
 const MIN_SECRET_BYTES = 32
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 4
+const MAX_WRITE_BODY_BYTES = 256 * 1024
 const INTERNAL_HEADERS = {
   'Cache-Control': 'private, no-store, max-age=0',
   Pragma: 'no-cache',
@@ -21,6 +22,10 @@ export async function getInternalSession(): Promise<string> {
 
 export function expectedInternalToken(): string {
   return process.env.INTERNAL_DASHBOARD_TOKEN ?? ''
+}
+
+export function expectedInternalWriteToken(): string {
+  return process.env.INTERNAL_ENTITY_WRITE_TOKEN ?? ''
 }
 
 export function isInternalDashboardConfigured(): boolean {
@@ -134,6 +139,50 @@ export async function proxyInternalApi(path: string): Promise<NextResponse> {
     })
   } catch {
     return internalJson({ error: 'Internal data service is unavailable' }, 502)
+  }
+}
+
+export async function proxyInternalWriteApi(request: Request, path: string): Promise<NextResponse> {
+  const session = await getInternalSession()
+  if (!isInternalDashboardConfigured() || !isStrongSecret(expectedInternalWriteToken())) {
+    return internalJson({ error: 'Internal Entity write service is unavailable' }, 503)
+  }
+  if (!hasValidInternalSession(session)) return internalJson({ error: 'Unauthorized' }, 401)
+  if (!requestHasTrustedOrigin(request)) return internalJson({ error: 'Invalid request origin' }, 403)
+
+  const contentLength = Number(request.headers.get('content-length') ?? 0)
+  if (Number.isFinite(contentLength) && contentLength > MAX_WRITE_BODY_BYTES) {
+    return internalJson({ error: 'Request payload is too large' }, 413)
+  }
+  const body = await request.text()
+  if (Buffer.byteLength(body, 'utf8') > MAX_WRITE_BODY_BYTES) {
+    return internalJson({ error: 'Request payload is too large' }, 413)
+  }
+
+  try {
+    const upstream = await fetch(`${internalApiBaseUrl()}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${expectedInternalWriteToken()}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!upstream.ok && upstream.status !== 400 && upstream.status !== 409) {
+      return internalJson({ error: 'Internal Entity write service is unavailable' }, 502)
+    }
+    return new NextResponse(await upstream.text(), {
+      status: upstream.status,
+      headers: {
+        ...INTERNAL_HEADERS,
+        'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
+      },
+    })
+  } catch {
+    return internalJson({ error: 'Internal Entity write service is unavailable' }, 502)
   }
 }
 

@@ -9,7 +9,18 @@ import type {
 } from './types'
 
 const ENTITY_SELECT = 'id, slug, name, type, aliases, summary, status, show_in_carousel, metadata, created_at, updated_at'
+const LEGACY_ENTITY_SELECT = 'id, slug, name, type, aliases, summary, status, metadata, created_at, updated_at'
 const MEMORY_SELECT = 'id, entity_id, source, source_area, source_type, source_ref_id, source_research_id, memory_type, title, summary, body, event_at, observed_at, confidence, evidence, mentions, metrics, context, created_at, updated_at'
+
+interface EntityRowsResult {
+  data: unknown[] | null
+  error: { message: string; code?: string } | null
+}
+
+interface EntityRowResult {
+  data: unknown
+  error: { message: string; code?: string } | null
+}
 
 function normalizeEntity(row: unknown): EntityRecord {
   const record = row as Record<string, unknown>
@@ -69,10 +80,14 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
     const byId = new Map<string, EntityRecord>()
     const uniqueSlugs = [...new Set(slugs)]
     if (uniqueSlugs.length > 0) {
-      const { data, error } = await this.db
+      let result = await this.db
         .from('entities')
         .select(ENTITY_SELECT)
-        .in('slug', uniqueSlugs)
+        .in('slug', uniqueSlugs) as unknown as EntityRowsResult
+      if (isMissingCarouselColumn(result.error)) {
+        result = await this.db.from('entities').select(LEGACY_ENTITY_SELECT).in('slug', uniqueSlugs) as unknown as EntityRowsResult
+      }
+      const { data, error } = result
       if (error) throw new Error(`entity slug lookup failed: ${error.message}`)
       for (const row of data ?? []) {
         const entity = normalizeEntity(row)
@@ -81,11 +96,19 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
     }
 
     for (const alias of [...new Set(aliases)]) {
-      const { data, error } = await this.db
+      let result = await this.db
         .from('entities')
         .select(ENTITY_SELECT)
         .contains('aliases', JSON.stringify([alias]))
-        .limit(20)
+        .limit(20) as unknown as EntityRowsResult
+      if (isMissingCarouselColumn(result.error)) {
+        result = await this.db
+          .from('entities')
+          .select(LEGACY_ENTITY_SELECT)
+          .contains('aliases', JSON.stringify([alias]))
+          .limit(20) as unknown as EntityRowsResult
+      }
+      const { data, error } = result
       if (error) throw new Error(`entity alias lookup failed: ${error.message}`)
       for (const row of data ?? []) {
         const entity = normalizeEntity(row)
@@ -98,28 +121,51 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
 
   async createEntities(entities: EntityInput[]): Promise<EntityRecord[]> {
     if (entities.length === 0) return []
-    const { data, error } = await this.db
+    let result = await this.db
       .from('entities')
       .upsert(entities, { onConflict: 'slug', defaultToNull: false })
-      .select(ENTITY_SELECT)
+      .select(ENTITY_SELECT) as unknown as EntityRowsResult
+    if (isMissingCarouselColumn(result.error)) {
+      if (entities.some((entity) => entity.show_in_carousel === true)) throw carouselMigrationError()
+      const legacyEntities = entities.map(({ show_in_carousel: _flag, ...entity }) => entity)
+      result = await this.db
+        .from('entities')
+        .upsert(legacyEntities, { onConflict: 'slug', defaultToNull: false })
+        .select(LEGACY_ENTITY_SELECT) as unknown as EntityRowsResult
+    }
+    const { data, error } = result
     if (error) throw new Error(`entity upsert failed: ${error.message}`)
     return (data ?? []).map(normalizeEntity)
   }
 
   async updateEntity(entity: EntityRecord): Promise<EntityRecord> {
-    const { data, error } = await this.db
+    const payload = {
+      name: entity.name,
+      type: entity.type,
+      aliases: entity.aliases,
+      summary: entity.summary,
+      status: entity.status,
+      show_in_carousel: entity.show_in_carousel,
+      metadata: entity.metadata,
+      updated_at: new Date().toISOString(),
+    }
+    let result = await this.db
       .from('entities')
-      .update({
-        aliases: entity.aliases,
-        summary: entity.summary,
-        status: entity.status,
-        show_in_carousel: entity.show_in_carousel,
-        metadata: entity.metadata,
-        updated_at: new Date().toISOString(),
-      })
+      .update(payload)
       .eq('id', entity.id)
       .select(ENTITY_SELECT)
-      .single()
+      .single() as unknown as EntityRowResult
+    if (isMissingCarouselColumn(result.error)) {
+      if (entity.show_in_carousel) throw carouselMigrationError()
+      const { show_in_carousel: _flag, ...legacyPayload } = payload
+      result = await this.db
+        .from('entities')
+        .update(legacyPayload)
+        .eq('id', entity.id)
+        .select(LEGACY_ENTITY_SELECT)
+        .single() as unknown as EntityRowResult
+    }
+    const { data, error } = result
     if (error) throw new Error(`entity update failed: ${error.message}`)
     return normalizeEntity(data)
   }
@@ -169,7 +215,19 @@ export class SupabaseEntityMemoryStore implements EntityMemoryStore {
   }
 }
 
+function isMissingCarouselColumn(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false
+  return /show_in_carousel/i.test(error.message ?? '')
+    && (error.code === 'PGRST204' || /column|schema cache|does not exist/i.test(error.message ?? ''))
+}
+
+function carouselMigrationError(): Error {
+  return new Error('Entity carousel selection requires the pending entity_carousel_flag migration.')
+}
+
 export const __testing = {
   ENTITY_SELECT,
+  LEGACY_ENTITY_SELECT,
   normalizeEntity,
+  isMissingCarouselColumn,
 }

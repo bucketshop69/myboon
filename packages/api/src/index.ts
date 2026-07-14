@@ -8,6 +8,7 @@ import { clobRoutes } from './clob.js'
 import { pacificaRoutes } from './pacifica.js'
 import { phoenixRoutes } from './phoenix.js'
 import { createInternalEntityRoutes } from './internal/entities.js'
+import { createInternalEntityCommandRoutes } from './internal/entity-commands.js'
 import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
@@ -32,6 +33,7 @@ import {
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const INTERNAL_DASHBOARD_TOKEN = process.env.INTERNAL_DASHBOARD_TOKEN
+const INTERNAL_ENTITY_WRITE_TOKEN = process.env.INTERNAL_ENTITY_WRITE_TOKEN
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
 const AI_EXPLANATION_PROVIDER = process.env.AI_EXPLANATION_PROVIDER
@@ -670,8 +672,16 @@ app.use('*', logger())
 if (!INTERNAL_DASHBOARD_TOKEN || Buffer.byteLength(INTERNAL_DASHBOARD_TOKEN, 'utf8') < 32) {
   console.warn('[api] INTERNAL_DASHBOARD_TOKEN must be at least 32 bytes; /internal routes will return 503.')
 }
+if (!INTERNAL_ENTITY_WRITE_TOKEN || Buffer.byteLength(INTERNAL_ENTITY_WRITE_TOKEN, 'utf8') < 32) {
+  console.warn('[api] INTERNAL_ENTITY_WRITE_TOKEN must be at least 32 bytes; /internal/entity-commands routes will return 503.')
+}
 
 // --- Internal read-only tools ---
+app.route('/internal/entity-commands', createInternalEntityCommandRoutes({
+  supabaseUrl: SUPABASE_URL,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  internalWriteToken: INTERNAL_ENTITY_WRITE_TOKEN,
+}))
 app.route('/internal', createInternalEntityRoutes({
   supabaseUrl: SUPABASE_URL!,
   serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY!,

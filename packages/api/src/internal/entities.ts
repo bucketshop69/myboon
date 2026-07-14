@@ -18,6 +18,7 @@ interface EntityRow {
   aliases: unknown
   summary: string | null
   status: string
+  show_in_carousel?: boolean
   metadata?: unknown
   created_at: string
   updated_at: string
@@ -71,7 +72,8 @@ interface MemoryStatsRow {
   evidence_count: string | number
 }
 
-const ENTITY_SELECT = 'id,slug,name,type,aliases,summary,status,metadata,created_at,updated_at'
+const ENTITY_SELECT = 'id,slug,name,type,aliases,summary,status,show_in_carousel,metadata,created_at,updated_at'
+const LEGACY_ENTITY_SELECT = 'id,slug,name,type,aliases,summary,status,metadata,created_at,updated_at'
 const MEMORY_SELECT = 'id,entity_id,source,source_area,source_type,source_ref_id,source_research_id,memory_type,title,summary,body,event_at,observed_at,confidence,evidence,mentions,metrics,context,created_at,updated_at'
 const PUBLISHED_HISTORY_SELECT = 'id,published_narrative_id,title,angle,source,source_area,published_at'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -121,7 +123,8 @@ export function createInternalEntityRoutes(config: InternalEntityRoutesConfig): 
         console.warn(`[internal/entities] optional Supabase read failed for ${table}: ${res.status}`)
         return { rows: [], count: 0 }
       }
-      throw new Error(`Supabase read failed for ${table}: ${res.status}`)
+      const detail = (await res.text()).slice(0, 500)
+      throw new Error(`Supabase read failed for ${table}: ${res.status}: ${detail}`)
     }
     const rows = await res.json() as T[]
     return { rows, count: parseContentRangeCount(res.headers.get('content-range')) }
@@ -242,6 +245,17 @@ export function createInternalEntityRoutes(config: InternalEntityRoutesConfig): 
     }
   })
 
+  async function readEntityRows(params: URLSearchParams): Promise<{ rows: EntityRow[]; count: number | null }> {
+    params.set('select', ENTITY_SELECT)
+    try {
+      return await readRows<EntityRow>('entities', params)
+    } catch (error) {
+      if (!isMissingCarouselColumnError(error)) throw error
+      params.set('select', LEGACY_ENTITY_SELECT)
+      return readRows<EntityRow>('entities', params)
+    }
+  }
+
   async function fetchEntityRows(input: {
     query: string
     type: string
@@ -263,7 +277,7 @@ export function createInternalEntityRoutes(config: InternalEntityRoutesConfig): 
       params.set('or', `(name.ilike.${pattern},slug.ilike.${pattern},type.ilike.${pattern},status.ilike.${pattern},summary.ilike.${pattern})`)
     }
 
-    return readRows<EntityRow>('entities', params)
+    return readEntityRows(params)
   }
 
   async function fetchEntitiesFromMemorySearch(query: string, type: string, status: string): Promise<EntityRow[]> {
@@ -288,7 +302,7 @@ export function createInternalEntityRoutes(config: InternalEntityRoutesConfig): 
       params.set('select', ENTITY_SELECT)
       params.set('id', `in.(${chunk.join(',')})`)
       params.set('limit', String(chunk.length))
-      const result = await readRows<EntityRow>('entities', params)
+      const result = await readEntityRows(params)
       rows.push(...result.rows)
     }
     return rows
@@ -299,7 +313,7 @@ export function createInternalEntityRoutes(config: InternalEntityRoutesConfig): 
     params.set('select', ENTITY_SELECT)
     params.set(UUID_RE.test(idOrSlug) ? 'id' : 'slug', `eq.${idOrSlug}`)
     params.set('limit', '1')
-    const { rows } = await readRows<EntityRow>('entities', params)
+    const { rows } = await readEntityRows(params)
     return rows[0] ?? null
   }
 
@@ -313,6 +327,7 @@ export function createInternalEntityRoutes(config: InternalEntityRoutesConfig): 
         name: row.name,
         type: row.type,
         status: row.status,
+        showInCarousel: Boolean(row.show_in_carousel),
         aliases: stringArray(row.aliases),
         summary: row.summary,
         memoryCount: stats.memoryCount,
@@ -464,6 +479,7 @@ function mapEntityDetail(row: EntityRow) {
     name: row.name,
     type: row.type,
     status: row.status,
+    showInCarousel: Boolean(row.show_in_carousel),
     aliases: stringArray(row.aliases),
     summary: row.summary,
     metadata: record(row.metadata),
@@ -625,6 +641,12 @@ function emptyMemoryStats(): MemoryStats {
 
 function isMissingStatsRpc(err: unknown): boolean {
   return err instanceof Error && err.message === 'Supabase RPC failed for internal_entity_memory_stats: 404'
+}
+
+function isMissingCarouselColumnError(err: unknown): boolean {
+  return err instanceof Error
+    && /show_in_carousel/i.test(err.message)
+    && /column|schema cache|does not exist|PGRST204/i.test(err.message)
 }
 
 function hasSecureToken(token: string | undefined): token is string {

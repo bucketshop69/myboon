@@ -83,6 +83,7 @@ export interface EntityInput {
   aliases: string[]
   summary: string | null
   status: string
+  show_in_carousel?: boolean
   metadata: Record<string, unknown>
 }
 
@@ -163,4 +164,117 @@ export interface WriteExtractionResult {
   entitiesReused: number
   memoriesWritten: number
   markerStatus: SourceProcessingStatus
+}
+
+export type ManualEntityActorKind = 'dashboard' | 'codex' | 'agent' | 'cli'
+
+export interface ManualEntityActor {
+  kind: ManualEntityActorKind
+  name: string
+}
+
+export interface ManualEntityDefinition {
+  name: string
+  type: string
+  slug?: string
+  aliases?: string[]
+  summary?: string | null
+  status?: string
+  showInCarousel?: boolean
+  metadata?: Record<string, unknown>
+}
+
+export interface ManualEntityMemoryDefinition {
+  memoryType: Exclude<EntityMemoryType, 'source_marker'>
+  title: string
+  summary: string
+  body?: string | null
+  eventAt: string
+  observedAt?: string
+  confidence?: number | null
+  evidence?: unknown[]
+  mentions?: string[]
+  metrics?: Record<string, unknown>
+  context?: Record<string, unknown>
+  sourceLabel?: string
+  sourceUrl?: string | null
+  sourceRefId?: string
+  sourceType?: string
+}
+
+export interface ManualEntityCommand {
+  requestId: string
+  actor: ManualEntityActor
+  entity: ManualEntityDefinition
+  memories: ManualEntityMemoryDefinition[]
+}
+
+export interface NormalizedManualEntityCommand {
+  requestId: string
+  actor: ManualEntityActor
+  entity: {
+    name: string
+    type: string
+    slug: string
+    aliases: string[]
+    summary?: string | null
+    status?: string
+    showInCarousel?: boolean
+    metadata: Record<string, unknown>
+  }
+  memories: Array<{
+    memoryType: Exclude<EntityMemoryType, 'source_marker'>
+    title: string
+    summary: string
+    body: string | null
+    eventAt: string
+    observedAt: string
+    confidence: number | null
+    evidence: unknown[]
+    mentions: string[]
+    metrics: Record<string, unknown>
+    context: Record<string, unknown>
+    sourceLabel: string
+    sourceUrl: string | null
+    sourceRefId: string
+    sourceType: string
+  }>
+}
+
+export interface ManualEntityPreview {
+  requestId: string
+  command: NormalizedManualEntityCommand
+  entity: {
+    action: 'create' | 'update' | 'reuse'
+    existingEntityId: string | null
+    currentUpdatedAt: string | null
+    slug: string
+    name: string
+    type: string
+    aliases: string[]
+    summary: string | null
+    status: string
+    showInCarousel: boolean
+    metadata: Record<string, unknown>
+    changes: string[]
+  }
+  memories: Array<{
+    index: number
+    action: 'create' | 'skip_duplicate'
+    title: string
+    summary: string
+    eventAt: string
+    memoryType: Exclude<EntityMemoryType, 'source_marker'>
+  }>
+  warnings: string[]
+  planHash: string
+}
+
+export interface ManualEntityApplyResult {
+  requestId: string
+  entity: EntityRecord
+  memoriesWritten: number
+  duplicateMemoriesSkipped: number
+  auditMarkerWritten: boolean
+  replayed: boolean
 }

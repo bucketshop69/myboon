@@ -4,7 +4,7 @@ import { config as loadEnv } from 'dotenv'
 import { SupabasePipelineLedgerStore, withPipelineRun } from '../pipeline-ledger'
 import { HermesEntityExtractionProvider } from './extractor'
 import { polymarketResearchToPacket, type PolymarketCandidateContext, type PolymarketResearchRow } from './polymarket-adapter'
-import { writeExtraction, markExtractionFailed } from './resolver'
+import { EntityService } from './entity-service'
 import { SupabaseEntityMemoryStore } from './supabase-store'
 import type { ExtractionProvider, ResearchPacket, WriteExtractionResult } from './types'
 
@@ -146,17 +146,18 @@ export async function runPolymarketEntityManager(
   const batchSize = options.batchSize ?? 20
   const extractionProvider = options.extractionProvider ?? new HermesEntityExtractionProvider()
   const store = new SupabaseEntityMemoryStore(db)
+  const entityService = new EntityService(store)
   const packets = await fetchUnprocessedPolymarketPackets(db, batchSize)
   const results: WriteExtractionResult[] = []
   const failures: Array<{ sourceResearchId: string, error: string }> = []
 
   for (const packet of packets) {
     try {
-      results.push(await writeExtraction(store, packet, extractionProvider))
+      results.push(await entityService.writeExtraction(packet, extractionProvider))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       failures.push({ sourceResearchId: packet.sourceResearchId, error: message })
-      await markExtractionFailed(store, packet, message)
+      await entityService.markExtractionFailed(packet, message)
     }
   }
 

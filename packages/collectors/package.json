@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
+  "exports": {
+    "./entity-manager": {
+      "types": "./src/entity-manager/public.ts",
+      "import": "./src/entity-manager/public.ts",
+      "default": "./src/entity-manager/public.ts"
+    }
+  },
   "scripts": {
     "polymarket:markets-data-engineer": "tsx src/polymarket/run-markets-data-engineer.ts",
     "polymarket:researcher": "tsx src/polymarket/run-researcher.ts",

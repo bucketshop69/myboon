@@ -1,6 +1,8 @@
 export * from './types'
 export * from './normalization'
 export * from './timeline'
+export * from './manual-adapter'
+export * from './entity-service'
 export * from './polymarket-adapter'
 export * from './news-adapter'
 export { HermesEntityExtractionProvider, createStaticExtractionProvider } from './extractor'

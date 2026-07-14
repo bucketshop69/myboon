@@ -7,9 +7,11 @@
     "start": "tsx src/index.ts",
     "smoke": "tsx src/smoke-test.ts",
     "e2e:feed": "tsx src/e2e/api-e2e.ts",
-    "test:internal": "tsx --test src/internal/entities.test.ts"
+    "test:internal": "tsx --test src/internal/*.test.ts"
   },
   "dependencies": {
+    "@myboon/collectors": "workspace:*",
+    "@supabase/supabase-js": "2.98.0",
     "@ellipsis-labs/rise": "0.4.9",
     "@hono/node-server": "^1.13.0",
     "@polymarket/builder-relayer-client": "^0.0.9",
