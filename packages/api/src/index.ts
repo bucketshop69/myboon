@@ -1150,6 +1150,10 @@ const SPORT_SERIES: Record<string, string> = {
   fifwc: '11433',
 }
 
+// Temporary: feed is pinned to a single cricket match during the revamp.
+// TODO: restore full multi-source feed (pinned markets + FEED_SPORTS) once the new feed design lands.
+const SINGLE_FEED_SLUG = 'crint-gbr2-ind4-2026-07-14'
+
 app.get('/predict/sports/:sport', async (c) => {
   const sport = c.req.param('sport').toLowerCase() as SupportedSport
   const seriesId = SPORT_SERIES[sport]
@@ -1257,8 +1261,73 @@ app.get('/predict/sports/:sport', async (c) => {
 
 // GET /predict/sports/:sport/:slug — full game detail with all outcomes
 app.get('/predict/sports/:sport/:slug', async (c) => {
-  const sport = c.req.param('sport').toLowerCase() as SupportedSport
+  const sportParam = c.req.param('sport').toLowerCase()
   const slug = c.req.param('slug')
+
+  // Temporary: the single pinned cricket match isn't part of a Gamma series — fetch it directly.
+  if (sportParam === 'cricket' && slug === SINGLE_FEED_SLUG) {
+    const sport = sportParam
+    try {
+      const events = await gammaFetchCached<Record<string, unknown>[]>(`events?slug=${encodeURIComponent(slug)}`)
+      const e = Array.isArray(events) ? events[0] : null
+      if (!e) return c.json({ error: 'Not found' }, 404)
+
+      const markets = (e.markets ?? []) as Record<string, unknown>[]
+      const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
+      if (!mainMarket) return c.json({ error: 'Not found' }, 404)
+
+      const outcomesRaw = parseStringArray(mainMarket.outcomes)
+      const outcomePrices = parseStringArray(mainMarket.outcomePrices)
+      const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
+      const outcomes = outcomesRaw.map((label, idx) => ({
+        label,
+        question: mainMarket.question ?? null,
+        price: parseNullableNumber(outcomePrices[idx]),
+        conditionId: parseNullableString(mainMarket.conditionId ?? mainMarket.condition_id),
+        clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
+        liquidity: mainMarket.liquidityNum ?? null,
+        volume24h: mainMarket.volume24hr ?? null,
+        bestBid: mainMarket.bestBid ?? null,
+        bestAsk: mainMarket.bestAsk ?? null,
+        acceptingOrders: mainMarket.acceptingOrders ?? null,
+      }))
+
+      for (const outcome of outcomes) {
+        const yesToken = outcome.clobTokenIds?.[0]
+        if (yesToken) {
+          registerTokenIds([yesToken])
+          const live = getLivePrice(yesToken)
+          if (live !== null) outcome.price = live
+        }
+      }
+
+      const gameStart = String(mainMarket.gameStartTime ?? e.startTime ?? '')
+      const isActive = (e.active as boolean) ?? false
+      const isClosed = (e.closed as boolean) ?? false
+      const umaStatus = (mainMarket.umaResolutionStatus as string) ?? null
+
+      return c.json({
+        slug: e.slug,
+        title: e.title,
+        description: e.description ?? null,
+        sport,
+        status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), sport, umaStatus),
+        startDate: e.startDate ?? null,
+        endDate: e.endDate ?? null,
+        image: e.image ?? null,
+        active: e.active ?? null,
+        negRisk: e.negRisk ?? false,
+        volume24h: e.volume24hr ?? null,
+        liquidity: e.liquidity ?? null,
+        outcomes,
+      })
+    } catch (err) {
+      console.error(`[api] Unexpected error in GET /predict/sports/${sport}/${slug}:`, err)
+      return c.json({ error: 'Internal server error' }, 500)
+    }
+  }
+
+  const sport = sportParam as SupportedSport
   const seriesId = SPORT_SERIES[sport]
 
   if (!seriesId) {
@@ -2077,10 +2146,6 @@ function deriveMatchStatus(
   if (active) return 'live'
   return 'ended'
 }
-
-// Temporary: feed is pinned to a single cricket match during the revamp.
-// TODO: restore full multi-source feed (pinned markets + FEED_SPORTS) once the new feed design lands.
-const SINGLE_FEED_SLUG = 'crint-gbr2-ind4-2026-07-14'
 
 function mapSingleMatchGammaEventToFeedItem(e: Record<string, unknown>): FeedItem | null {
   const markets = (e.markets ?? []) as Record<string, unknown>[]

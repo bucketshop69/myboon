@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarCashPill, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { cancelOrder, fetchClobBalance, fetchLivePrices, fetchMarketPositions, fetchOpenOrders, fetchOrderbook, fetchPortfolio, fetchPriceHistory, fetchSportMarketDetail, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, ClosedPortfolioPosition, OpenOrder, PortfolioPosition } from '@/features/predict/predict.api';
-import type { PredictSport, PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
+import type { PricePoint, SportMarketDetail, SportOutcomeDetail, Orderbook } from '@/features/predict/predict.types';
 import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { usePolymarketWallet } from '@/hooks/usePolymarketWallet';
 import { useWallet } from '@/hooks/useWallet';
@@ -38,7 +38,7 @@ import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@
 import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
 
 interface PredictSportDetailScreenProps {
-  sport: PredictSport;
+  sport: string;
   slug: string;
 }
 

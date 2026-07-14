@@ -1,17 +1,16 @@
 import { useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { PredictSportDetailScreen } from '@/features/predict/PredictSportDetailScreen';
-import type { PredictSport } from '@/features/predict/predict.types';
 import { semantic, tokens } from '@/theme';
 
-const SPORTS: PredictSport[] = ['epl', 'ucl', 'ipl'];
+const SPORTS = ['epl', 'ucl', 'ipl', 'cricket'];
 
 export default function PredictSportDetailRoute() {
   const params = useLocalSearchParams<{ sport?: string; slug?: string }>();
   const sport = typeof params.sport === 'string' ? params.sport.toLowerCase() : '';
   const slug = typeof params.slug === 'string' ? params.slug : '';
 
-  if (!slug || !SPORTS.includes(sport as PredictSport)) {
+  if (!slug || !SPORTS.includes(sport)) {
     return (
       <View style={styles.screen}>
         <Text style={styles.text}>Invalid sport market route</Text>
@@ -19,7 +18,7 @@ export default function PredictSportDetailRoute() {
     );
   }
 
-  return <PredictSportDetailScreen sport={sport as PredictSport} slug={slug} />;
+  return <PredictSportDetailScreen sport={sport} slug={slug} />;
 }
 
 const styles = StyleSheet.create({

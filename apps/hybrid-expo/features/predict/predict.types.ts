@@ -18,7 +18,7 @@ export interface FeedItemMatch {
   slug: string;
   title: string;
   category: string;
-  sport: PredictSport;
+  sport: string;
   tags: string[];
   status: FeedItemStatus;
   gameStartTime: string | null;
@@ -148,7 +148,7 @@ export interface SportMarketDetail {
   slug: string;
   title: string;
   description: string | null;
-  sport: PredictSport;
+  sport: string;
   status: FeedItemStatus;
   startDate: string | null;
   endDate: string | null;

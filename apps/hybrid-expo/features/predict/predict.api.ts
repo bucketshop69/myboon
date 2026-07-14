@@ -261,10 +261,7 @@ function mapSportMarketDetail(row: unknown): SportMarketDetail | null {
 
   const slug = typeof market.slug === 'string' ? market.slug : null;
   const title = typeof market.title === 'string' ? market.title : null;
-  const sport =
-    market.sport === 'epl' || market.sport === 'ucl' || market.sport === 'ipl'
-      ? (market.sport as PredictSport)
-      : null;
+  const sport = typeof market.sport === 'string' ? market.sport : null;
   if (!slug || !title || !sport) return null;
 
   const outcomesRaw = Array.isArray(market.outcomes) ? market.outcomes : [];
@@ -377,8 +374,8 @@ function mapFeedItem(raw: unknown): FeedItem | null {
   const outcomes = outcomesRaw.map(mapFeedOutcome).filter((o): o is FeedOutcome => o !== null);
 
   if (type === 'match') {
-    const sport = item.sport;
-    if (sport !== 'epl' && sport !== 'ucl' && sport !== 'ipl') return null;
+    const sport = typeof item.sport === 'string' ? item.sport : null;
+    if (!sport) return null;
     const result: FeedItemMatch = {
       type: 'match',
       slug,
@@ -447,7 +444,7 @@ export async function fetchCuratedMarketDetail(slug: string): Promise<Geopolitic
   return detail;
 }
 
-export async function fetchSportMarketDetail(sport: PredictSport, slug: string): Promise<SportMarketDetail> {
+export async function fetchSportMarketDetail(sport: string, slug: string): Promise<SportMarketDetail> {
   const payload = await getJson(`/predict/sports/${sport}/${encodeURIComponent(slug)}`);
   const detail = mapSportMarketDetail(payload);
   if (!detail) throw new Error('Invalid sport detail response');
