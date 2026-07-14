@@ -1,17 +1,11 @@
-import type { FeedItem, NarrativeAction, PredictOutcome } from '@/features/feed/feed.types';
+import type { FeedItem, PredictOutcome } from '@/features/feed/feed.types';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
 
 interface PublishedNarrativeListItem {
-  id: string;
-  narrative_id: string;
-  title?: string | null;
-  content_small: string;
-  tags: string[];
-  priority: number;
-  actions: unknown;
-  entity_category?: string | null;
-  published_at?: string | null;
-  created_at: string;
+  updateKey: string;
+  title: string;
+  summary: string;
+  publishedAt: string;
 }
 
 export function getApiBaseUrl(): string {
@@ -37,61 +31,15 @@ export function toRelativeTime(iso: string): string {
   return `${Math.floor(diffMs / day)}d ago`;
 }
 
-function parseActions(raw: unknown): NarrativeAction[] {
-  if (!Array.isArray(raw)) return [];
-  const result: NarrativeAction[] = [];
-  for (const item of raw) {
-    if (item && typeof item === 'object' && 'type' in item) {
-      const action = item as Record<string, unknown>;
-      const type = action.type;
-      if (type === 'predict' || type === 'perps') {
-        result.push({
-          type,
-          asset: typeof action.asset === 'string' ? action.asset : undefined,
-          slug: typeof action.slug === 'string' ? action.slug : undefined,
-        });
-      }
-    }
-  }
-  return result;
-}
-
-function extractHeadline(content: string): { headline: string; body: string } {
-  const trimmed = content.trim();
-  // Try splitting on first period or newline to get a headline
-  const periodIdx = trimmed.indexOf('. ');
-  const newlineIdx = trimmed.indexOf('\n');
-  let splitIdx = -1;
-  if (periodIdx > 0 && periodIdx < 120) splitIdx = periodIdx + 1;
-  else if (newlineIdx > 0 && newlineIdx < 120) splitIdx = newlineIdx;
-
-  if (splitIdx > 0) {
-    return {
-      headline: trimmed.slice(0, splitIdx).trim(),
-      body: trimmed.slice(splitIdx).trim(),
-    };
-  }
-  // If no good split point, use first 80 chars as headline
-  if (trimmed.length > 80) {
-    const spaceIdx = trimmed.lastIndexOf(' ', 80);
-    const cut = spaceIdx > 40 ? spaceIdx : 80;
-    return { headline: trimmed.slice(0, cut).trim(), body: trimmed.slice(cut).trim() };
-  }
-  return { headline: trimmed, body: '' };
-}
-
 function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number): FeedItem {
-  const raw = item.content_small?.trim() ?? '';
-  const { headline, body } = extractHeadline(raw);
-  const title = item.title?.trim();
   return {
-    id: item.id,
-    category: item.entity_category?.trim() || item.tags?.[0] || 'macro',
-    createdAt: item.published_at ?? item.created_at,
-    headline: title || headline,
-    description: title ? raw : body,
+    id: item.updateKey,
+    category: 'feed',
+    createdAt: item.publishedAt,
+    headline: item.title,
+    description: item.summary,
     isTop: index === 0,
-    actions: parseActions(item.actions),
+    actions: [],
   };
 }
 
@@ -110,25 +58,16 @@ export async function fetchFeedItems(limit = 20, offset = 0): Promise<FeedItem[]
   }
 
   return payload
-    .filter((row): row is PublishedNarrativeListItem => typeof row === 'object' && row !== null && 'id' in row)
+    .filter((row): row is PublishedNarrativeListItem => typeof row === 'object' && row !== null && 'updateKey' in row)
     .map(mapNarrativeToFeedItem);
 }
 
 export interface NarrativeDetail {
-  id: string;
-  title?: string | null;
-  content_full: string;
-  content_small: string;
-  tags: string[];
-  priority: number;
-  actions: unknown;
-  entity_id?: string | null;
-  entity_slug?: string | null;
-  entity_name?: string | null;
-  entity_type?: string | null;
-  entity_category?: string | null;
-  published_at?: string | null;
-  created_at: string;
+  updateKey: string;
+  title: string;
+  summary: string;
+  content: string;
+  publishedAt: string;
 }
 
 export interface SimpleExplanation {

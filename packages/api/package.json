@@ -7,7 +7,8 @@
     "start": "tsx src/index.ts",
     "smoke": "tsx src/smoke-test.ts",
     "e2e:feed": "tsx src/e2e/api-e2e.ts",
-    "test:internal": "tsx --test src/internal/*.test.ts"
+    "test:internal": "tsx --test src/internal/*.test.ts",
+    "test:feed": "tsx --test src/stories.test.ts src/narratives.test.ts"
   },
   "dependencies": {
     "@myboon/collectors": "workspace:*",

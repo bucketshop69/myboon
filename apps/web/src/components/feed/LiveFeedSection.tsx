@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 
 interface Narrative {
-  id: string
-  content_small: string
-  tags: string[]
-  created_at: string
+  updateKey: string
+  title: string
+  summary: string
+  publishedAt: string
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.myboon.app'
@@ -25,25 +25,25 @@ function timeAgo(date: string): string {
 
 const FALLBACK: Narrative[] = [
   {
-    id: '1',
-    content_small:
+    updateKey: '1',
+    title: 'Iran prediction-market activity accelerates',
+    summary:
       'Three whale wallets just placed $1.2M in YES on Iran nuclear deal — largest single-day flow this month. Odds shifted from 34c to 41c in under an hour.',
-    tags: ['geopolitics'],
-    created_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+    publishedAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
   },
   {
-    id: '2',
-    content_small:
+    updateKey: '2',
+    title: 'BTC market sentiment diverges',
+    summary:
       'BTC funding rate flipped negative on Pacific while Polymarket "BTC above 90K by June" climbed to 67c. Perps positioning diverging from prediction market sentiment.',
-    tags: ['crypto'],
-    created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    publishedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
   },
   {
-    id: '3',
-    content_small:
+    updateKey: '3',
+    title: 'Liverpool odds move after team news',
+    summary:
       'Liverpool vs Real Madrid UCL semi-final — odds swung 12 points toward Liverpool after team news. Two tracked wallets added $340K in YES positions.',
-    tags: ['ucl'],
-    created_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+    publishedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
   },
 ]
 
@@ -82,7 +82,7 @@ export function LiveFeedSection() {
         <div className="space-y-4">
           {narratives.map((n, i) => (
             <motion.div
-              key={n.id}
+              key={n.updateKey}
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -94,17 +94,13 @@ export function LiveFeedSection() {
               className="group rounded-xl p-5 border border-outline-variant/30 bg-surface-container-low/50 hover:border-outline-variant/60 transition-colors"
             >
               <div className="flex items-center gap-2.5 mb-3">
-                {n.tags?.[0] && (
-                  <span className="text-[10px] font-headline tracking-widest uppercase text-primary/70">
-                    {n.tags[0]}
-                  </span>
-                )}
                 <span className="text-[10px] font-headline text-on-surface-variant/30 ml-auto">
-                  {timeAgo(n.created_at)}
+                  {timeAgo(n.publishedAt)}
                 </span>
               </div>
+              <p className="text-sm font-medium text-on-surface mb-1.5">{n.title}</p>
               <p className="text-sm text-on-surface leading-relaxed">
-                {n.content_small}
+                {n.summary}
               </p>
             </motion.div>
           ))}

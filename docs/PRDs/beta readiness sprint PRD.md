@@ -257,10 +257,11 @@ Home /
     Three or four recent entity-linked Updates
     Full Feed /feed
       Complete entity-linked Update stream, newest first
-      Story detail /stories/:entitySlug
-        Related prediction market /predict-market/:slug
-        Related Pacifica market /trade/:symbol
-        Related Phoenix market /markets/phoenix/:symbol
+      Feed detail /narratives/:updateKey
+    Story detail /stories/:storySlug
+      Related prediction market /predict-market/:slug
+      Related Pacifica market /trade/:symbol
+      Related Phoenix market /markets/phoenix/:symbol
   Apps
     Prediction /predict
     Pacifica /trade
@@ -284,15 +285,16 @@ Account drawer
 - **Primary navigation:** the Home long scroll; no persistent bottom tabs are
   added in P0.
 - **Contextual navigation:** carousel Stories open Story detail; Feed Updates
-  open the related Story at that development; optional Story actions open the
-  relevant market.
+  open their full published Feed detail; optional actions open the relevant
+  market when the later action work adds them.
 - **Utility navigation:** the account drawer owns identity, security, support,
   privacy, deletion, and disconnect.
-- **Back behavior:** a market returns to its originating Story when opened from
-  Feed; a Story returns to Feed without losing scroll position where feasible.
-- **Maximum depth:** Home -> Full Feed -> Story -> Market. A carousel Story opens
-  directly from Home and skips the Full Feed level. Protocol-specific funding or
-  review modals are contextual steps, not new primary navigation levels.
+- **Back behavior:** Story and Feed detail return to Feed without losing scroll
+  position where feasible. A market returns to whichever detail surface opened
+  it.
+- **Maximum depth:** Home -> Full Feed -> Feed detail, or Home -> Story -> Market.
+  Protocol-specific funding or review modals are contextual steps, not new
+  primary navigation levels.
 
 ### Content Hierarchy
 
@@ -494,22 +496,22 @@ timeline.
 
 ```ts
 interface BetaFeedStoryItem {
-  entitySlug: string
-  entityName: string
+  storySlug: string
+  name: string
   latestDevelopment: string
   eventCount: number
   updatedAt: string
-  action: NarrativeAction | null
 }
 
 interface BetaFeedUpdateItem {
   updateKey: string
-  entitySlug: string
-  entityName: string
   title: string
   summary: string
   publishedAt: string
-  action: NarrativeAction | null
+}
+
+interface BetaFeedDetail extends BetaFeedUpdateItem {
+  content: string
 }
 ```
 
@@ -549,18 +551,19 @@ There is no Editor or Publisher gate for the Entity timeline and no
 
 ```text
 GET /stories
-GET /stories/:entitySlug
+GET /stories/:storySlug
 GET /narratives, adapted as the entity-linked chronological Update stream
+GET /narratives/:updateKey, the full published Feed item
 ```
 
 `GET /stories` returns Entities where `show_in_carousel = true`, capped at five.
 `GET /narratives` remains the separate Publisher-generated Feed, excludes rows
 without an Entity link, and orders Updates by `published_at DESC` without
-frontend ranking or categories. `GET /stories/:entitySlug` returns the selected
+frontend ranking or categories. `GET /stories/:storySlug` returns the selected
 Entity plus allowlisted timeline items mapped from its non-marker memories; it
 never returns complete memory rows.
 
-`GET /stories/:entitySlug` returns:
+`GET /stories/:storySlug` returns:
 
 ```ts
 interface BetaStoryDetailResponse {
@@ -620,7 +623,8 @@ Use a full screen, not the current article-like bottom sheet. Content order:
 4. one related market action, when present
 
 Tapping a carousel Story opens its Story detail. Tapping a Feed Update opens the
-related Story at that development. The market action remains a separate route.
+full published Feed item. The Feed detail does not open or require the related
+Story timeline. The market action remains a separate route.
 
 The P0 screen does not include raw IDs, JSON, categories, sources, receipts,
 evidence, confidence visualizations, related-entity graphs, editor reasoning,
@@ -911,7 +915,7 @@ submitted” are different milestones.
 4. **Home and full Feed experience** — build the up-to-five-Story carousel,
    recent Home Updates, full date-ordered Feed, and legacy-content exclusion.
 5. **Story detail and navigation** — show the latest development and chronological
-   timeline, with Updates opening their related Story position.
+   timeline, while Feed Updates open their own full published detail.
 6. **Related actions** — attach optional market actions and support the
    Story-to-action beta demonstration.
 7. **US–Iran Entity and beta Story content** — perform the targeted US–Iran
@@ -1102,7 +1106,7 @@ safety, fabricated-state removal, or the Alliance demo.
       Updates, and `Open full Feed`.
 - [ ] The full Feed is a complete entity-linked Update stream ordered strictly by
       publication date.
-- [ ] Every Update opens its related Story at the relevant development.
+- [ ] Every Update opens its full published Feed detail.
 - [ ] Story detail shows the Story name, latest development, concise chronological
       timeline, and an optional related action.
 - [ ] Carousel membership is controlled only by

@@ -582,7 +582,7 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
 
     fetchNarrativeDetail(itemId)
       .then((detail) => {
-        setContentFull(detail.content_full ?? detail.content_small ?? '');
+        setContentFull(detail.content ?? detail.summary ?? '');
         setContentLoading(false);
       })
       .catch(() => {

@@ -9,6 +9,8 @@ import { pacificaRoutes } from './pacifica.js'
 import { phoenixRoutes } from './phoenix.js'
 import { createInternalEntityRoutes } from './internal/entities.js'
 import { createInternalEntityCommandRoutes } from './internal/entity-commands.js'
+import { createStoryRoutes } from './stories.js'
+import { createNarrativeRoutes } from './narratives.js'
 import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
@@ -72,34 +74,6 @@ function supabaseHeaders(): Record<string, string> {
 
 async function supabaseFetch(path: string): Promise<Response> {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: supabaseHeaders() })
-}
-
-function looksLikePublishedNarrativesV1SchemaMiss(status: number, body: string): boolean {
-  if (status !== 400) return false
-  return /published_narratives/i.test(body)
-    && /(status|published_at|title|entity_id|entity_slug|entity_name|entity_type|entity_category)/i.test(body)
-}
-
-async function supabaseFetchWithSchemaFallback(
-  primaryPath: string,
-  fallbackPath: string,
-  context: string
-): Promise<Response> {
-  const primary = await supabaseFetch(primaryPath)
-  if (primary.ok) return primary
-
-  const body = await primary.text()
-  if (!looksLikePublishedNarrativesV1SchemaMiss(primary.status, body)) {
-    console.error(`[api] Supabase error ${primary.status}: ${body}`)
-    return new Response(body, {
-      status: primary.status,
-      statusText: primary.statusText,
-      headers: primary.headers,
-    })
-  }
-
-  console.warn(`[api] ${context} falling back to legacy published_narratives shape; apply publisher V1 migration to remove this fallback.`)
-  return supabaseFetch(fallbackPath)
 }
 
 async function supabaseWrite(path: string, method: 'POST' | 'PATCH', body: unknown, extraHeaders: Record<string, string> = {}): Promise<Response> {
@@ -687,6 +661,14 @@ app.route('/internal', createInternalEntityRoutes({
   serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY!,
   internalToken: INTERNAL_DASHBOARD_TOKEN,
 }))
+app.route('/stories', createStoryRoutes({
+  supabaseUrl: SUPABASE_URL!,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY!,
+}))
+app.route('/narratives', createNarrativeRoutes({
+  supabaseUrl: SUPABASE_URL!,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY!,
+}))
 
 // --- CLOB routes (Polymarket Builder) ---
 app.route('/clob', clobRoutes)
@@ -700,65 +682,6 @@ app.route('/perps/phoenix', phoenixRoutes)
 // GET /health
 app.get('/health', (c) => {
   return c.json({ status: 'ok' })
-})
-
-// GET /narratives
-app.get('/narratives', async (c) => {
-  const rawLimit = parseInt(c.req.query('limit') ?? '20', 10)
-  const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 50)
-  const rawOffset = parseInt(c.req.query('offset') ?? '0', 10)
-  const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset
-
-  try {
-    const res = await supabaseFetchWithSchemaFallback(
-      `published_narratives?select=id,narrative_id,title,content_small,tags,priority,actions,thread_id,entity_id,entity_slug,entity_name,entity_type,entity_category,published_at,created_at&status=eq.published&order=published_at.desc,priority.desc&limit=${limit}&offset=${offset}`,
-      `published_narratives?select=id,narrative_id,content_small,tags,priority,actions,thread_id,created_at&order=created_at.desc,priority.desc&limit=${limit}&offset=${offset}`,
-      'GET /narratives'
-    )
-
-    if (!res.ok) {
-      console.error(`[api] Supabase error ${res.status}: ${await res.text()}`)
-      return c.json({ error: 'Internal server error' }, 500)
-    }
-
-    const data = await res.json()
-    return c.json(data)
-  } catch (err) {
-    console.error('[api] Unexpected error in GET /narratives:', err)
-    return c.json({ error: 'Internal server error' }, 500)
-  }
-})
-
-// GET /narratives/:id
-app.get('/narratives/:id', async (c) => {
-  const id = c.req.param('id')
-
-  if (!id || id.trim() === '') {
-    return c.json({ error: 'Bad request' }, 400)
-  }
-
-  try {
-    const res = await supabaseFetchWithSchemaFallback(
-      `published_narratives?id=eq.${encodeURIComponent(id)}&status=eq.published&select=id,narrative_id,title,content_small,content_full,tags,priority,actions,thread_id,entity_id,entity_slug,entity_name,entity_type,entity_category,published_at,created_at&limit=1`,
-      `published_narratives?id=eq.${encodeURIComponent(id)}&select=id,narrative_id,content_small,content_full,tags,priority,actions,thread_id,created_at&limit=1`,
-      'GET /narratives/:id'
-    )
-
-    if (!res.ok) {
-      console.error(`[api] Supabase error ${res.status}: ${await res.text()}`)
-      return c.json({ error: 'Internal server error' }, 500)
-    }
-
-    const data = await res.json() as unknown[]
-    if (!Array.isArray(data) || data.length === 0) {
-      return c.json({ error: 'Not found' }, 404)
-    }
-
-    return c.json(data[0])
-  } catch (err) {
-    console.error(`[api] Unexpected error in GET /narratives/${id}:`, err)
-    return c.json({ error: 'Internal server error' }, 500)
-  }
 })
 
 // --- AI explain-simply routes ---
