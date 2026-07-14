@@ -1,8 +1,5 @@
 import 'dotenv/config'
 import { createHash } from 'crypto'
-import { readFileSync } from 'fs'
-import { resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
@@ -11,7 +8,7 @@ import { clobRoutes } from './clob.js'
 import { pacificaRoutes } from './pacifica.js'
 import { phoenixRoutes } from './phoenix.js'
 import { createInternalEntityRoutes } from './internal/entities.js'
-import { CURATED_GEOPOLITICS_SLUGS, deriveCategoryFromText } from './curated.js'
+import { CURATED_GEOPOLITICS_SLUGS } from './curated.js'
 import type { SupportedSport } from './curated.js'
 import {
   isDomeAvailable,
@@ -29,19 +26,6 @@ import {
   domeStatusToActive,
   domeGetIplMatches,
 } from './dome.js'
-
-// --- pinned markets ---
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const pinnedPath = resolve(__dirname, '../../collectors/src/polymarket/pinned.json')
-let PINNED_SLUGS: string[] = []
-try {
-  PINNED_SLUGS = JSON.parse(readFileSync(pinnedPath, 'utf-8')) as string[]
-  console.log(`[api] Loaded ${PINNED_SLUGS.length} pinned slugs`)
-} catch (err) {
-  console.warn(`[api] Could not load pinned.json: ${err instanceof Error ? err.message : err}`)
-}
 
 // --- env validation ---
 
@@ -302,6 +286,11 @@ function parseNullableNumber(input: unknown): number | null {
 
 function parseNullableString(input: unknown): string | null {
   return typeof input === 'string' && input.trim().length > 0 ? input : null
+}
+
+function normalizeSoccerOutcomeLabel(input: unknown): string {
+  const label = String(input ?? '').trim()
+  return label.startsWith('Draw ') ? 'Draw' : label
 }
 
 function isPositivePositionValue(position: unknown): boolean {
@@ -2057,170 +2046,6 @@ interface FeedItem {
   }[]
 }
 
-interface FeedSportConfig {
-  sport: SupportedSport
-  seriesId: string
-  slugPrefix: string
-  tags: string[]
-  titlePrefixToStrip?: RegExp
-  shape: 'soccer' | 'ipl'
-}
-
-const FEED_SPORTS: FeedSportConfig[] = [
-  {
-    sport: 'epl',
-    seriesId: SPORT_SERIES.epl,
-    slugPrefix: 'epl-',
-    tags: ['sports', 'epl'],
-    shape: 'soccer',
-  },
-  {
-    sport: 'ucl',
-    seriesId: SPORT_SERIES.ucl,
-    slugPrefix: 'ucl-',
-    tags: ['sports', 'soccer', 'ucl'],
-    shape: 'soccer',
-  },
-  {
-    sport: 'ipl',
-    seriesId: SPORT_SERIES.ipl,
-    slugPrefix: 'cricipl-',
-    tags: ['sports', 'cricket', 'indian premier league'],
-    titlePrefixToStrip: /^Indian Premier League:\s*/,
-    shape: 'ipl',
-  },
-  {
-    sport: 'fifwc',
-    seriesId: SPORT_SERIES.fifwc,
-    slugPrefix: 'fifwc-',
-    tags: ['sports', 'soccer', 'fifa-world-cup'],
-    shape: 'soccer',
-  },
-]
-
-function isSportsFeedFilterMatch(config: FeedSportConfig, sportFilter: string | null, categoryFilter: string): boolean {
-  if (sportFilter && sportFilter !== config.sport) return false
-  if (categoryFilter !== 'all' && categoryFilter !== 'sports') return false
-  return true
-}
-
-function normalizeSoccerOutcomeLabel(input: unknown): string {
-  const label = String(input ?? '').trim()
-  return label.startsWith('Draw ') ? 'Draw' : label
-}
-
-function mapSoccerGammaEventToFeedItem(e: Record<string, unknown>, config: FeedSportConfig): FeedItem | null {
-  const slug = String(e.slug ?? '')
-  if (!slug.startsWith(config.slugPrefix) || slug.endsWith('-more-markets') || slug.endsWith('-exact-score')) return null
-
-  const markets = (e.markets ?? []) as Record<string, unknown>[]
-  if (markets.length === 0) return null
-
-  const gameStart = String(markets[0]?.gameStartTime ?? e.startTime ?? '')
-  const isActive = (e.active as boolean) ?? false
-  const isClosed = (e.closed as boolean) ?? false
-  const umaStatus = (markets.find((m) => m.umaResolutionStatus)?.umaResolutionStatus as string) ?? null
-  const outcomes = markets.map((m) => {
-    const outcomePrices = parseStringArray(m.outcomePrices)
-    const clobTokenIds = parseStringArray(m.clobTokenIds)
-    return {
-      label: normalizeSoccerOutcomeLabel(m.groupItemTitle ?? m.question),
-      price: parseNullableNumber(outcomePrices[0]),
-      conditionId: parseNullableString(m.conditionId ?? m.condition_id),
-      clobTokenIds,
-    }
-  }).filter((outcome) => outcome.label.length > 0)
-
-  return {
-    type: 'match' as const,
-    slug,
-    title: e.title as string,
-    category: 'sports',
-    sport: config.sport,
-    tags: config.tags,
-    status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), config.sport, umaStatus),
-    gameStartTime: gameStart || null,
-    startDate: (e.startDate as string) ?? null,
-    endDate: (e.endDate as string) ?? null,
-    image: (e.image as string) ?? null,
-    active: isActive,
-    volume: (e.volume24hr ?? e.volume ?? null) as number | null,
-    outcomes,
-  }
-}
-
-function mapIplGammaEventToFeedItem(e: Record<string, unknown>, config: FeedSportConfig): FeedItem | null {
-  const markets = (e.markets ?? []) as Record<string, unknown>[]
-  const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
-  if (!mainMarket) return null
-
-  const outcomesRaw = parseStringArray(mainMarket.outcomes)
-  const outcomePrices = parseStringArray(mainMarket.outcomePrices)
-  const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
-  const outcomes = outcomesRaw.map((label, idx) => ({
-    label,
-    price: parseNullableNumber(outcomePrices[idx]),
-    conditionId: parseNullableString(mainMarket.conditionId ?? mainMarket.condition_id),
-    clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
-  }))
-
-  const title = String(e.title ?? '').replace(config.titlePrefixToStrip ?? /^$/, '')
-  const gameStart = String(mainMarket.gameStartTime ?? e.startTime ?? '')
-  const isActive = (e.active as boolean) ?? false
-  const isClosed = (e.closed as boolean) ?? false
-  const umaStatus = (mainMarket.umaResolutionStatus as string) ?? null
-
-  return {
-    type: 'match' as const,
-    slug: e.slug as string,
-    title,
-    category: 'sports',
-    sport: config.sport,
-    tags: config.tags,
-    status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), config.sport, umaStatus),
-    gameStartTime: gameStart || null,
-    startDate: (e.startDate as string) ?? null,
-    endDate: (e.endDate as string) ?? null,
-    image: (e.image as string) ?? null,
-    active: isActive,
-    volume: (e.volume24hr ?? e.volume ?? null) as number | null,
-    outcomes,
-  }
-}
-
-async function fetchSportsFeedItems(config: FeedSportConfig, sportFilter: string | null, categoryFilter: string): Promise<FeedItem[]> {
-  if (!isSportsFeedFilterMatch(config, sportFilter, categoryFilter)) return []
-
-  const events = await gammaFetchCached<Record<string, unknown>[]>(`events?series_id=${config.seriesId}&active=true&closed=false&limit=20`)
-  if (!Array.isArray(events)) return []
-
-  if (config.shape === 'ipl') {
-    const matchMap = new Map<string, Record<string, unknown>>()
-    for (const e of events) {
-      const slug = String(e.slug ?? '')
-      if (!slug.startsWith(config.slugPrefix) || !/\d{4}-\d{2}-\d{2}$/.test(slug)) continue
-      const parts = slug.replace(config.slugPrefix, '').match(/^(.+)-(\d{4}-\d{2}-\d{2})$/)
-      if (!parts) continue
-      const teams = parts[1].split('-').sort().join('-')
-      const key = `${teams}-${parts[2]}`
-      const existing = matchMap.get(key)
-      const eVol = Number(e.volume ?? 0) || 0
-      const existingVol = Number(existing?.volume ?? 0) || 0
-      if (!existing || eVol > existingVol) {
-        matchMap.set(key, e)
-      }
-    }
-
-    return Array.from(matchMap.values())
-      .map((e) => mapIplGammaEventToFeedItem(e, config))
-      .filter((item): item is FeedItem => item !== null)
-  }
-
-  return events
-    .map((e) => mapSoccerGammaEventToFeedItem(e, config))
-    .filter((item): item is FeedItem => item !== null)
-}
-
 /** Derive match status from multiple signals (Gamma's active/closed flags are buggy for sports).
  *  Priority order:
  *  1. closed flag (if Gamma eventually flips it)
@@ -2253,80 +2078,61 @@ function deriveMatchStatus(
   return 'ended'
 }
 
+// Temporary: feed is pinned to a single cricket match during the revamp.
+// TODO: restore full multi-source feed (pinned markets + FEED_SPORTS) once the new feed design lands.
+const SINGLE_FEED_SLUG = 'crint-gbr2-ind4-2026-07-14'
+
+function mapSingleMatchGammaEventToFeedItem(e: Record<string, unknown>): FeedItem | null {
+  const markets = (e.markets ?? []) as Record<string, unknown>[]
+  const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
+  if (!mainMarket) return null
+
+  const outcomesRaw = parseStringArray(mainMarket.outcomes)
+  const outcomePrices = parseStringArray(mainMarket.outcomePrices)
+  const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
+
+  const outcomes = outcomesRaw.map((label, idx) => ({
+    label,
+    price: parseNullableNumber(outcomePrices[idx]),
+    conditionId: parseNullableString(mainMarket.conditionId ?? mainMarket.condition_id),
+    clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
+  }))
+
+  const gameStart = String(mainMarket.gameStartTime ?? e.startTime ?? '')
+  const isActive = (e.active as boolean) ?? false
+  const isClosed = (e.closed as boolean) ?? false
+  const umaStatus = (mainMarket.umaResolutionStatus as string) ?? null
+
+  return {
+    type: 'match' as const,
+    slug: e.slug as string,
+    title: e.title as string,
+    category: 'sports',
+    sport: 'cricket',
+    tags: ['sports', 'cricket'],
+    status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), 'cricket', umaStatus),
+    gameStartTime: gameStart || null,
+    startDate: (e.startDate as string) ?? null,
+    endDate: (e.endDate as string) ?? null,
+    image: (e.image as string) ?? null,
+    active: isActive,
+    volume: (e.volume24hr ?? e.volume ?? null) as number | null,
+    outcomes,
+  }
+}
+
 app.get('/predict/feed', async (c) => {
-  const categoryFilter = (c.req.query('category') ?? 'all').toLowerCase()
-  const sportFilter = c.req.query('sport')?.toLowerCase() ?? null
-  const rawLimit = parseInt(c.req.query('limit') ?? '30', 10)
-  const limit = isNaN(rawLimit) || rawLimit < 1 ? 30 : Math.min(rawLimit, 50)
-
   try {
-    // Parallel-fetch pinned markets and configured sports series (Gamma only — Dome is unreliable)
-    const sourceNames = ['pinned', ...FEED_SPORTS.map((config) => config.sport)]
-    const sources = await Promise.allSettled([
-      // 1. Pinned binary markets via Gamma
-      (async (): Promise<FeedItem[]> => {
-        if (PINNED_SLUGS.length === 0) return []
-        if (sportFilter) return []
-        if (categoryFilter === 'sports') return []
+    const events = await gammaFetchCached<Record<string, unknown>[]>(`events?slug=${encodeURIComponent(SINGLE_FEED_SLUG)}`)
+    const e = Array.isArray(events) ? events[0] : null
+    const item = e ? mapSingleMatchGammaEventToFeedItem(e) : null
 
-        const results = await Promise.allSettled(
-          PINNED_SLUGS.map(async (slug) => {
-            const arr = await gammaFetchCached<unknown[]>(`markets?slug=${encodeURIComponent(slug)}`)
-            if (!Array.isArray(arr) || arr.length === 0) return null
-            const market = arr[0] as Record<string, unknown>
+    const items: FeedItem[] = item ? [item] : []
 
-            // Gamma markets don't have tags — derive category from slug + question
-            const question = String(market.question ?? market.title ?? slug).toLowerCase()
-            const category = deriveCategoryFromText(slug, question)
-            if (categoryFilter !== 'all' && category !== categoryFilter) return null
-
-            const clobTokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
-
-            // Parse outcomePrices from Gamma (already embedded in market response)
-            const outcomePrices = parseStringArray(market.outcomePrices)
-            const yesPrice = parseNullableNumber(outcomePrices[0])
-            const noPrice = parseNullableNumber(outcomePrices[1])
-
-            return {
-              type: 'binary' as const,
-              slug,
-              question: market.question ?? market.title ?? null,
-              category,
-              tags: [category],
-              yesPrice,
-              noPrice,
-              volume: market.volume24hr ?? market.volume ?? null,
-              endDate: market.endDate ?? market.end_date ?? null,
-              active: market.active ?? null,
-              image: market.image ?? market.imageUrl ?? null,
-              clobTokenIds,
-              conditionId: market.conditionId ?? market.condition_id ?? null,
-            } as FeedItem
-          })
-        )
-        return results
-          .filter((r): r is PromiseFulfilledResult<FeedItem | null> => r.status === 'fulfilled')
-          .map((r) => r.value)
-          .filter((item): item is FeedItem => item !== null)
-      })(),
-      ...FEED_SPORTS.map((config) => fetchSportsFeedItems(config, sportFilter, categoryFilter)),
-    ])
-
-    // Collect results, skip failed sources
-    const items: FeedItem[] = []
-    for (let i = 0; i < sources.length; i++) {
-      const r = sources[i]
-      if (r.status === 'fulfilled') {
-        items.push(...r.value)
-      } else {
-        console.error(`[api] /predict/feed — ${sourceNames[i]} failed:`, r.reason)
-      }
-    }
-
-    // --- Register tokens & override stale Gamma prices with live CLOB midpoints ---
-    for (const item of items) {
-      if (item.type === 'match' && item.outcomes) {
-        for (const outcome of item.outcomes) {
+    // Override stale Gamma prices with live CLOB midpoints
+    for (const feedItem of items) {
+      if (feedItem.type === 'match' && feedItem.outcomes) {
+        for (const outcome of feedItem.outcomes) {
           const yesTokenId = outcome.clobTokenIds?.[0]
           if (yesTokenId) {
             registerTokenIds([yesTokenId])
@@ -2334,48 +2140,12 @@ app.get('/predict/feed', async (c) => {
             if (live !== null) outcome.price = live
           }
         }
-      } else if (item.type === 'binary' && item.clobTokenIds) {
-        const [yesToken, noToken] = item.clobTokenIds
-        if (yesToken) {
-          registerTokenIds([yesToken])
-          const live = getLivePrice(yesToken)
-          if (live !== null) item.yesPrice = live
-        }
-        if (noToken) {
-          registerTokenIds([noToken])
-          const live = getLivePrice(noToken)
-          if (live !== null) item.noPrice = live
-        }
       }
     }
 
-    // Sort: live first, then upcoming (by gameStartTime), then pinned by volume, then rest
-    const statusOrder = { live: 0, upcoming: 1, ended: 2 }
+    const categories = [...new Set(items.map((it) => it.category))]
 
-    items.sort((a, b) => {
-      const aStatus = statusOrder[a.status ?? 'ended'] ?? 2
-      const bStatus = statusOrder[b.status ?? 'ended'] ?? 2
-
-      // Live matches always first
-      if (aStatus !== bStatus) return aStatus - bStatus
-
-      // Within same status, sort matches by gameStartTime
-      if (a.status === b.status && a.gameStartTime && b.gameStartTime) {
-        return new Date(a.gameStartTime).getTime() - new Date(b.gameStartTime).getTime()
-      }
-
-      // Matches before binary markets
-      if (a.type === 'match' && b.type !== 'match') return -1
-      if (a.type !== 'match' && b.type === 'match') return 1
-
-      // Binary markets by volume
-      return (b.volume ?? 0) - (a.volume ?? 0)
-    })
-
-    // Dedupe categories from actual items
-    const categories = [...new Set(items.map((item) => item.category))]
-
-    return c.json({ items: items.slice(0, limit), categories })
+    return c.json({ items, categories })
   } catch (err) {
     console.error('[api] Unexpected error in GET /predict/feed:', err)
     return c.json({ error: 'Internal server error' }, 500)
