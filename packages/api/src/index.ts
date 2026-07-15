@@ -1085,7 +1085,7 @@ const SPORT_SERIES: Record<string, string> = {
 
 // Temporary: feed is pinned to a single cricket match during the revamp.
 // TODO: restore full multi-source feed (pinned markets + FEED_SPORTS) once the new feed design lands.
-const SINGLE_FEED_SLUG = 'crint-gbr2-ind4-2026-07-14'
+const SINGLE_FEED_SLUG = 'crint-zwe2-bgd2-2026-07-15'
 
 app.get('/predict/sports/:sport', async (c) => {
   const sport = c.req.param('sport').toLowerCase() as SupportedSport
