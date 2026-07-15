@@ -31,14 +31,20 @@ export function toRelativeTime(iso: string): string {
   return `${Math.floor(diffMs / day)}d ago`;
 }
 
-function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number): FeedItem {
+export function toShortDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function mapNarrativeToFeedItem(item: PublishedNarrativeListItem, index: number, offset: number): FeedItem {
   return {
     id: item.updateKey,
     category: 'feed',
     createdAt: item.publishedAt,
     headline: item.title,
     description: item.summary,
-    isTop: index === 0,
+    isTop: offset + index === 0,
     actions: [],
   };
 }
@@ -59,7 +65,7 @@ export async function fetchFeedItems(limit = 20, offset = 0): Promise<FeedItem[]
 
   return payload
     .filter((row): row is PublishedNarrativeListItem => typeof row === 'object' && row !== null && 'updateKey' in row)
-    .map(mapNarrativeToFeedItem);
+    .map((item, index) => mapNarrativeToFeedItem(item, index, offset));
 }
 
 export interface NarrativeDetail {

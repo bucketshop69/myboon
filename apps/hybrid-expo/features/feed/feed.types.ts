@@ -24,6 +24,24 @@ export interface FeedItem {
   actions: NarrativeAction[];
 }
 
+export interface StorySummary {
+  storySlug: string;
+  name: string;
+  latestDevelopment: string;
+  eventCount: number;
+  updatedAt: string;
+}
+
+export interface StoryEvent {
+  text: string;
+  eventAt: string;
+}
+
+export interface StoryDetail {
+  story: StorySummary;
+  events: StoryEvent[];
+}
+
 export interface BottomNavItem {
   key: string;
   icon: ComponentProps<typeof MaterialIcons>['name'];

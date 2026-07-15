@@ -1,473 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Animated,
-  Dimensions,
-  Modal,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { fetchNarrativeDetail, fetchPredictMarket, fetchSimpleExplanation, extractSport, toRelativeTime } from '@/features/feed/feed.api';
-import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
-import type { PredictMarketData } from '@/features/feed/feed.api';
-import type { FeedCategory, NarrativeAction } from '@/features/feed/feed.types';
-import { semantic, tokens } from '@/theme';
+import { Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { fetchNarrativeDetail, toShortDate } from '@/features/feed/feed.api';
+import type { NarrativeDetail } from '@/features/feed/feed.api';
+import { FEED_COLORS } from '@/features/feed/feed.constants';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.75);
-
-function formatVolume(v: number | null): string {
-  if (!v || !Number.isFinite(v)) return '—';
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${Math.round(v / 1_000)}K`;
-  return `$${Math.round(v)}`;
-}
-
-function formatPct(price: number | null): string {
-  if (price === null) return '—';
-  return `${Math.round(price * 100)}%`;
-}
-
-function formatResolves(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return `Resolves ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-}
-
-function formatChange(val: number | null): { label: string; color: string; bg: string } | null {
-  if (val === null) return null;
-  const pct = Math.round(val * 100);
-  if (pct > 0) return { label: `↑ ${pct}%`, color: tokens.colors.viridian, bg: 'rgba(74,140,111,0.12)' };
-  if (pct < 0) return { label: `↓ ${Math.abs(pct)}%`, color: tokens.colors.vermillion, bg: 'rgba(217,83,79,0.10)' };
-  return { label: '→ 0%', color: tokens.colors.textDim, bg: 'rgba(90,88,64,0.15)' };
-}
-
-interface PredictBlockProps {
-  slug: string;
-}
-
-function PredictBlock({ slug }: PredictBlockProps) {
-  const router = useRouter();
-  const [market, setMarket] = useState<PredictMarketData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-
-    fetchPredictMarket(slug)
-      .then((data) => {
-        if (!cancelled) {
-          setMarket(data);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setError(true);
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  if (loading) {
-    return (
-      <View style={predictStyles.container}>
-        <Text style={predictStyles.sectionLabel}>PREDICTION MARKET</Text>
-        <View style={predictStyles.block}>
-          <Text style={predictStyles.loadingText}>Loading market data...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (error || !market) {
-    return null;
-  }
-
-  // ── Multi-outcome (sports) ────────────────────────────────────────────────
-  if (market.marketType === 'multi') {
-    return (
-      <View style={predictStyles.container}>
-        <Text style={predictStyles.sectionLabel}>PREDICTION MARKET</Text>
-        <View style={predictStyles.block}>
-          {/* Header */}
-          {market.question ? (
-            <Text style={predictStyles.question}>{market.question}</Text>
-          ) : null}
-
-          {/* Outcomes list */}
-          <View style={predictStyles.outcomesContainer}>
-            {market.outcomes.map((outcome) => (
-              <TouchableOpacity
-                key={outcome.label}
-                style={predictStyles.outcomeRow}
-                onPress={() => router.push(`/predict-sport/${extractSport(slug)}/${slug}`)}
-                activeOpacity={0.7}
-              >
-                <Text style={predictStyles.outcomeLabel}>{outcome.label}</Text>
-                <View style={predictStyles.outcomeBarContainer}>
-                  <View
-                    style={[
-                      predictStyles.outcomeBar,
-                      { width: `${Math.round(outcome.price * 100)}%` as `${number}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={predictStyles.outcomePrice}>{Math.round(outcome.price * 100)}%</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Meta row */}
-          <View style={predictStyles.metaRow}>
-            <View style={predictStyles.metaItem}>
-              <Text style={predictStyles.metaLabel}>Vol 24h</Text>
-              <Text style={predictStyles.metaValue}>{formatVolume(market.volume24h)}</Text>
-            </View>
-          </View>
-
-          {/* View Market button */}
-          <View style={predictStyles.btnsRow}>
-            <Pressable
-              style={({ pressed }) => [predictStyles.btn, predictStyles.btnViewMarket, pressed && predictStyles.btnPressed]}
-              onPress={() => router.push(`/predict-sport/${extractSport(slug)}/${slug}`)}
-              accessibilityRole="button"
-              accessibilityLabel="View Market"
-            >
-              <Text style={[predictStyles.btnText, predictStyles.btnTextViewMarket]}>VIEW MARKET</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  // ── Binary market ─────────────────────────────────────────────────────────
-  const yesWidth = market.yesPrice !== null ? `${Math.round(market.yesPrice * 100)}%` : '0%';
-  const noWidth  = market.noPrice  !== null ? `${Math.round(market.noPrice  * 100)}%` : '0%';
-  const resolvesLabel = formatResolves(market.endDateIso);
-  const todayChange = formatChange(market.oneDayPriceChange);
-  const weekChange  = formatChange(market.oneWeekPriceChange);
-
-  return (
-    <View style={predictStyles.container}>
-      <Text style={predictStyles.sectionLabel}>PREDICTION MARKET</Text>
-      <View style={predictStyles.block}>
-        {/* Header */}
-        <View style={predictStyles.headerSection}>
-          {market.question ? (
-            <Text style={predictStyles.question}>{market.question}</Text>
-          ) : null}
-          {resolvesLabel ? (
-            <Text style={predictStyles.resolvesText}>{resolvesLabel}</Text>
-          ) : null}
-        </View>
-
-        {/* Odds bars — side by side */}
-        <View style={predictStyles.oddsRow}>
-          {/* YES */}
-          <View style={predictStyles.oddsItem}>
-            <View style={predictStyles.oddsLabelRow}>
-              <Text style={[predictStyles.oddsLabel, predictStyles.oddsLabelYes]}>YES</Text>
-              <Text style={[predictStyles.oddsPct, predictStyles.oddsPctYes]}>{formatPct(market.yesPrice)}</Text>
-            </View>
-            <View style={predictStyles.barTrack}>
-              <View style={[predictStyles.barFill, predictStyles.barFillYes, { width: yesWidth as `${number}%` }]} />
-            </View>
-          </View>
-          {/* NO */}
-          <View style={predictStyles.oddsItem}>
-            <View style={predictStyles.oddsLabelRow}>
-              <Text style={[predictStyles.oddsLabel, predictStyles.oddsLabelNo]}>NO</Text>
-              <Text style={[predictStyles.oddsPct, predictStyles.oddsPctNo]}>{formatPct(market.noPrice)}</Text>
-            </View>
-            <View style={predictStyles.barTrack}>
-              <View style={[predictStyles.barFill, predictStyles.barFillNo, { width: noWidth as `${number}%` }]} />
-            </View>
-          </View>
-        </View>
-
-        {/* Meta row: volume + price change pills */}
-        <View style={predictStyles.metaRow}>
-          <View style={predictStyles.metaItem}>
-            <Text style={predictStyles.metaLabel}>Vol 24h</Text>
-            <Text style={predictStyles.metaValue}>{formatVolume(market.volume24h)}</Text>
-          </View>
-          {todayChange ? (
-            <View style={predictStyles.metaItem}>
-              <Text style={predictStyles.metaLabel}>Today</Text>
-              <View style={[predictStyles.changePill, { backgroundColor: todayChange.bg }]}>
-                <Text style={[predictStyles.changePillText, { color: todayChange.color }]}>{todayChange.label}</Text>
-              </View>
-            </View>
-          ) : null}
-          {weekChange ? (
-            <View style={predictStyles.metaItem}>
-              <Text style={predictStyles.metaLabel}>1w</Text>
-              <View style={[predictStyles.changePill, { backgroundColor: weekChange.bg }]}>
-                <Text style={[predictStyles.changePillText, { color: weekChange.color }]}>{weekChange.label}</Text>
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        {/* YES / NO buttons */}
-        <View style={predictStyles.btnsRow}>
-          <Pressable
-            style={({ pressed }) => [predictStyles.btn, predictStyles.btnYes, pressed && predictStyles.btnPressed]}
-            onPress={() => router.push(`/predict-market/${slug}`)}
-            accessibilityRole="button"
-            accessibilityLabel="YES"
-          >
-            <Text style={[predictStyles.btnText, predictStyles.btnTextYes]}>YES</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [predictStyles.btn, predictStyles.btnNo, pressed && predictStyles.btnPressed]}
-            onPress={() => router.push(`/predict-market/${slug}`)}
-            accessibilityRole="button"
-            accessibilityLabel="NO"
-          >
-            <Text style={[predictStyles.btnText, predictStyles.btnTextNo]}>NO</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-const predictStyles = StyleSheet.create({
-  container: {
-    gap: 0,
-  },
-  sectionLabel: {
-    fontSize: tokens.fontSize.xxs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: tokens.letterSpacing.monoWide,
-    color: tokens.colors.textDim,
-    marginBottom: tokens.spacing.md,
-  },
-  block: {
-    backgroundColor: tokens.colors.surface,
-    borderWidth: 1,
-    borderColor: tokens.colors.lift,
-    borderRadius: tokens.radius.md,
-    padding: 14,
-    gap: tokens.spacing.md,
-  },
-  headerSection: {
-    gap: tokens.spacing.xxs,
-  },
-  question: {
-    fontSize: tokens.fontSize.sm,
-    color: tokens.colors.bone,
-    lineHeight: 18,
-    letterSpacing: tokens.letterSpacing.nav,
-    fontWeight: '500',
-  },
-  resolvesText: {
-    fontSize: tokens.fontSize.xs,
-    color: tokens.colors.textDim,
-    fontFamily: 'monospace',
-  },
-  // Binary odds — side-by-side columns
-  oddsRow: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-  },
-  oddsItem: {
-    flex: 1,
-    gap: tokens.spacing.xs,
-  },
-  oddsLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  oddsLabel: {
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: tokens.letterSpacing.mono,
-    textTransform: 'uppercase',
-    color: tokens.colors.textDim,
-  },
-  oddsLabelYes: {
-    color: tokens.colors.textDim,
-  },
-  oddsLabelNo: {
-    color: tokens.colors.textDim,
-  },
-  barTrack: {
-    height: 4,
-    backgroundColor: tokens.colors.borderMuted,
-    borderRadius: tokens.radius.xs,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: tokens.radius.xs,
-  },
-  barFillYes: {
-    backgroundColor: tokens.colors.viridian,
-  },
-  barFillNo: {
-    backgroundColor: tokens.colors.vermillion,
-  },
-  oddsPct: {
-    fontSize: tokens.fontSize.md,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
-  oddsPctYes: {
-    color: tokens.colors.viridian,
-  },
-  oddsPctNo: {
-    color: tokens.colors.vermillion,
-  },
-  // Meta row
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.md,
-    flexWrap: 'wrap',
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.xs,
-  },
-  metaLabel: {
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    color: tokens.colors.textDim,
-    textTransform: 'uppercase',
-    letterSpacing: tokens.letterSpacing.nav,
-  },
-  metaValue: {
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    color: tokens.colors.primaryDim,
-  },
-  changePill: {
-    paddingHorizontal: tokens.spacing.xs + 2,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.sm,
-  },
-  changePillText: {
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-  },
-  // Buttons
-  btnsRow: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-  },
-  btn: {
-    flex: 1,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: tokens.radius.sm,
-  },
-  btnYes: {
-    backgroundColor: 'rgba(74,140,111,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.25)',
-  },
-  btnNo: {
-    backgroundColor: 'rgba(217,83,79,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(217,83,79,0.20)',
-  },
-  btnViewMarket: {
-    backgroundColor: 'rgba(199,183,112,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(199,183,112,0.25)',
-  },
-  btnPressed: {
-    opacity: 0.75,
-  },
-  btnText: {
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: tokens.letterSpacing.mono,
-    textTransform: 'uppercase',
-  },
-  btnTextYes: {
-    color: tokens.colors.viridian,
-  },
-  btnTextNo: {
-    color: tokens.colors.vermillion,
-  },
-  btnTextViewMarket: {
-    color: tokens.colors.primary,
-  },
-  loadingText: {
-    fontSize: tokens.fontSize.sm,
-    color: tokens.colors.textDim,
-    fontFamily: 'monospace',
-  },
-  // Multi-outcome (sports)
-  outcomesContainer: {
-    gap: tokens.spacing.sm,
-  },
-  outcomeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-  },
-  outcomeLabel: {
-    fontSize: tokens.fontSize.sm,
-    color: tokens.colors.bone,
-    fontFamily: 'monospace',
-    width: 100,
-    flexShrink: 0,
-  },
-  outcomeBarContainer: {
-    flex: 1,
-    height: 4,
-    backgroundColor: tokens.colors.borderMuted,
-    borderRadius: tokens.radius.xs,
-    overflow: 'hidden',
-  },
-  outcomeBar: {
-    height: '100%',
-    backgroundColor: tokens.colors.primary,
-    borderRadius: tokens.radius.xs,
-  },
-  outcomePrice: {
-    fontSize: tokens.fontSize.sm,
-    fontFamily: 'monospace',
-    fontWeight: '600',
-    color: tokens.colors.primary,
-    width: 34,
-    textAlign: 'right',
-  },
-});
-
-// ─── Sheet ────────────────────────────────────────────────────────────────────
+const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.78);
 
 function normalizeArticleText(text: string): string {
-  return text
-    .replace(/\r\n/g, '\n')
-    .replace(/\\n/g, '\n')
-    .trim();
+  return text.replace(/\r\n/g, '\n').replace(/\\n/g, '\n').trim();
 }
 
 function stripInlineMarkdown(text: string): string {
@@ -479,13 +20,7 @@ function stripInlineMarkdown(text: string): string {
 }
 
 function ArticleBody({ content }: { content: string }) {
-  const normalized = normalizeArticleText(content);
-
-  if (!normalized) {
-    return <Text style={styles.fullText} />;
-  }
-
-  const blocks = normalized.split(/\n\s*\n+/).filter(Boolean);
+  const blocks = normalizeArticleText(content).split(/\n\s*\n+/).filter(Boolean);
 
   return (
     <View style={styles.articleBody}>
@@ -498,31 +33,23 @@ function ArticleBody({ content }: { content: string }) {
           .filter((line): line is string => Boolean(line));
 
         if (heading && lines.length === 1) {
-          return (
-            <Text key={`heading-${blockIndex}`} style={styles.articleHeading}>
-              {stripInlineMarkdown(heading[1])}
-            </Text>
-          );
+          return <Text key={blockIndex} style={styles.articleHeading}>{stripInlineMarkdown(heading[1])}</Text>;
         }
 
         if (bullets.length === lines.length) {
           return (
-            <View key={`bullets-${blockIndex}`} style={styles.bulletList}>
+            <View key={blockIndex} style={styles.bulletList}>
               {bullets.map((line, lineIndex) => (
-                <View key={`bullet-${blockIndex}-${lineIndex}`} style={styles.bulletRow}>
+                <View key={lineIndex} style={styles.bulletRow}>
                   <Text style={styles.bulletMarker}>•</Text>
-                  <Text style={[styles.fullText, styles.bulletText]}>{stripInlineMarkdown(line)}</Text>
+                  <Text style={[styles.articleText, styles.bulletText]}>{stripInlineMarkdown(line)}</Text>
                 </View>
               ))}
             </View>
           );
         }
 
-        return (
-          <Text key={`paragraph-${blockIndex}`} style={styles.fullText}>
-            {stripInlineMarkdown(lines.join('\n'))}
-          </Text>
-        );
+        return <Text key={blockIndex} style={styles.articleText}>{stripInlineMarkdown(lines.join('\n'))}</Text>;
       })}
     </View>
   );
@@ -530,9 +57,9 @@ function ArticleBody({ content }: { content: string }) {
 
 export interface NarrativeSheetItem {
   id: string;
-  category: FeedCategory;
+  title: string;
+  summary: string;
   createdAt: string;
-  actions: NarrativeAction[];
 }
 
 interface NarrativeSheetProps {
@@ -542,109 +69,49 @@ interface NarrativeSheetProps {
 
 export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
   const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
-  const [contentFull, setContentFull] = useState<string | null>(null);
-  const [contentLoading, setContentLoading] = useState(false);
-  const [explanation, setExplanation] = useState<string | null>(null);
-  const [explanationLoading, setExplanationLoading] = useState(false);
-  const [explanationError, setExplanationError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<NarrativeDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const itemId = item?.id;
 
-  // Animate open/close
   useEffect(() => {
-    if (item) {
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }).start();
-    } else {
-      Animated.timing(translateY, {
-        toValue: SHEET_HEIGHT,
-        duration: 240,
-        useNativeDriver: true,
-      }).start();
-    }
+    Animated.timing(translateY, {
+      toValue: item ? 0 : SHEET_HEIGHT,
+      duration: item ? 260 : 220,
+      useNativeDriver: true,
+    }).start();
   }, [item, translateY]);
 
-  // Fetch full content when item changes
   useEffect(() => {
+    let cancelled = false;
     if (!itemId) {
-      setContentFull(null);
-      setExplanation(null);
-      setExplanationError(null);
+      setDetail(null);
+      setError(false);
       return;
     }
-    setContentLoading(true);
-    setContentFull(null);
-    setExplanation(null);
-    setExplanationError(null);
 
+    setLoading(true);
+    setError(false);
+    setDetail(null);
     fetchNarrativeDetail(itemId)
-      .then((detail) => {
-        setContentFull(detail.content ?? detail.summary ?? '');
-        setContentLoading(false);
+      .then((nextDetail) => {
+        if (!cancelled) setDetail(nextDetail);
       })
       .catch(() => {
-        setContentFull('');
-        setContentLoading(false);
+        if (!cancelled) setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [itemId]);
 
-  // Drag-to-dismiss
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        gestureState.dy > 8 && Math.abs(gestureState.dx) < Math.abs(gestureState.dy),
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          translateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          onClose();
-        } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 65,
-            friction: 11,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  const explainContent = contentFull ?? '';
-
-  async function handleExplainSimply() {
-    if (!itemId || !explainContent.trim() || explanationLoading) return;
-    setExplanationLoading(true);
-    setExplanationError(null);
-    try {
-      const result = await fetchSimpleExplanation({
-        contentId: itemId,
-        contentType: 'narrative',
-        title: explainContent.split('\n')[0]?.slice(0, 180) ?? '',
-        content: explainContent,
-      });
-      setExplanation(result.explanation);
-    } catch (err) {
-      setExplanationError(err instanceof Error ? err.message : 'Could not explain this yet');
-    } finally {
-      setExplanationLoading(false);
-    }
-  }
-
-  const catStyle = item
-    ? (CATEGORY_STYLES[item.category] ?? DEFAULT_CATEGORY_STYLE)
-    : DEFAULT_CATEGORY_STYLE;
-
-  // Collect up to 3 predict actions with slugs
-  const predictActions = (item?.actions ?? [])
-    .filter((a) => a.type === 'predict' && a.slug)
-    .slice(0, 3);
+  const title = detail?.title ?? item?.title ?? '';
+  const summary = detail?.summary ?? item?.summary ?? '';
+  const publishedAt = detail?.publishedAt ?? item?.createdAt ?? '';
 
   return (
     <Modal
@@ -654,73 +121,42 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* Scrim */}
-      <Pressable style={styles.scrim} onPress={onClose} />
-
-      {/* Sheet */}
-      <Animated.View
-        style={[styles.sheet, { transform: [{ translateY }] }]}
-        {...panResponder.panHandlers}
-      >
-        {/* Drag handle */}
-        <View style={styles.handleArea}>
-          <View style={styles.handle} />
+      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close Feed item" />
+      <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+        <View style={styles.handle} />
+        <View style={styles.sheetHeader}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>FULL FEED</Text>
+            <Text style={styles.date}>{publishedAt ? toShortDate(publishedAt) : ''}</Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close Feed item"
+            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.closeText}>×</Text>
+          </Pressable>
         </View>
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          bounces
-        >
-          {/* Meta row */}
-          <View style={styles.metaRow}>
-            <View style={[styles.catPill, { backgroundColor: catStyle.backgroundColor }]}>
-              <Text style={[styles.catPillText, { color: catStyle.color }]}>
-                {item?.category.toUpperCase() ?? ''}
-              </Text>
-            </View>
-            <Text style={styles.timeText}>{item?.createdAt ? toRelativeTime(item.createdAt) : ''}</Text>
-          </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <Text style={styles.title}>{title}</Text>
+          <View style={styles.divider} />
+          <Text style={styles.lead}>{summary}</Text>
 
-          {/* Full text */}
-          {contentLoading ? (
-            <Text style={styles.loadingText}>Loading...</Text>
-          ) : (
+          {loading ? <Text style={styles.loadingText}>Loading the full Feed item…</Text> : null}
+          {error ? (
+            <View style={styles.stateCard}>
+              <Text style={styles.stateTitle}>Full Feed item unavailable</Text>
+              <Text style={styles.stateText}>The shorter update is still available above.</Text>
+            </View>
+          ) : null}
+          {detail?.content ? (
             <>
-              <ArticleBody content={contentFull ?? ''} />
-              {explainContent.trim() ? (
-                <View style={styles.explainBox}>
-                  <Pressable
-                    style={[styles.explainButton, explanationLoading && styles.explainButtonDisabled]}
-                    onPress={handleExplainSimply}
-                    disabled={explanationLoading}
-                  >
-                    <Text style={styles.explainButtonText}>
-                      {explanationLoading ? 'Explaining...' : explanation ? 'Refresh simple explain' : 'Explain simply'}
-                    </Text>
-                  </Pressable>
-                  {explanation ? (
-                    <View style={styles.explanationCard}>
-                      <Text style={styles.explanationLabel}>Simple version</Text>
-                      <Text style={styles.explanationText}>{explanation}</Text>
-                    </View>
-                  ) : null}
-                  {explanationError ? (
-                    <Text style={styles.explanationError}>{explanationError}</Text>
-                  ) : null}
-                </View>
-              ) : null}
+              <Text style={styles.sectionLabel}>THE FULL PICTURE</Text>
+              <ArticleBody content={detail.content} />
             </>
-          )}
-
-          {/* Prediction blocks — up to 3 predict actions */}
-          {predictActions.map((action) => (
-            <View key={action.slug}>
-              <View style={styles.divider} />
-              <PredictBlock slug={action.slug!} />
-            </View>
-          ))}
+          ) : null}
         </ScrollView>
       </Animated.View>
     </Modal>
@@ -730,152 +166,149 @@ export function NarrativeSheet({ item, onClose }: NarrativeSheetProps) {
 const styles = StyleSheet.create({
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(4, 30, 39, 0.76)',
   },
   sheet: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: SHEET_HEIGHT,
-    backgroundColor: semantic.background.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    left: 16,
+    right: 16,
+    bottom: -16,
+    height: SHEET_HEIGHT + 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderWidth: 1,
-    borderColor: semantic.border.muted,
+    borderColor: FEED_COLORS.borderSoft,
+    backgroundColor: FEED_COLORS.card,
     overflow: 'hidden',
   },
-  handleArea: {
-    paddingTop: 12,
-    paddingBottom: 8,
-    alignItems: 'center',
-  },
   handle: {
-    width: 36,
+    alignSelf: 'center',
+    width: 56,
     height: 4,
+    marginTop: 12,
     borderRadius: 2,
-    backgroundColor: semantic.border.muted,
+    backgroundColor: FEED_COLORS.borderSoft,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 32,
-    gap: 20,
-  },
-  metaRow: {
+  sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  catPill: {
-    height: 18,
-    paddingHorizontal: 7,
-    borderRadius: tokens.radius.xs,
+  headerCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  eyebrow: {
+    color: FEED_COLORS.accent,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+  },
+  date: {
+    color: FEED_COLORS.textFaint,
+    fontSize: 11,
+  },
+  closeButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: FEED_COLORS.borderSoft,
+    backgroundColor: FEED_COLORS.cardDeep,
   },
-  catPillText: {
-    fontSize: tokens.fontSize.xxs,  // 9
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 0.8,
+  closeText: {
+    color: FEED_COLORS.text,
+    fontSize: 20,
+    lineHeight: 22,
   },
-  timeText: {
-    fontSize: tokens.fontSize.xs,   // 10
-    fontFamily: 'monospace',
-    color: semantic.text.faint,
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 24,
+    paddingBottom: 52,
+  },
+  title: {
+    color: FEED_COLORS.text,
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '900',
+  },
+  divider: {
+    height: 1,
+    marginVertical: 18,
+    backgroundColor: FEED_COLORS.border,
+  },
+  lead: {
+    color: '#D7E7EB',
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+  sectionLabel: {
+    color: FEED_COLORS.accent,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    marginTop: 26,
+    marginBottom: 14,
   },
   articleBody: {
     gap: 14,
   },
   articleHeading: {
+    color: FEED_COLORS.text,
     fontSize: 16,
-    color: semantic.text.primary,
-    lineHeight: 24,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+  articleText: {
+    color: FEED_COLORS.textDim,
+    fontSize: 14,
+    lineHeight: 22,
   },
   bulletList: {
     gap: 10,
   },
   bulletRow: {
     flexDirection: 'row',
-    gap: 8,
     alignItems: 'flex-start',
+    gap: 9,
   },
   bulletMarker: {
-    fontSize: 15,
-    color: semantic.text.primary,
-    lineHeight: 25,
+    color: FEED_COLORS.accent,
+    fontSize: 14,
+    lineHeight: 22,
   },
   bulletText: {
     flex: 1,
   },
-  fullText: {
+  stateCard: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: FEED_COLORS.border,
+    padding: 14,
+    gap: 6,
+    marginTop: 24,
+  },
+  stateTitle: {
+    color: FEED_COLORS.text,
     fontSize: 15,
-    color: semantic.text.primary,
-    lineHeight: 25,
-    letterSpacing: -0.2,
+    fontWeight: '800',
+  },
+  stateText: {
+    color: FEED_COLORS.textDim,
+    fontSize: 13,
+    lineHeight: 19,
   },
   loadingText: {
-    fontSize: tokens.fontSize.sm,
-    color: semantic.text.faint,
-    fontFamily: 'monospace',
+    color: FEED_COLORS.textDim,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 22,
   },
-  explainBox: {
-    gap: 10,
-  },
-  explainButton: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(74,140,111,0.34)',
-    backgroundColor: 'rgba(74,140,111,0.12)',
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-  explainButtonDisabled: {
-    opacity: 0.65,
-  },
-  explainButtonText: {
-    fontFamily: 'monospace',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    color: tokens.colors.viridian,
-  },
-  explanationCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: semantic.background.lift,
-    padding: 14,
-    gap: 7,
-  },
-  explanationLabel: {
-    fontFamily: 'monospace',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: semantic.text.faint,
-  },
-  explanationText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: semantic.text.primary,
-  },
-  explanationError: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: tokens.colors.vermillion,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: semantic.border.muted,
+  pressed: {
+    opacity: 0.72,
   },
 });

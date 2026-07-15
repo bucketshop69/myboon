@@ -7,8 +7,12 @@ import { AppTopBarLogo } from '@/components/AppTopBar';
 import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
 import { FeedCard } from '@/features/feed/components/FeedCard';
 import { NarrativeSheet, type NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
+import { StoryCarousel, StoryCarouselSkeleton } from '@/features/feed/components/StoryCarousel';
+import { StorySheet } from '@/features/feed/components/StorySheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
-import type { FeedItem as NarrativeFeedItem } from '@/features/feed/feed.types';
+import { FEED_COLORS } from '@/features/feed/feed.constants';
+import { fetchStories } from '@/features/feed/stories.api';
+import type { FeedItem as NarrativeFeedItem, StorySummary } from '@/features/feed/feed.types';
 import {
   KAMINO_MARK_SVG,
   METEORA_MARK_SVG,
@@ -102,10 +106,13 @@ export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const [feedItems, setFeedItems] = useState<NarrativeFeedItem[]>([]);
+  const [stories, setStories] = useState<StorySummary[]>([]);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [storiesError, setStoriesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sheetItem, setSheetItem] = useState<NarrativeSheetItem | null>(null);
+  const [storySheet, setStorySheet] = useState<StorySummary | null>(null);
 
   const backgroundColor = scrollY.interpolate({
     inputRange: [0, HEADER_SCROLL_DISTANCE],
@@ -116,10 +123,18 @@ export default function HomeScreen() {
   const loadHome = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setFeedError(null);
+    setStoriesError(null);
 
-    const [feedResult] = await Promise.allSettled([
+    const [storiesResult, feedResult] = await Promise.allSettled([
+      fetchStories(),
       fetchFeedItems(FEED_PREVIEW_LIMIT, 0),
     ]);
+
+    if (storiesResult.status === 'fulfilled') {
+      setStories(storiesResult.value);
+    } else {
+      setStoriesError(storiesResult.reason instanceof Error ? storiesResult.reason.message : 'Unable to load Stories');
+    }
 
     if (feedResult.status === 'fulfilled') {
       setFeedItems(feedResult.value);
@@ -143,9 +158,9 @@ export default function HomeScreen() {
   const handleFeedPress = useCallback((item: NarrativeFeedItem) => {
     setSheetItem({
       id: item.id,
-      category: item.category,
+      title: item.headline,
+      summary: item.description,
       createdAt: item.createdAt,
-      actions: item.actions,
     });
   }, []);
 
@@ -181,12 +196,36 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 18) + 24 }]}
       >
         <HomeSectionTitle title="Feed" />
-        <FeedSummary loading={loading} count={feedItems.length} error={feedError} />
-        <View style={styles.feedStack}>
-          {feedItems.map((item) => (
-            <FeedCard key={item.id} item={item} onPress={handleFeedPress} />
-          ))}
+        <Text style={styles.developingLabel}>DEVELOPING STORIES</Text>
+        {loading ? <StoryCarouselSkeleton /> : null}
+        {!loading && stories.length > 0 ? (
+          <StoryCarousel stories={stories} onStoryPress={setStorySheet} />
+        ) : null}
+        {!loading && stories.length === 0 ? (
+          <InlineFeedState
+            title={storiesError ? 'Stories unavailable' : 'No developing Stories'}
+            text={storiesError ?? 'Selected Stories will appear here.'}
+            compact
+          />
+        ) : null}
+
+        <View style={styles.recentHeader}>
+          <Text style={styles.recentTitle}>Recent</Text>
         </View>
+        {loading ? <FeedPreviewSkeleton /> : null}
+        {!loading && feedItems.length > 0 ? (
+          <View style={styles.feedStack}>
+            {feedItems.map((item) => (
+              <FeedCard key={item.id} item={item} onPress={handleFeedPress} />
+            ))}
+          </View>
+        ) : null}
+        {!loading && feedItems.length === 0 ? (
+          <InlineFeedState
+            title={feedError ? 'Feed unavailable' : 'No recent Feed items'}
+            text={feedError ?? 'Published Feed items will appear here.'}
+          />
+        ) : null}
         <RouteCard
           eyebrow="Show more"
           title="Open the full Feed"
@@ -211,6 +250,7 @@ export default function HomeScreen() {
       </Animated.ScrollView>
 
       <NarrativeSheet item={sheetItem} onClose={() => setSheetItem(null)} />
+      <StorySheet story={storySheet} onClose={() => setStorySheet(null)} />
     </View>
   );
 }
@@ -223,26 +263,25 @@ function HomeSectionTitle({ title }: { title: string }) {
   );
 }
 
-function FeedSummary({ loading, count, error }: { loading: boolean; count: number; error: string | null }) {
+function InlineFeedState({ title, text, compact = false }: { title: string; text: string; compact?: boolean }) {
   return (
-    <View style={styles.summaryCard}>
-      <View style={styles.summaryTop}>
-        <Text style={styles.summaryTitle}>Latest narratives</Text>
-        <Text style={styles.summaryMeta}>Auto updated</Text>
-      </View>
-      <SummaryRow label="Top" value={loading ? '--' : String(Math.min(count, 1))} text="Priority story from the publisher stream" />
-      <SummaryRow label="Actions" value={error ? '--' : 'Live'} text={error ?? 'Stories with market or perps routes'} />
-      <SummaryRow label="Fresh" value="5m" text="Updated while the app is focused" />
+    <View style={[styles.inlineState, compact && styles.inlineStateCompact]}>
+      <Text style={styles.inlineStateTitle}>{title}</Text>
+      <Text style={styles.inlineStateText}>{text}</Text>
     </View>
   );
 }
 
-function SummaryRow({ label, text, value }: { label: string; text: string; value: string }) {
+function FeedPreviewSkeleton() {
   return (
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryText} numberOfLines={2}>{text}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
+    <View style={styles.feedStack}>
+      {[0, 1, 2].map((index) => (
+        <View key={index} style={styles.feedSkeletonCard}>
+          <View style={styles.feedSkeletonTitle} />
+          <View style={styles.feedSkeletonBody} />
+          <View style={styles.feedSkeletonBodyShort} />
+        </View>
+      ))}
     </View>
   );
 }
@@ -476,73 +515,84 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
   },
-  summaryCard: {
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: semantic.border.muted,
-    backgroundColor: 'rgba(6,51,67,0.72)',
-    padding: tokens.spacing.md,
-    marginBottom: tokens.spacing.md,
-  },
-  summaryTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: tokens.spacing.md,
-    marginBottom: tokens.spacing.sm,
-  },
-  summaryTitle: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.md,
-    fontWeight: '700',
-  },
-  summaryMeta: {
-    color: semantic.text.faint,
-    fontFamily: 'monospace',
-    fontSize: 8,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  summaryRow: {
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingVertical: 9,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(24,90,112,0.64)',
-  },
-  summaryLabel: {
-    width: 68,
-    color: tokens.colors.accent,
-    fontFamily: 'monospace',
-    fontSize: 8,
+  developingLabel: {
+    color: FEED_COLORS.accent,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: '900',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    letterSpacing: 1.1,
+    marginBottom: 14,
   },
-  summaryText: {
-    flex: 1,
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.sm,
-    lineHeight: 16,
+  recentHeader: {
+    marginTop: 26,
+    marginBottom: 13,
   },
-  summaryValue: {
-    color: semantic.text.primary,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
+  recentTitle: {
+    color: FEED_COLORS.text,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '900',
-    textAlign: 'right',
   },
   feedStack: {
-    gap: tokens.spacing.md,
+    gap: 10,
+  },
+  inlineState: {
+    minHeight: 118,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: FEED_COLORS.border,
+    backgroundColor: FEED_COLORS.card,
+    padding: 14,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  inlineStateCompact: {
+    minHeight: 145,
+  },
+  inlineStateTitle: {
+    color: FEED_COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  inlineStateText: {
+    color: FEED_COLORS.textDim,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  feedSkeletonCard: {
+    minHeight: 118,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: FEED_COLORS.border,
+    backgroundColor: FEED_COLORS.card,
+    padding: 14,
+    gap: 11,
+    opacity: 0.68,
+  },
+  feedSkeletonTitle: {
+    width: '72%',
+    height: 32,
+    borderRadius: 4,
+    backgroundColor: FEED_COLORS.borderSoft,
+  },
+  feedSkeletonBody: {
+    width: '94%',
+    height: 11,
+    borderRadius: 3,
+    backgroundColor: FEED_COLORS.borderSoft,
+  },
+  feedSkeletonBodyShort: {
+    width: '62%',
+    height: 11,
+    borderRadius: 3,
+    backgroundColor: FEED_COLORS.borderSoft,
   },
   routeCard: {
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: tokens.spacing.md,
-    marginTop: tokens.spacing.md,
+    marginTop: 8,
     padding: 14,
     borderRadius: 8,
     borderWidth: 1,

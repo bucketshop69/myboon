@@ -7,9 +7,9 @@ import { FeedSkeleton } from '@/features/feed/components/FeedSkeleton';
 import { NarrativeSheet } from '@/features/feed/components/NarrativeSheet';
 import type { NarrativeSheetItem } from '@/features/feed/components/NarrativeSheet';
 import { fetchFeedItems } from '@/features/feed/feed.api';
+import { FEED_COLORS } from '@/features/feed/feed.constants';
 import type { FeedItem } from '@/features/feed/feed.types';
 import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
-import { semantic, tokens } from '@/theme';
 
 const PAGE_SIZE = 20;
 const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
@@ -87,9 +87,9 @@ export default function FeedScreen() {
   const handleCardPress = useCallback((item: FeedItem) => {
     setSheetItem({
       id: item.id,
-      category: item.category,
+      title: item.headline,
+      summary: item.description,
       createdAt: item.createdAt,
-      actions: item.actions,
     });
   }, []);
 
@@ -147,43 +147,43 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: semantic.background.screen,
+    backgroundColor: FEED_COLORS.screen,
   },
   bodyFill: {
     flex: 1,
   },
   stateWrap: {
-    marginHorizontal: tokens.spacing.lg,
-    marginTop: tokens.spacing.lg,
-    padding: tokens.spacing.lg,
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    backgroundColor: semantic.background.surface,
-    gap: tokens.spacing.sm,
+    borderColor: FEED_COLORS.border,
+    borderRadius: 7,
+    backgroundColor: FEED_COLORS.card,
+    gap: 8,
     alignItems: 'flex-start',
   },
   stateTitle: {
-    color: semantic.text.primary,
-    fontSize: tokens.fontSize.md,
-    fontWeight: '700',
+    color: FEED_COLORS.text,
+    fontSize: 15,
+    fontWeight: '800',
   },
   stateText: {
-    color: semantic.text.dim,
-    fontSize: tokens.fontSize.md,
+    color: FEED_COLORS.textDim,
+    fontSize: 13,
+    lineHeight: 19,
   },
   retryButton: {
-    marginTop: tokens.spacing.xs,
-    backgroundColor: semantic.text.accent,
-    paddingHorizontal: tokens.spacing.md,
-    paddingVertical: tokens.spacing.sm,
-    borderRadius: tokens.radius.xs,
+    marginTop: 4,
+    backgroundColor: FEED_COLORS.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 4,
   },
   retryButtonText: {
-    color: semantic.background.screen,
-    fontSize: tokens.fontSize.sm,
+    color: FEED_COLORS.cardDeep,
+    fontSize: 11,
     fontFamily: 'monospace',
     fontWeight: '700',
-    textTransform: 'uppercase',
   },
 });

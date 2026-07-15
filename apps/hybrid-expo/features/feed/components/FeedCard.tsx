@@ -1,8 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from '@/features/feed/feed.constants';
-import { toRelativeTime } from '@/features/feed/feed.api';
+import { FEED_COLORS } from '@/features/feed/feed.constants';
+import { toShortDate } from '@/features/feed/feed.api';
 import type { FeedItem } from '@/features/feed/feed.types';
-import { semantic, tokens } from '@/theme';
 
 interface FeedCardProps {
   item: FeedItem;
@@ -10,8 +9,7 @@ interface FeedCardProps {
 }
 
 export function FeedCard({ item, onPress }: FeedCardProps) {
-  const catStyle = CATEGORY_STYLES[item.category] ?? DEFAULT_CATEGORY_STYLE;
-  const timeAgo = toRelativeTime(item.createdAt);
+  const date = toShortDate(item.createdAt);
 
   return (
     <Pressable
@@ -22,86 +20,59 @@ export function FeedCard({ item, onPress }: FeedCardProps) {
       ]}
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={`${item.category} narrative from ${timeAgo}`}
+      accessibilityLabel={`${item.headline}, ${date}`}
     >
-      <View style={styles.body}>
-        {/* Meta row: category pill + time */}
-        <View style={styles.metaRow}>
-          <View style={[styles.catPill, { backgroundColor: catStyle.backgroundColor }]}>
-            <Text style={[styles.catPillText, { color: catStyle.color }]}>
-              {item.category.toUpperCase()}
-            </Text>
-          </View>
-          <Text style={styles.timeText}>{timeAgo}</Text>
-        </View>
-
-        {/* Headline */}
+      <View style={styles.titleRow}>
         <Text style={styles.headlineText} numberOfLines={2}>{item.headline}</Text>
-
-        {/* Body text */}
-        {item.description ? (
-          <Text style={styles.bodyText} numberOfLines={3}>{item.description}</Text>
-        ) : null}
+        <Text style={styles.dateText}>{date}</Text>
       </View>
+      <Text style={styles.bodyText} numberOfLines={2}>{item.description}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: semantic.background.surface,
+    minHeight: 118,
+    borderRadius: 7,
     borderWidth: 1,
-    borderColor: semantic.border.muted,
-    borderRadius: tokens.radius.md,
-    overflow: 'hidden',
+    borderColor: FEED_COLORS.border,
+    backgroundColor: FEED_COLORS.card,
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    paddingBottom: 13,
   },
   cardTop: {
-    borderColor: semantic.border.nav,
-    backgroundColor: semantic.background.topCardOverlay,
+    backgroundColor: FEED_COLORS.cardActive,
   },
   cardPressed: {
-    backgroundColor: semantic.background.surfaceRaised,
+    backgroundColor: FEED_COLORS.cardDeep,
   },
-  body: {
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 13,
-    gap: 8,
-  },
-  metaRow: {
+  titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  catPill: {
-    height: 18,
-    paddingHorizontal: 7,
-    borderRadius: tokens.radius.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catPillText: {
-    fontSize: tokens.fontSize.xxs,   // 9
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  timeText: {
-    fontSize: tokens.fontSize.xs,
-    fontFamily: 'monospace',
-    color: semantic.text.faint,
+    alignItems: 'flex-start',
+    gap: 12,
   },
   headlineText: {
-    fontSize: tokens.fontSize.md,
-    color: semantic.text.primary,
-    lineHeight: 20,
-    letterSpacing: tokens.letterSpacing.tighter,
-    fontWeight: '600',
+    flex: 1,
+    color: FEED_COLORS.text,
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '900',
+    letterSpacing: -0.15,
+  },
+  dateText: {
+    width: 38,
+    color: FEED_COLORS.textFaint,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'right',
   },
   bodyText: {
-    fontSize: tokens.fontSize.sm,
-    color: semantic.text.categoryMeta,
+    color: FEED_COLORS.textDim,
+    fontSize: 12,
     lineHeight: 18,
-    letterSpacing: tokens.letterSpacing.nav,
+    marginTop: 10,
+    paddingRight: 2,
   },
 });

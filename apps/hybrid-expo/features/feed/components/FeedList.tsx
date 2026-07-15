@@ -1,7 +1,7 @@
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { FeedCard } from '@/features/feed/components/FeedCard';
+import { FEED_COLORS } from '@/features/feed/feed.constants';
 import type { FeedItem } from '@/features/feed/feed.types';
-import { semantic, tokens } from '@/theme';
 
 interface FeedListProps {
   items: FeedItem[];
@@ -25,8 +25,8 @@ export function FeedList({ items, onCardPress, refreshing, onRefresh, onEndReach
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          tintColor={semantic.text.accent}
-          colors={[semantic.text.accent]}
+          tintColor={FEED_COLORS.accent}
+          colors={[FEED_COLORS.accent]}
         />
       }
       onEndReached={onEndReached}
@@ -34,7 +34,7 @@ export function FeedList({ items, onCardPress, refreshing, onRefresh, onEndReach
       ListFooterComponent={
         loadingMore ? (
           <View style={styles.footer}>
-            <ActivityIndicator size="small" color={semantic.text.accent} />
+            <ActivityIndicator size="small" color={FEED_COLORS.accent} />
           </View>
         ) : null
       }
@@ -44,15 +44,15 @@ export function FeedList({ items, onCardPress, refreshing, onRefresh, onEndReach
 
 const styles = StyleSheet.create({
   content: {
-    paddingHorizontal: tokens.spacing.lg,
-    paddingTop: tokens.spacing.md,
-    paddingBottom: tokens.spacing.md,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
   },
   separator: {
-    height: tokens.spacing.md,
+    height: 10,
   },
   footer: {
-    paddingVertical: tokens.spacing.lg,
+    paddingVertical: 16,
     alignItems: 'center',
   },
 });
