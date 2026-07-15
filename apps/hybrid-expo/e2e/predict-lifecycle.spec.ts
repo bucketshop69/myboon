@@ -168,7 +168,7 @@ async function installPredictRoutes(page: Page, state: ScenarioState) {
       return;
     }
 
-    if (path === `/predict/portfolio/${TRADING_ADDRESS}` || path === `/predict/portfolio/${POLYGON_ADDRESS}`) {
+    if (path === `/polymarket/portfolio/${TRADING_ADDRESS}` || path === `/polymarket/portfolio/${POLYGON_ADDRESS}`) {
       await route.fulfill(json(portfolio(state)));
       return;
     }
@@ -259,7 +259,7 @@ async function installPredictRoutes(page: Page, state: ScenarioState) {
       return;
     }
 
-    if (path === '/predict/sports/ipl/pk-vs-dc') {
+    if (path === '/polymarket/sports/ipl/pk-vs-dc') {
       await route.fulfill(json({
         slug: 'pk-vs-dc',
         title: 'PK vs DC',
@@ -303,7 +303,7 @@ async function installPredictRoutes(page: Page, state: ScenarioState) {
       return;
     }
 
-    if (path === '/predict/live-prices') {
+    if (path === '/polymarket/live-prices') {
       await route.fulfill(json({
         fetchedAt: new Date().toISOString(),
         prices: [
@@ -314,7 +314,7 @@ async function installPredictRoutes(page: Page, state: ScenarioState) {
       return;
     }
 
-    if (path.startsWith('/predict/history/')) {
+    if (path.startsWith('/polymarket/history/')) {
       await route.fulfill(json({
         history: [
           { t: 1778580000, p: 0.29 },
@@ -324,7 +324,7 @@ async function installPredictRoutes(page: Page, state: ScenarioState) {
       return;
     }
 
-    if (path.startsWith('/predict/book/')) {
+    if (path.startsWith('/polymarket/book/')) {
       state.orderbookTokenIds.push(decodeURIComponent(path.split('/').pop() ?? ''));
       await route.fulfill(json({
         bids: [
@@ -340,7 +340,7 @@ async function installPredictRoutes(page: Page, state: ScenarioState) {
       return;
     }
 
-    if (path === `/predict/positions/${TRADING_ADDRESS}/market/pk-vs-dc`) {
+    if (path === `/polymarket/positions/${TRADING_ADDRESS}/market/pk-vs-dc`) {
       await route.fulfill(json(state.stage === 'active' ? [activeSportPosition()] : []));
       return;
     }

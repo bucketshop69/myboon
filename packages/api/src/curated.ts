@@ -45,7 +45,7 @@ export function deriveCategory(tags: string[]): string {
 
 /**
  * Derive category from slug + question text (for Gamma markets that lack tags).
- * Used by GET /predict/feed for pinned binary markets.
+ * Used by the Polymarket featured-market selection for pinned binary markets.
  *
  * Categories returned: crypto | politics | sports | tech | macro | entertainment | other
  *

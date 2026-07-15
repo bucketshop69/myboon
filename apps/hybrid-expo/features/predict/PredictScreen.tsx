@@ -15,7 +15,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTopBar, AppTopBarLogo, AppTopBarProfileButton } from '@/components/AppTopBar';
-import { fetchLivePrices, fetchPredictFeed } from '@/features/predict/predict.api';
+import { fetchFeaturedMarkets, fetchLivePrices } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
 import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
 import { formatOdds as formatOddsForFormat, useOddsFormat } from '@/hooks/useOddsFormat';
@@ -359,7 +359,7 @@ export default function PredictScreen() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const data = await fetchPredictFeed();
+      const data = await fetchFeaturedMarkets();
       setFeedData(data);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load predict feed';

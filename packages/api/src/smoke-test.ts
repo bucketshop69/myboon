@@ -3,8 +3,8 @@
  * Usage: API_BASE=http://localhost:3000 npx tsx src/smoke-test.ts
  *
  * TODO (auth required, skipped for now):
- *   - POST /predict/order
- *   - GET  /predict/orders/:address
+ *   - POST /clob/order
+ *   - GET  /clob/positions
  */
 
 const BASE = process.env.API_BASE ?? 'http://localhost:3000'
@@ -44,38 +44,38 @@ async function run() {
     return null
   }))
 
-  // Predict — curated markets list
-  results.push(await check('GET /predict/markets', '/predict/markets', (b) => {
+  // Polymarket — curated markets list
+  results.push(await check('GET /polymarket/markets', '/polymarket/markets', (b) => {
     if (!Array.isArray(b)) return `expected array, got ${typeof b}`
     if (b.length === 0) return 'warning: empty array (markets may be inactive or geo-blocked upstream)'
     return null
   }))
 
-  // Predict — single curated market
+  // Polymarket — single curated market
   results.push(await check(
-    'GET /predict/markets/will-the-iranian-regime-fall-by-march-31',
-    '/predict/markets/will-the-iranian-regime-fall-by-march-31',
+    'GET /polymarket/markets/will-the-iranian-regime-fall-by-march-31',
+    '/polymarket/markets/will-the-iranian-regime-fall-by-march-31',
     (b) => {
       if (!b || typeof b !== 'object') return `expected market object, got ${typeof b}`
       return null
     }
   ))
 
-  // Predict — sports list
-  results.push(await check('GET /predict/sports/epl', '/predict/sports/epl', (b) => {
+  // Polymarket — sports list
+  results.push(await check('GET /polymarket/sports/epl', '/polymarket/sports/epl', (b) => {
     if (!Array.isArray(b)) return `expected array, got ${typeof b}`
     return null
   }))
 
-  // Predict — non-curated slug should 404
-  results.push(await check('GET /predict/markets/random-non-curated-slug (expect 404)', '/predict/markets/random-non-curated-slug', (b) => {
+  // Polymarket — non-curated slug should 404
+  results.push(await check('GET /polymarket/markets/random-non-curated-slug (expect 404)', '/polymarket/markets/random-non-curated-slug', (b) => {
     const body = b as Record<string, unknown>
     return body?.error === 'Not found' ? null : `expected 404 Not found, got ${JSON.stringify(b)}`
   }))
 
-  // Predict — price for a known token (use a real Polymarket token ID if available)
+  // Polymarket — price for a known token (use a real Polymarket token ID if available)
   // Using a placeholder — will return null prices if token doesn't exist, but endpoint should still return 200
-  results.push(await check('GET /predict/price/:tokenId (endpoint check)', '/predict/price/1', (b) => {
+  results.push(await check('GET /polymarket/price/:tokenId (endpoint check)', '/polymarket/price/1', (b) => {
     const body = b as Record<string, unknown>
     if (!('tokenId' in body) || !('buy' in body) || !('sell' in body)) {
       return `expected {tokenId, buy, sell}, got ${JSON.stringify(b)}`
@@ -83,8 +83,8 @@ async function run() {
     return null
   }))
 
-  // TODO: POST /predict/order — requires signed order payload (wallet auth)
-  // TODO: GET /predict/orders/:address — requires valid Polygon address with orders
+  // TODO: POST /clob/order — requires signed order payload (wallet auth)
+  // TODO: GET /clob/positions — requires a valid CLOB session
 
   const passed = results.filter(r => r.ok).length
   const failed = results.filter(r => !r.ok).length

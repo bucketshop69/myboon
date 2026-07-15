@@ -98,7 +98,7 @@ export async function domeGetMarketBySlug(slug: string): Promise<DomeMarket | nu
 
 /**
  * Fetch all outcome markets for a specific event (match).
- * Used for sport detail endpoints: GET /predict/sports/:sport/:slug
+ * Used for sport detail endpoints: GET /polymarket/sports/:sport/:slug
  */
 export async function domeGetMarketsByEventSlug(eventSlug: string): Promise<DomeMarket[]> {
   const res = await domeFetch(`/polymarket/markets?event_slug=${encodeURIComponent(eventSlug)}`)
@@ -297,4 +297,3 @@ export async function domeGetIplMatches(): Promise<DomeMarket[]> {
     m.status === 'open'
   )
 }
-

@@ -1,5 +1,5 @@
 /**
- * E2E tests for /predict/feed endpoint + live Dome data checks.
+ * E2E tests for /polymarket/featured-markets + live Dome data checks.
  *
  * Usage: API_BASE=http://<vps-ip>:3000 npx tsx src/e2e/api-e2e.ts
  *        npx tsx src/e2e/api-e2e.ts              (defaults to localhost:3000)
@@ -34,7 +34,7 @@ async function fetchJson(path: string): Promise<{ status: number; body: any }> {
 }
 
 async function run() {
-  console.log(`\n Predict Feed E2E — ${BASE}\n`)
+  console.log(`\n Polymarket Featured Markets E2E — ${BASE}\n`)
 
   const results: Result[] = []
 
@@ -46,8 +46,8 @@ async function run() {
   let feedItems: any[] = []
   let feedCategories: string[] = []
 
-  results.push(await test('GET /predict/feed returns items + categories', async () => {
-    const { status, body } = await fetchJson('/predict/feed')
+  results.push(await test('GET /polymarket/featured-markets returns items + categories', async () => {
+    const { status, body } = await fetchJson('/polymarket/featured-markets')
     if (status !== 200) return `status ${status}`
     if (!body?.items || !Array.isArray(body.items)) return `missing items array`
     if (!body?.categories || !Array.isArray(body.categories)) return `missing categories array`
@@ -83,7 +83,7 @@ async function run() {
   console.log('\n[2] Category filters')
 
   results.push(await test('?category=crypto returns only crypto items', async () => {
-    const { status, body } = await fetchJson('/predict/feed?category=crypto')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?category=crypto')
     if (status !== 200) return `status ${status}`
     if (!Array.isArray(body?.items)) return 'missing items'
     const bad = body.items.filter((i: any) => i.category !== 'crypto')
@@ -93,7 +93,7 @@ async function run() {
   }))
 
   results.push(await test('?category=sports returns only sports items', async () => {
-    const { status, body } = await fetchJson('/predict/feed?category=sports')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?category=sports')
     if (status !== 200) return `status ${status}`
     if (!Array.isArray(body?.items)) return 'missing items'
     const bad = body.items.filter((i: any) => i.category !== 'sports')
@@ -105,7 +105,7 @@ async function run() {
   }))
 
   results.push(await test('?category=politics returns only politics items', async () => {
-    const { status, body } = await fetchJson('/predict/feed?category=politics')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?category=politics')
     if (status !== 200) return `status ${status}`
     if (!Array.isArray(body?.items)) return 'missing items'
     const bad = body.items.filter((i: any) => i.category !== 'politics')
@@ -124,7 +124,7 @@ async function run() {
   let fifwcItems: any[] = []
 
   results.push(await test('?sport=ipl returns only IPL matches', async () => {
-    const { status, body } = await fetchJson('/predict/feed?sport=ipl')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?sport=ipl')
     if (status !== 200) return `status ${status}`
     if (!Array.isArray(body?.items)) return 'missing items'
     const bad = body.items.filter((i: any) => i.sport !== 'ipl')
@@ -135,7 +135,7 @@ async function run() {
   }))
 
   results.push(await test('?sport=epl returns only EPL matches', async () => {
-    const { status, body } = await fetchJson('/predict/feed?sport=epl')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?sport=epl')
     if (status !== 200) return `status ${status}`
     if (!Array.isArray(body?.items)) return 'missing items'
     const bad = body.items.filter((i: any) => i.sport !== 'epl')
@@ -146,7 +146,7 @@ async function run() {
   }))
 
   results.push(await test('?sport=fifwc returns only FIFA World Cup matches', async () => {
-    const { status, body } = await fetchJson('/predict/feed?sport=fifwc')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?sport=fifwc')
     if (status !== 200) return `status ${status}`
     if (!Array.isArray(body?.items)) return 'missing items'
     const bad = body.items.filter((i: any) => i.sport !== 'fifwc')
@@ -283,7 +283,7 @@ async function run() {
   console.log('\n[7] Limit param')
 
   results.push(await test('?limit=5 returns max 5 items', async () => {
-    const { status, body } = await fetchJson('/predict/feed?limit=5')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?limit=5')
     if (status !== 200) return `status ${status}`
     if (body.items.length > 5) return `got ${body.items.length} items, expected ≤5`
     console.log(`    → ${body.items.length} items`)
@@ -326,7 +326,7 @@ async function run() {
   console.log('\n[9] Live sports schedule')
 
   results.push(await test('next EPL games (upcoming)', async () => {
-    const { status, body } = await fetchJson('/predict/feed?sport=epl')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?sport=epl')
     if (status !== 200) return `status ${status}`
     const now = Date.now()
     const upcoming = (body.items ?? [])
@@ -348,7 +348,7 @@ async function run() {
   }))
 
   results.push(await test('next IPL games (upcoming + live)', async () => {
-    const { status, body } = await fetchJson('/predict/feed?sport=ipl')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?sport=ipl')
     if (status !== 200) return `status ${status}`
     const now = Date.now()
 
@@ -393,7 +393,7 @@ async function run() {
   }))
 
   results.push(await test('next FIFA World Cup games (upcoming + live)', async () => {
-    const { status, body } = await fetchJson('/predict/feed?sport=fifwc')
+    const { status, body } = await fetchJson('/polymarket/featured-markets?sport=fifwc')
     if (status !== 200) return `status ${status}`
     const now = Date.now()
 

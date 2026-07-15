@@ -175,7 +175,7 @@ export async function fetchPredictMarket(slug: string): Promise<PredictMarketDat
 
 async function fetchGeoMarket(slug: string): Promise<PredictMarketData | null> {
   const baseUrl = resolveApiBaseUrl();
-  const response = await fetchWithTimeout(`${baseUrl}/predict/markets/${encodeURIComponent(slug)}`);
+  const response = await fetchWithTimeout(`${baseUrl}/polymarket/markets/${encodeURIComponent(slug)}`);
 
   if (!response.ok) {
     return null;
@@ -183,7 +183,7 @@ async function fetchGeoMarket(slug: string): Promise<PredictMarketData | null> {
 
   const raw = (await response.json()) as Record<string, unknown>;
 
-  // The /predict/markets/:slug endpoint returns the raw Gamma market object.
+  // The /polymarket/markets/:slug endpoint returns the raw Gamma market object.
   // We need to derive yesPrice/noPrice from outcomePrices or bestBid/bestAsk if available,
   // or fall back to the prices already embedded in the response from the all-markets endpoint
   // which fetches them via CLOB. For the single-slug route the API returns raw Gamma data,
@@ -229,7 +229,7 @@ async function fetchGeoMarket(slug: string): Promise<PredictMarketData | null> {
 async function fetchSportsMarket(slug: string): Promise<PredictMarketData | null> {
   const sport = extractSport(slug);
   const baseUrl = resolveApiBaseUrl();
-  const res = await fetchWithTimeout(`${baseUrl}/predict/sports/${sport}/${encodeURIComponent(slug)}`);
+  const res = await fetchWithTimeout(`${baseUrl}/polymarket/sports/${sport}/${encodeURIComponent(slug)}`);
   if (!res.ok) return null;
   const data = (await res.json()) as Record<string, unknown>;
 

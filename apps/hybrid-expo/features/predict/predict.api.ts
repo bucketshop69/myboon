@@ -319,11 +319,11 @@ async function getJson(path: string): Promise<unknown> {
 }
 
 /**
- * @deprecated Use fetchPredictFeed() instead. This endpoint returns the old per-category
+ * @deprecated Use fetchFeaturedMarkets() instead. This endpoint returns the old per-category
  * curated markets list and will be removed once all screens migrate to the unified feed.
  */
 export async function fetchCuratedMarkets(): Promise<GeopoliticsMarket[]> {
-  const payload = await getJson('/predict/markets');
+  const payload = await getJson('/polymarket/markets');
   if (!Array.isArray(payload)) throw new Error('Invalid markets response');
 
   return payload
@@ -332,11 +332,11 @@ export async function fetchCuratedMarkets(): Promise<GeopoliticsMarket[]> {
 }
 
 /**
- * @deprecated Use fetchPredictFeed() instead. This endpoint returns sport-specific markets
+ * @deprecated Use fetchFeaturedMarkets() instead. This endpoint returns sport-specific markets
  * and will be removed once all screens migrate to the unified feed.
  */
 export async function fetchSportsMarkets(sport: PredictSport): Promise<SportMarket[]> {
-  const payload = await getJson(`/predict/sports/${sport}`);
+  const payload = await getJson(`/polymarket/sports/${sport}`);
   if (!Array.isArray(payload)) throw new Error('Invalid sports response');
 
   return payload
@@ -438,9 +438,9 @@ function mapFeedItem(raw: unknown): FeedItem | null {
   return null;
 }
 
-/** Fetch the unified predict feed from /predict/feed. Strips halftime and exact-score markets client-side. */
-export async function fetchPredictFeed(): Promise<FeedResponse> {
-  const payload = await getJson('/predict/feed');
+/** Fetch the controlled market list from /polymarket/featured-markets. */
+export async function fetchFeaturedMarkets(): Promise<FeedResponse> {
+  const payload = await getJson('/polymarket/featured-markets');
   if (!payload || typeof payload !== 'object') throw new Error('Invalid feed response');
   const p = payload as Record<string, unknown>;
 
@@ -455,14 +455,14 @@ export async function fetchPredictFeed(): Promise<FeedResponse> {
 }
 
 export async function fetchCuratedMarketDetail(slug: string): Promise<GeopoliticsMarketDetail> {
-  const payload = await getJson(`/predict/markets/${encodeURIComponent(slug)}`);
+  const payload = await getJson(`/polymarket/markets/${encodeURIComponent(slug)}`);
   const detail = mapGeopoliticsMarketDetail(payload);
   if (!detail) throw new Error('Invalid market detail response');
   return detail;
 }
 
 export async function fetchSportMarketDetail(sport: string, slug: string): Promise<SportMarketDetail> {
-  const payload = await getJson(`/predict/sports/${sport}/${encodeURIComponent(slug)}`);
+  const payload = await getJson(`/polymarket/sports/${sport}/${encodeURIComponent(slug)}`);
   const detail = mapSportMarketDetail(payload);
   if (!detail) throw new Error('Invalid sport detail response');
   return detail;
@@ -488,13 +488,13 @@ function mapTrendingMarket(row: unknown): TrendingMarket | null {
 }
 
 export async function fetchTrendingMarkets(limit = 10): Promise<TrendingMarket[]> {
-  const payload = await getJson(`/predict/trending?limit=${limit}`);
+  const payload = await getJson(`/polymarket/trending?limit=${limit}`);
   if (!Array.isArray(payload)) throw new Error('Invalid trending response');
   return payload.map(mapTrendingMarket).filter((m): m is TrendingMarket => m !== null);
 }
 
 export async function fetchMarketPrice(slug: string): Promise<LivePrice> {
-  const payload = await getJson(`/predict/markets/${encodeURIComponent(slug)}/price`);
+  const payload = await getJson(`/polymarket/markets/${encodeURIComponent(slug)}/price`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid price response');
   const p = payload as Record<string, unknown>;
   return {
@@ -509,7 +509,7 @@ export async function fetchLivePrices(tokenIds: string[]): Promise<Record<string
   const uniqueTokenIds = [...new Set(tokenIds.map((tokenId) => tokenId.trim()).filter(Boolean))];
   if (uniqueTokenIds.length === 0) return {};
 
-  const payload = await getJson(`/predict/live-prices?tokenIds=${encodeURIComponent(uniqueTokenIds.join(','))}`);
+  const payload = await getJson(`/polymarket/live-prices?tokenIds=${encodeURIComponent(uniqueTokenIds.join(','))}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid live prices response');
   const p = payload as Record<string, unknown>;
   const rows = Array.isArray(p.prices) ? p.prices : [];
@@ -836,7 +836,7 @@ export interface PortfolioData {
 }
 
 export async function fetchPortfolio(polygonAddress: string): Promise<PortfolioData> {
-  const payload = await getJson(`/predict/portfolio/${encodeURIComponent(polygonAddress)}`);
+  const payload = await getJson(`/polymarket/portfolio/${encodeURIComponent(polygonAddress)}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid portfolio response');
   const p = payload as Record<string, unknown>;
   return {
@@ -870,13 +870,13 @@ export interface ActivityItem {
 }
 
 export async function fetchActivity(polygonAddress: string): Promise<ActivityItem[]> {
-  const payload = await getJson(`/predict/activity/${encodeURIComponent(polygonAddress)}`);
+  const payload = await getJson(`/polymarket/activity/${encodeURIComponent(polygonAddress)}`);
   if (!Array.isArray(payload)) return [];
   return payload as ActivityItem[];
 }
 
 export async function fetchMarketPositions(polygonAddress: string, slug: string): Promise<PortfolioPosition[]> {
-  const payload = await getJson(`/predict/positions/${encodeURIComponent(polygonAddress)}/market/${encodeURIComponent(slug)}`);
+  const payload = await getJson(`/polymarket/positions/${encodeURIComponent(polygonAddress)}/market/${encodeURIComponent(slug)}`);
   if (!Array.isArray(payload)) return [];
   return payload as PortfolioPosition[];
 }
@@ -1101,7 +1101,7 @@ export async function redeemPosition(
 }
 
 export async function fetchPriceHistory(tokenId: string, interval: '5m' | '1h' | '1d' = '1h'): Promise<PriceHistory> {
-  const payload = await getJson(`/predict/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
+  const payload = await getJson(`/polymarket/history/${encodeURIComponent(tokenId)}?interval=${interval}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid history response');
   const p = payload as Record<string, unknown>;
   const rawHistory = Array.isArray(p.history) ? p.history : [];
@@ -1113,7 +1113,7 @@ export async function fetchPriceHistory(tokenId: string, interval: '5m' | '1h' |
 }
 
 export async function fetchOrderbook(tokenId: string): Promise<import('./predict.types').Orderbook> {
-  const payload = await getJson(`/predict/book/${encodeURIComponent(tokenId)}`);
+  const payload = await getJson(`/polymarket/book/${encodeURIComponent(tokenId)}`);
   if (!payload || typeof payload !== 'object') throw new Error('Invalid orderbook response');
   const p = payload as Record<string, unknown>;
 

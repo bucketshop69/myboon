@@ -97,10 +97,10 @@ async function authenticate(): Promise<LiveAuth> {
 
 async function findLiveMarket(): Promise<{ market: LiveMarket; outcome: LiveOutcome }> {
   for (const sport of ['ipl', 'epl', 'ucl'] as Sport[]) {
-    const markets = await apiJson<LiveMarket[]>(`/predict/sports/${sport}`);
+    const markets = await apiJson<LiveMarket[]>(`/polymarket/sports/${sport}`);
     for (const row of markets) {
       if (!row.slug || row.active === false) continue;
-      const detail = await apiJson<LiveMarket>(`/predict/sports/${sport}/${encodeURIComponent(row.slug)}`).catch(() => null);
+      const detail = await apiJson<LiveMarket>(`/polymarket/sports/${sport}/${encodeURIComponent(row.slug)}`).catch(() => null);
       if (!detail?.outcomes?.length) continue;
       const outcome = detail.outcomes.find((entry) => {
         const price = entry.price ?? 0;
@@ -138,7 +138,7 @@ async function readBackendPickState(auth: LiveAuth, market: LiveMarket, tokenId:
     apiJson<{ orders: { id?: string; orderID?: string; asset_id?: string }[] }>(
       `/clob/positions/${encodeURIComponent(auth.polygonAddress)}`,
     ),
-    apiJson<LivePortfolio>(`/predict/portfolio/${encodeURIComponent(auth.depositWalletAddress ?? auth.tradingAddress)}`),
+    apiJson<LivePortfolio>(`/polymarket/portfolio/${encodeURIComponent(auth.depositWalletAddress ?? auth.tradingAddress)}`),
   ]);
   const matchingOpenOrders = open.orders.filter((order) => order.asset_id === tokenId);
   const allPositions = [

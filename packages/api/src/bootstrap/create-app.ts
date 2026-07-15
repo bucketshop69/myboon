@@ -1,0 +1,69 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { logger } from 'hono/logger'
+import { createAiRoutes } from '../ai/routes.js'
+import { clobRoutes } from '../clob.js'
+import { createInternalEntityCommandRoutes } from '../internal/entity-commands.js'
+import { createInternalEntityRoutes } from '../internal/entities.js'
+import { createNarrativeRoutes } from '../narratives.js'
+import { pacificaRoutes } from '../pacifica.js'
+import { phoenixRoutes } from '../phoenix.js'
+import { createPolymarketReadRoutes } from '../polymarket/routes/index.js'
+import { createStoryRoutes } from '../stories.js'
+import type { ApiConfig } from './config.js'
+
+export function createApp(config: ApiConfig): Hono {
+  const app = new Hono()
+
+  const publicCors = cors()
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/internal' || c.req.path.startsWith('/internal/')) return next()
+    return publicCors(c, next)
+  })
+  app.use('*', logger())
+
+  if (!config.internalDashboardToken || Buffer.byteLength(config.internalDashboardToken, 'utf8') < 32) {
+    console.warn('[api] INTERNAL_DASHBOARD_TOKEN must be at least 32 bytes; /internal routes will return 503.')
+  }
+  if (!config.internalEntityWriteToken || Buffer.byteLength(config.internalEntityWriteToken, 'utf8') < 32) {
+    console.warn('[api] INTERNAL_ENTITY_WRITE_TOKEN must be at least 32 bytes; /internal/entity-commands routes will return 503.')
+  }
+
+  app.route('/internal/entity-commands', createInternalEntityCommandRoutes({
+    supabaseUrl: config.supabaseUrl,
+    serviceRoleKey: config.supabaseServiceRoleKey,
+    internalWriteToken: config.internalEntityWriteToken,
+  }))
+  app.route('/internal', createInternalEntityRoutes({
+    supabaseUrl: config.supabaseUrl,
+    serviceRoleKey: config.supabaseServiceRoleKey,
+    internalToken: config.internalDashboardToken,
+  }))
+  app.route('/stories', createStoryRoutes({
+    supabaseUrl: config.supabaseUrl,
+    serviceRoleKey: config.supabaseServiceRoleKey,
+  }))
+  app.route('/narratives', createNarrativeRoutes({
+    supabaseUrl: config.supabaseUrl,
+    serviceRoleKey: config.supabaseServiceRoleKey,
+  }))
+
+  app.route('/clob', clobRoutes)
+  app.route('/perps/pacifica', pacificaRoutes)
+  app.route('/perps/phoenix', phoenixRoutes)
+
+  app.get('/health', (c) => c.json({ status: 'ok' }))
+
+  app.route('/ai', createAiRoutes({
+    supabaseUrl: config.supabaseUrl,
+    serviceRoleKey: config.supabaseServiceRoleKey,
+    provider: config.aiExplanationProvider,
+    apiKey: config.aiExplanationApiKey,
+    baseUrl: config.aiExplanationBaseUrl,
+    model: config.aiExplanationModel,
+  }))
+
+  app.route('/polymarket', createPolymarketReadRoutes())
+
+  return app
+}
