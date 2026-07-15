@@ -14,8 +14,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppTopBar, AppTopBarLogo } from '@/components/AppTopBar';
-import { AvatarTrigger } from '@/components/drawer/AvatarTrigger';
+import { AppTopBar, AppTopBarLogo, AppTopBarProfileButton } from '@/components/AppTopBar';
 import { fetchLivePrices, fetchPredictFeed } from '@/features/predict/predict.api';
 import type { FeedItem, FeedItemBinary, FeedItemMatch, FeedResponse } from '@/features/predict/predict.types';
 import { useFocusedAppStateInterval } from '@/hooks/useFocusedAppStateInterval';
@@ -633,7 +632,7 @@ export default function PredictScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <AppTopBar
         left={<AppTopBarLogo />}
-        right={<AvatarTrigger />}
+        right={<AppTopBarProfileButton onPress={() => router.push('/predict-profile')} />}
       />
 
       {/* feed list */}

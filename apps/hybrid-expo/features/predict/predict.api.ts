@@ -24,6 +24,23 @@ import {
   type DepositWalletSignatureRequest,
 } from './predict.signing';
 
+// --- CLOB session expiry signal ---
+// The server keeps CLOB sessions in-memory (packages/api/src/clob.ts), so a
+// restart/redeploy silently invalidates every active session. Callers below
+// detect the resulting 401 and emit here so usePolymarketWallet can surface
+// a "reconnect" prompt instead of the UI quietly polling a dead session.
+type ClobSessionExpiredListener = () => void;
+const clobSessionExpiredListeners = new Set<ClobSessionExpiredListener>();
+
+export function onClobSessionExpired(listener: ClobSessionExpiredListener): () => void {
+  clobSessionExpiredListeners.add(listener);
+  return () => clobSessionExpiredListeners.delete(listener);
+}
+
+function notifyClobSessionExpired(): void {
+  clobSessionExpiredListeners.forEach((listener) => listener());
+}
+
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string') return null;
@@ -615,7 +632,11 @@ export interface OpenOrder {
 export async function fetchOpenOrders(polygonAddress: string): Promise<OpenOrder[]> {
   const baseUrl = resolveApiBaseUrl();
   const response = await fetchWithTimeout(`${baseUrl}/clob/positions/${encodeURIComponent(polygonAddress)}`);
-  if (!response.ok) return [];
+  if (!response.ok) {
+    // 401 = no active CLOB session (server restart / TTL expired) — not a crash
+    if (response.status === 401) notifyClobSessionExpired();
+    return [];
+  }
   const data = await response.json() as Record<string, unknown>;
   return Array.isArray(data.orders) ? data.orders as OpenOrder[] : [];
 }
@@ -665,6 +686,7 @@ export async function fetchClobBalance(polygonAddress: string, autoWrap = true):
   const response = await fetchWithTimeout(`${baseUrl}/clob/balance/${encodeURIComponent(polygonAddress)}`);
   if (!response.ok) {
     // 401 = no active CLOB session (server restart / TTL expired) — not a crash
+    if (response.status === 401) notifyClobSessionExpired();
     return null;
   }
   const data = await response.json() as Record<string, unknown>;

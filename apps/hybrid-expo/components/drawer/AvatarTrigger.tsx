@@ -6,7 +6,7 @@ import { useDrawer } from './DrawerProvider';
 import { useWallet } from '@/hooks/useWallet';
 import { semantic, tokens } from '@/theme';
 
-export function AvatarTrigger() {
+export function AvatarTrigger({ onPress }: { onPress?: () => void }) {
   const { open } = useDrawer();
   const { connected, shortAddress } = useWallet();
 
@@ -16,7 +16,7 @@ export function AvatarTrigger() {
     <Pressable
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        open();
+        (onPress ?? open)();
       }}
       style={styles.trigger}
     >

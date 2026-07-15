@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWallet } from '@/hooks/useWallet';
 import { PREDICT_DERIVE_MESSAGE } from '@/hooks/useEvmSigner';
 import { resolveApiBaseUrl, fetchWithTimeout } from '@/lib/api';
+import { onClobSessionExpired } from '@/features/predict/predict.api';
 
 const STORAGE_KEY = 'polymarket_polygon_address'; // Public address only, not a secret
 const DEPOSIT_WALLET_STORAGE_KEY = 'polymarket_deposit_wallet_address';
@@ -47,6 +48,8 @@ export interface PolymarketWallet {
   tradingAddress: string | null;
   isReady: boolean;
   isLoading: boolean;
+  /** Server lost the CLOB session (restart/TTL) — UI should prompt the user to reconnect via enable() */
+  sessionExpired: boolean;
   /** Sign with Solana wallet, derive EVM key locally, and set up deposit-wallet trading */
   enable: () => Promise<void>;
   /** Clear session (server + local + EVM key) */
@@ -69,6 +72,7 @@ export function usePolymarketWallet(): PolymarketWallet {
   const [walletMode, setWalletMode] = useState<PolymarketWalletMode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [canSignLocally, setCanSignLocally] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const prevWalletSessionKey = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
   const activePolygonAddressRef = useRef<string | null>(null);
@@ -78,6 +82,16 @@ export function usePolymarketWallet(): PolymarketWallet {
   useEffect(() => {
     activePolygonAddressRef.current = polygonAddress;
   }, [polygonAddress]);
+
+  // Server session is in-memory (packages/api/src/clob.ts) and is wiped on
+  // restart/redeploy. predict.api.ts detects the resulting 401 on CLOB reads
+  // and notifies here so the UI can prompt reconnect instead of polling a
+  // dead session forever.
+  useEffect(() => {
+    return onClobSessionExpired(() => {
+      if (activePolygonAddressRef.current) setSessionExpired(true);
+    });
+  }, []);
 
   const removeStoredSessionForAddress = useCallback((address: string) => {
     AsyncStorage.multiRemove([
@@ -94,6 +108,7 @@ export function usePolymarketWallet(): PolymarketWallet {
     setDepositWalletAddress(null);
     setWalletMode(null);
     setCanSignLocally(false);
+    setSessionExpired(false);
   }, []);
 
   const clearStoredSession = useCallback(() => {
@@ -200,6 +215,8 @@ export function usePolymarketWallet(): PolymarketWallet {
     if (!startSessionKey || !startAddress || !startSignMessage) {
       throw new Error('Connect your Solana wallet first');
     }
+
+    setSessionExpired(false);
 
     const assertWalletUnchanged = () => {
       const current = walletSnapshotRef.current;
@@ -314,6 +331,7 @@ export function usePolymarketWallet(): PolymarketWallet {
       tradingAddress: e2eDepositWalletAddress,
       isReady: true,
       isLoading: false,
+      sessionExpired: false,
       enable: async () => {},
       disable: () => {},
       canSignLocally: true,
@@ -328,6 +346,7 @@ export function usePolymarketWallet(): PolymarketWallet {
     tradingAddress,
     isReady,
     isLoading,
+    sessionExpired,
     enable,
     disable,
     canSignLocally,

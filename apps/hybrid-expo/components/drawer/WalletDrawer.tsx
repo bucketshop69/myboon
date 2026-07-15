@@ -339,6 +339,24 @@ export function WalletDrawer() {
               </View>
             </View>
 
+            {/* Predict session expired banner — server session is in-memory and
+                gets wiped on restart/redeploy; prompt the user to re-sign
+                instead of silently polling a dead session. */}
+            {poly.sessionExpired && (
+              <TouchableOpacity
+                style={styles.sessionExpiredBanner}
+                activeOpacity={0.7}
+                onPress={() => {
+                  poly.enable().catch(() => {});
+                }}
+              >
+                <MaterialIcons name="error-outline" size={14} color="#E0A000" />
+                <Text style={styles.sessionExpiredText}>
+                  Predict session expired. Tap to reconnect.
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* Protocol summary cards */}
             <View style={styles.protocolSection}>
               <Text style={styles.protocolSectionLabel}>Accounts</Text>
@@ -753,6 +771,26 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     color: tokens.colors.viridian,
+  },
+
+  sessionExpiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 20,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(224, 160, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(224, 160, 0, 0.3)',
+  },
+  sessionExpiredText: {
+    flex: 1,
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: '#E0A000',
   },
 
   // ── Protocol Cards ──

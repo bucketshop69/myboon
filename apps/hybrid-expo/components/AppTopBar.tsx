@@ -97,6 +97,20 @@ export function AppTopBarIconButton({
   );
 }
 
+export function AppTopBarProfileButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.profileButton}
+      accessibilityRole="button"
+      accessibilityLabel="Go to Profile"
+      hitSlop={8}
+    >
+      <Text style={styles.profileButtonText}>Profile</Text>
+    </Pressable>
+  );
+}
+
 export function AppTopBarCashPill({ value }: { value: string }) {
   return (
     <View style={styles.cashPill}>
@@ -163,6 +177,18 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.background.lift,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  profileButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  profileButtonText: {
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    color: semantic.text.primary,
   },
   cashPill: {
     minHeight: 26,
