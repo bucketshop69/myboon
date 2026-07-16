@@ -403,31 +403,34 @@ export default function PredictScreen() {
     [feedData],
   );
 
-  const eplUpcoming = useMemo(
+  const upcomingMatches = useMemo(
     () =>
       feedData?.items.filter(
         (item): item is FeedItemMatch =>
           item.type === 'match' &&
-          item.sport === 'epl' &&
           item.status === 'upcoming',
       ) ?? [],
     [feedData],
   );
 
-  const iplUpcoming = useMemo(
-    () =>
-      feedData?.items.filter(
-        (item): item is FeedItemMatch =>
-          item.type === 'match' &&
-          item.sport === 'ipl' &&
-          item.status === 'upcoming',
-      ) ?? [],
-    [feedData],
+  const upcomingMatchGroups = useMemo(
+    () => {
+      const groups = new Map<string, FeedItemMatch[]>();
+      for (const item of upcomingMatches) {
+        const current = groups.get(item.sport) ?? [];
+        current.push(item);
+        groups.set(item.sport, current);
+      }
+      return [...groups.entries()];
+    },
+    [upcomingMatches],
   );
 
   const binaryItems = useMemo(
     () =>
-      feedData?.items.filter((item): item is FeedItemBinary => item.type === 'binary') ?? [],
+      feedData?.items.filter(
+        (item): item is FeedItemBinary => item.type === 'binary' && item.status !== 'live',
+      ) ?? [],
     [feedData],
   );
 
@@ -436,8 +439,8 @@ export default function PredictScreen() {
   const renderedItems = useMemo<FeedItem[]>(() => {
     if (!feedData) return [];
     if (!isAllSelected) return filteredItems;
-    return [...liveItems, ...eplUpcoming, ...iplUpcoming, ...binaryItems];
-  }, [binaryItems, eplUpcoming, feedData, filteredItems, iplUpcoming, isAllSelected, liveItems]);
+    return [...liveItems, ...upcomingMatches, ...binaryItems];
+  }, [binaryItems, feedData, filteredItems, isAllSelected, liveItems, upcomingMatches]);
 
   const visibleTokenIds = useMemo(() => collectFeedTokenIds(renderedItems), [renderedItems]);
   const visibleTokenKey = visibleTokenIds.join(',');
@@ -488,11 +491,13 @@ export default function PredictScreen() {
     if (liveItems.length > 0) {
       sections.push({ title: 'Live Now', isLive: true, data: liveItems });
     }
-    if (eplUpcoming.length > 0) {
-      sections.push({ title: 'EPL · Upcoming', count: eplUpcoming.length, onPress: showSports, data: eplUpcoming });
-    }
-    if (iplUpcoming.length > 0) {
-      sections.push({ title: 'IPL · Upcoming', count: iplUpcoming.length, onPress: showSports, data: iplUpcoming });
+    for (const [sport, matches] of upcomingMatchGroups) {
+      sections.push({
+        title: `${sport.toUpperCase()} · Upcoming`,
+        count: matches.length,
+        onPress: showSports,
+        data: matches,
+      });
     }
     if (binaryItems.length > 0) {
       sections.push({ title: 'Markets', count: binaryItems.length, data: binaryItems });
@@ -501,14 +506,13 @@ export default function PredictScreen() {
   }, [
     activeCategory,
     binaryItems,
-    eplUpcoming,
     errorMessage,
     filteredItems,
-    iplUpcoming,
     isAllSelected,
     liveItems,
     loading,
     showSports,
+    upcomingMatchGroups,
   ]);
 
   const renderFeedItem = useCallback(({ item }: { item: FeedItem }) => {

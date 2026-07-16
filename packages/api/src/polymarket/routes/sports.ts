@@ -23,9 +23,11 @@ import {
 } from '../read/market-read.js'
 import {
   deriveMatchStatus,
-  FEATURED_MARKET_SLUG,
+  getMainSportsMarkets,
+  mapGammaEventToFeaturedMarket,
   SPORT_SERIES,
 } from '../read/featured-markets.js'
+import { resolveSportsRuleForReadCode } from '../catalog/sports-rules.js'
 
 export function createPolymarketSportsRoutes(): Hono {
   const routes = new Hono()
@@ -143,16 +145,26 @@ export function createPolymarketSportsRoutes(): Hono {
     const sportParam = c.req.param('sport').toLowerCase()
     const slug = c.req.param('slug')
 
-    // Temporary: the single pinned cricket match isn't part of a Gamma series — fetch it directly.
-    if (sportParam === 'cricket' && slug === FEATURED_MARKET_SLUG) {
+    // International cricket uses a shared display sport while Polymarket's
+    // durable selectors are codes such as crint. Fetch any main cricket event
+    // directly so automatic catalog entries can open without a route rebuild.
+    if (sportParam === 'cricket' && slug.toLowerCase().startsWith('cr')) {
       const sport = sportParam
       try {
         const events = await gammaFetchCached<Record<string, unknown>[]>(`events?slug=${encodeURIComponent(slug)}`)
         const e = Array.isArray(events) ? events[0] : null
         if (!e) return c.json({ error: 'Not found' }, 404)
 
+        const tags = Array.isArray(e.tags) ? e.tags : []
+        const isCricketEvent = slug.toLowerCase().startsWith('crint-')
+          || String(e.seriesSlug ?? '').toLowerCase().includes('cricket')
+          || tags.some((tag) => tag && typeof tag === 'object'
+            && String((tag as Record<string, unknown>).slug ?? '').toLowerCase().includes('cricket'))
+        if (!isCricketEvent) return c.json({ error: 'Not found' }, 404)
+
         const markets = (e.markets ?? []) as Record<string, unknown>[]
-        const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
+        const mainMarket = markets.find((m) => m.slug === e.slug && m.sportsMarketType === 'moneyline')
+          ?? markets.find((m) => m.sportsMarketType === 'moneyline')
         if (!mainMarket) return c.json({ error: 'Not found' }, 404)
 
         const outcomesRaw = parseStringArray(mainMarket.outcomes)
@@ -210,7 +222,21 @@ export function createPolymarketSportsRoutes(): Hono {
     const seriesId = SPORT_SERIES[sport]
 
     if (!seriesId) {
-      return c.json({ error: `Unsupported sport. Supported: ${Object.keys(SPORT_SERIES).join(', ')}` }, 400)
+      try {
+        const resolved = await resolveSportsRuleForReadCode(sportParam)
+        if (!resolved) return c.json({ error: 'Unsupported sport code' }, 400)
+        return c.json(await gammaSportsDetail({
+          sport: sportParam,
+          slug,
+          seriesId: resolved.seriesId,
+          seriesSlug: resolved.seriesSlug,
+        }))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('not found')) return c.json({ error: 'Not found' }, 404)
+        console.error(`[api] Unexpected error in GET /polymarket/sports/${sportParam}/${slug}:`, err)
+        return c.json({ error: 'Internal server error' }, 500)
+      }
     }
 
     // Shared outcome mapper — same shape from Dome or Gamma events
@@ -368,4 +394,61 @@ export function createPolymarketSportsRoutes(): Hono {
 
 
   return routes
+}
+
+async function gammaSportsDetail(input: {
+  sport: string
+  slug: string
+  seriesId: string
+  seriesSlug: string
+}) {
+  const events = await gammaFetchCached<Record<string, unknown>[]>(`events?slug=${encodeURIComponent(input.slug)}`)
+  const event = Array.isArray(events) ? events[0] : null
+  if (!event) throw new Error('not found')
+
+  const eventSeries = Array.isArray(event.series) ? event.series : []
+  const belongsToSeries = event.seriesSlug === input.seriesSlug || eventSeries.some((row) => {
+    if (!row || typeof row !== 'object') return false
+    return String((row as Record<string, unknown>).id ?? '') === input.seriesId
+  })
+  if (!belongsToSeries || getMainSportsMarkets(event).length === 0) throw new Error('not found')
+
+  const featured = mapGammaEventToFeaturedMarket(event, {
+    category: 'sports',
+    sport: input.sport,
+    mainMoneylineOnly: true,
+  })
+  if (!featured?.outcomes) throw new Error('not found')
+
+  const outcomes = featured.outcomes.map((outcome) => {
+    const tokenId = outcome.clobTokenIds[0]
+    if (tokenId) registerTokenIds([tokenId])
+    const livePrice = tokenId ? getLivePrice(tokenId) : null
+    return {
+      ...outcome,
+      price: livePrice ?? outcome.price,
+      question: null,
+      liquidity: null,
+      volume24h: null,
+      bestBid: null,
+      bestAsk: null,
+      acceptingOrders: event.active !== false,
+    }
+  })
+
+  return {
+    slug: featured.slug,
+    title: featured.title,
+    description: event.description ?? null,
+    sport: input.sport,
+    status: featured.status,
+    startDate: event.startDate ?? null,
+    endDate: featured.endDate,
+    image: featured.image,
+    active: featured.active,
+    negRisk: event.negRisk ?? false,
+    volume24h: featured.volume,
+    liquidity: event.liquidity ?? null,
+    outcomes,
+  }
 }

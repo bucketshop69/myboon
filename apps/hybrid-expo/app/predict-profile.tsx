@@ -21,6 +21,7 @@ import { WithdrawModal } from '@/components/predict/WithdrawModal';
 import { PredictOwnerKeyExportModal } from '@/features/predict/components/PredictOwnerKeyExportModal';
 import { fetchPortfolio, fetchClobBalance, fetchOpenOrders, cancelOrder, placeBet } from '@/features/predict/predict.api';
 import type { OpenOrder, PortfolioData, PortfolioPosition } from '@/features/predict/predict.api';
+import { getPredictMarketHref } from '@/features/predict/predict.navigation';
 import { truncateUsd } from '@/features/predict/formatPredictMoney';
 import { getPositionSellQuote, usePositionSellQuotes } from '@/features/predict/positionSellQuotes';
 import { useWallet } from '@/hooks/useWallet';
@@ -419,15 +420,7 @@ export default function PredictProfileScreen() {
   }, [connected, poly, loadPortfolio]);
 
   const handleOpenMarket = useCallback((slug: string) => {
-    const sportMatch = slug.match(/^cric(epl|ucl|ipl)-/);
-    if (sportMatch) {
-      router.push({
-        pathname: '/predict-sport/[sport]/[slug]',
-        params: { sport: sportMatch[1], slug },
-      });
-    } else {
-      router.push(`/predict-market/${encodeURIComponent(slug)}`);
-    }
+    router.push(getPredictMarketHref(slug));
   }, [router]);
 
   const handleCashOut = useCallback((position: PortfolioPosition) => {

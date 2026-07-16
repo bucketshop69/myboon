@@ -1,0 +1,113 @@
+.loginShell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(90deg, rgba(17, 138, 178, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(17, 138, 178, 0.04) 1px, transparent 1px),
+    #071116;
+  background-size: 34px 34px;
+  color: #eef6f8;
+  font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.loginPanel {
+  width: min(100%, 430px);
+  border: 1px solid rgba(149, 176, 188, 0.22);
+  border-radius: 8px;
+  background: rgba(12, 24, 31, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  padding: 26px;
+}
+
+.loginMark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ffd166, #118ab2);
+  color: #061018;
+  font-weight: 900;
+}
+
+.kicker {
+  margin: 0 0 8px;
+  color: #77c6d8;
+  font-family: var(--font-headline), var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.loginTitle {
+  margin: 0;
+  color: #f4fbfd;
+  font-family: var(--font-headline), var(--font-body), sans-serif;
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.loginCopy {
+  margin: 12px 0 0;
+  color: #9db1ba;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.loginForm {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.loginLabel {
+  color: #87a0ac;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.loginInput {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(149, 176, 188, 0.22);
+  border-radius: 7px;
+  background: #0a151c;
+  color: #eff8fa;
+  outline: none;
+}
+
+.loginInput:focus {
+  border-color: #118ab2;
+  box-shadow: 0 0 0 3px rgba(17, 138, 178, 0.2);
+}
+
+.loginButton {
+  height: 40px;
+  margin-top: 6px;
+  border: 1px solid #118ab2;
+  border-radius: 7px;
+  background: #118ab2;
+  color: #eff8fa;
+  font-weight: 700;
+}
+
+.loginButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.loginError {
+  padding: 10px 12px;
+  border: 1px solid rgba(214, 64, 98, 0.34);
+  border-radius: 7px;
+  background: rgba(214, 64, 98, 0.12);
+  color: #ffb6c4;
+  font-size: 13px;
+}

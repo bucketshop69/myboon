@@ -14,6 +14,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { AppTopBar, AppTopBarIconButton, AppTopBarTitle } from '@/components/AppTopBar';
 import { fetchMarketPositions, fetchActivity, placeBet } from '@/features/predict/predict.api';
 import type { ActivityItem, PortfolioPosition } from '@/features/predict/predict.api';
+import { getPredictMarketHref } from '@/features/predict/predict.navigation';
 import { formatPredictTitle } from '@/features/predict/formatPredictTitle';
 import { buildPositionSellQuote, getPositionSellQuote, usePositionSellQuotes } from '@/features/predict/positionSellQuotes';
 import { useOddsFormat } from '@/hooks/useOddsFormat';
@@ -302,12 +303,7 @@ export function PositionDetailScreen({ conditionId, slug, outcomeIndex }: Positi
           accessibilityLabel="View market"
           style={styles.viewMarketBtn}
           onPress={() => {
-            const sportMatch = slug.match(/^cric(epl|ucl|ipl)-/);
-            if (sportMatch) {
-              router.push({ pathname: '/predict-sport/[sport]/[slug]', params: { sport: sportMatch[1], slug } });
-            } else {
-              router.push(`/predict-market/${encodeURIComponent(slug)}`);
-            }
+            router.push(getPredictMarketHref(slug));
           }}
         >
           <MaterialIcons name="show-chart" size={14} color={tokens.colors.primary} />

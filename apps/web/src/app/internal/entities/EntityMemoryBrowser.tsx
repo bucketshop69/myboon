@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   InternalEntityDetailResponse,
@@ -152,7 +153,7 @@ export function EntityMemoryBrowser() {
   }
 
   async function logout() {
-    await fetch('/internal/entities/session', { method: 'DELETE', credentials: 'same-origin' })
+    await fetch('/internal/session', { method: 'DELETE', credentials: 'same-origin' })
     window.location.reload()
   }
 
@@ -277,6 +278,10 @@ export function EntityMemoryBrowser() {
             </div>
           </div>
           <div className={styles.topActions}>
+            <Link className={styles.textButton} href="/internal/polymarket">
+              <span className="material-symbols-outlined" aria-hidden="true">monitoring</span>
+              Polymarket
+            </Link>
             <button className={styles.textButton} type="button" onClick={() => setIsCreateOpen(true)}>
               <span className="material-symbols-outlined" aria-hidden="true">add</span>
               Create entity

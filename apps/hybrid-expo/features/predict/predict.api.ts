@@ -438,9 +438,9 @@ function mapFeedItem(raw: unknown): FeedItem | null {
   return null;
 }
 
-/** Fetch the controlled market list from /polymarket/featured-markets. */
+/** Fetch the published, dashboard-controlled Polymarket collection. */
 export async function fetchFeaturedMarkets(): Promise<FeedResponse> {
-  const payload = await getJson('/polymarket/featured-markets');
+  const payload = await getJson('/polymarket/collections/featured');
   if (!payload || typeof payload !== 'object') throw new Error('Invalid feed response');
   const p = payload as Record<string, unknown>;
 

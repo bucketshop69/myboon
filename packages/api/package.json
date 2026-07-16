@@ -9,7 +9,7 @@
     "e2e:featured-markets": "tsx src/e2e/api-e2e.ts",
     "test:internal": "tsx --test src/internal/*.test.ts",
     "test:feed": "tsx --test src/stories.test.ts src/narratives.test.ts",
-    "test:polymarket-read": "tsx --test src/polymarket/routes/*.test.ts"
+    "test:polymarket-read": "tsx --test src/polymarket/catalog/*.test.ts src/polymarket/routes/*.test.ts"
   },
   "dependencies": {
     "@myboon/collectors": "workspace:*",

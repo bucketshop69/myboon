@@ -99,37 +99,48 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 INTERNAL_DASHBOARD_TOKEN=
 INTERNAL_ENTITY_WRITE_TOKEN=
+INTERNAL_POLYMARKET_CATALOG_WRITE_TOKEN=
 PORT=3000
 ```
 
-### Internal entity browser web environment
+### Internal dashboard web environment
 
-The public web deployment may host `/internal/entities`, but this route is not
-public data. Configure these values in the deployment provider's private
+The public web deployment may host `/internal/entities` and
+`/internal/polymarket`, but these routes are not public data. Configure these
+values in the deployment provider's private
 environment-variable store only. Do not add secret values to source files,
 GitHub issues, CI logs, or browser-accessible `NEXT_PUBLIC_*` variables.
 
 ```text
 INTERNAL_DASHBOARD_TOKEN=
 INTERNAL_DASHBOARD_SESSION_SECRET=
+INTERNAL_DASHBOARD_AUTH_BYPASS=0
 INTERNAL_ENTITY_WRITE_TOKEN=
+INTERNAL_POLYMARKET_CATALOG_WRITE_TOKEN=
 INTERNAL_API_BASE_URL=https://internal-api.example.com
 ```
 
 Use the same `INTERNAL_DASHBOARD_TOKEN` for the API and web deployments. Use a
 separate `INTERNAL_ENTITY_WRITE_TOKEN` for privileged preview/apply operations,
-and configure it only on the API and web server. Generate all secrets
-independently with at least 32 random bytes, for example:
+and a separate `INTERNAL_POLYMARKET_CATALOG_WRITE_TOKEN` for catalog draft and
+publish operations. Configure write tokens only on the API and web server.
+Generate all secrets independently with at least 32 random bytes, for example:
 
 ```bash
 openssl rand -base64 48
 ```
 
+For local UI development only, `INTERNAL_DASHBOARD_AUTH_BYPASS=1` skips the web
+dashboard login/session prompt. The bypass is ignored when `NODE_ENV=production`
+and never disables API read or write credentials. Keep it unset or `0` in every
+deployed environment.
+
 `INTERNAL_API_BASE_URL` is server-to-server only. Keep the API on a private
 network or allow it only from the web deployment where the platform supports
 network allowlists. The browser must never call the API host directly.
 
-Before deploying the API that calls the aggregate RPC, apply the migration:
+Before deploying the API, apply pending migrations, including the Polymarket
+catalog tables and draft/publish RPCs:
 
 ```bash
 pnpm dlx supabase db push

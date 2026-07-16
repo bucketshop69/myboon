@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -35,6 +35,7 @@ import { buildExecutableBuyQuote, getBestAsk } from '@/features/predict/orderboo
 import { usePositionSellQuotes } from '@/features/predict/positionSellQuotes';
 import { makePendingOpenOrder, mergeOpenOrders, prunePendingOpenOrders } from '@/features/predict/pendingOpenOrders';
 import { getPredictOrderGuardrail, type PredictDataFreshness } from '@/features/predict/predictActivityState';
+import { getPredictMarketHref } from '@/features/predict/predict.navigation';
 
 interface PredictMarketDetailScreenProps {
   slug: string;
@@ -76,20 +77,6 @@ function DisplayTab({
       <Text style={[styles.displayTabText, active && styles.displayTabTextActive]}>{label}</Text>
     </Pressable>
   );
-}
-
-function marketHrefForSlug(rowSlug: string): Href {
-  const sportMatch = rowSlug.match(/^cric(epl|ucl|ipl)-/);
-  if (sportMatch) {
-    return {
-      pathname: '/predict-sport/[sport]/[slug]',
-      params: { sport: sportMatch[1], slug: rowSlug },
-    };
-  }
-  return {
-    pathname: '/predict-market/[slug]',
-    params: { slug: rowSlug },
-  };
 }
 
 export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenProps) {
@@ -772,7 +759,7 @@ export function PredictMarketDetailScreen({ slug }: PredictMarketDetailScreenPro
                   onCashOut={handleCashOut}
                   onBackMore={(position) => {
                     if (position.slug && position.slug !== slug) {
-                      router.push(marketHrefForSlug(position.slug));
+                      router.push(getPredictMarketHref(position.slug));
                       return;
                     }
                     tapOdd(position.outcome === 'No' ? 'no' : 'yes');

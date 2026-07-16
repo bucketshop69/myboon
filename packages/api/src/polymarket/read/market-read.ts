@@ -45,7 +45,17 @@ const MAX_LIVE_PRICE_TOKEN_IDS = 80
 /** Register token IDs for live price polling. Called when feed builds its item list. */
 export function registerTokenIds(tokenIds: string[]): void {
   for (const id of tokenIds) {
-    if (id) activeTokenIds.add(id)
+    if (!id) continue
+    // Keep the newest active fixtures in the polling window and prevent
+    // rotating automatic collections from growing this set forever.
+    activeTokenIds.delete(id)
+    activeTokenIds.add(id)
+    while (activeTokenIds.size > MAX_LIVE_PRICE_TOKEN_IDS) {
+      const oldest = activeTokenIds.values().next().value as string | undefined
+      if (!oldest) break
+      activeTokenIds.delete(oldest)
+      livePrices.delete(oldest)
+    }
   }
 }
 

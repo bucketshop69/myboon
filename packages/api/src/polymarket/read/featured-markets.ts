@@ -57,7 +57,7 @@ export interface FeaturedMarket {
  *  1. closed flag (if Gamma eventually flips it)
  *  2. UMA oracle status — "proposed" or "resolved" means outcome is decided on-chain
  *  3. Price signal — any outcome ≥0.995 means market is effectively resolved
- *  4. Time elapsed — match can't be live after max duration (5h IPL, 3h EPL)
+ *  4. Time elapsed — use sport-aware maximum durations (including multi-day cricket)
  *  5. gameStartTime vs now — upcoming / live fallback */
 export function deriveMatchStatus(
   gameStartTime: string | null | undefined,
@@ -66,6 +66,7 @@ export function deriveMatchStatus(
   outcomePrices: (number | null)[] = [],
   sport?: string,
   umaResolutionStatus?: string | null,
+  nowMs: number = Date.now(),
 ): 'live' | 'upcoming' | 'ended' {
   if (closed) return 'ended'
   // UMA oracle: proposed = outcome asserted (2h dispute window), resolved = finalized
@@ -74,45 +75,64 @@ export function deriveMatchStatus(
   if (outcomePrices.some((p) => p !== null && p >= 0.995)) return 'ended'
   if (!gameStartTime) return active ? 'upcoming' : 'ended'
   const start = new Date(gameStartTime).getTime()
-  const now = Date.now()
+  const now = nowMs
   if (now < start) return 'upcoming'
   // Time-based: match can't still be live after max duration
   const hoursElapsed = (now - start) / (1000 * 60 * 60)
-  const maxDuration = sport === 'ipl' ? 5 : sport === 'epl' ? 3 : 4
+  const maxDuration = sport === 'ipl' ? 5 : sport === 'cricket' ? 144 : sport === 'epl' ? 3 : 4
   if (hoursElapsed > maxDuration) return 'ended'
   if (active) return 'live'
   return 'ended'
 }
 
 export function mapSingleMatchGammaEventToFeaturedMarket(e: Record<string, unknown>): FeaturedMarket | null {
-  const markets = (e.markets ?? []) as Record<string, unknown>[]
-  const mainMarket = markets.find((m) => m.slug === e.slug) ?? markets[0]
+  return mapGammaEventToFeaturedMarket(e)
+}
+
+export function mapGammaEventToFeaturedMarket(
+  e: Record<string, unknown>,
+  options: {
+    category?: string | null
+    sport?: string | null
+    status?: 'live' | 'upcoming' | 'ended'
+    mainMoneylineOnly?: boolean
+    now?: number
+  } = {},
+): FeaturedMarket | null {
+  const markets = Array.isArray(e.markets)
+    ? e.markets.filter((market): market is Record<string, unknown> => Boolean(market && typeof market === 'object'))
+    : []
+  const moneylineMarkets = mainSportsMarkets(e, markets)
+  const candidates = options.mainMoneylineOnly ? moneylineMarkets : markets
+  const mainMarket = candidates.find((m) => m.slug === e.slug) ?? candidates[0]
   if (!mainMarket) return null
 
-  const outcomesRaw = parseStringArray(mainMarket.outcomes)
-  const outcomePrices = parseStringArray(mainMarket.outcomePrices)
-  const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
-
-  const outcomes = outcomesRaw.map((label, idx) => ({
-    label,
-    price: parseNullableNumber(outcomePrices[idx]),
-    conditionId: parseNullableString(mainMarket.conditionId ?? mainMarket.condition_id),
-    clobTokenIds: clobTokenIds[idx] ? [clobTokenIds[idx]] : [],
-  }))
+  const outcomes = mapSportsOutcomes(mainMarket, moneylineMarkets)
+  if (outcomes.length === 0) return null
 
   const gameStart = String(mainMarket.gameStartTime ?? e.startTime ?? '')
   const isActive = (e.active as boolean) ?? false
   const isClosed = (e.closed as boolean) ?? false
   const umaStatus = (mainMarket.umaResolutionStatus as string) ?? null
+  const sport = options.sport ?? 'cricket'
+  const category = options.category ?? 'sports'
 
   return {
     type: 'match' as const,
     slug: e.slug as string,
     title: e.title as string,
-    category: 'sports',
-    sport: 'cricket',
-    tags: ['sports', 'cricket'],
-    status: deriveMatchStatus(gameStart || null, isActive, isClosed, outcomes.map((o) => o.price), 'cricket', umaStatus),
+    category,
+    sport,
+    tags: [...new Set([category, sport].filter(Boolean))],
+    status: options.status ?? deriveMatchStatus(
+      gameStart || null,
+      isActive,
+      isClosed,
+      outcomes.map((o) => o.price),
+      sport,
+      umaStatus,
+      options.now,
+    ),
     gameStartTime: gameStart || null,
     startDate: (e.startDate as string) ?? null,
     endDate: (e.endDate as string) ?? null,
@@ -120,5 +140,107 @@ export function mapSingleMatchGammaEventToFeaturedMarket(e: Record<string, unkno
     active: isActive,
     volume: (e.volume24hr ?? e.volume ?? null) as number | null,
     outcomes,
+  }
+}
+
+export function getMainSportsMarkets(event: Record<string, unknown>): Record<string, unknown>[] {
+  const markets = Array.isArray(event.markets)
+    ? event.markets.filter((market): market is Record<string, unknown> => Boolean(market && typeof market === 'object'))
+    : []
+  return mainSportsMarkets(event, markets)
+}
+
+function mainSportsMarkets(
+  event: Record<string, unknown>,
+  markets: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const explicit = markets.filter((market) => market.sportsMarketType === 'moneyline')
+  if (explicit.length > 0) return explicit
+
+  const slug = parseNullableString(event.slug) ?? ''
+  const title = parseNullableString(event.title) ?? ''
+  const groupedBinary = markets.filter((market) => {
+    const outcomes = parseStringArray(market.outcomes)
+    return Boolean(parseNullableString(market.groupItemTitle))
+      && outcomes.length === 2
+      && outcomes[0]?.toLowerCase() === 'yes'
+      && outcomes[1]?.toLowerCase() === 'no'
+  })
+  const looksLikeLegacyMatch = /^(?:epl|ucl)-.+-\d{4}-\d{2}-\d{2}$/.test(slug)
+    && /\bvs?\.?\b/i.test(title)
+    && groupedBinary.length >= 2
+    && groupedBinary.length <= 3
+    && groupedBinary.length === markets.length
+  return looksLikeLegacyMatch ? groupedBinary : []
+}
+
+function mapSportsOutcomes(
+  mainMarket: Record<string, unknown>,
+  moneylineMarkets: Record<string, unknown>[],
+): NonNullable<FeaturedMarket['outcomes']> {
+  const mainOutcomes = parseStringArray(mainMarket.outcomes)
+  const isBinaryMain = mainOutcomes.length === 2
+    && mainOutcomes[0]?.toLowerCase() === 'yes'
+    && mainOutcomes[1]?.toLowerCase() === 'no'
+
+  if (isBinaryMain && moneylineMarkets.length > 1) {
+    return moneylineMarkets.flatMap((market) => {
+      const label = parseNullableString(market.groupItemTitle)
+      const outcomes = parseStringArray(market.outcomes)
+      const yesIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === 'yes')
+      if (!label || yesIndex < 0) return []
+      const prices = parseStringArray(market.outcomePrices)
+      const tokenIds = parseStringArray(market.clobTokenIds)
+      return [{
+        label: label.startsWith('Draw') ? 'Draw' : label,
+        price: parseNullableNumber(prices[yesIndex]),
+        conditionId: parseNullableString(market.conditionId ?? market.condition_id),
+        clobTokenIds: tokenIds[yesIndex] ? [tokenIds[yesIndex]] : [],
+      }]
+    })
+  }
+
+  const outcomePrices = parseStringArray(mainMarket.outcomePrices)
+  const clobTokenIds = parseStringArray(mainMarket.clobTokenIds)
+  return mainOutcomes.map((label, index) => ({
+    label,
+    price: parseNullableNumber(outcomePrices[index]),
+    conditionId: parseNullableString(mainMarket.conditionId ?? mainMarket.condition_id),
+    clobTokenIds: clobTokenIds[index] ? [clobTokenIds[index]] : [],
+  }))
+}
+
+export function mapGammaMarketToFeaturedMarket(
+  market: Record<string, unknown>,
+  options: { category?: string | null; sport?: string | null } = {},
+): FeaturedMarket | null {
+  const slug = parseNullableString(market.slug)
+  const question = parseNullableString(market.question ?? market.title)
+  if (!slug || !question) return null
+
+  const outcomes = parseStringArray(market.outcomes)
+  const prices = parseStringArray(market.outcomePrices)
+  const tokenIds = parseStringArray(market.clobTokenIds ?? market.clob_token_ids)
+  const yesIndex = Math.max(0, outcomes.findIndex((outcome) => outcome.toLowerCase() === 'yes'))
+  const noMatch = outcomes.findIndex((outcome) => outcome.toLowerCase() === 'no')
+  const noIndex = noMatch >= 0 ? noMatch : 1
+  const category = options.category ?? 'other'
+
+  return {
+    type: 'binary',
+    slug,
+    question,
+    category,
+    sport: options.sport ?? undefined,
+    tags: [...new Set([category, options.sport].filter((value): value is string => Boolean(value)))],
+    yesPrice: parseNullableNumber(prices[yesIndex]),
+    noPrice: parseNullableNumber(prices[noIndex]),
+    volume: parseNullableNumber(market.volume24hr ?? market.volume_24h ?? market.volume),
+    endDate: parseNullableString(market.endDate ?? market.end_date),
+    startDate: parseNullableString(market.startDate ?? market.start_date),
+    active: typeof market.active === 'boolean' ? market.active : null,
+    image: parseNullableString(market.image ?? market.imageUrl),
+    clobTokenIds: tokenIds,
+    conditionId: parseNullableString(market.conditionId ?? market.condition_id),
   }
 }

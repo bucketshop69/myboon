@@ -451,6 +451,7 @@
   padding: 0 12px;
   font-size: 13px;
   font-weight: 700;
+  text-decoration: none;
 }
 
 .iconButton:disabled,
