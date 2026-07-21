@@ -40,7 +40,7 @@ type MarketHomeApp = {
   id: 'polymarket' | 'pacifica' | 'phoenix' | 'meteora' | 'orca' | 'raydium' | 'kamino';
   name: string;
   icon: MarketAppIcon;
-  route?: '/predict' | '/trade' | '/markets/phoenix';
+  route?: '/predict' | '/trade' | '/markets/phoenix' | '/markets/meteora';
 };
 
 const MARKET_APPS: MarketHomeApp[] = [
@@ -66,6 +66,7 @@ const MARKET_APPS: MarketHomeApp[] = [
     id: 'meteora',
     name: 'Meteora',
     icon: { xml: METEORA_MARK_SVG, width: 52, height: 52 },
+    route: '/markets/meteora',
   },
   {
     id: 'orca',

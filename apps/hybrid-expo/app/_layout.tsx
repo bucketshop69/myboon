@@ -52,6 +52,9 @@ export default function RootLayout() {
             <Stack.Screen name="markets/phoenix" options={{ headerShown: false }} />
             <Stack.Screen name="markets/phoenix/profile" options={{ headerShown: false }} />
             <Stack.Screen name="markets/phoenix/[symbol]" options={{ headerShown: false }} />
+            <Stack.Screen name="markets/meteora" options={{ headerShown: false }} />
+            <Stack.Screen name="markets/meteora/profile" options={{ headerShown: false }} />
+            <Stack.Screen name="markets/meteora/[poolAddress]" options={{ headerShown: false }} />
           </Stack>
         </ErrorBoundary>
         <WalletDrawerMount />

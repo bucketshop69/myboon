@@ -9,11 +9,22 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts",
       "types": "./src/index.ts"
+    },
+    "./meteora": {
+      "import": "./src/meteora/index.ts",
+      "default": "./src/meteora/index.ts",
+      "types": "./src/meteora/index.ts"
+    },
+    "./meteora/data-api": {
+      "import": "./src/meteora/data-api.ts",
+      "default": "./src/meteora/data-api.ts",
+      "types": "./src/meteora/data-api.ts"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsx src/pacific/pacific.test.ts",
+    "test": "tsx src/pacific/pacific.test.ts && tsx src/meteora/service.test.ts && tsx src/meteora/execution.test.ts",
+    "test:meteora": "tsx src/meteora/service.test.ts && tsx src/meteora/execution.test.ts",
     "test:mobile-signing": "tsx src/pacific/mobile-signing.test.ts"
   },
   "keywords": [],
@@ -21,8 +32,11 @@
   "license": "ISC",
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
+    "@meteora-ag/dlmm": "1.9.13",
+    "@meteora-ag/zap-sdk": "1.3.2",
     "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.39.0",
+    "bn.js": "5.2.2",
     "bs58": "^6.0.0",
     "decimal.js": "^10.6.0",
     "isomorphic-ws": "^5.0.0",
@@ -31,6 +45,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@types/bn.js": "5.2.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.7.0",

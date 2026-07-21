@@ -17,6 +17,17 @@ config.resolver.nodeModulesPaths = [
 
 // Privy-recommended resolve overrides
 const resolveRequestWithPackageExports = (context, moduleName, platform) => {
+  // Workspace packages emit Node-compatible `.js` specifiers from TypeScript
+  // source. During Expo development Metro consumes that source directly, so
+  // resolve those relative specifiers back to their `.ts` modules.
+  if (
+    context.originModulePath.includes(path.join('packages', 'shared', 'src'))
+    && moduleName.startsWith('.')
+    && moduleName.endsWith('.js')
+  ) {
+    return context.resolveRequest(context, moduleName.slice(0, -3), platform);
+  }
+
   // Node 'crypto' has no RN equivalent — alias to the native quick-crypto polyfill
   // (needed by @polymarket/clob-client-v2's HMAC signing, which imports 'crypto' directly).
   // Native only: react-native-quick-crypto is a JSI/native module with no web build —

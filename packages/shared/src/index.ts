@@ -19,3 +19,14 @@ export type { ProfileClientConfig, ProfileCacheConfig, PublicProfile, ProfileUse
 export { PacificClient } from './pacific/index.js'
 export type { MarketInfo, PriceInfo, AccountInfo, Position, Order, CreateMarketOrderParams, CreateLimitOrderParams, SetTPSLParams } from './pacific/index.js'
 export { PacificApiError, RateLimitError } from './pacific/index.js'
+
+// Meteora's runtime SDK is intentionally exported from the dedicated
+// `@myboon/shared/meteora` subpath so unrelated clients do not bundle it.
+export type {
+  MeteoraClientConfig,
+  MeteoraPoolSummary,
+  MeteoraPoolDetail,
+  MeteoraPortfolio,
+  MeteoraPosition,
+  MeteoraTransactionBundle,
+} from './meteora/index.js'

@@ -1,0 +1,56 @@
+export type MeteoraErrorCode =
+  | 'INVALID_ARGUMENT'
+  | 'INVALID_AMOUNT'
+  | 'INVALID_ADDRESS'
+  | 'EMPTY_AMOUNT'
+  | 'AMOUNT_FORMAT_INVALID'
+  | 'AMOUNT_NOT_POSITIVE'
+  | 'AMOUNT_PRECISION_EXCEEDED'
+  | 'AMOUNT_OVERFLOW'
+  | 'AMOUNT_BELOW_MINIMUM'
+  | 'INSUFFICIENT_TOKEN_BALANCE'
+  | 'INSUFFICIENT_SOL'
+  | 'INVALID_DEPOSIT_COMBINATION'
+  | 'INVALID_RANGE'
+  | 'RANGE_SIDE_INVALID'
+  | 'RANGE_ADJUSTED'
+  | 'RANGE_TOO_WIDE'
+  | 'PRESET_UNAVAILABLE'
+  | 'INVALID_LIMIT_ORDER'
+  | 'PREVIEW_EXPIRED'
+  | 'PREVIEW_INPUT_CHANGED'
+  | 'POOL_STATE_CHANGED'
+  | 'POOL_STALE'
+  | 'POOL_NOT_SUPPORTED'
+  | 'PRICE_MOVED'
+  | 'TOKEN_NOT_IN_POOL'
+  | 'ZAP_UNAVAILABLE'
+  | 'ZAP_QUOTE_EXPIRED'
+  | 'ZAP_PRICE_IMPACT_TOO_HIGH'
+  | 'LIMIT_ORDER_UNSUPPORTED'
+  | 'WALLET_REQUIRED'
+  | 'WALLET_UNSUPPORTED'
+  | 'SIMULATION_FAILED'
+  | 'WALLET_REJECTED'
+  | 'BLOCKHASH_EXPIRED'
+  | 'ONCHAIN_FAILED'
+  | 'CONFIRMATION_UNKNOWN'
+  | 'PARTIALLY_COMPLETE'
+  | 'POOL_NOT_APPROVED'
+  | 'RPC_NOT_CONFIGURED'
+  | 'UPSTREAM_RATE_LIMITED'
+  | 'UPSTREAM_UNAVAILABLE'
+  | 'UPSTREAM_RESPONSE_INVALID'
+  | 'SDK_ERROR'
+
+export class MeteoraClientError extends Error {
+  constructor(
+    public readonly code: MeteoraErrorCode,
+    message: string,
+    public readonly status: number | null = null,
+    public readonly cause?: unknown,
+  ) {
+    super(message)
+    this.name = 'MeteoraClientError'
+  }
+}
