@@ -17,18 +17,33 @@ const spotClient = new SpotDataApiClient();
 
 export async function fetchSpotValueUsd(walletAddress: string): Promise<number> {
   const result = await spotClient.getWalletBalances(walletAddress);
-  return result.data.totalValueUsd ?? 0;
+  const total = result.data.totalValueUsd;
+  if (total === null) {
+    throw new Error('Spot value unavailable');
+  }
+  return total;
 }
 
 export async function fetchMeteoraValueUsd(walletAddress: string): Promise<number> {
   const result = await meteoraClient.getOpenPortfolio(walletAddress);
   const total = result.data.totalBalanceUsd;
-  return total !== null ? Number.parseFloat(total) || 0 : 0;
+  if (total === null) {
+    throw new Error('Meteora value unavailable');
+  }
+  const parsed = Number.parseFloat(total);
+  if (!Number.isFinite(parsed)) {
+    throw new Error('Meteora value unavailable');
+  }
+  return parsed;
 }
 
 export async function fetchPhoenixValueUsd(walletAddress: string): Promise<number> {
   const state = await fetchPhoenixTraderState(walletAddress);
-  return sumPhoenixPortfolioValue(state.traders);
+  const total = sumPhoenixPortfolioValue(state.traders);
+  if (total === null) {
+    throw new Error('Phoenix value unavailable');
+  }
+  return total;
 }
 
 export async function fetchPacificaValueUsd(walletAddress: string): Promise<number> {
@@ -41,11 +56,16 @@ export async function fetchPacificaValueUsd(walletAddress: string): Promise<numb
  * `portfolioValue` on each record in `traders`. Mirrors the same field name
  * and USD-lots convention PhoenixProfileScreen's own (unexported) summary
  * uses, summed across every trader record for this authority.
+ *
+ * Returns null (mirroring PhoenixProfileScreen's own `sumUsd`) when there are
+ * no trader records with a parseable portfolioValue — an empty sum must
+ * never be reported as a real $0 balance.
  */
-function sumPhoenixPortfolioValue(traders: unknown[]): number {
+function sumPhoenixPortfolioValue(traders: unknown[]): number | null {
   const values = traders
     .map((trader) => toUsd(asRecord(trader)?.portfolioValue))
     .filter((value): value is number => value !== null);
+  if (values.length === 0) return null;
   return values.reduce((sum, value) => sum + value, 0);
 }
 
