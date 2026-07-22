@@ -24,6 +24,7 @@ import {
 } from '@/features/home/marketBrandAssets';
 import { PerpsAccountRow } from '@/features/wallet/PerpsAccountRow';
 import { WalletAccountRow } from '@/features/wallet/WalletAccountRow';
+import { WalletActivityTiles } from '@/features/wallet/WalletActivityTiles';
 import { WalletHero } from '@/features/wallet/WalletHero';
 import { useProtocolAccounts } from '@/features/wallet/useProtocolAccounts';
 import { useSectionVisibility } from '@/features/wallet/useSectionVisibility';
@@ -274,7 +275,6 @@ export default function HomeScreen() {
         <HomeSectionTitle title="Wallet" />
         <View style={styles.walletSection} onLayout={onSectionLayout}>
           <WalletPreview
-            onOpenWallet={() => router.push('/predict-profile')}
             walletTotals={walletTotals}
             walletSources={walletSources}
             hasAnyResolved={WALLET_PROTOCOL_IDS.some((id) => walletSources[id].status === 'resolved')}
@@ -422,7 +422,6 @@ function MarketAppBrandIcon({ icon }: { icon: MarketAppIcon }) {
 }
 
 function WalletPreview({
-  onOpenWallet,
   walletTotals,
   walletSources,
   hasAnyResolved,
@@ -433,7 +432,6 @@ function WalletPreview({
   onOpenPhoenix,
   onOpenPacifica,
 }: {
-  onOpenWallet: () => void;
   walletTotals: WalletTotals;
   walletSources: WalletSourcesState;
   hasAnyResolved: boolean;
@@ -452,11 +450,7 @@ function WalletPreview({
         isRefreshing={walletRefreshing}
         onRefresh={onWalletRefresh}
       />
-      <View style={styles.walletActions}>
-        <WalletAction label="Picks" onPress={onOpenWallet} primary />
-        <WalletAction label="Perps" disabled />
-        <WalletAction label="Swap" disabled />
-      </View>
+      <WalletActivityTiles />
       <View style={styles.accountsList}>
         <WalletAccountRow protocol="spot" source={walletSources.spot} onRetry={onRetrySource} />
         <WalletAccountRow
@@ -469,34 +463,6 @@ function WalletPreview({
         <PerpsAccountRow protocol="pacifica" source={walletSources.pacifica} onRetry={onRetrySource} onPress={onOpenPacifica} />
       </View>
     </View>
-  );
-}
-
-function WalletAction({
-  label,
-  onPress,
-  primary = false,
-  disabled = false,
-}: {
-  label: string;
-  onPress?: () => void;
-  primary?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => [
-      styles.walletAction,
-      primary ? styles.walletActionPrimary : styles.walletActionAlt,
-      disabled && styles.walletActionDisabled,
-      pressed && !disabled && styles.pressed,
-    ]}>
-      <Text style={[styles.walletActionText, primary ? styles.walletActionTextPrimary : styles.walletActionTextAlt]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -751,41 +717,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 7,
-  },
-  walletActions: {
-    flexDirection: 'row',
-    gap: tokens.spacing.sm,
-  },
-  walletAction: {
-    flex: 1,
-    minHeight: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
-  walletActionPrimary: {
-    backgroundColor: tokens.colors.accent,
-  },
-  walletActionAlt: {
-    backgroundColor: 'rgba(6,51,67,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.78)',
-  },
-  walletActionDisabled: {
-    opacity: 0.55,
-  },
-  walletActionText: {
-    fontFamily: 'monospace',
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  walletActionTextPrimary: {
-    color: semantic.background.screen,
-  },
-  walletActionTextAlt: {
-    color: semantic.text.dim,
   },
   accountsList: {
     gap: tokens.spacing.sm,
