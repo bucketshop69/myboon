@@ -16,6 +16,16 @@ export const tokens = {
     live: '#EF476F',
     accent: '#FFD166',
   },
+  // Real per-protocol brand colors for Wallet account rows (PRD design decision #15).
+  // Spot uses Solana's own purple; Meteora uses the violet end of its real gradient
+  // mark (kept distinct from Phoenix's orange); Phoenix/Pacifica are their actual
+  // flat brand-mark fills (see features/home/marketBrandAssets.ts).
+  walletBrand: {
+    spot: '#9945FF',
+    meteora: '#6E45FF',
+    phoenix: '#FF8D2A',
+    pacifica: '#61D7EF',
+  },
   spacing: {
     xxs: 2,
     xs: 4,

@@ -22,6 +22,11 @@ import {
   POLYMARKET_MARK_SVG,
   RAYDIUM_MARK_SVG,
 } from '@/features/home/marketBrandAssets';
+import { WalletHero } from '@/features/wallet/WalletHero';
+import { useProtocolAccounts } from '@/features/wallet/useProtocolAccounts';
+import { useSectionVisibility } from '@/features/wallet/useSectionVisibility';
+import { WALLET_PROTOCOL_IDS, type WalletTotals } from '@/features/wallet/wallet.types';
+import { useWallet } from '@/hooks/useWallet';
 import { semantic, tokens } from '@/theme';
 
 const FEED_PREVIEW_LIMIT = 3;
@@ -105,6 +110,11 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
+  const wallet = useWallet();
+  const walletAddress = wallet.connected ? wallet.address : null;
+  const { totals: walletTotals, sources: walletSources, notifyVisibility, refreshAll: refreshWallet } = useProtocolAccounts(walletAddress);
+  const { isVisible: walletSectionVisible, onSectionLayout, onViewportLayout, onScroll: onWalletScroll } = useSectionVisibility();
+  const [walletRefreshing, setWalletRefreshing] = useState(false);
 
   const [feedItems, setFeedItems] = useState<NarrativeFeedItem[]>([]);
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -150,11 +160,24 @@ export default function HomeScreen() {
     void loadHome();
   }, [loadHome]);
 
+  useEffect(() => {
+    notifyVisibility(walletSectionVisible);
+  }, [walletSectionVisible, notifyVisibility]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadHome(false);
     setRefreshing(false);
   }, [loadHome]);
+
+  const handleWalletRefresh = useCallback(() => {
+    setWalletRefreshing(true);
+    refreshWallet();
+    // Purely visual — sources resolve independently and asynchronously; this
+    // just gives the tap a brief acknowledgement rather than tracking every
+    // source's settle.
+    setTimeout(() => setWalletRefreshing(false), 700);
+  }, [refreshWallet]);
 
   const handleFeedPress = useCallback((item: NarrativeFeedItem) => {
     setSheetItem({
@@ -192,8 +215,9 @@ export default function HomeScreen() {
         }
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false },
+          { useNativeDriver: false, listener: onWalletScroll },
         )}
+        onLayout={onViewportLayout}
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 18) + 24 }]}
       >
         <HomeSectionTitle title="Feed" />
@@ -241,9 +265,13 @@ export default function HomeScreen() {
         />
 
         <HomeSectionTitle title="Wallet" />
-        <View style={styles.walletSection}>
+        <View style={styles.walletSection} onLayout={onSectionLayout}>
           <WalletPreview
             onOpenWallet={() => router.push('/predict-profile')}
+            walletTotals={walletTotals}
+            hasAnyResolved={WALLET_PROTOCOL_IDS.some((id) => walletSources[id].status === 'resolved')}
+            walletRefreshing={walletRefreshing}
+            onWalletRefresh={handleWalletRefresh}
           />
         </View>
 
@@ -383,16 +411,25 @@ function MarketAppBrandIcon({ icon }: { icon: MarketAppIcon }) {
 
 function WalletPreview({
   onOpenWallet,
+  walletTotals,
+  hasAnyResolved,
+  walletRefreshing,
+  onWalletRefresh,
 }: {
   onOpenWallet: () => void;
+  walletTotals: WalletTotals;
+  hasAnyResolved: boolean;
+  walletRefreshing: boolean;
+  onWalletRefresh: () => void;
 }) {
   return (
     <View style={styles.walletWrap}>
-      <View style={styles.walletHero}>
-        <Text style={styles.meta}>Net worth</Text>
-        <Text style={styles.walletValue}>$9,428</Text>
-        <Text style={styles.walletDelta}>+3.8% today across 5 venues</Text>
-      </View>
+      <WalletHero
+        totals={walletTotals}
+        hasAnyResolved={hasAnyResolved}
+        isRefreshing={walletRefreshing}
+        onRefresh={onWalletRefresh}
+      />
       <View style={styles.walletActions}>
         <WalletAction label="Picks" onPress={onOpenWallet} primary />
         <WalletAction label="Perps" disabled />
@@ -710,13 +747,6 @@ const styles = StyleSheet.create({
     minHeight: WALLET_SECTION_MIN_HEIGHT,
     justifyContent: 'flex-start',
   },
-  walletHero: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.86)',
-    backgroundColor: 'rgba(8,61,80,0.90)',
-    padding: tokens.spacing.lg,
-  },
   meta: {
     color: semantic.text.faint,
     fontFamily: 'monospace',
@@ -724,19 +754,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 7,
-  },
-  walletValue: {
-    color: semantic.text.primary,
-    fontSize: 39,
-    lineHeight: 42,
-    fontWeight: '800',
-    marginBottom: tokens.spacing.xs,
-  },
-  walletDelta: {
-    color: semantic.sentiment.positive,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '800',
   },
   walletActions: {
     flexDirection: 'row',
