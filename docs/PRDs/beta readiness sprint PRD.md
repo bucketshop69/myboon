@@ -88,7 +88,10 @@ Wallet = accounts, balances, and positions
 
 The current home launcher includes dead or incomplete surfaces:
 
-- Meteora, Orca, Raydium, and Kamino have no mobile routes
+- Orca, Raydium, and Kamino have no mobile routes
+- Meteora now has a real mobile route at beta scope (pools, create position,
+  and position management); it is not dead or fabricated, but its DLMM
+  liquidity scope is narrower than a full protocol integration
 - Swap currently shows mock balance state and a `COMING SOON` action
 - Phoenix is explicitly marked incomplete and has wallet, regional, access-code,
   close-position, and TP/SL limitations
@@ -217,7 +220,9 @@ or every transaction.
   cadence changes
 - legacy narrative reconciliation and additional perps, on-chain, wallet, and
   social publishing pipelines
-- unified cross-protocol net worth after valuation semantics are proven
+- Polymarket inclusion in the Wallet combined total (see
+  [`docs/modules/wallet/PRDs/2026_07_21_beta_readiness_wallet_PRD.md`](../modules/wallet/PRDs/2026_07_21_beta_readiness_wallet_PRD.md)
+  for the P0 total's actual scope)
 - Phoenix full execution, Swap execution, a third perps venue, and LP apps
 - cross-protocol transfers
 - richer analytics and in-app feedback tooling
@@ -239,8 +244,8 @@ or every transaction.
 - Do not add a third perps venue.
 - Do not present Hyperliquid collection work as a mobile integration.
 - Do not add LP execution.
-- Do not ship cross-protocol transfers.
-- Do not promise unified net worth.
+- Do not ship working cross-protocol transfers (visible `Coming soon` only).
+- Do not include Polymarket in the Wallet combined total or row list.
 - Do not add analytics until privacy, retention, and deletion ownership are
   approved.
 - Do not build a graph visualization.
@@ -268,9 +273,15 @@ Home /
     Phoenix /markets/phoenix, only at its verified capability level
   Wallet preview
     Wallet /wallet
-      Polymarket account /predict-profile
-      Pacifica account /trade?view=profile
+      Combined total: Solana spot + Meteora + Phoenix + Pacifica
+      Solana spot balance row
+      Meteora account /markets/meteora/profile
       Phoenix account /markets/phoenix/profile
+      Pacifica account /trade?view=profile
+      Wallet activity: Send, Receive, Deposit, Withdraw, Transfer
+        (all "Coming soon")
+      (Polymarket stays on its existing /predict-profile path, outside
+      the Wallet total)
 
 Account drawer
   Identity and wallet connection
@@ -454,7 +465,10 @@ Default until testing proves otherwise:
 - Pacifica: visible at the highest verified lifecycle
 - Phoenix: read-only or hidden
 - Swap: hidden
-- third perps and LP apps: hidden
+- Meteora: visible at its verified beta lifecycle (see beta-scoped Meteora
+  PRD); this is the one exception to hiding LP apps for P0
+- other LP apps (Orca, Raydium, Kamino) and a third perps venue: hidden,
+  shown as `Coming soon`
 
 ### Sprint stop condition
 
@@ -668,16 +682,30 @@ apps appear. A read-only app explains the limitation before transaction UI.
 
 Rename the Home section from `Markets` to `Apps`.
 
-Remove disabled Meteora, Orca, Raydium, and Kamino tiles. Hide Swap until its
-real quote-to-transaction lifecycle passes. Do not claim Hyperliquid or a third
-perps venue.
+Show a `Coming soon` tile for Orca, Raydium, and Kamino instead of removing
+them outright — visible but explicitly non-interactive, so the roadmap stays
+legible without overstating current capability. Meteora is excluded from this
+treatment: it has a verified beta mobile route (pool browse, create position,
+claim/add/remove/close) and renders at its actual, capability-registry-verified
+status rather than a placeholder. Hide Swap until its real quote-to-transaction
+lifecycle passes. Do not claim Hyperliquid or a third perps venue.
 
 ## P0 Workstream 4: Wallet
 
-### Do not aggregate net worth yet
+Superseded by
+[`docs/modules/wallet/PRDs/2026_07_21_beta_readiness_wallet_PRD.md`](../modules/wallet/PRDs/2026_07_21_beta_readiness_wallet_PRD.md).
+That PRD is the authoritative spec for this workstream; the summary below
+exists only to keep this sprint document internally consistent and should
+not be read as a separate or competing plan.
 
-P0 shows separate protocol account summaries. It does not calculate a unified
-net worth until address mapping, valuation, and failure semantics are proven.
+### A real combined total is now in scope for P0
+
+P0 shows a genuine combined total (Solana spot + Meteora + Phoenix +
+Pacifica), not only separate protocol account summaries. The total is shown
+as soon as at least one source has loaded, and is visibly marked partial if
+any source has not loaded successfully. Polymarket is excluded from the
+total and row list for this phase and remains reachable only through its
+existing `/predict-profile` path; Meteora is included instead.
 
 ```ts
 type ProtocolAccountState =
@@ -692,7 +720,7 @@ type ProtocolAccountState =
   | 'disconnected'
 
 interface ProtocolAccountSummary {
-  source: 'solana' | 'polymarket' | 'pacifica' | 'phoenix'
+  source: 'solana' | 'meteora' | 'pacifica' | 'phoenix'
   label: string
   identityLabel: string | null
   state: ProtocolAccountState
@@ -710,9 +738,12 @@ Rules:
 - unknown numbers remain `null`, never zero
 - every loaded number has an `as of` time
 - stale state retains the last known value and labels it stale
-- unavailable state does not clear other protocol cards
+- unavailable state does not clear other protocol cards, and does not block
+  the combined total from showing as partial
 - each protocol identifies which address/account it represents
 - retry is per protocol
+- Phoenix and Pacifica report equity (collateral + unrealized PnL), not
+  static collateral
 
 ### Home Wallet preview
 
@@ -725,19 +756,22 @@ Feed and Apps remain available
 
 Connected:
 
+- show the real combined total, or its partial-total state
 - show separate available account cards
 - show top real positions only
 - link to the full Wallet screen
-- never show fabricated total value or daily PnL
+- never show a fabricated total value or daily PnL
 
 ### Wallet screen
 
 Show:
 
-1. protocol account cards
-2. positions grouped by protocol
+1. combined total (or partial-total state)
+2. protocol account cards (Solana spot, Meteora, Phoenix, Pacifica)
 3. setup, access, unsupported, stale, and retry states
 4. links to current protocol-native profiles
+5. Send, Receive, Deposit, Withdraw, and cross-protocol transfer as visible
+   `Coming soon` entries
 
 ### Account drawer
 
@@ -1024,9 +1058,10 @@ Expected files to create or modify:
   capability registry.
 - `apps/hybrid-expo/features/wallet/wallet.types.ts` — protocol account states.
 - `apps/hybrid-expo/features/wallet/useProtocolAccounts.ts` — independent live
-  protocol reads with null/stale/error semantics.
-- `apps/hybrid-expo/features/wallet/WalletScreen.tsx` — protocol cards and grouped
-  positions.
+  protocol reads (Solana spot, Meteora, Phoenix, Pacifica) with
+  null/stale/error semantics, plus the combined/partial total.
+- `apps/hybrid-expo/features/wallet/WalletScreen.tsx` — combined total, protocol
+  cards, and `Coming soon` wallet-activity entries.
 - `apps/hybrid-expo/components/drawer/WalletDrawer.tsx` — account-only utility or
   rename to `AccountDrawer.tsx`.
 - `apps/hybrid-expo/app.json` — release assets, version, and HTTPS-only traffic.
@@ -1131,10 +1166,15 @@ safety, fabricated-state removal, or the Alliance demo.
 - [ ] No duplicate public timeline table is created.
 - [ ] The new Feed can be disabled server-side, restoring the legacy Feed.
 - [ ] Apps render from the device-verified capability registry.
-- [ ] Swap, third perps, LP apps, and unverified Phoenix actions are hidden.
+- [ ] Swap, third perps, other LP apps (Orca, Raydium, Kamino, shown as
+      `Coming soon`), and unverified Phoenix actions are hidden. Meteora is
+      the sole LP app exception and renders at its verified beta lifecycle.
 - [ ] Home and Account drawer contain no hard-coded financial or version data.
-- [ ] Wallet shows separate protocol account cards with identity, state, and
-      `as of` time; unknown values are `null`, never `$0`.
+- [ ] Wallet shows a real combined total (Solana spot + Meteora + Phoenix +
+      Pacifica), visibly partial when a source has not loaded, plus separate
+      protocol account cards with identity, state, and `as of` time; unknown
+      values are `Unavailable`/`null`, never `$0`.
+- [ ] Polymarket is excluded from the Wallet combined total and row list.
 - [ ] Embedded, external, unsupported, setup-required, access-required, expired,
       stale, unavailable, and disconnected states have explicit behavior.
 - [ ] Exactly one controlled transaction lifecycle is required for P0; all other
