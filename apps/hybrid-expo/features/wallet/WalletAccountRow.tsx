@@ -1,4 +1,5 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { semantic, tokens } from '@/theme';
 import type {
   MeteoraRowDetail,
@@ -49,23 +50,30 @@ export function WalletAccountRow({
   protocol,
   source,
   onRetry,
+  onPress,
 }: {
   protocol: 'spot' | 'meteora';
   source: WalletSourceState;
   onRetry: (id: WalletProtocolId) => void;
+  /**
+   * Tap-through destination for this row (issue #240). Spot has no profile
+   * screen anywhere in the app, so it is never passed an `onPress` — the row
+   * renders as visually non-interactive (no chevron, not `Pressable`) rather
+   * than a dead tap target (PRD decision #7, TC-NAV-004).
+   */
+  onPress?: () => void;
 }) {
   const isPending = source.status === 'idle' || source.status === 'loading' || source.status === 'failed';
 
-  return (
-    <View
-      style={[
-        styles.row,
-        { backgroundColor: ROW_TINT[protocol] },
-        isPending && styles.rowPending,
-      ]}
-    >
+  const content = (
+    <>
       <View style={styles.topRow}>
-        <Text style={[styles.name, { color: ROW_NAME_COLOR[protocol] }]}>{ROW_LABEL[protocol]}</Text>
+        <View style={styles.nameRow}>
+          <Text style={[styles.name, { color: ROW_NAME_COLOR[protocol] }]}>{ROW_LABEL[protocol]}</Text>
+          {onPress ? (
+            <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
+          ) : null}
+        </View>
         {source.status === 'resolved' && source.valueUsd !== null ? (
           <Text style={styles.value}>{formatUsd(source.valueUsd)}</Text>
         ) : (
@@ -81,7 +89,31 @@ export function WalletAccountRow({
           onRetry={() => onRetry(protocol)}
         />
       )}
-    </View>
+    </>
+  );
+
+  if (!onPress) {
+    return (
+      <View style={[styles.row, { backgroundColor: ROW_TINT[protocol] }, isPending && styles.rowPending]}>
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${ROW_LABEL[protocol]}`}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: ROW_TINT[protocol] },
+        isPending && styles.rowPending,
+        pressed && styles.rowPressed,
+      ]}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -210,12 +242,20 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: 'rgba(255,209,102,0.35)',
   },
+  rowPressed: {
+    opacity: 0.82,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
     marginBottom: 5,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   name: {
     fontSize: 13.5,

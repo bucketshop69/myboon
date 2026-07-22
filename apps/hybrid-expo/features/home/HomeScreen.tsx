@@ -281,6 +281,9 @@ export default function HomeScreen() {
             walletRefreshing={walletRefreshing}
             onWalletRefresh={handleWalletRefresh}
             onRetrySource={retryWalletSource}
+            onOpenMeteora={() => router.push('/markets/meteora/profile')}
+            onOpenPhoenix={() => router.push('/markets/phoenix/profile')}
+            onOpenPacifica={() => router.push('/trade?view=profile')}
           />
         </View>
 
@@ -426,6 +429,9 @@ function WalletPreview({
   walletRefreshing,
   onWalletRefresh,
   onRetrySource,
+  onOpenMeteora,
+  onOpenPhoenix,
+  onOpenPacifica,
 }: {
   onOpenWallet: () => void;
   walletTotals: WalletTotals;
@@ -434,6 +440,9 @@ function WalletPreview({
   walletRefreshing: boolean;
   onWalletRefresh: () => void;
   onRetrySource: (id: WalletProtocolId) => void;
+  onOpenMeteora: () => void;
+  onOpenPhoenix: () => void;
+  onOpenPacifica: () => void;
 }) {
   return (
     <View style={styles.walletWrap}>
@@ -450,9 +459,14 @@ function WalletPreview({
       </View>
       <View style={styles.accountsList}>
         <WalletAccountRow protocol="spot" source={walletSources.spot} onRetry={onRetrySource} />
-        <WalletAccountRow protocol="meteora" source={walletSources.meteora} onRetry={onRetrySource} />
-        <PerpsAccountRow protocol="phoenix" source={walletSources.phoenix} onRetry={onRetrySource} />
-        <PerpsAccountRow protocol="pacifica" source={walletSources.pacifica} onRetry={onRetrySource} />
+        <WalletAccountRow
+          protocol="meteora"
+          source={walletSources.meteora}
+          onRetry={onRetrySource}
+          onPress={onOpenMeteora}
+        />
+        <PerpsAccountRow protocol="phoenix" source={walletSources.phoenix} onRetry={onRetrySource} onPress={onOpenPhoenix} />
+        <PerpsAccountRow protocol="pacifica" source={walletSources.pacifica} onRetry={onRetrySource} onPress={onOpenPacifica} />
       </View>
     </View>
   );

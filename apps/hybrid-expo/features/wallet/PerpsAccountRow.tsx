@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { semantic, tokens } from '@/theme';
 import type { PerpsRowDetail, WalletProtocolId, WalletSourceState } from '@/features/wallet/wallet.types';
 
@@ -49,23 +50,33 @@ export function PerpsAccountRow({
   protocol,
   source,
   onRetry,
+  onPress,
 }: {
   protocol: 'phoenix' | 'pacifica';
   source: WalletSourceState;
   onRetry: (id: WalletProtocolId) => void;
+  /** Tap-through destination for this row (issue #240, TC-NAV-002/003). */
+  onPress: () => void;
 }) {
   const isPending = source.status === 'idle' || source.status === 'loading' || source.status === 'failed';
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${ROW_LABEL[protocol]}`}
+      style={({ pressed }) => [
         styles.row,
         { backgroundColor: ROW_TINT[protocol] },
         isPending && styles.rowPending,
+        pressed && styles.rowPressed,
       ]}
     >
       <View style={styles.topRow}>
-        <Text style={[styles.name, { color: ROW_NAME_COLOR[protocol] }]}>{ROW_LABEL[protocol]}</Text>
+        <View style={styles.nameRow}>
+          <Text style={[styles.name, { color: ROW_NAME_COLOR[protocol] }]}>{ROW_LABEL[protocol]}</Text>
+          <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
+        </View>
         {source.status === 'resolved' && source.valueUsd !== null ? (
           <Text style={styles.value}>{formatUsd(source.valueUsd)}</Text>
         ) : (
@@ -81,7 +92,7 @@ export function PerpsAccountRow({
           onRetry={() => onRetry(protocol)}
         />
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -142,12 +153,20 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: 'rgba(255,209,102,0.35)',
   },
+  rowPressed: {
+    opacity: 0.82,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: tokens.spacing.sm,
     marginBottom: 5,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   name: {
     fontSize: 13.5,
