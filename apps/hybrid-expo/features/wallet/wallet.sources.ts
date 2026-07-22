@@ -1,30 +1,74 @@
 /**
  * Per-protocol fetch adapters for Home's Wallet section.
  *
- * Each function resolves to a single USD value for that protocol's account
- * row (issue #237 scope: total + mix bar only — per-row rendering, chips,
- * and pills are #238/#239). Every adapter is independent: it does its own
+ * Each function resolves to a `WalletFetchResult` — the USD value for that
+ * protocol's account row, plus the protocol-specific row content (token
+ * chips, LP position pills, perps position pills) needed to render the row
+ * without a second fetch. Every adapter is independent: it does its own
  * fetch against the already-existing client for that protocol and either
- * resolves a number or throws, so `useProtocolAccounts` can isolate
- * failures per source (PRD "fetch orchestration").
+ * resolves or throws, so `useProtocolAccounts` can isolate failures per
+ * source (PRD "fetch orchestration").
  */
 import { SpotDataApiClient } from '@myboon/shared/spot';
 import { meteoraClient } from '@/features/meteora/meteora.client';
 import { fetchPhoenixTraderState } from '@/features/perps/phoenix.api';
-import { fetchPerpsAccount } from '@/features/perps/perps.public-api';
+import { fetchPerpsAccount, fetchPerpsPositions } from '@/features/perps/perps.public-api';
+import type {
+  MeteoraRowDetail,
+  PerpsRowDetail,
+  PerpsRowPill,
+  SpotChipToken,
+  SpotRowDetail,
+} from '@/features/wallet/wallet.types';
 
 const spotClient = new SpotDataApiClient();
 
-export async function fetchSpotValueUsd(walletAddress: string): Promise<number> {
+/** Number of Spot chips shown before the row switches to a "+N" overflow chip (PRD decision #17, TC-ROWS-003). */
+const SPOT_TOP_TOKEN_COUNT = 3;
+
+export interface WalletFetchResult {
+  valueUsd: number;
+  detail: SpotRowDetail | MeteoraRowDetail | PerpsRowDetail | null;
+}
+
+export async function fetchSpotValueUsd(walletAddress: string): Promise<WalletFetchResult> {
   const result = await spotClient.getWalletBalances(walletAddress);
   const total = result.data.totalValueUsd;
   if (total === null) {
     throw new Error('Spot value unavailable');
   }
-  return total;
+  return { valueUsd: total, detail: buildSpotRowDetail(result.data.tokens) };
 }
 
-export async function fetchMeteoraValueUsd(walletAddress: string): Promise<number> {
+/**
+ * Ranks held tokens by pure USD value (largest first, no special-casing for
+ * SOL — TC-ROWS-003) and splits them into the chips shown on the row plus an
+ * overflow count for the "+N" chip.
+ */
+function buildSpotRowDetail(tokens: Array<{
+  mint: string
+  symbol: string | null
+  iconUrl: string | null
+  valueUsd: number | null
+}>): SpotRowDetail {
+  const ranked = tokens
+    .filter((token) => token.valueUsd !== null && token.valueUsd > 0)
+    .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0));
+
+  const topTokens: SpotChipToken[] = ranked.slice(0, SPOT_TOP_TOKEN_COUNT).map((token) => ({
+    mint: token.mint,
+    symbol: token.symbol,
+    logoUri: token.iconUrl,
+    valueUsd: token.valueUsd ?? 0,
+  }));
+
+  return {
+    topTokens,
+    overflowCount: Math.max(0, ranked.length - topTokens.length),
+  };
+}
+
+export async function fetchMeteoraValueUsd(walletAddress: string): Promise<WalletFetchResult> {
   const result = await meteoraClient.getOpenPortfolio(walletAddress);
   const total = result.data.totalBalanceUsd;
   if (total === null) {
@@ -34,21 +78,59 @@ export async function fetchMeteoraValueUsd(walletAddress: string): Promise<numbe
   if (!Number.isFinite(parsed)) {
     throw new Error('Meteora value unavailable');
   }
-  return parsed;
+  return { valueUsd: parsed, detail: buildMeteoraRowDetail(result.data) };
 }
 
-export async function fetchPhoenixValueUsd(walletAddress: string): Promise<number> {
+/**
+ * One pill per open LP position (pool group), ring-colored by that pool's
+ * own range status (TC-ROWS-004) — never a spelled-out count. Unclaimed
+ * fees are summed across pools for the row's signal line.
+ */
+function buildMeteoraRowDetail(portfolio: {
+  pools: Array<{
+    poolAddress: string
+    pair: string
+    outOfRange: boolean | null
+    unclaimedFeesUsd: string
+  }>
+  totalUnclaimedFeesUsd: string | null
+}): MeteoraRowDetail {
+  const pills = portfolio.pools.map((pool) => ({
+    poolAddress: pool.poolAddress,
+    pair: pool.pair,
+    inRange: pool.outOfRange === null ? null : !pool.outOfRange,
+  }));
+
+  const feesParsed = portfolio.totalUnclaimedFeesUsd === null
+    ? null
+    : Number.parseFloat(portfolio.totalUnclaimedFeesUsd);
+
+  return {
+    pills,
+    unclaimedFeesUsd: feesParsed !== null && Number.isFinite(feesParsed) ? feesParsed : null,
+  };
+}
+
+export async function fetchPhoenixValueUsd(walletAddress: string): Promise<WalletFetchResult> {
   const state = await fetchPhoenixTraderState(walletAddress);
   const total = sumPhoenixPortfolioValue(state.traders);
   if (total === null) {
     throw new Error('Phoenix value unavailable');
   }
-  return total;
+  return { valueUsd: total, detail: { pills: buildPhoenixRowPills(state.traders) } };
 }
 
-export async function fetchPacificaValueUsd(walletAddress: string): Promise<number> {
-  const account = await fetchPerpsAccount(walletAddress);
-  return account.equity;
+export async function fetchPacificaValueUsd(walletAddress: string): Promise<WalletFetchResult> {
+  const [account, positions] = await Promise.all([
+    fetchPerpsAccount(walletAddress),
+    fetchPerpsPositions(walletAddress),
+  ]);
+  const pills: PerpsRowPill[] = positions.map((position) => ({
+    symbol: position.symbol,
+    side: position.side,
+    unrealizedPnl: position.unrealizedPnl,
+  }));
+  return { valueUsd: account.equity, detail: { pills } };
 }
 
 /**
@@ -67,6 +149,40 @@ function sumPhoenixPortfolioValue(traders: unknown[]): number | null {
     .filter((value): value is number => value !== null);
   if (values.length === 0) return null;
   return values.reduce((sum, value) => sum + value, 0);
+}
+
+/**
+ * One pill per open Phoenix position, mirroring PhoenixProfileScreen's own
+ * `normalizePositions`: each trader record's `positions[]` array holds raw
+ * records keyed by `symbol` / `positionSize` (sign gives side) /
+ * `unrealizedPnl`. A position with zero size is not open and is skipped, the
+ * same convention PhoenixProfileScreen's own normalizer uses.
+ */
+function buildPhoenixRowPills(traders: unknown[]): PerpsRowPill[] {
+  const pills: PerpsRowPill[] = [];
+
+  traders.forEach((trader) => {
+    const traderRecord = asRecord(trader);
+    if (!traderRecord) return;
+    const rawPositions = Array.isArray(traderRecord.positions) ? traderRecord.positions : [];
+
+    rawPositions.forEach((item) => {
+      const record = asRecord(item);
+      if (!record) return;
+
+      const symbol = typeof record.symbol === 'string' ? record.symbol : null;
+      const size = toNumber(record.positionSize) ?? 0;
+      if (!symbol || size === 0) return;
+
+      pills.push({
+        symbol,
+        side: size >= 0 ? 'long' : 'short',
+        unrealizedPnl: toUsd(record.unrealizedPnl) ?? 0,
+      });
+    });
+  });
+
+  return pills;
 }
 
 function asRecord(input: unknown): Record<string, unknown> | null {

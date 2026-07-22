@@ -4,6 +4,7 @@ import {
   fetchPacificaValueUsd,
   fetchPhoenixValueUsd,
   fetchSpotValueUsd,
+  type WalletFetchResult,
 } from '@/features/wallet/wallet.sources';
 import {
   WALLET_PROTOCOL_IDS,
@@ -15,7 +16,7 @@ import {
 
 const VIEWPORT_DEBOUNCE_MS = 400;
 
-const FETCHERS: Record<WalletProtocolId, (walletAddress: string) => Promise<number>> = {
+const FETCHERS: Record<WalletProtocolId, (walletAddress: string) => Promise<WalletFetchResult>> = {
   spot: fetchSpotValueUsd,
   meteora: fetchMeteoraValueUsd,
   phoenix: fetchPhoenixValueUsd,
@@ -23,7 +24,7 @@ const FETCHERS: Record<WalletProtocolId, (walletAddress: string) => Promise<numb
 };
 
 function idleSource(): WalletSourceState {
-  return { status: 'idle', valueUsd: null, resolvedAt: null, error: null };
+  return { status: 'idle', valueUsd: null, resolvedAt: null, error: null, detail: null };
 }
 
 function initialSources(): WalletSourcesState {
@@ -79,11 +80,11 @@ export function useProtocolAccounts(walletAddress: string | null): UseProtocolAc
     }));
 
     FETCHERS[id](address)
-      .then((valueUsd) => {
+      .then(({ valueUsd, detail }) => {
         if (requestSeq.current[id] !== seq) return; // superseded by a newer request
         setSources((prev) => ({
           ...prev,
-          [id]: { status: 'resolved', valueUsd, resolvedAt: Date.now(), error: null },
+          [id]: { status: 'resolved', valueUsd, resolvedAt: Date.now(), error: null, detail },
         }));
       })
       .catch((error: unknown) => {

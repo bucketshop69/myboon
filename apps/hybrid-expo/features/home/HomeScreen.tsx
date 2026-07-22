@@ -22,10 +22,17 @@ import {
   POLYMARKET_MARK_SVG,
   RAYDIUM_MARK_SVG,
 } from '@/features/home/marketBrandAssets';
+import { PerpsAccountRow } from '@/features/wallet/PerpsAccountRow';
+import { WalletAccountRow } from '@/features/wallet/WalletAccountRow';
 import { WalletHero } from '@/features/wallet/WalletHero';
 import { useProtocolAccounts } from '@/features/wallet/useProtocolAccounts';
 import { useSectionVisibility } from '@/features/wallet/useSectionVisibility';
-import { WALLET_PROTOCOL_IDS, type WalletTotals } from '@/features/wallet/wallet.types';
+import {
+  WALLET_PROTOCOL_IDS,
+  type WalletProtocolId,
+  type WalletSourcesState,
+  type WalletTotals,
+} from '@/features/wallet/wallet.types';
 import { useWallet } from '@/hooks/useWallet';
 import { semantic, tokens } from '@/theme';
 
@@ -112,7 +119,7 @@ export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const wallet = useWallet();
   const walletAddress = wallet.connected ? wallet.address : null;
-  const { totals: walletTotals, sources: walletSources, notifyVisibility, refreshAll: refreshWallet } = useProtocolAccounts(walletAddress);
+  const { totals: walletTotals, sources: walletSources, notifyVisibility, refreshAll: refreshWallet, retrySource: retryWalletSource } = useProtocolAccounts(walletAddress);
   const { isVisible: walletSectionVisible, onSectionLayout, onViewportLayout, onScroll: onWalletScroll } = useSectionVisibility();
   const [walletRefreshing, setWalletRefreshing] = useState(false);
 
@@ -269,9 +276,11 @@ export default function HomeScreen() {
           <WalletPreview
             onOpenWallet={() => router.push('/predict-profile')}
             walletTotals={walletTotals}
+            walletSources={walletSources}
             hasAnyResolved={WALLET_PROTOCOL_IDS.some((id) => walletSources[id].status === 'resolved')}
             walletRefreshing={walletRefreshing}
             onWalletRefresh={handleWalletRefresh}
+            onRetrySource={retryWalletSource}
           />
         </View>
 
@@ -412,15 +421,19 @@ function MarketAppBrandIcon({ icon }: { icon: MarketAppIcon }) {
 function WalletPreview({
   onOpenWallet,
   walletTotals,
+  walletSources,
   hasAnyResolved,
   walletRefreshing,
   onWalletRefresh,
+  onRetrySource,
 }: {
   onOpenWallet: () => void;
   walletTotals: WalletTotals;
+  walletSources: WalletSourcesState;
   hasAnyResolved: boolean;
   walletRefreshing: boolean;
   onWalletRefresh: () => void;
+  onRetrySource: (id: WalletProtocolId) => void;
 }) {
   return (
     <View style={styles.walletWrap}>
@@ -435,11 +448,11 @@ function WalletPreview({
         <WalletAction label="Perps" disabled />
         <WalletAction label="Swap" disabled />
       </View>
-      <View style={styles.positionsCard}>
-        <Text style={styles.meta}>Positions</Text>
-        <PositionRow coin="P" name="Prediction cash" sub="Polymarket wallet" value="$1,240" delta="+6.2%" />
-        <PositionRow coin="H" name="SOL-PERP" sub="Perps margin" value="$3,880" delta="+2.1%" />
-        <PositionRow coin="M" name="Meteora LP" sub="SOL / USDC" value="$920" delta="+0.8%" />
+      <View style={styles.accountsList}>
+        <WalletAccountRow protocol="spot" source={walletSources.spot} onRetry={onRetrySource} />
+        <WalletAccountRow protocol="meteora" source={walletSources.meteora} onRetry={onRetrySource} />
+        <PerpsAccountRow protocol="phoenix" source={walletSources.phoenix} onRetry={onRetrySource} />
+        <PerpsAccountRow protocol="pacifica" source={walletSources.pacifica} onRetry={onRetrySource} />
       </View>
     </View>
   );
@@ -470,36 +483,6 @@ function WalletAction({
     ]}>
       <Text style={[styles.walletActionText, primary ? styles.walletActionTextPrimary : styles.walletActionTextAlt]}>{label}</Text>
     </Pressable>
-  );
-}
-
-function PositionRow({
-  coin,
-  name,
-  sub,
-  value,
-  delta,
-}: {
-  coin: string;
-  name: string;
-  sub: string;
-  value: string;
-  delta: string;
-}) {
-  return (
-    <View style={styles.positionRow}>
-      <View style={styles.positionCoin}>
-        <Text style={styles.positionCoinText}>{coin}</Text>
-      </View>
-      <View style={styles.positionCopy}>
-        <Text style={styles.positionName}>{name}</Text>
-        <Text style={styles.positionSub}>{sub}</Text>
-      </View>
-      <View style={styles.positionValueWrap}>
-        <Text style={styles.positionValue}>{value}</Text>
-        <Text style={styles.positionDelta}>{delta}</Text>
-      </View>
-    </View>
   );
 }
 
@@ -790,65 +773,8 @@ const styles = StyleSheet.create({
   walletActionTextAlt: {
     color: semantic.text.dim,
   },
-  positionsCard: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.78)',
-    backgroundColor: 'rgba(8,61,80,0.82)',
-    padding: 13,
-  },
-  positionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  accountsList: {
     gap: tokens.spacing.sm,
-    paddingVertical: 11,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(24,90,112,0.62)',
-  },
-  positionCoin: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: semantic.background.lift,
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.84)',
-  },
-  positionCoinText: {
-    color: tokens.colors.accent,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '900',
-  },
-  positionCopy: {
-    flex: 1,
-  },
-  positionName: {
-    color: semantic.text.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  positionSub: {
-    color: semantic.text.faint,
-    fontFamily: 'monospace',
-    fontSize: 8,
-  },
-  positionValueWrap: {
-    alignItems: 'flex-end',
-  },
-  positionValue: {
-    color: semantic.text.primary,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '800',
-  },
-  positionDelta: {
-    color: semantic.sentiment.positive,
-    fontFamily: 'monospace',
-    fontSize: 8,
-    marginTop: 3,
   },
   dummyCard: {
     borderRadius: 8,
