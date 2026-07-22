@@ -63,7 +63,13 @@ export function WalletAccountRow({
    */
   onPress?: () => void;
 }) {
-  const isPending = source.status === 'idle' || source.status === 'loading' || source.status === 'failed';
+  // A value is shown whenever one has ever resolved — including while a retry
+  // of a stale row is in flight (status 'loading' but a prior value is still
+  // held) — so a previously-known value is never blanked mid-retry
+  // (TC-STATE-003, TC-STATE-005).
+  const hasValue = source.valueUsd !== null && source.resolvedAt !== null;
+  const isStale = source.status === 'stale' || (source.status === 'loading' && hasValue);
+  const isPending = (source.status === 'idle' || source.status === 'loading' || source.status === 'failed') && !hasValue;
 
   const content = (
     <>
@@ -74,21 +80,25 @@ export function WalletAccountRow({
             <MaterialIcons name="chevron-right" size={14} color={semantic.text.faint} />
           ) : null}
         </View>
-        {source.status === 'resolved' && source.valueUsd !== null ? (
+        {hasValue && source.valueUsd !== null ? (
           <Text style={styles.value}>{formatUsd(source.valueUsd)}</Text>
         ) : (
           <View style={styles.valueSkeleton} />
         )}
       </View>
 
-      {source.status === 'resolved' ? (
-        <RowSignal protocol={protocol} detail={source.detail} />
-      ) : (
+      {hasValue ? <RowSignal protocol={protocol} detail={source.detail} /> : null}
+
+      {isStale ? (
+        <StaleSignal resolvedAt={source.resolvedAt} onRetry={() => onRetry(protocol)} />
+      ) : null}
+
+      {!hasValue ? (
         <SyncingSignal
           failed={source.status === 'failed'}
           onRetry={() => onRetry(protocol)}
         />
-      )}
+      ) : null}
     </>
   );
 
@@ -223,8 +233,44 @@ function SyncingSignal({ failed, onRetry }: { failed: boolean; onRetry: () => vo
       <View style={styles.spinnerDot} />
       <Text style={styles.syncingText}>{failed ? 'syncing · tap to retry' : 'syncing'}</Text>
       {failed ? (
-        <Text style={styles.retryLink} onPress={onRetry}>Retry</Text>
+        <Pressable
+          onPress={onRetry}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Retry syncing this balance"
+        >
+          <Text style={styles.retryLink}>Retry</Text>
+        </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+function formatStaleFreshness(resolvedAtMs: number | null): string {
+  if (resolvedAtMs === null) return 'stale';
+  const minutes = Math.max(0, Math.floor((Date.now() - resolvedAtMs) / 60_000));
+  if (minutes < 1) return 'stale · as of just now';
+  if (minutes === 1) return 'stale · as of 1 min ago';
+  return `stale · as of ${minutes} min ago`;
+}
+
+/**
+ * TC-STATE-003: a source that has a real, previously-fetched value but whose
+ * latest refresh failed — the row keeps its last known value and this label,
+ * distinct from the dashed-border "syncing" pending/never-loaded treatment.
+ */
+function StaleSignal({ resolvedAt, onRetry }: { resolvedAt: number | null; onRetry: () => void }) {
+  return (
+    <View style={styles.syncingRow}>
+      <Text style={styles.staleText}>{formatStaleFreshness(resolvedAt)}</Text>
+      <Pressable
+        onPress={onRetry}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Retry syncing this balance"
+      >
+        <Text style={styles.retryLink}>Retry</Text>
+      </Pressable>
     </View>
   );
 }
@@ -372,6 +418,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  staleText: {
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    fontSize: 8.5,
+    fontStyle: 'italic',
   },
   spinnerDot: {
     width: 9,

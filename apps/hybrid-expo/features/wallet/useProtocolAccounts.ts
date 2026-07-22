@@ -89,14 +89,22 @@ export function useProtocolAccounts(walletAddress: string | null): UseProtocolAc
       })
       .catch((error: unknown) => {
         if (requestSeq.current[id] !== seq) return;
-        setSources((prev) => ({
-          ...prev,
-          [id]: {
-            ...prev[id],
-            status: 'failed',
-            error: error instanceof Error ? error.message : 'Unable to sync',
-          },
-        }));
+        setSources((prev) => {
+          const previous = prev[id];
+          // A source that had already resolved at least once keeps its last
+          // known value and is labeled "stale" rather than blanked or downgraded
+          // to the never-loaded "syncing" treatment (TC-STATE-003). A source
+          // that has never resolved has nothing to retain, so it's "failed".
+          const hadResolvedValue = previous.resolvedAt !== null && previous.valueUsd !== null;
+          return {
+            ...prev,
+            [id]: {
+              ...previous,
+              status: hadResolvedValue ? 'stale' : 'failed',
+              error: error instanceof Error ? error.message : 'Unable to sync',
+            },
+          };
+        });
       });
   }, []);
 
@@ -141,7 +149,15 @@ export function useProtocolAccounts(walletAddress: string | null): UseProtocolAc
   }, []);
 
   const totals = useMemo<WalletTotals>(() => {
-    const resolved = WALLET_PROTOCOL_IDS.filter((id) => sources[id].status === 'resolved');
+    // A source counts toward the total/mix whenever it holds a real,
+    // previously-fetched value — resolved, stale, or mid-retry (status
+    // 'loading' while a prior value is still retained) — so a retry-in-flight
+    // never causes the total to dip (TC-STATE-003, TC-STATE-005). Only a
+    // source that has never resolved (idle/loading-cold/failed-cold) is
+    // excluded.
+    const resolved = WALLET_PROTOCOL_IDS.filter(
+      (id) => sources[id].valueUsd !== null && sources[id].resolvedAt !== null,
+    );
     if (resolved.length === 0) {
       return { totalUsd: null, mix: {}, lastResolvedAt: null };
     }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
@@ -274,17 +275,21 @@ export default function HomeScreen() {
 
         <HomeSectionTitle title="Wallet" />
         <View style={styles.walletSection} onLayout={onSectionLayout}>
-          <WalletPreview
-            walletTotals={walletTotals}
-            walletSources={walletSources}
-            hasAnyResolved={WALLET_PROTOCOL_IDS.some((id) => walletSources[id].status === 'resolved')}
-            walletRefreshing={walletRefreshing}
-            onWalletRefresh={handleWalletRefresh}
-            onRetrySource={retryWalletSource}
-            onOpenMeteora={() => router.push('/markets/meteora/profile')}
-            onOpenPhoenix={() => router.push('/markets/phoenix/profile')}
-            onOpenPacifica={() => router.push('/trade?view=profile')}
-          />
+          {wallet.connected ? (
+            <WalletPreview
+              walletTotals={walletTotals}
+              walletSources={walletSources}
+              hasAnyResolved={WALLET_PROTOCOL_IDS.some((id) => walletSources[id].valueUsd !== null && walletSources[id].resolvedAt !== null)}
+              walletRefreshing={walletRefreshing}
+              onWalletRefresh={handleWalletRefresh}
+              onRetrySource={retryWalletSource}
+              onOpenMeteora={() => router.push('/markets/meteora/profile')}
+              onOpenPhoenix={() => router.push('/markets/phoenix/profile')}
+              onOpenPacifica={() => router.push('/trade?view=profile')}
+            />
+          ) : (
+            <DisconnectedWalletState onConnect={() => { void wallet.connect(); }} />
+          )}
         </View>
 
         <DummySignalsSection />
@@ -462,6 +467,34 @@ function WalletPreview({
         <PerpsAccountRow protocol="phoenix" source={walletSources.phoenix} onRetry={onRetrySource} onPress={onOpenPhoenix} />
         <PerpsAccountRow protocol="pacifica" source={walletSources.pacifica} onRetry={onRetrySource} onPress={onOpenPacifica} />
       </View>
+    </View>
+  );
+}
+
+/**
+ * Disconnected state for Home's Wallet section (TC-STATE-004): no total, no
+ * account rows, no number of any kind renders — only a clear "Connect a
+ * wallet" prompt with a working connect action. Mirrors
+ * MeteoraProfileScreen's `DisconnectedState` copy/action pattern for
+ * consistency with the rest of the app.
+ */
+function DisconnectedWalletState({ onConnect }: { onConnect: () => void }) {
+  return (
+    <View style={styles.walletDisconnected}>
+      <MaterialIcons name="account-balance-wallet" size={30} color={semantic.text.faint} />
+      <Text style={styles.walletDisconnectedTitle}>Connect a wallet</Text>
+      <Text style={styles.walletDisconnectedText}>
+        Connect a Solana wallet to see your combined balance across Spot,
+        Meteora, Phoenix, and Pacifica.
+      </Text>
+      <Pressable
+        onPress={onConnect}
+        accessibilityRole="button"
+        accessibilityLabel="Connect a wallet"
+        style={({ pressed }) => [styles.walletConnectAction, pressed && styles.pressed]}
+      >
+        <Text style={styles.walletConnectActionText}>Connect wallet</Text>
+      </Pressable>
     </View>
   );
 }
@@ -720,6 +753,47 @@ const styles = StyleSheet.create({
   },
   accountsList: {
     gap: tokens.spacing.sm,
+  },
+  walletDisconnected: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(24,90,112,0.86)',
+    backgroundColor: 'rgba(8,61,80,0.90)',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+  },
+  walletDisconnectedTitle: {
+    color: semantic.text.primary,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  walletDisconnectedText: {
+    color: semantic.text.dim,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    maxWidth: 260,
+  },
+  walletConnectAction: {
+    marginTop: 6,
+    minWidth: 150,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 21,
+    backgroundColor: tokens.colors.accent,
+    paddingHorizontal: tokens.spacing.lg,
+  },
+  walletConnectActionText: {
+    color: semantic.background.screen,
+    fontFamily: 'monospace',
+    fontSize: tokens.fontSize.xs,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   dummyCard: {
     borderRadius: 8,

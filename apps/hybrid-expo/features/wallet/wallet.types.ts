@@ -17,8 +17,14 @@ export const WALLET_PROTOCOL_IDS: readonly WalletProtocolId[] = [
  * Per-source fetch state. Each protocol is fully independent — one source's
  * failure or latency never blocks or delays another (issue #237 fetch
  * orchestration requirement).
+ *
+ * `stale` is distinct from `failed`: it means a refresh attempt failed (or is
+ * pending retry) *after* this source had already resolved at least once —
+ * the last-known value is retained and labeled stale rather than blanked or
+ * downgraded to the "syncing" treatment (PRD Data and Trust Rules; TC-STATE-003).
+ * `failed` means no value has ever resolved for this source yet.
  */
-export type WalletSourceStatus = 'idle' | 'loading' | 'resolved' | 'failed';
+export type WalletSourceStatus = 'idle' | 'loading' | 'resolved' | 'failed' | 'stale';
 
 export interface WalletSourceState {
   status: WalletSourceStatus;
