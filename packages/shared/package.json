@@ -19,12 +19,23 @@
       "import": "./src/meteora/data-api.ts",
       "default": "./src/meteora/data-api.ts",
       "types": "./src/meteora/data-api.ts"
+    },
+    "./spot": {
+      "import": "./src/spot/index.ts",
+      "default": "./src/spot/index.ts",
+      "types": "./src/spot/index.ts"
+    },
+    "./spot/data-api": {
+      "import": "./src/spot/data-api.ts",
+      "default": "./src/spot/data-api.ts",
+      "types": "./src/spot/data-api.ts"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsx src/pacific/pacific.test.ts && tsx src/meteora/service.test.ts && tsx src/meteora/execution.test.ts",
+    "test": "tsx src/pacific/pacific.test.ts && tsx src/meteora/service.test.ts && tsx src/meteora/execution.test.ts && tsx src/spot/data-api.test.ts",
     "test:meteora": "tsx src/meteora/service.test.ts && tsx src/meteora/execution.test.ts",
+    "test:spot": "tsx src/spot/data-api.test.ts",
     "test:mobile-signing": "tsx src/pacific/mobile-signing.test.ts"
   },
   "keywords": [],
