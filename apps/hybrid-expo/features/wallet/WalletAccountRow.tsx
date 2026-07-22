@@ -117,6 +117,25 @@ function SpotSignal({ detail }: { detail: SpotRowDetail | null }) {
   );
 }
 
+// Distinct, deterministic fallback colors for tokens with no logo (e.g.
+// obscure/unverified tokens per issue #238) — picked from the existing
+// walletBrand palette so fallback chips still read as "myboon-native" rather
+// than introducing new arbitrary colors.
+const FALLBACK_CHIP_COLORS = [
+  tokens.walletBrand.spot,
+  tokens.walletBrand.meteora,
+  tokens.walletBrand.phoenix,
+  tokens.walletBrand.pacifica,
+];
+
+function fallbackChipColor(mint: string): string {
+  let hash = 0;
+  for (let i = 0; i < mint.length; i += 1) {
+    hash = (hash * 31 + mint.charCodeAt(i)) | 0;
+  }
+  return FALLBACK_CHIP_COLORS[Math.abs(hash) % FALLBACK_CHIP_COLORS.length];
+}
+
 function TokenChip({ token, overlap }: { token: SpotChipToken; overlap: boolean }) {
   const initial = (token.symbol ?? '?').trim().charAt(0).toUpperCase() || '?';
   return (
@@ -124,7 +143,7 @@ function TokenChip({ token, overlap }: { token: SpotChipToken; overlap: boolean 
       {token.logoUri ? (
         <Image source={{ uri: token.logoUri }} style={styles.tokenChipImage} />
       ) : (
-        <View style={styles.tokenChipFallback}>
+        <View style={[styles.tokenChipFallback, { backgroundColor: fallbackChipColor(token.mint) }]}>
           <Text style={styles.tokenChipFallbackText}>{initial}</Text>
         </View>
       )}
@@ -137,26 +156,31 @@ function MeteoraSignal({ detail }: { detail: MeteoraRowDetail | null }) {
   if (!detail || detail.pills.length === 0) return null;
 
   return (
-    <View style={styles.pillRow}>
-      {detail.pills.map((pill) => (
-        <View
-          key={pill.poolAddress}
-          style={[
-            styles.pill,
-            pill.inRange === true && styles.pillWin,
-            pill.inRange === false && styles.pillLose,
-          ]}
-        >
+    <View style={styles.meteoraSignal}>
+      <View style={styles.pillRow}>
+        {detail.pills.map((pill) => (
           <View
+            key={pill.poolAddress}
             style={[
-              styles.pillRing,
-              pill.inRange === true && styles.ringIn,
-              pill.inRange === false && styles.ringOut,
+              styles.pill,
+              pill.inRange === true && styles.pillWin,
+              pill.inRange === false && styles.pillLose,
             ]}
-          />
-          <Text style={styles.pillText} numberOfLines={1}>{pill.pair}</Text>
-        </View>
-      ))}
+          >
+            <View
+              style={[
+                styles.pillRing,
+                pill.inRange === true && styles.ringIn,
+                pill.inRange === false && styles.ringOut,
+              ]}
+            />
+            <Text style={styles.pillText} numberOfLines={1}>{pill.pair}</Text>
+          </View>
+        ))}
+      </View>
+      {detail.unclaimedFeesUsd !== null ? (
+        <Text style={styles.feesText}>{`${formatUsd(detail.unclaimedFeesUsd)} fees`}</Text>
+      ) : null}
     </View>
   );
 }
@@ -235,7 +259,6 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: tokens.walletBrand.spot,
   },
   tokenChipFallbackText: {
     color: semantic.text.primary,
@@ -254,11 +277,19 @@ const styles = StyleSheet.create({
     fontSize: 7,
     fontWeight: '800',
   },
+  meteoraSignal: {
+    gap: 4,
+  },
   pillRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 5,
+  },
+  feesText: {
+    color: semantic.text.faint,
+    fontFamily: 'monospace',
+    fontSize: 8,
   },
   pill: {
     flexDirection: 'row',
