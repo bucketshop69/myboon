@@ -85,13 +85,23 @@ async function heliusRpc<T>(method: string, params: unknown): Promise<T> {
   return json.result
 }
 
+// This screen's total is user-facing net worth — a NaN/Infinity/negative
+// value from upstream must never silently flow into a sum a user reads as
+// their balance. `typeof x === 'number'` alone accepts all three.
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
 function fungibleTokenBalance(asset: HeliusAsset): SpotTokenBalance | null {
   const info = asset.token_info
-  if (!info || typeof info.balance !== 'number' || typeof info.decimals !== 'number') return null
+  if (!info || !isFiniteNonNegative(info.balance) || !isFiniteNonNegative(info.decimals)) return null
 
   const uiAmount = info.balance / 10 ** info.decimals
-  const priceUsd = info.price_info?.price_per_token ?? null
-  const valueUsd = info.price_info?.total_price ?? (priceUsd !== null ? priceUsd * uiAmount : null)
+  const priceUsd = isFiniteNonNegative(info.price_info?.price_per_token) ? info.price_info!.price_per_token! : null
+  const rawTotalPrice = info.price_info?.total_price
+  const valueUsd = isFiniteNonNegative(rawTotalPrice)
+    ? rawTotalPrice
+    : (priceUsd !== null ? priceUsd * uiAmount : null)
 
   return {
     mint: asset.id,
@@ -108,11 +118,13 @@ function fungibleTokenBalance(asset: HeliusAsset): SpotTokenBalance | null {
 
 function nativeSolBalance(result: HeliusGetAssetsByOwnerResult): SpotTokenBalance | null {
   const native = result.nativeBalance
-  if (!native || typeof native.lamports !== 'number' || native.lamports <= 0) return null
+  if (!native || !isFiniteNonNegative(native.lamports) || native.lamports <= 0) return null
 
   const uiAmount = native.lamports / 1e9
-  const priceUsd = native.price_per_sol ?? null
-  const valueUsd = native.total_price ?? (priceUsd !== null ? priceUsd * uiAmount : null)
+  const priceUsd = isFiniteNonNegative(native.price_per_sol) ? native.price_per_sol! : null
+  const valueUsd = isFiniteNonNegative(native.total_price)
+    ? native.total_price!
+    : (priceUsd !== null ? priceUsd * uiAmount : null)
 
   return {
     mint: NATIVE_SOL_MINT,
@@ -155,8 +167,12 @@ async function fetchWalletBalances(wallet: string): Promise<SpotWalletBalances> 
 
   tokens.sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0))
 
+  // A wallet holding zero tokens, or holding only tokens Helius has no price
+  // for, is a legitimate $0 total — not a failure. `null` is reserved for a
+  // genuine upstream/parse problem (handled by the route's try/catch below);
+  // an empty knownValues list here must never be conflated with that case.
   const knownValues = tokens.map((token) => token.valueUsd).filter((value): value is number => value !== null)
-  const totalValueUsd = knownValues.length > 0 ? knownValues.reduce((sum, value) => sum + value, 0) : null
+  const totalValueUsd = knownValues.reduce((sum, value) => sum + value, 0)
 
   const data: SpotWalletBalances = { wallet, totalValueUsd, tokens }
   balancesCache.set(wallet, { data, expiresAt: now + BALANCES_CACHE_TTL_MS })

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { semantic, tokens } from '@/theme';
@@ -31,6 +31,12 @@ export function WalletActivityTiles() {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; w: number } | null>(null);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tileRefs = useRef<Record<ActivityId, View | null>>({ send: null, receive: null, transfer: null });
+  const isMounted = useRef(true);
+
+  useEffect(() => () => {
+    isMounted.current = false;
+    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+  }, []);
 
   function clearDismissTimer() {
     if (dismissTimer.current) {
@@ -43,6 +49,9 @@ export function WalletActivityTiles() {
     const node = tileRefs.current[id];
     if (!node) return;
     node.measureInWindow((x, y, w) => {
+      // measureInWindow's callback fires asynchronously — a tap right before
+      // navigating away could resolve after unmount.
+      if (!isMounted.current) return;
       const screenW = Dimensions.get('window').width;
       let left = x + w / 2 - TOOLTIP_WIDTH / 2;
       if (left < 8) left = 8;
@@ -50,7 +59,9 @@ export function WalletActivityTiles() {
       setTooltip({ x: left, y, w: TOOLTIP_WIDTH });
 
       clearDismissTimer();
-      dismissTimer.current = setTimeout(() => setTooltip(null), TOOLTIP_AUTO_DISMISS_MS);
+      dismissTimer.current = setTimeout(() => {
+        if (isMounted.current) setTooltip(null);
+      }, TOOLTIP_AUTO_DISMISS_MS);
     });
   }
 

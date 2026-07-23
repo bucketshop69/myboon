@@ -139,10 +139,14 @@ function PerpsSignal({ detail }: { detail: PerpsRowDetail | null }) {
 }
 
 function SyncingSignal({ failed, onRetry }: { failed: boolean; onRetry: () => void }) {
+  // "syncing" (still in flight) and a failed attempt must never look
+  // identical — a failed row keeps the PRD's non-alarming tone (never
+  // "Unavailable"/"Error") but needs its own distinct wording and a static
+  // (non-spinning-implying) marker, matching WalletAccountRow's fix.
   return (
     <View style={styles.syncingRow}>
-      <View style={styles.spinnerDot} />
-      <Text style={styles.syncingText}>{failed ? 'syncing · tap to retry' : 'syncing'}</Text>
+      <View style={[styles.spinnerDot, failed && styles.spinnerDotFailed]} />
+      <Text style={styles.syncingText}>{failed ? "couldn't sync" : 'syncing'}</Text>
       {failed ? (
         <Pressable
           onPress={onRetry}
@@ -302,6 +306,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'rgba(255,209,102,0.25)',
     borderTopColor: tokens.colors.accent,
+  },
+  // Failed: a solid, still dot — deliberately not the ring shape used for
+  // "syncing," so it reads as "stopped" rather than "in progress."
+  spinnerDotFailed: {
+    borderWidth: 0,
+    backgroundColor: tokens.colors.accent,
   },
   syncingText: {
     color: tokens.colors.accent,

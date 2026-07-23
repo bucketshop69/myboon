@@ -148,11 +148,17 @@ export async function fetchPacificaValueUsd(walletAddress: string): Promise<Wall
  * and USD-lots convention PhoenixProfileScreen's own (unexported) summary
  * uses, summed across every trader record for this authority.
  *
- * Returns null (mirroring PhoenixProfileScreen's own `sumUsd`) when there are
- * no trader records with a parseable portfolioValue — an empty sum must
- * never be reported as a real $0 balance.
+ * A wallet with zero trader-PDA records (never traded on Phoenix) is a
+ * legitimate $0, not a failure — mirrors the same `records.length > 0` check
+ * PhoenixProfileScreen's own `worstRiskLabel` uses for the same reason.
+ * `null` is reserved for the genuinely ambiguous case: trader records exist
+ * but none of them had a parseable `portfolioValue`, which PhoenixProfileScreen
+ * itself has never had to disambiguate (it only renders once an account is
+ * known to exist), but Wallet's row must, since it represents any connected
+ * wallet including ones that have never touched Phoenix at all.
  */
 function sumPhoenixPortfolioValue(traders: unknown[]): number | null {
+  if (traders.length === 0) return 0;
   const values = traders
     .map((trader) => toUsd(asRecord(trader)?.portfolioValue))
     .filter((value): value is number => value !== null);

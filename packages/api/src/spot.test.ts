@@ -17,6 +17,8 @@ const WALLET_ALL = '7iNJ7CLNT8UBPANxkkrsURjzaktbomCVa93N1sKcVo9C'
 const WALLET_SINGLE = '5rCf1DM8LjKTw4YqhnoLcngyZYeNnQqztScTogYHAS6'
 const WALLET_MISSING = 'CoaxzEh8p5YyGLcj36Eo3cUThVJxeKCs7qvLAGDYwBcz'
 const WALLET_UPSTREAM_DOWN = 'EYj9xKw6ZszwpyNibHY7JD5o3QgTVrSdcBp1fMJhrR9o'
+const WALLET_EMPTY = 'DjVE6JNiYqPL2QXyCUUh8rNjHrbz9hXHNYt99MQ59qw1'
+const WALLET_UNPRICED = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'
 
 function heliusResponse() {
   return {
@@ -113,6 +115,68 @@ test('rejects invalid wallet and mint addresses with 400', async () => {
 
   assert.equal((await app.request('/spot/not-an-address/balances')).status, 400)
   assert.equal((await app.request(`/spot/${WALLET_ALL}/balances/not-an-address`)).status, 400)
+})
+
+test('GET /:wallet/balances returns totalValueUsd: 0 (not null) for a wallet holding nothing', async () => {
+  const app = new Hono()
+  app.route('/spot', spotRoutes)
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({
+    jsonrpc: '2.0',
+    id: 'myboon-spot',
+    result: { nativeBalance: { lamports: 0 }, items: [] },
+  })
+
+  try {
+    const response = await app.request(`/spot/${WALLET_EMPTY}/balances`)
+    assert.equal(response.status, 200)
+    const body = await response.json() as { totalValueUsd: number | null; tokens: unknown[] }
+    // A genuinely empty wallet must report a real $0, never null — null is
+    // reserved for an actual upstream/parse failure (see the 502 test below),
+    // so a client can't tell "nothing here" apart from "something broke."
+    assert.equal(body.totalValueUsd, 0)
+    assert.equal(body.tokens.length, 0)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('GET /:wallet/balances returns totalValueUsd: 0 for a wallet holding only unpriced tokens', async () => {
+  const app = new Hono()
+  app.route('/spot', spotRoutes)
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({
+    jsonrpc: '2.0',
+    id: 'myboon-spot',
+    result: {
+      nativeBalance: { lamports: 0 },
+      items: [
+        {
+          id: 'UnpricedMintAddress111111111111111111111',
+          interface: 'FungibleToken',
+          content: { metadata: { name: 'No Price Token', symbol: 'NPT' } },
+          // No price_info at all — Helius has no known price for this token.
+          token_info: { symbol: 'NPT', balance: 1_000_000, decimals: 6 },
+        },
+      ],
+    },
+  })
+
+  try {
+    const response = await app.request(`/spot/${WALLET_UNPRICED}/balances`)
+    assert.equal(response.status, 200)
+    const body = await response.json() as { totalValueUsd: number | null; tokens: Array<{ valueUsd: number | null }> }
+    // Holding a real token that just has no known price is also a real $0
+    // total, not an "unavailable" state — the token itself still shows up
+    // in `tokens` with valueUsd: null, but the aggregate total is honest 0.
+    assert.equal(body.totalValueUsd, 0)
+    assert.equal(body.tokens.length, 1)
+    assert.equal(body.tokens[0].valueUsd, null)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('returns 502 when the upstream Helius call fails', async () => {

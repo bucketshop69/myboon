@@ -138,8 +138,15 @@ export function useProtocolAccounts(walletAddress: string | null): UseProtocolAc
 
   // Reset to idle and re-arm the "has entered view" gate whenever the
   // connected wallet changes (including disconnect), so stale balances from
-  // a previous wallet never linger.
+  // a previous wallet never linger. Also cancels any debounced
+  // visibility-entry fetch still pending for the previous wallet — without
+  // this, a fetch scheduled just before a disconnect/reconnect could fire
+  // after this reset and populate the just-cleared state with stale data.
   useEffect(() => {
+    if (visibilityTimer.current) {
+      clearTimeout(visibilityTimer.current);
+      visibilityTimer.current = null;
+    }
     setSources(initialSources());
     wasVisible.current = false;
   }, [walletAddress]);
