@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "dev:web": "pnpm --filter web dev",
+    "api": "bash scripts/free-port-and-run.sh 3000 -- pnpm --filter @myboon/api dev",
     "mobile:web": "pnpm --filter hybrid-expo web",
     "dev:video": "pnpm --filter @myboon/video dev",
     "dev:mcp": "pnpm --filter mcp dev",

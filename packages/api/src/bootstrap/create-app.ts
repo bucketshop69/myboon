@@ -11,6 +11,7 @@ import { pacificaRoutes } from '../pacifica.js'
 import { phoenixRoutes } from '../phoenix.js'
 import { createPolymarketReadRoutes } from '../polymarket/routes/index.js'
 import { SupabasePolymarketCatalogStore } from '../polymarket/catalog/supabase-store.js'
+import { spotRoutes } from '../spot.js'
 import { createStoryRoutes } from '../stories.js'
 import type { ApiConfig } from './config.js'
 
@@ -67,6 +68,7 @@ export function createApp(config: ApiConfig): Hono {
   app.route('/clob', clobRoutes)
   app.route('/perps/pacifica', pacificaRoutes)
   app.route('/perps/phoenix', phoenixRoutes)
+  app.route('/spot', spotRoutes)
 
   app.get('/health', (c) => c.json({ status: 'ok' }))
 

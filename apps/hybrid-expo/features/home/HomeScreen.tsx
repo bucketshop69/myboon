@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
@@ -22,6 +23,19 @@ import {
   POLYMARKET_MARK_SVG,
   RAYDIUM_MARK_SVG,
 } from '@/features/home/marketBrandAssets';
+import { PerpsAccountRow } from '@/features/wallet/PerpsAccountRow';
+import { WalletAccountRow } from '@/features/wallet/WalletAccountRow';
+import { WalletActivityTiles } from '@/features/wallet/WalletActivityTiles';
+import { WalletHero } from '@/features/wallet/WalletHero';
+import { useProtocolAccounts } from '@/features/wallet/useProtocolAccounts';
+import { useSectionVisibility } from '@/features/wallet/useSectionVisibility';
+import {
+  WALLET_PROTOCOL_IDS,
+  type WalletProtocolId,
+  type WalletSourcesState,
+  type WalletTotals,
+} from '@/features/wallet/wallet.types';
+import { useWallet } from '@/hooks/useWallet';
 import { semantic, tokens } from '@/theme';
 
 const FEED_PREVIEW_LIMIT = 3;
@@ -105,6 +119,11 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
+  const wallet = useWallet();
+  const walletAddress = wallet.connected ? wallet.address : null;
+  const { totals: walletTotals, sources: walletSources, notifyVisibility, refreshAll: refreshWallet, retrySource: retryWalletSource } = useProtocolAccounts(walletAddress);
+  const { isVisible: walletSectionVisible, onSectionLayout, onViewportLayout, onScroll: onWalletScroll } = useSectionVisibility();
+  const [walletRefreshing, setWalletRefreshing] = useState(false);
 
   const [feedItems, setFeedItems] = useState<NarrativeFeedItem[]>([]);
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -150,11 +169,24 @@ export default function HomeScreen() {
     void loadHome();
   }, [loadHome]);
 
+  useEffect(() => {
+    notifyVisibility(walletSectionVisible);
+  }, [walletSectionVisible, notifyVisibility]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadHome(false);
     setRefreshing(false);
   }, [loadHome]);
+
+  const handleWalletRefresh = useCallback(() => {
+    setWalletRefreshing(true);
+    refreshWallet();
+    // Purely visual — sources resolve independently and asynchronously; this
+    // just gives the tap a brief acknowledgement rather than tracking every
+    // source's settle.
+    setTimeout(() => setWalletRefreshing(false), 700);
+  }, [refreshWallet]);
 
   const handleFeedPress = useCallback((item: NarrativeFeedItem) => {
     setSheetItem({
@@ -192,8 +224,9 @@ export default function HomeScreen() {
         }
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false },
+          { useNativeDriver: false, listener: onWalletScroll },
         )}
+        onLayout={onViewportLayout}
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 18) + 24 }]}
       >
         <HomeSectionTitle title="Feed" />
@@ -241,10 +274,22 @@ export default function HomeScreen() {
         />
 
         <HomeSectionTitle title="Wallet" />
-        <View style={styles.walletSection}>
-          <WalletPreview
-            onOpenWallet={() => router.push('/predict-profile')}
-          />
+        <View style={styles.walletSection} onLayout={onSectionLayout}>
+          {wallet.connected ? (
+            <WalletPreview
+              walletTotals={walletTotals}
+              walletSources={walletSources}
+              hasAnyResolved={WALLET_PROTOCOL_IDS.some((id) => walletSources[id].valueUsd !== null && walletSources[id].resolvedAt !== null)}
+              walletRefreshing={walletRefreshing}
+              onWalletRefresh={handleWalletRefresh}
+              onRetrySource={retryWalletSource}
+              onOpenMeteora={() => router.push('/markets/meteora/profile')}
+              onOpenPhoenix={() => router.push('/markets/phoenix/profile')}
+              onOpenPacifica={() => router.push('/trade?view=profile')}
+            />
+          ) : (
+            <DisconnectedWalletState onConnect={() => { void wallet.connect(); }} />
+          )}
         </View>
 
         <DummySignalsSection />
@@ -382,86 +427,74 @@ function MarketAppBrandIcon({ icon }: { icon: MarketAppIcon }) {
 }
 
 function WalletPreview({
-  onOpenWallet,
+  walletTotals,
+  walletSources,
+  hasAnyResolved,
+  walletRefreshing,
+  onWalletRefresh,
+  onRetrySource,
+  onOpenMeteora,
+  onOpenPhoenix,
+  onOpenPacifica,
 }: {
-  onOpenWallet: () => void;
+  walletTotals: WalletTotals;
+  walletSources: WalletSourcesState;
+  hasAnyResolved: boolean;
+  walletRefreshing: boolean;
+  onWalletRefresh: () => void;
+  onRetrySource: (id: WalletProtocolId) => void;
+  onOpenMeteora: () => void;
+  onOpenPhoenix: () => void;
+  onOpenPacifica: () => void;
 }) {
   return (
     <View style={styles.walletWrap}>
-      <View style={styles.walletHero}>
-        <Text style={styles.meta}>Net worth</Text>
-        <Text style={styles.walletValue}>$9,428</Text>
-        <Text style={styles.walletDelta}>+3.8% today across 5 venues</Text>
-      </View>
-      <View style={styles.walletActions}>
-        <WalletAction label="Picks" onPress={onOpenWallet} primary />
-        <WalletAction label="Perps" disabled />
-        <WalletAction label="Swap" disabled />
-      </View>
-      <View style={styles.positionsCard}>
-        <Text style={styles.meta}>Positions</Text>
-        <PositionRow coin="P" name="Prediction cash" sub="Polymarket wallet" value="$1,240" delta="+6.2%" />
-        <PositionRow coin="H" name="SOL-PERP" sub="Perps margin" value="$3,880" delta="+2.1%" />
-        <PositionRow coin="M" name="Meteora LP" sub="SOL / USDC" value="$920" delta="+0.8%" />
+      <WalletHero
+        totals={walletTotals}
+        hasAnyResolved={hasAnyResolved}
+        isRefreshing={walletRefreshing}
+        onRefresh={onWalletRefresh}
+      />
+      <WalletActivityTiles />
+      <View style={styles.accountsList}>
+        <WalletAccountRow protocol="spot" source={walletSources.spot} onRetry={onRetrySource} />
+        <WalletAccountRow
+          protocol="meteora"
+          source={walletSources.meteora}
+          onRetry={onRetrySource}
+          onPress={onOpenMeteora}
+        />
+        <PerpsAccountRow protocol="phoenix" source={walletSources.phoenix} onRetry={onRetrySource} onPress={onOpenPhoenix} />
+        <PerpsAccountRow protocol="pacifica" source={walletSources.pacifica} onRetry={onRetrySource} onPress={onOpenPacifica} />
       </View>
     </View>
   );
 }
 
-function WalletAction({
-  label,
-  onPress,
-  primary = false,
-  disabled = false,
-}: {
-  label: string;
-  onPress?: () => void;
-  primary?: boolean;
-  disabled?: boolean;
-}) {
+/**
+ * Disconnected state for Home's Wallet section (TC-STATE-004): no total, no
+ * account rows, no number of any kind renders — only a clear "Connect a
+ * wallet" prompt with a working connect action. Mirrors
+ * MeteoraProfileScreen's `DisconnectedState` copy/action pattern for
+ * consistency with the rest of the app.
+ */
+function DisconnectedWalletState({ onConnect }: { onConnect: () => void }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => [
-      styles.walletAction,
-      primary ? styles.walletActionPrimary : styles.walletActionAlt,
-      disabled && styles.walletActionDisabled,
-      pressed && !disabled && styles.pressed,
-    ]}>
-      <Text style={[styles.walletActionText, primary ? styles.walletActionTextPrimary : styles.walletActionTextAlt]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function PositionRow({
-  coin,
-  name,
-  sub,
-  value,
-  delta,
-}: {
-  coin: string;
-  name: string;
-  sub: string;
-  value: string;
-  delta: string;
-}) {
-  return (
-    <View style={styles.positionRow}>
-      <View style={styles.positionCoin}>
-        <Text style={styles.positionCoinText}>{coin}</Text>
-      </View>
-      <View style={styles.positionCopy}>
-        <Text style={styles.positionName}>{name}</Text>
-        <Text style={styles.positionSub}>{sub}</Text>
-      </View>
-      <View style={styles.positionValueWrap}>
-        <Text style={styles.positionValue}>{value}</Text>
-        <Text style={styles.positionDelta}>{delta}</Text>
-      </View>
+    <View style={styles.walletDisconnected}>
+      <MaterialIcons name="account-balance-wallet" size={30} color={semantic.text.faint} />
+      <Text style={styles.walletDisconnectedTitle}>Connect a wallet</Text>
+      <Text style={styles.walletDisconnectedText}>
+        Connect a Solana wallet to see your combined balance across Spot,
+        Meteora, Phoenix, and Pacifica.
+      </Text>
+      <Pressable
+        onPress={onConnect}
+        accessibilityRole="button"
+        accessibilityLabel="Connect a wallet"
+        style={({ pressed }) => [styles.walletConnectAction, pressed && styles.pressed]}
+      >
+        <Text style={styles.walletConnectActionText}>Connect wallet</Text>
+      </Pressable>
     </View>
   );
 }
@@ -710,13 +743,6 @@ const styles = StyleSheet.create({
     minHeight: WALLET_SECTION_MIN_HEIGHT,
     justifyContent: 'flex-start',
   },
-  walletHero: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.86)',
-    backgroundColor: 'rgba(8,61,80,0.90)',
-    padding: tokens.spacing.lg,
-  },
   meta: {
     color: semantic.text.faint,
     fontFamily: 'monospace',
@@ -725,113 +751,49 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 7,
   },
-  walletValue: {
-    color: semantic.text.primary,
-    fontSize: 39,
-    lineHeight: 42,
-    fontWeight: '800',
-    marginBottom: tokens.spacing.xs,
-  },
-  walletDelta: {
-    color: semantic.sentiment.positive,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '800',
-  },
-  walletActions: {
-    flexDirection: 'row',
+  accountsList: {
     gap: tokens.spacing.sm,
   },
-  walletAction: {
-    flex: 1,
-    minHeight: 54,
+  walletDisconnected: {
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
     borderRadius: 8,
-  },
-  walletActionPrimary: {
-    backgroundColor: tokens.colors.accent,
-  },
-  walletActionAlt: {
-    backgroundColor: 'rgba(6,51,67,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.78)',
+    borderColor: 'rgba(24,90,112,0.86)',
+    backgroundColor: 'rgba(8,61,80,0.90)',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
   },
-  walletActionDisabled: {
-    opacity: 0.55,
+  walletDisconnectedTitle: {
+    color: semantic.text.primary,
+    fontSize: 16,
+    fontWeight: '800',
   },
-  walletActionText: {
+  walletDisconnectedText: {
+    color: semantic.text.dim,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    maxWidth: 260,
+  },
+  walletConnectAction: {
+    marginTop: 6,
+    minWidth: 150,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 21,
+    backgroundColor: tokens.colors.accent,
+    paddingHorizontal: tokens.spacing.lg,
+  },
+  walletConnectActionText: {
+    color: semantic.background.screen,
     fontFamily: 'monospace',
-    fontSize: 8,
+    fontSize: tokens.fontSize.xs,
     fontWeight: '900',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-  },
-  walletActionTextPrimary: {
-    color: semantic.background.screen,
-  },
-  walletActionTextAlt: {
-    color: semantic.text.dim,
-  },
-  positionsCard: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.78)',
-    backgroundColor: 'rgba(8,61,80,0.82)',
-    padding: 13,
-  },
-  positionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.spacing.sm,
-    paddingVertical: 11,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(24,90,112,0.62)',
-  },
-  positionCoin: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: semantic.background.lift,
-    borderWidth: 1,
-    borderColor: 'rgba(24,90,112,0.84)',
-  },
-  positionCoinText: {
-    color: tokens.colors.accent,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '900',
-  },
-  positionCopy: {
-    flex: 1,
-  },
-  positionName: {
-    color: semantic.text.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  positionSub: {
-    color: semantic.text.faint,
-    fontFamily: 'monospace',
-    fontSize: 8,
-  },
-  positionValueWrap: {
-    alignItems: 'flex-end',
-  },
-  positionValue: {
-    color: semantic.text.primary,
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSize.xs,
-    fontWeight: '800',
-  },
-  positionDelta: {
-    color: semantic.sentiment.positive,
-    fontFamily: 'monospace',
-    fontSize: 8,
-    marginTop: 3,
   },
   dummyCard: {
     borderRadius: 8,
