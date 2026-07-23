@@ -14,7 +14,7 @@ import {
   type WalletTotals,
 } from '@/features/wallet/wallet.types';
 
-const VIEWPORT_DEBOUNCE_MS = 400;
+const VIEWPORT_DEBOUNCE_MS = 800;
 
 const FETCHERS: Record<WalletProtocolId, (walletAddress: string) => Promise<WalletFetchResult>> = {
   spot: fetchSpotValueUsd,
