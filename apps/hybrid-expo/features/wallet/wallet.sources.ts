@@ -70,6 +70,15 @@ function buildSpotRowDetail(tokens: Array<{
 
 export async function fetchMeteoraValueUsd(walletAddress: string): Promise<WalletFetchResult> {
   const result = await meteoraClient.getOpenPortfolio(walletAddress);
+
+  // A wallet with zero open pools is a legitimate, successfully-fetched $0 —
+  // not a failure (TC-ROWS-006). The Data API responds `total*` fields as
+  // absent/null in this case, which is indistinguishable from a genuine
+  // parsing problem unless we check `pools.length` first.
+  if (result.data.pools.length === 0) {
+    return { valueUsd: 0, detail: buildMeteoraRowDetail(result.data) };
+  }
+
   const total = result.data.totalBalanceUsd;
   if (total === null) {
     throw new Error('Meteora value unavailable');
